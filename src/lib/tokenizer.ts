@@ -37,10 +37,7 @@ const calculateToolCallsTokens = (
   let tokens = 0
   for (const toolCall of toolCalls) {
     tokens += constants.funcInit
-    tokens += encoder.encode(toolCall.id).length
-    tokens += encoder.encode(toolCall.type).length
-    tokens += encoder.encode(toolCall.function.name).length
-    tokens += encoder.encode(toolCall.function.arguments).length
+    tokens += encoder.encode(JSON.stringify(toolCall)).length
   }
   tokens += constants.funcEnd
   return tokens
@@ -57,9 +54,6 @@ const calculateContentPartsTokens = (
   for (const part of contentParts) {
     if (part.type === "image_url") {
       tokens += encoder.encode(part.image_url.url).length + 85
-      if (part.image_url.detail === "high") {
-        tokens += 85
-      }
     } else if (part.text) {
       tokens += encoder.encode(part.text).length
     }
@@ -346,6 +340,7 @@ export const getTokenCount = async (
     inputTokens += numTokensForTools(payload.tools, encoder, constants)
   }
   const outputTokens = calculateTokens(outputMessages, encoder, constants)
+
   return {
     input: inputTokens,
     output: outputTokens,

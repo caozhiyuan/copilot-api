@@ -32,11 +32,30 @@ export async function handleCountTokens(c: Context) {
 
     // Calculate token count
     const tokenCount = await getTokenCount(openAIPayload, selectedModel)
-    consola.debug("Token count:", tokenCount)
+    if (anthropicPayload.tools && anthropicPayload.tools.length > 0) {
+      if (anthropicPayload.model.startsWith("claude")) {
+        // https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview#pricing
+        tokenCount.input = tokenCount.input + 346
+      } else if (anthropicPayload.model.startsWith("grok")) {
+        tokenCount.input = tokenCount.input + 128
+      }
+    }
+
+    // Calculate final token count with model-specific corrections
+    let finalTokenCount = tokenCount.input + tokenCount.output
+
+    // Apply correction factor for Claude models
+    if (anthropicPayload.model.startsWith("claude")) {
+      finalTokenCount = Math.round(finalTokenCount * 1.05)
+    } else if (anthropicPayload.model.startsWith("grok")) {
+      finalTokenCount = Math.round(finalTokenCount * 1.022)
+    }
+
+    consola.info("Token count:", finalTokenCount)
 
     // Return response in Anthropic API format
     return c.json({
-      input_tokens: tokenCount.input,
+      input_tokens: finalTokenCount,
     })
   } catch (error) {
     consola.error("Error counting tokens:", error)
