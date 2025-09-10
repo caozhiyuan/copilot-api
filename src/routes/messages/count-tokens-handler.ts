@@ -13,12 +13,12 @@ import { translateToOpenAI } from "./non-stream-translation"
  */
 export async function handleCountTokens(c: Context) {
   try {
+    const anthropicBeta = c.req.header("anthropic-beta")
+
     const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
 
-    // Convert to OpenAI format for token counting
     const openAIPayload = translateToOpenAI(anthropicPayload)
 
-    // Find the selected model
     const selectedModel = state.models?.data.find(
       (model) => model.id === anthropicPayload.model,
     )
@@ -30,17 +30,39 @@ export async function handleCountTokens(c: Context) {
       })
     }
 
-    // Calculate token count
     const tokenCount = await getTokenCount(openAIPayload, selectedModel)
-    consola.debug("Token count:", tokenCount)
 
-    // Return response in Anthropic API format
+    if (anthropicPayload.tools && anthropicPayload.tools.length > 0) {
+      let mcpToolExist = false
+      if (anthropicBeta?.startsWith("claude-code")) {
+        mcpToolExist = anthropicPayload.tools.some((tool) =>
+          tool.name.startsWith("mcp__"),
+        )
+      }
+      if (!mcpToolExist) {
+        if (anthropicPayload.model.startsWith("claude")) {
+          // https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview#pricing
+          tokenCount.input = tokenCount.input + 346
+        } else if (anthropicPayload.model.startsWith("grok")) {
+          tokenCount.input = tokenCount.input + 480
+        }
+      }
+    }
+
+    let finalTokenCount = tokenCount.input + tokenCount.output
+    if (anthropicPayload.model.startsWith("claude")) {
+      finalTokenCount = Math.round(finalTokenCount * 1.15)
+    } else if (anthropicPayload.model.startsWith("grok")) {
+      finalTokenCount = Math.round(finalTokenCount * 1.03)
+    }
+
+    consola.info("Token count:", finalTokenCount)
+
     return c.json({
-      input_tokens: tokenCount.input,
+      input_tokens: finalTokenCount,
     })
   } catch (error) {
     consola.error("Error counting tokens:", error)
-    // Return default value on error
     return c.json({
       input_tokens: 1,
     })
