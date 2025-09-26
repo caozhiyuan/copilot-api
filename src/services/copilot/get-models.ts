@@ -22,12 +22,20 @@ interface ModelLimits {
   max_output_tokens?: number
   max_prompt_tokens?: number
   max_inputs?: number
+  vision?: {
+    max_prompt_image_size: number
+    max_prompt_images: number
+    supported_media_types: Array<string>
+  }
 }
 
 interface ModelSupports {
   tool_calls?: boolean
   parallel_tool_calls?: boolean
   dimensions?: boolean
+  streaming?: boolean
+  structured_outputs?: boolean
+  vision?: boolean
 }
 
 interface ModelCapabilities {
@@ -43,9 +51,11 @@ interface Model {
   capabilities: ModelCapabilities
   id: string
   model_picker_enabled: boolean
+  model_picker_category?: string
   name: string
   object: string
   preview: boolean
+  supported_endpoints?: Array<string>
   vendor: string
   version: string
   policy?: {
