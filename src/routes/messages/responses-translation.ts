@@ -595,10 +595,12 @@ const mapResponsesUsage = (
 ): AnthropicResponse["usage"] => {
   const promptTokens = response.usage?.input_tokens ?? 0
   const completionTokens = response.usage?.output_tokens ?? 0
+  const cacheTokens = response.usage?.input_tokens_details?.cached_tokens ?? 0
 
   return {
-    input_tokens: promptTokens,
+    input_tokens: promptTokens - cacheTokens,
     output_tokens: completionTokens,
+    cache_read_input_tokens: cacheTokens,
   }
 }
 
