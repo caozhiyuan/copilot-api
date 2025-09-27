@@ -32,4 +32,3 @@ server.route("/v1/responses", responsesRoutes)
 
 // Anthropic compatible endpoints
 server.route("/v1/messages", messageRoutes)
-server.post("/v1/messages/count_tokens", (c) => c.json({ input_tokens: 1 }))
