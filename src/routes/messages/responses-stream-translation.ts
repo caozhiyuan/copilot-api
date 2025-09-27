@@ -372,9 +372,6 @@ const ensureMessageStart = (
   const id = response?.id ?? state.currentResponseId ?? "response"
   const model = response?.model ?? state.currentModel ?? ""
 
-  const inputTokens =
-    response?.usage?.input_tokens ?? state.initialInputTokens ?? 0
-
   state.messageStartSent = true
 
   return [
@@ -388,10 +385,6 @@ const ensureMessageStart = (
         model,
         stop_reason: null,
         stop_sequence: null,
-        usage: {
-          input_tokens: inputTokens,
-          output_tokens: 0,
-        },
       },
     },
   ]
