@@ -246,7 +246,7 @@ const createFunctionCallOutput = (
 ): ResponseFunctionCallOutputItem => ({
   type: "function_call_output",
   call_id: block.tool_use_id,
-  output: block.content,
+  output: convertToolResultContent(block.content),
   status: block.is_error ? "incomplete" : "completed",
 })
 
@@ -268,7 +268,7 @@ When using the BashOutput tool, follow these rules:
 - Only Bash Tool run_in_background set to true, Use BashOutput to read the output later
 ### TodoWrite tool
 When using the TodoWrite tool, follow these rules:
-- Skip using the TodoWrite tool for straightforward tasks (roughly the easiest 25%).
+- Skip using the TodoWrite tool for simple or straightforward tasks (roughly the easiest 25%).
 - Do not make single-step todo lists.
 - When you made a todo, update it after having performed one of the sub-tasks that you shared on the todo list.`
 
@@ -637,4 +637,28 @@ const parseUserId = (
   const promptCacheKey = sessionMatch ? sessionMatch[1] : null
 
   return { safetyIdentifier, promptCacheKey }
+}
+
+const convertToolResultContent = (
+  content: string | Array<AnthropicTextBlock> | Array<AnthropicImageBlock>,
+): string | Array<ResponseInputContent> => {
+  if (typeof content === "string") {
+    return content
+  }
+
+  if (Array.isArray(content)) {
+    if (content.length > 0 && content[0].type === "text") {
+      return (content as Array<AnthropicTextBlock>).map((block) =>
+        createTextContent(block.text),
+      )
+    }
+
+    if (content.length > 0 && content[0].type === "image") {
+      return (content as Array<AnthropicImageBlock>).map((block) =>
+        createImageContent(block),
+      )
+    }
+  }
+
+  return ""
 }

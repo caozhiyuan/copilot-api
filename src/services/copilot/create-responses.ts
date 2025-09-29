@@ -44,7 +44,7 @@ export interface ResponseFunctionToolCallItem {
 export interface ResponseFunctionCallOutputItem {
   type: "function_call_output"
   call_id: string
-  output: string
+  output: string | Array<ResponseInputContent>
   status?: "in_progress" | "completed" | "incomplete"
 }
 
@@ -57,11 +57,10 @@ export type ResponseInputItem =
 export type ResponseInputContent =
   | ResponseInputText
   | ResponseInputImage
-  | ResponseContentTextLike
   | Record<string, unknown>
 
 export interface ResponseInputText {
-  type?: "input_text" | "text" | "output_text"
+  type?: "input_text" | "output_text"
   text: string
 }
 
@@ -70,11 +69,6 @@ export interface ResponseInputImage {
   image_url?: string | null
   file_id?: string | null
   detail?: "low" | "high" | "auto"
-}
-
-export interface ResponseContentTextLike {
-  type?: "text"
-  text: string
 }
 
 export interface ResponsesResult {
