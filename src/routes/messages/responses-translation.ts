@@ -647,17 +647,23 @@ const convertToolResultContent = (
   }
 
   if (Array.isArray(content)) {
-    if (content.length > 0 && content[0].type === "text") {
-      return (content as Array<AnthropicTextBlock>).map((block) =>
-        createTextContent(block.text),
-      )
+    const result: Array<ResponseInputContent> = []
+    for (const block of content) {
+      switch (block.type) {
+        case "text": {
+          result.push(createTextContent(block.text))
+          break
+        }
+        case "image": {
+          result.push(createImageContent(block))
+          break
+        }
+        default: {
+          break
+        }
+      }
     }
-
-    if (content.length > 0 && content[0].type === "image") {
-      return (content as Array<AnthropicImageBlock>).map((block) =>
-        createImageContent(block),
-      )
-    }
+    return result
   }
 
   return ""
