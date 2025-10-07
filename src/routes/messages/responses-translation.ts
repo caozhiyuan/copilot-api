@@ -72,7 +72,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
     stream: payload.stream ?? null,
     store: false,
     parallel_tool_calls: true,
-    reasoning: { effort: "high", summary: "auto" },
+    reasoning: { effort: "high", summary: "detailed" },
     include: ["reasoning.encrypted_content"],
   }
 
@@ -232,16 +232,20 @@ const createImageContent = (
 
 const createReasoningContent = (
   block: AnthropicThinkingBlock,
-): ResponseInputReasoning => ({
-  type: "reasoning",
-  summary: [
-    {
-      type: "summary_text",
-      text: block.thinking,
-    },
-  ],
-  encrypted_content: block.signature,
-})
+): ResponseInputReasoning => {
+  // allign with vscode-copilot-chat extractThinkingData, otherwise it will cause miss cache occasionally —— the usage input cached tokens to be 0
+  // https://github.com/microsoft/vscode-copilot-chat/blob/main/src/platform/endpoint/node/responsesApi.ts#L162
+  // when use in codex cli, reasoning id is empty, so it will cause miss cache occasionally
+  const array = block.signature.split("@")
+  const signature = array[0]
+  const id = array[1]
+  return {
+    id,
+    type: "reasoning",
+    summary: [],
+    encrypted_content: signature,
+  }
+}
 
 const createFunctionToolCall = (
   block: AnthropicToolUseBlock,

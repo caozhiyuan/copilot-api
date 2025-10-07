@@ -77,6 +77,7 @@ export interface ResponseFunctionCallOutputItem {
 }
 
 export interface ResponseInputReasoning {
+  id?: string
   type: "reasoning"
   summary: Array<{
     type: "summary_text"

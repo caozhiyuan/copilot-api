@@ -163,7 +163,7 @@ const handleOutputItemDone = (
 
   const outputIndex = rawEvent.output_index
   const blockIndex = openThinkingBlockIfNeeded(state, outputIndex, events)
-  const signature = item.encrypted_content
+  const signature = (item.encrypted_content ?? "") + "@" + item.id
   if (signature) {
     events.push({
       type: "content_block_delta",
@@ -468,8 +468,9 @@ const openThinkingBlockIfNeeded = (
   outputIndex: number,
   events: Array<AnthropicStreamEventData>,
 ): number => {
-  const contentIndex = 0
-  const key = getBlockKey(outputIndex, contentIndex)
+  //thinking blocks has multiple summary_index, should combine into one block
+  const summaryIndex = 0
+  const key = getBlockKey(outputIndex, summaryIndex)
   let blockIndex = state.blockIndexByKey.get(key)
 
   if (blockIndex === undefined) {
