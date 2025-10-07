@@ -238,7 +238,7 @@ const createReasoningContent = (
   // when use in codex cli, reasoning id is empty, so it will cause miss cache occasionally
   const array = block.signature.split("@")
   const signature = array[0]
-  const id = array[1]
+  const id = array.length > 1 ? array[1] : undefined
   return {
     id,
     type: "reasoning",
