@@ -8,6 +8,7 @@ import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import {
+  buildErrorEvent,
   createResponsesStreamState,
   translateResponsesStreamEvent,
 } from "~/routes/messages/responses-stream-translation"
@@ -171,16 +172,23 @@ const handleWithResponsesApi = async (
             data: eventData,
           })
         }
+
+        if (streamState.messageCompleted) {
+          logger.debug("Message completed, ending stream")
+          break
+        }
       }
 
       if (!streamState.messageCompleted) {
         logger.warn(
-          "Responses stream ended without completion; sending fallback message_stop",
+          "Responses stream ended without completion; sending erorr event",
         )
-        const fallback = { type: "message_stop" as const }
+        const errorEvent = buildErrorEvent(
+          "Responses stream ended without completion",
+        )
         await stream.writeSSE({
-          event: fallback.type,
-          data: JSON.stringify(fallback),
+          event: errorEvent.type,
+          data: JSON.stringify(errorEvent),
         })
       }
     })

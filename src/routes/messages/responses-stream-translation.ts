@@ -1,5 +1,3 @@
-import consola from "consola"
-
 import {
   type ResponseCompletedEvent,
   type ResponseCreatedEvent,
@@ -21,6 +19,39 @@ import {
 import { type AnthropicStreamEventData } from "./anthropic-types"
 import { translateResponsesResultToAnthropic } from "./responses-translation"
 
+const MAX_CONSECUTIVE_FUNCTION_CALL_WHITESPACE = 20
+
+class FunctionCallArgumentsValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "FunctionCallArgumentsValidationError"
+  }
+}
+
+const updateWhitespaceRunState = (
+  previousCount: number,
+  chunk: string,
+): {
+  nextCount: number
+  exceeded: boolean
+} => {
+  let count = previousCount
+
+  for (const char of chunk) {
+    if (char === " " || char === "\r" || char === "\n") {
+      count += 1
+      if (count > MAX_CONSECUTIVE_FUNCTION_CALL_WHITESPACE) {
+        return { nextCount: count, exceeded: true }
+      }
+      continue
+    }
+
+    count = 0
+  }
+
+  return { nextCount: count, exceeded: false }
+}
+
 export interface ResponsesStreamState {
   messageStartSent: boolean
   messageCompleted: boolean
@@ -35,6 +66,7 @@ type FunctionCallStreamState = {
   blockIndex: number
   toolCallId: string
   name: string
+  consecutiveWhitespaceCount: number
 }
 
 export const createResponsesStreamState = (): ResponsesStreamState => ({
@@ -102,7 +134,6 @@ export const translateResponsesStreamEvent = (
     }
 
     default: {
-      consola.debug("Unknown Responses stream event type:", eventType)
       return []
     }
   }
@@ -186,10 +217,44 @@ const handleFunctionCallArgumentsDelta = (
   const events = new Array<AnthropicStreamEventData>()
   const outputIndex = rawEvent.output_index
   const deltaText = rawEvent.delta
+
+  if (!deltaText) {
+    return events
+  }
+
   const blockIndex = openFunctionCallBlock(state, {
     outputIndex,
     events,
   })
+
+  const functionCallState =
+    state.functionCallStateByOutputIndex.get(outputIndex)
+  if (!functionCallState) {
+    return handleFunctionCallArgumentsValidationError(
+      new FunctionCallArgumentsValidationError(
+        "Received function call arguments delta without an open tool call block.",
+      ),
+      state,
+      events,
+    )
+  }
+
+  // fix: copolit function call returning infinite line breaks until max_tokens limit
+  // "arguments": "{\"path\":\"xxx\",\"pattern\":\"**/*.ts\",\"} }? Wait extra braces. Need correct. I should run? Wait overcame. Need proper JSON with pattern \"\n\n\n\n\n\n\n\n...
+  const { nextCount, exceeded } = updateWhitespaceRunState(
+    functionCallState.consecutiveWhitespaceCount,
+    deltaText,
+  )
+  if (exceeded) {
+    return handleFunctionCallArgumentsValidationError(
+      new FunctionCallArgumentsValidationError(
+        "Received function call arguments delta containing more than 20 consecutive whitespace characters.",
+      ),
+      state,
+      events,
+    )
+  }
+  functionCallState.consecutiveWhitespaceCount = nextCount
 
   events.push({
     type: "content_block_delta",
@@ -394,6 +459,21 @@ const handleErrorEvent = (
   return [buildErrorEvent(message)]
 }
 
+const handleFunctionCallArgumentsValidationError = (
+  error: FunctionCallArgumentsValidationError,
+  state: ResponsesStreamState,
+  events: Array<AnthropicStreamEventData> = [],
+): Array<AnthropicStreamEventData> => {
+  const reason = error.message
+
+  closeAllOpenBlocks(state, events)
+  state.messageCompleted = true
+
+  events.push(buildErrorEvent(reason))
+
+  return events
+}
+
 const messageStart = (
   state: ResponsesStreamState,
   response: ResponsesResult,
@@ -521,7 +601,7 @@ const closeAllOpenBlocks = (
   state.functionCallStateByOutputIndex.clear()
 }
 
-const buildErrorEvent = (message: string): AnthropicStreamEventData => ({
+export const buildErrorEvent = (message: string): AnthropicStreamEventData => ({
   type: "error",
   error: {
     type: "api_error",
@@ -556,6 +636,7 @@ const openFunctionCallBlock = (
       blockIndex,
       toolCallId: resolvedToolCallId,
       name: resolvedName,
+      consecutiveWhitespaceCount: 0,
     }
 
     state.functionCallStateByOutputIndex.set(outputIndex, functionCallState)
