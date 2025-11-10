@@ -33,18 +33,21 @@ export async function handleCountTokens(c: Context) {
     const tokenCount = await getTokenCount(openAIPayload, selectedModel)
 
     if (anthropicPayload.tools && anthropicPayload.tools.length > 0) {
-      let mcpToolExist = false
+      let addToolSystemPromptCount = false
       if (anthropicBeta?.startsWith("claude-code")) {
-        mcpToolExist = anthropicPayload.tools.some((tool) =>
-          tool.name.startsWith("mcp__"),
+        const toolsLength = anthropicPayload.tools.length
+        addToolSystemPromptCount = !anthropicPayload.tools.some(
+          (tool) =>
+            tool.name.startsWith("mcp__")
+            || (tool.name === "Skill" && toolsLength === 1),
         )
       }
-      if (!mcpToolExist) {
+      if (addToolSystemPromptCount) {
         if (anthropicPayload.model.startsWith("claude")) {
           // https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview#pricing
           tokenCount.input = tokenCount.input + 346
         } else if (anthropicPayload.model.startsWith("grok")) {
-          tokenCount.input = tokenCount.input + 480
+          tokenCount.input = tokenCount.input + 120
         }
       }
     }
@@ -52,8 +55,6 @@ export async function handleCountTokens(c: Context) {
     let finalTokenCount = tokenCount.input + tokenCount.output
     if (anthropicPayload.model.startsWith("claude")) {
       finalTokenCount = Math.round(finalTokenCount * 1.15)
-    } else if (anthropicPayload.model.startsWith("grok")) {
-      finalTokenCount = Math.round(finalTokenCount * 1.03)
     }
 
     consola.info("Token count:", finalTokenCount)
