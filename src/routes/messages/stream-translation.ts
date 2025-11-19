@@ -101,6 +101,8 @@ function handleToolCalls(
   if (delta.tool_calls && delta.tool_calls.length > 0) {
     closeThinkingBlockIfOpen(state, events)
 
+    handleReasoningOpaqueInToolCalls(state, events, delta)
+
     for (const toolCall of delta.tool_calls) {
       if (toolCall.id && toolCall.function?.name) {
         // New tool call starting.
@@ -151,6 +153,22 @@ function handleToolCalls(
       }
     }
   }
+}
+
+function handleReasoningOpaqueInToolCalls(
+  state: AnthropicStreamState,
+  events: Array<AnthropicStreamEventData>,
+  delta: Delta,
+) {
+  if (state.contentBlockOpen) {
+    events.push({
+      type: "content_block_stop",
+      index: state.contentBlockIndex,
+    })
+    state.contentBlockIndex++
+    state.contentBlockOpen = false
+  }
+  handleReasoningOpaque(delta, events, state)
 }
 
 function handleContent(
@@ -263,6 +281,7 @@ function handleReasoningOpaque(
         index: state.contentBlockIndex,
       },
     )
+    state.contentBlockIndex++
   }
 }
 

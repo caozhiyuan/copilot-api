@@ -287,7 +287,7 @@ export function translateToAnthropic(
     )
     const toolUseBlocks = getAnthropicToolUseBlocks(choice.message.tool_calls)
 
-    assistantContentBlocks.push(...textBlocks, ...thingBlocks, ...toolUseBlocks)
+    assistantContentBlocks.push(...thingBlocks, ...textBlocks, ...toolUseBlocks)
 
     // Use the finish_reason from the first choice, or prioritize tool_calls
     if (choice.finish_reason === "tool_calls" || stopReason === "stop") {
@@ -320,7 +320,7 @@ export function translateToAnthropic(
 function getAnthropicTextBlocks(
   messageContent: Message["content"],
 ): Array<AnthropicTextBlock> {
-  if (typeof messageContent === "string") {
+  if (typeof messageContent === "string" && messageContent.length > 0) {
     return [{ type: "text", text: messageContent }]
   }
 
