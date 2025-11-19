@@ -62,7 +62,10 @@ function handleFinish(
         index: state.contentBlockIndex,
       })
       state.contentBlockOpen = false
+      state.contentBlockIndex++
     }
+
+    handleReasoningOpaque(choice.delta, events, state)
 
     events.push(
       {
@@ -96,7 +99,7 @@ function handleToolCalls(
   events: Array<AnthropicStreamEventData>,
 ) {
   if (delta.tool_calls && delta.tool_calls.length > 0) {
-    closeThinkingBlockIfOpen(delta, state, events)
+    closeThinkingBlockIfOpen(state, events)
 
     for (const toolCall of delta.tool_calls) {
       if (toolCall.id && toolCall.function?.name) {
@@ -156,7 +159,7 @@ function handleContent(
   events: Array<AnthropicStreamEventData>,
 ) {
   if (delta.content && delta.content.length > 0) {
-    closeThinkingBlockIfOpen(delta, state, events)
+    closeThinkingBlockIfOpen(state, events)
 
     if (isToolBlockOpen(state)) {
       // A tool block was open, so close it before starting a text block.
@@ -312,7 +315,6 @@ function handleThinkingText(
 }
 
 function closeThinkingBlockIfOpen(
-  delta: Delta,
   state: AnthropicStreamState,
   events: Array<AnthropicStreamEventData>,
 ): void {
@@ -334,7 +336,6 @@ function closeThinkingBlockIfOpen(
     state.contentBlockIndex++
     state.thinkingBlockOpen = false
   }
-  handleReasoningOpaque(delta, events, state)
 }
 
 export function translateErrorToAnthropicErrorEvent(): AnthropicStreamEventData {
