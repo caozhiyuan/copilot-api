@@ -337,16 +337,16 @@ function getAnthropicThinkBlocks(
   reasoningText: string | null | undefined,
   reasoningOpaque: string | null | undefined,
 ): Array<AnthropicThinkingBlock> {
-  if (reasoningText) {
+  if (reasoningText && reasoningText.length > 0) {
     return [
       {
         type: "thinking",
         thinking: reasoningText,
-        signature: "",
+        signature: reasoningOpaque || "",
       },
     ]
   }
-  if (reasoningOpaque) {
+  if (reasoningOpaque && reasoningOpaque.length > 0) {
     return [
       {
         type: "thinking",
