@@ -44,7 +44,7 @@ export async function handleCompletion(c: Context) {
   if (isNullish(payload.max_tokens)) {
     payload = {
       ...payload,
-      max_tokens: selectedModel?.capabilities.limits.max_output_tokens,
+      max_tokens: selectedModel?.capabilities.limits?.max_output_tokens,
     }
     logger.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
   }

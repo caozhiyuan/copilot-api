@@ -35,7 +35,7 @@ interface ModelSupports {
 
 interface ModelCapabilities {
   family: string
-  limits: ModelLimits
+  limits?: ModelLimits
   object: string
   supports: ModelSupports
   tokenizer: string

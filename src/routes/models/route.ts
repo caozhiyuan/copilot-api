@@ -16,11 +16,14 @@ modelRoutes.get("/", async (c) => {
     const models = state.models?.data.map((model) => ({
       id: model.id,
       object: "model",
-      type: "model",
+      type: model.capabilities.type || "chat",
       created: 0, // No date available from source
       created_at: new Date(0).toISOString(), // No date available from source
       owned_by: model.vendor,
       display_name: model.name,
+      ...(model.capabilities.limits && model.capabilities.limits.max_context_window_tokens && {
+        context_length: model.capabilities.limits.max_context_window_tokens,
+      }),
     }))
 
     return c.json({
