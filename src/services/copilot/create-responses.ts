@@ -22,6 +22,7 @@ export interface ResponsesPayload {
   store?: boolean | null
   reasoning?: Reasoning | null
   include?: Array<ResponseIncludable>
+  service_tier?: string | null // NOTE: Unsupported by GitHub Copilot
   [key: string]: unknown
 }
 
@@ -335,6 +336,9 @@ export const createResponses = async (
     ...copilotHeaders(state, vision),
     "X-Initiator": initiator,
   }
+
+  // service_tier is not supported by github copilot
+  payload.service_tier = null
 
   const response = await fetch(`${copilotBaseUrl(state)}/responses`, {
     method: "POST",
