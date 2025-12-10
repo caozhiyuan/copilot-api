@@ -143,40 +143,44 @@ function handleAssistantMessage(
     (block): block is AnthropicThinkingBlock => block.type === "thinking",
   )
 
-  const allThinkingContent = thinkingBlocks
-    .filter((b) => b.thinking && b.thinking.length > 0)
+  const validThinkingBlocks = thinkingBlocks.filter(
+    (b) => b.thinking && b.thinking.length > 0,
+  )
+
+  const allThinkingContent = validThinkingBlocks
     .map((b) => b.thinking)
     .join("\n\n")
 
-  const signature = thinkingBlocks.find(
+  const signature = validThinkingBlocks.find(
     (b) => b.signature && b.signature.length > 0,
   )?.signature
 
-  return toolUseBlocks.length > 0 ?
-      [
-        {
-          role: "assistant",
-          content: mapContent(message.content),
-          reasoning_text: allThinkingContent,
-          reasoning_opaque: signature,
-          tool_calls: toolUseBlocks.map((toolUse) => ({
-            id: toolUse.id,
-            type: "function",
-            function: {
-              name: toolUse.name,
-              arguments: JSON.stringify(toolUse.input),
-            },
-          })),
-        },
-      ]
-    : [
-        {
-          role: "assistant",
-          content: mapContent(message.content),
-          reasoning_text: allThinkingContent,
-          reasoning_opaque: signature,
-        },
-      ]
+  const baseMessage: Message = {
+    role: "assistant",
+    content: mapContent(message.content),
+    ...(allThinkingContent && {
+      reasoning_text: allThinkingContent,
+      reasoning_opaque: signature,
+    }),
+  }
+
+  if (toolUseBlocks.length > 0) {
+    return [
+      {
+        ...baseMessage,
+        tool_calls: toolUseBlocks.map((toolUse) => ({
+          id: toolUse.id,
+          type: "function",
+          function: {
+            name: toolUse.name,
+            arguments: JSON.stringify(toolUse.input),
+          },
+        })),
+      },
+    ]
+  }
+
+  return [baseMessage]
 }
 
 function mapContent(
@@ -281,13 +285,14 @@ export function translateToAnthropic(
   // Process all choices to extract text and tool use blocks
   for (const choice of response.choices) {
     const textBlocks = getAnthropicTextBlocks(choice.message.content)
-    const thingBlocks = getAnthropicThinkBlocks(
+    const thinkBlocks = getAnthropicThinkBlocks(
       choice.message.reasoning_text,
       choice.message.reasoning_opaque,
+      response.model,
     )
     const toolUseBlocks = getAnthropicToolUseBlocks(choice.message.tool_calls)
 
-    assistantContentBlocks.push(...thingBlocks, ...textBlocks, ...toolUseBlocks)
+    assistantContentBlocks.push(...thinkBlocks, ...textBlocks, ...toolUseBlocks)
 
     // Use the finish_reason from the first choice, or prioritize tool_calls
     if (choice.finish_reason === "tool_calls" || stopReason === "stop") {
@@ -336,6 +341,7 @@ function getAnthropicTextBlocks(
 function getAnthropicThinkBlocks(
   reasoningText: string | null | undefined,
   reasoningOpaque: string | null | undefined,
+  model: string,
 ): Array<AnthropicThinkingBlock> {
   if (reasoningText && reasoningText.length > 0) {
     return [
@@ -346,7 +352,10 @@ function getAnthropicThinkBlocks(
       },
     ]
   }
-  if (reasoningOpaque && reasoningOpaque.length > 0) {
+  // For non-Claude models (Gemini/GPT), create thinking block with signature only
+  // Claude handles its signature internally, so empty thinking blocks aren't needed
+  const isClaudeModel = model.toLowerCase().startsWith("claude")
+  if (!isClaudeModel && reasoningOpaque && reasoningOpaque.length > 0) {
     return [
       {
         type: "thinking",
