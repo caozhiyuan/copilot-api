@@ -12,3 +12,4 @@ node_modules/
 
 # build output
 dist/
+/vscode-extension/*.vsix
