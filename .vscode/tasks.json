@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build:debug (vscode-extension)",
+      "type": "shell",
+      "command": "bun run build:debug",
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-extension"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

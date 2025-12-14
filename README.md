@@ -39,10 +39,17 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **Token Visibility**: Option to display GitHub and Copilot tokens during authentication and refresh for debugging (`--show-token`).
 - **Flexible Authentication**: Authenticate interactively or provide a GitHub token directly, suitable for CI/CD environments.
 - **Support for Different Account Types**: Works with individual, business, and enterprise GitHub Copilot plans.
+- **VS Code Extension (Embedded)**: The `vscode-extension/` package embeds the server inside VS Code so you can start/stop it without installing Bun separately.
 
-## Demo
+## VS Code Extension (Embedded)
 
-https://github.com/user-attachments/assets/7654b383-669d-4eb9-b23c-06d7aefee8c5
+This repo includes a VS Code extension under `vscode-extension/` that can:
+
+- Start/stop the local Copilot API server from within VS Code
+
+Defaults (configurable in VS Code Settings):
+
+- Copilot API: `http://localhost:4141`
 
 ## Prerequisites
 

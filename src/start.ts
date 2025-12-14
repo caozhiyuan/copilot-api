@@ -3,7 +3,7 @@
 import { defineCommand } from "citty"
 import clipboard from "clipboardy"
 import consola from "consola"
-import { serve, type ServerHandler } from "srvx"
+import { serve, type Server, type ServerHandler } from "srvx"
 import invariant from "tiny-invariant"
 
 import { ensurePaths } from "./lib/paths"
@@ -12,7 +12,6 @@ import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { setupCopilotToken, setupGitHubToken } from "./lib/token"
 import { cacheModels, cacheVSCodeVersion } from "./lib/utils"
-import { server } from "./server"
 
 interface RunServerOptions {
   port: number
@@ -27,7 +26,7 @@ interface RunServerOptions {
   proxyEnv: boolean
 }
 
-export async function runServer(options: RunServerOptions): Promise<void> {
+export async function startServer(options: RunServerOptions): Promise<Server> {
   if (options.proxyEnv) {
     initProxyFromEnv()
   }
@@ -114,10 +113,19 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     `🌐 Usage Viewer: https://ericc-ch.github.io/copilot-api?endpoint=${serverUrl}/usage`,
   )
 
-  serve({
-    fetch: server.fetch as ServerHandler,
+  const { server: app } = await import("./server")
+
+  const runtimeServer = serve({
+    fetch: app.fetch as ServerHandler,
     port: options.port,
   })
+
+  await runtimeServer.ready()
+  return runtimeServer
+}
+
+export async function runServer(options: RunServerOptions): Promise<void> {
+  await startServer(options)
 }
 
 export const start = defineCommand({

@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/vscode-extension"],
+      "preLaunchTask": "build:debug (vscode-extension)",
+      "outFiles": ["${workspaceFolder}/vscode-extension/dist/**/*.js"],
+      "sourceMaps": true,
+      "autoAttachChildProcesses": true
+    }
+  ]
+}
