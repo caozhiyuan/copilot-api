@@ -19,7 +19,6 @@ Runs `copilot-api` inside VS Code as an extension, so you can start/stop the loc
 - `copilotApi.rateLimitWait` (boolean): Wait instead of error when rate limit is hit
 - `copilotApi.proxyEnv` (boolean): Initialize proxy from `HTTP(S)_PROXY`, etc
 - `copilotApi.showToken` (boolean): Log tokens (debug only)
-- `copilotApi.useWorker` (boolean, default `true`): Run server in a worker thread (disable if you need `electron.net.fetch`)
 
 ## Usage
 
@@ -32,10 +31,3 @@ Runs `copilot-api` inside VS Code as an extension, so you can start/stop the loc
 - Build: `bun run build`
 - Debug (Extension Host): `bun run build:debug`, then press `F5` (uses `.vscode/launch.json`)
 - Package VSIX: `bun run package`
-
-## Publishing
-
-Before publishing, update `publisher` in `package.json` to your VS Code Marketplace publisher name, then:
-
-- Login: `bunx vsce login <publisher>`
-- Publish: `bun run publish`

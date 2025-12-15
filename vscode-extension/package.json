@@ -30,9 +30,7 @@
   "scripts": {
     "build": "bun scripts/build.ts",
     "build:debug": "bun scripts/build.ts --debug",
-    "dev": "bun scripts/build.ts --debug --watch",
-    "package": "bunx vsce package",
-    "publish": "bunx vsce publish"
+    "package": "bunx vsce package"
   },
   "contributes": {
     "commands": [
@@ -105,11 +103,6 @@
           "type": "boolean",
           "default": false,
           "description": "Log GitHub and Copilot tokens (debug only)."
-        },
-        "copilotApi.useWorker": {
-          "type": "boolean",
-          "default": true,
-          "description": "Run server in a worker thread. Disable if you need electron.net.fetch (some environments don't expose it to workers)."
         }
       }
     }
