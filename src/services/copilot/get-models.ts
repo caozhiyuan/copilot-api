@@ -1,7 +1,10 @@
+import fs from "node:fs/promises"
+
 import type { AccountContext } from "~/lib/types/account"
 
 import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
+import { PATHS } from "~/lib/paths"
 import { accountFromState } from "~/lib/state"
 
 export const getModels = async (account?: AccountContext) => {
@@ -12,7 +15,25 @@ export const getModels = async (account?: AccountContext) => {
 
   if (!response.ok) throw new HTTPError("Failed to get models", response)
 
-  return (await response.json()) as ModelsResponse
+  const models = (await response.json()) as ModelsResponse
+
+  // Persist models response for debugging/inspection.
+  // Best effort: do not fail startup if the local write fails.
+  try {
+    await fs.mkdir(PATHS.APP_DIR, { recursive: true })
+    await fs.writeFile(
+      PATHS.MODELS_PATH,
+      `${JSON.stringify(models, null, 2)}\n`,
+      {
+        encoding: "utf8",
+        mode: 0o600,
+      },
+    )
+  } catch {
+    // ignore
+  }
+
+  return models
 }
 
 export interface ModelsResponse {
