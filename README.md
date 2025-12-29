@@ -39,6 +39,7 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **Token Visibility**: Option to display GitHub and Copilot tokens during authentication and refresh for debugging (`--show-token`).
 - **Flexible Authentication**: Authenticate interactively or provide a GitHub token directly, suitable for CI/CD environments.
 - **Support for Different Account Types**: Works with individual, business, and enterprise GitHub Copilot plans.
+- **Multi-Account Support**: Use multiple GitHub Copilot accounts with automatic switching. When one account's quota is exhausted, the proxy automatically switches to the next available account.
 
 ## Demo
 
@@ -79,6 +80,21 @@ docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api co
 
 > **Note:**
 > The GitHub token and related data will be stored in `copilot-data` on your host. This is mapped to `/root/.local/share/copilot-api` inside the container, ensuring persistence across restarts.
+
+### Adding Multiple Accounts in Docker
+
+To add multiple accounts when running in Docker:
+
+```sh
+# Add accounts interactively (one at a time)
+docker run -it -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api --auth add
+docker run -it -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api --auth add
+
+# List registered accounts
+docker run -it -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api --auth ls -q
+```
+
+> **Note:** When using multiple accounts, all account data (tokens and registry) is stored in the mounted `copilot-data` directory. The proxy will automatically switch to the next account when the current account's quota is exhausted.
 
 ### Docker with Environment Variables
 
@@ -141,7 +157,12 @@ npx copilot-api@latest auth
 Copilot API now uses a subcommand structure with these main commands:
 
 - `start`: Start the Copilot API server. This command will also handle authentication if needed.
-- `auth`: Run GitHub authentication flow without starting the server. This is typically used if you need to generate a token for use with the `--github-token` option, especially in non-interactive environments.
+- `auth`: Manage GitHub Copilot accounts. Supports subcommands:
+  - `auth add`: Add a new account via GitHub OAuth flow
+  - `auth ls`: List all registered accounts (use `-q` to show quota)
+  - `auth rm <id|index>`: Remove an account by ID or 1-based index
+
+  Running `auth` without a subcommand defaults to `auth add` for backward compatibility.
 - `check-usage`: Show your current GitHub Copilot usage and quota information directly in the terminal (no server required).
 - `debug`: Display diagnostic information including version, runtime details, file paths, and authentication status. Useful for troubleshooting and support.
 
@@ -166,10 +187,31 @@ The following command line options are available for the `start` command:
 
 ### Auth Command Options
 
-| Option       | Description               | Default | Alias |
-| ------------ | ------------------------- | ------- | ----- |
-| --verbose    | Enable verbose logging    | false   | -v    |
-| --show-token | Show GitHub token on auth | false   | none  |
+The `auth` command has three subcommands for managing multiple accounts:
+
+#### `auth add` - Add a new account
+
+| Option         | Description                                     | Default    | Alias |
+| -------------- | ----------------------------------------------- | ---------- | ----- |
+| --account-type | Account type (individual, business, enterprise) | individual | -a    |
+| --verbose      | Enable verbose logging                          | false      | -v    |
+| --show-token   | Show GitHub token after auth                    | false      | none  |
+
+#### `auth ls` - List registered accounts
+
+| Option       | Description                                | Default | Alias |
+| ------------ | ------------------------------------------ | ------- | ----- |
+| --show-quota | Show quota information (requires API call) | false   | -q    |
+| --verbose    | Enable verbose logging                     | false   | -v    |
+
+#### `auth rm <target>` - Remove an account
+
+| Option    | Description              | Default | Alias |
+| --------- | ------------------------ | ------- | ----- |
+| --force   | Skip confirmation prompt | false   | -f    |
+| --verbose | Enable verbose logging   | false   | -v    |
+
+The `<target>` can be either the account ID (GitHub username) or a 1-based index.
 
 ### Debug Command Options
 
@@ -225,12 +267,13 @@ These endpoints are designed to be compatible with the Anthropic Messages API.
 
 ### Usage Monitoring Endpoints
 
-New endpoints for monitoring your Copilot usage and quotas.
+Endpoints for monitoring your Copilot usage and quotas across all accounts.
 
-| Endpoint     | Method | Description                                                  |
-| ------------ | ------ | ------------------------------------------------------------ |
-| `GET /usage` | `GET`  | Get detailed Copilot usage statistics and quota information. |
-| `GET /token` | `GET`  | Get the current Copilot token being used by the API.         |
+| Endpoint             | Method | Description                                                                   |
+| -------------------- | ------ | ----------------------------------------------------------------------------- |
+| `GET /usage`         | `GET`  | Get status of all registered accounts (ID, remaining quota, unlimited flag).  |
+| `GET /usage/:index`  | `GET`  | Get detailed Copilot usage for a specific account by index (0-based).         |
+| `GET /token`         | `GET`  | Get the current Copilot token being used by the API.                          |
 
 ## Example Usage
 
@@ -266,6 +309,22 @@ npx copilot-api@latest auth
 
 # Run auth flow with verbose logging
 npx copilot-api@latest auth --verbose
+
+# Add multiple accounts (each account is added in order)
+npx copilot-api@latest auth add
+npx copilot-api@latest auth add  # add second account
+
+# List all registered accounts
+npx copilot-api@latest auth ls
+
+# List accounts with quota information
+npx copilot-api@latest auth ls -q
+
+# Remove an account by index (1-based)
+npx copilot-api@latest auth rm 2
+
+# Remove an account by ID (GitHub username)
+npx copilot-api@latest auth rm octocat
 
 # Show your Copilot usage/quota in the terminal (no server needed)
 npx copilot-api@latest check-usage
@@ -372,3 +431,4 @@ bun run start
   - `--rate-limit <seconds>`: Enforces a minimum time interval between requests. For example, `copilot-api start --rate-limit 30` will ensure there's at least a 30-second gap between requests.
   - `--wait`: Use this with `--rate-limit`. It makes the server wait for the cooldown period to end instead of rejecting the request with an error. This is useful for clients that don't automatically retry on rate limit errors.
 - If you have a GitHub business or enterprise plan account with Copilot, use the `--account-type` flag (e.g., `--account-type business`). See the [official documentation](https://docs.github.com/en/enterprise-cloud@latest/copilot/managing-copilot/managing-github-copilot-in-your-organization/managing-access-to-github-copilot-in-your-organization/managing-github-copilot-access-to-your-organizations-network#configuring-copilot-subscription-based-network-routing-for-your-enterprise-or-organization) for more details.
+- **Multi-account quota management**: Add multiple GitHub Copilot accounts using `auth add`. Accounts are used in the order they were added. When an account's premium request quota (`remaining=0`) is exhausted, the proxy automatically switches to the next account.
