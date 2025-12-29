@@ -6,6 +6,7 @@ const APP_DIR = path.join(os.homedir(), ".local", "share", "copilot-api")
 
 const GITHUB_TOKEN_PATH = path.join(APP_DIR, "github_token")
 const CONFIG_PATH = path.join(APP_DIR, "config.json")
+const MODELS_PATH = path.join(APP_DIR, "models.json")
 
 // Multi-account paths
 const TOKENS_DIR = path.join(APP_DIR, "tokens")
@@ -15,6 +16,7 @@ export const PATHS = {
   APP_DIR,
   GITHUB_TOKEN_PATH,
   CONFIG_PATH,
+  MODELS_PATH,
   TOKENS_DIR,
   ACCOUNTS_REGISTRY_PATH,
 }
