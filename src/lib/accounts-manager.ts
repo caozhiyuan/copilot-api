@@ -130,7 +130,10 @@ export class AccountsManager {
 
     try {
       // Get user info to determine the account ID
-      const user = await getGitHubUser({ githubToken: token } as AccountContext)
+      const user = await getGitHubUser({
+        githubToken: token,
+        accountType: "individual",
+      })
       const id = user.login
 
       // Save token to new location
@@ -206,9 +209,16 @@ export class AccountsManager {
 
   /**
    * Refresh quota information for an account.
+   * Uses a flag to prevent concurrent refresh calls.
    */
   async refreshQuota(account: AccountRuntime): Promise<void> {
+    // Skip if already refreshing to prevent concurrent API calls
+    if (account.isRefreshingQuota) {
+      return
+    }
+
     try {
+      account.isRefreshingQuota = true
       const ctx = this.toAccountContext(account)
       const usage = await getCopilotUsage(ctx)
       const premium = usage.quota_snapshots.premium_interactions
@@ -226,6 +236,9 @@ export class AccountsManager {
     } catch (error) {
       consola.error(`Failed to refresh quota for ${account.id}:`, error)
       // Don't mark as failed for quota refresh errors
+    } finally {
+      // eslint-disable-next-line require-atomic-updates
+      account.isRefreshingQuota = false
     }
   }
 

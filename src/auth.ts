@@ -103,21 +103,23 @@ const authAdd = defineCommand({
     const user = await getGitHubUser({ githubToken: token, accountType })
     const accountId = user.login
 
-    // Check if account already exists
+    // Save token and check if account already exists
+    await saveAccountToken(accountId, token)
     const existingAccounts = await listAccountsFromRegistry()
+
     if (existingAccounts.some((acc) => acc.id === accountId)) {
-      consola.warn(`Account "${accountId}" already exists. Updating token...`)
+      consola.success(
+        `Account "${accountId}" already exists. Token has been updated.`,
+      )
+    } else {
+      await addAccountToRegistry({
+        id: accountId,
+        accountType,
+        addedAt: Date.now(),
+      })
+      consola.success(`Account "${accountId}" added successfully!`)
     }
 
-    // Save token and add to registry
-    await saveAccountToken(accountId, token)
-    await addAccountToRegistry({
-      id: accountId,
-      accountType,
-      addedAt: Date.now(),
-    })
-
-    consola.success(`Account "${accountId}" added successfully!`)
     consola.info(`Account type: ${accountType}`)
   },
 })
