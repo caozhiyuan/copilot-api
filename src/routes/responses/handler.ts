@@ -23,9 +23,30 @@ const RESPONSES_ENDPOINT = "/responses"
 export const handleResponses = async (c: Context) => {
   await checkRateLimit(state)
 
-  // Select an account with available quota
-  const account = await accountsManager.selectAccount()
-  if (!account) {
+  const payload = await c.req.json<ResponsesPayload>()
+  logger.debug("Responses request payload:", JSON.stringify(payload))
+
+  const selection = await accountsManager.selectAccountForRequest([
+    {
+      modelId: payload.model,
+      endpoint: RESPONSES_ENDPOINT,
+    },
+  ])
+
+  if (!selection.ok) {
+    if (selection.reason === "MODEL_NOT_SUPPORTED") {
+      return c.json(
+        {
+          error: {
+            message:
+              "This model does not support the responses endpoint. Please choose a different model.",
+            type: "invalid_request_error",
+          },
+        },
+        400,
+      )
+    }
+
     return c.json(
       {
         error: {
@@ -37,27 +58,7 @@ export const handleResponses = async (c: Context) => {
     )
   }
 
-  const payload = await c.req.json<ResponsesPayload>()
-  logger.debug("Responses request payload:", JSON.stringify(payload))
-
-  const selectedModel = account.models?.data.find(
-    (model) => model.id === payload.model,
-  )
-  const supportsResponses =
-    selectedModel?.supported_endpoints?.includes(RESPONSES_ENDPOINT) ?? false
-
-  if (!supportsResponses) {
-    return c.json(
-      {
-        error: {
-          message:
-            "This model does not support the responses endpoint. Please choose a different model.",
-          type: "invalid_request_error",
-        },
-      },
-      400,
-    )
-  }
+  const { account, reservation } = selection
 
   const { vision, initiator } = getResponsesRequestOptions(payload)
 
@@ -100,7 +101,7 @@ export const handleResponses = async (c: Context) => {
     throw error
   } finally {
     // Refresh quota after request completes
-    await accountsManager.finalizeQuota(account)
+    await accountsManager.finalizeQuota(account, reservation)
   }
 }
 

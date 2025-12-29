@@ -18,12 +18,34 @@ import {
 
 const logger = createHandlerLogger("chat-completions-handler")
 
+const CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
+
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
-  // Select an account with available quota
-  const account = await accountsManager.selectAccount()
-  if (!account) {
+  let payload = await c.req.json<ChatCompletionsPayload>()
+  logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
+
+  const selection = await accountsManager.selectAccountForRequest([
+    {
+      modelId: payload.model,
+      endpoint: CHAT_COMPLETIONS_ENDPOINT,
+    },
+  ])
+
+  if (!selection.ok) {
+    if (selection.reason === "MODEL_NOT_SUPPORTED") {
+      return c.json(
+        {
+          error: {
+            message: `Model "${payload.model}" is not available for any configured account.`,
+            type: "invalid_request_error",
+          },
+        },
+        400,
+      )
+    }
+
     return c.json(
       {
         error: {
@@ -35,22 +57,12 @@ export async function handleCompletion(c: Context) {
     )
   }
 
-  let payload = await c.req.json<ChatCompletionsPayload>()
-  logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
-
-  // Find the selected model from this account's models
-  const selectedModel = account.models?.data.find(
-    (model) => model.id === payload.model,
-  )
+  const { account, reservation, selectedModel } = selection
 
   // Calculate and display token count
   try {
-    if (selectedModel) {
-      const tokenCount = await getTokenCount(payload, selectedModel)
-      logger.info("Current token count:", tokenCount)
-    } else {
-      logger.warn("No model selected, skipping token count calculation")
-    }
+    const tokenCount = await getTokenCount(payload, selectedModel)
+    logger.info("Current token count:", tokenCount)
   } catch (error) {
     logger.warn("Failed to calculate token count:", error)
   }
@@ -60,7 +72,7 @@ export async function handleCompletion(c: Context) {
   if (isNullish(payload.max_tokens)) {
     payload = {
       ...payload,
-      max_tokens: selectedModel?.capabilities.limits.max_output_tokens,
+      max_tokens: selectedModel.capabilities.limits.max_output_tokens,
     }
     logger.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
   }
@@ -93,7 +105,7 @@ export async function handleCompletion(c: Context) {
     throw error
   } finally {
     // Refresh quota after request completes
-    await accountsManager.finalizeQuota(account)
+    await accountsManager.finalizeQuota(account, reservation)
   }
 }
 

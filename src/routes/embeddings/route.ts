@@ -9,11 +9,32 @@ import {
 
 export const embeddingRoutes = new Hono()
 
+const EMBEDDINGS_ENDPOINT = "/embeddings"
+
 embeddingRoutes.post("/", async (c) => {
   try {
-    // Select an account with available quota
-    const account = await accountsManager.selectAccount()
-    if (!account) {
+    const payload = await c.req.json<EmbeddingRequest>()
+
+    const selection = await accountsManager.selectAccountForRequest([
+      {
+        modelId: payload.model,
+        endpoint: EMBEDDINGS_ENDPOINT,
+      },
+    ])
+
+    if (!selection.ok) {
+      if (selection.reason === "MODEL_NOT_SUPPORTED") {
+        return c.json(
+          {
+            error: {
+              message: `Model "${payload.model}" is not available for any configured account.`,
+              type: "invalid_request_error",
+            },
+          },
+          400,
+        )
+      }
+
       return c.json(
         {
           error: {
@@ -25,7 +46,7 @@ embeddingRoutes.post("/", async (c) => {
       )
     }
 
-    const payload = await c.req.json<EmbeddingRequest>()
+    const { account, reservation } = selection
 
     try {
       const ctx = {
@@ -44,7 +65,7 @@ embeddingRoutes.post("/", async (c) => {
       throw error
     } finally {
       // Refresh quota after request completes
-      await accountsManager.finalizeQuota(account)
+      await accountsManager.finalizeQuota(account, reservation)
     }
   } catch (error) {
     return await forwardError(c, error)

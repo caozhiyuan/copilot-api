@@ -8,7 +8,7 @@ import type {
 } from "~/lib/types/account"
 
 import { HTTPError } from "~/lib/error"
-import { getModels } from "~/services/copilot/get-models"
+import { getModels, type Model } from "~/services/copilot/get-models"
 import { getCopilotToken } from "~/services/github/get-copilot-token"
 import { getCopilotUsage } from "~/services/github/get-copilot-usage"
 import { getGitHubUser } from "~/services/github/get-user"
@@ -29,6 +29,34 @@ const QUOTA_CACHE_TTL = 45 * 1000
 
 /** Debounce delay for registry reload in milliseconds */
 const RELOAD_DEBOUNCE_MS = 500
+
+export interface AccountRequestCandidate {
+  modelId: string
+  endpoint: string
+}
+
+export interface QuotaReservation {
+  id: symbol
+}
+
+export type SelectAccountForRequestFailureReason =
+  | "NO_ACCOUNTS"
+  | "MODEL_NOT_SUPPORTED"
+  | "NO_QUOTA"
+
+export type SelectAccountForRequestResult =
+  | {
+      ok: true
+      account: AccountRuntime
+      selectedModel: Model
+      endpoint: string
+      costUnits: number
+      reservation?: QuotaReservation
+    }
+  | {
+      ok: false
+      reason: SelectAccountForRequestFailureReason
+    }
 
 /**
  * Manages multiple GitHub Copilot accounts at runtime.
@@ -213,39 +241,47 @@ export class AccountsManager {
    * Uses a flag to prevent concurrent refresh calls.
    */
   async refreshQuota(account: AccountRuntime): Promise<void> {
-    // Skip if already refreshing to prevent concurrent API calls
-    if (account.isRefreshingQuota) {
+    if (account.quotaRefreshPromise) {
+      await account.quotaRefreshPromise
       return
     }
 
-    try {
-      account.isRefreshingQuota = true
-      const ctx = this.toAccountContext(account)
-      const usage = await getCopilotUsage(ctx)
-      const premium = usage.quota_snapshots.premium_interactions
+    const promise = (async () => {
+      try {
+        const ctx = this.toAccountContext(account)
+        const usage = await getCopilotUsage(ctx)
+        const premium = usage.quota_snapshots.premium_interactions
 
-      // eslint-disable-next-line require-atomic-updates
-      account.premiumRemaining = premium.remaining
-      // eslint-disable-next-line require-atomic-updates
-      account.unlimited = premium.unlimited
-      // eslint-disable-next-line require-atomic-updates
-      account.lastQuotaFetch = Date.now()
-      // eslint-disable-next-line require-atomic-updates
-      account.failed = false
-      // eslint-disable-next-line require-atomic-updates
-      account.failureReason = undefined
-    } catch (error) {
-      if (error instanceof HTTPError && error.response.status === 401) {
-        this.markAccountFailed(account.id, "Unauthorized (401)")
-        return
+        // eslint-disable-next-line require-atomic-updates
+        account.premiumRemaining = premium.remaining
+        // eslint-disable-next-line require-atomic-updates
+        account.unlimited = premium.unlimited
+        // eslint-disable-next-line require-atomic-updates
+        account.lastQuotaFetch = Date.now()
+        // eslint-disable-next-line require-atomic-updates
+        account.failed = false
+        // eslint-disable-next-line require-atomic-updates
+        account.failureReason = undefined
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.status === 401) {
+          this.markAccountFailed(account.id, "Unauthorized (401)")
+          return
+        }
+
+        consola.error(`Failed to refresh quota for ${account.id}:`, error)
+        // Don't mark as failed for non-401 quota refresh errors
+      } finally {
+        // eslint-disable-next-line require-atomic-updates
+        account.isRefreshingQuota = false
+        // eslint-disable-next-line require-atomic-updates
+        account.quotaRefreshPromise = undefined
       }
+    })()
 
-      consola.error(`Failed to refresh quota for ${account.id}:`, error)
-      // Don't mark as failed for non-401 quota refresh errors
-    } finally {
-      // eslint-disable-next-line require-atomic-updates
-      account.isRefreshingQuota = false
-    }
+    account.isRefreshingQuota = true
+    account.quotaRefreshPromise = promise
+
+    await promise
   }
 
   /**
@@ -260,77 +296,225 @@ export class AccountsManager {
     return account.failed === true
   }
 
-  /**
-   * Select an available account based on quota.
-   * Returns null if all accounts are exhausted.
-   */
-  // eslint-disable-next-line complexity
-  async selectAccount(): Promise<AccountRuntime | null> {
-    const tempAccount = this.temporaryAccount
-
-    // Check temporary account first (--github-token)
-    if (tempAccount && !this.isAccountFailed(tempAccount)) {
-      if (tempAccount.unlimited) {
-        return tempAccount
-      }
-
-      if (this.isQuotaCacheExpired(tempAccount)) {
-        await this.refreshQuota(tempAccount)
-      }
-
-      const hasQuota =
-        tempAccount.premiumRemaining === undefined
-        || tempAccount.premiumRemaining > 0
-
-      // refreshQuota may mark the account as failed (e.g., 401)
-      if (!this.isAccountFailed(tempAccount) && hasQuota) {
-        // Optimistic decrement
-        if (tempAccount.premiumRemaining !== undefined) {
-          tempAccount.premiumRemaining--
-        }
-        return tempAccount
-      }
+  private isModelSupportedForEndpoint(model: Model, endpoint: string): boolean {
+    if (endpoint === "/responses") {
+      return model.supported_endpoints?.includes(endpoint) ?? false
     }
 
-    // Check registered accounts in order
-    for (const id of this.accountOrder) {
-      const account = this.accounts.get(id)
-      if (!account || this.isAccountFailed(account)) continue
+    const supported = model.supported_endpoints
+    if (!supported) {
+      return true
+    }
 
-      // Unlimited accounts are always available
-      if (account.unlimited) {
-        return account
+    return supported.includes(endpoint)
+  }
+
+  private getCostUnits(model: Model): number {
+    // Per user decision: missing billing => treat as free (costUnits = 0)
+    const billing = model.billing
+    if (!billing) {
+      return 0
+    }
+
+    if (billing.is_premium !== true) {
+      return 0
+    }
+
+    const multiplier = billing.multiplier
+    if (
+      typeof multiplier !== "number"
+      || !Number.isFinite(multiplier)
+      || multiplier <= 0
+    ) {
+      return 1
+    }
+
+    return multiplier
+  }
+
+  private getEffectivePremiumRemaining(
+    account: AccountRuntime,
+  ): number | undefined {
+    if (account.premiumRemaining === undefined) {
+      return undefined
+    }
+
+    const reserved = account.premiumReserved ?? 0
+    return account.premiumRemaining - reserved
+  }
+
+  private reservePremiumUnits(
+    account: AccountRuntime,
+    units: number,
+  ): QuotaReservation | undefined {
+    if (units <= 0) {
+      return undefined
+    }
+
+    const id = Symbol("quotaReservation")
+
+    if (!account.premiumReservations) {
+      account.premiumReservations = new Map()
+    }
+
+    account.premiumReservations.set(id, units)
+    account.premiumReserved = (account.premiumReserved ?? 0) + units
+
+    return { id }
+  }
+
+  private releasePremiumReservation(
+    account: AccountRuntime,
+    reservation?: QuotaReservation,
+  ): void {
+    if (!reservation) {
+      return
+    }
+
+    const reservations = account.premiumReservations
+    if (!reservations) {
+      return
+    }
+
+    const reservedUnits = reservations.get(reservation.id)
+    if (reservedUnits === undefined) {
+      return
+    }
+
+    reservations.delete(reservation.id)
+
+    const nextReserved = (account.premiumReserved ?? 0) - reservedUnits
+    account.premiumReserved = Math.max(0, nextReserved)
+
+    if (reservations.size === 0) {
+      account.premiumReservations = undefined
+    }
+  }
+
+  private pickSupportedCandidate(
+    account: AccountRuntime,
+    candidates: Array<AccountRequestCandidate>,
+  ): { candidate: AccountRequestCandidate; model: Model } | null {
+    const models = account.models?.data
+    if (!models) {
+      return null
+    }
+
+    for (const candidate of candidates) {
+      const model = models.find((m) => m.id === candidate.modelId)
+      if (!model) {
+        continue
       }
 
-      // Refresh quota if cache is expired
-      if (this.isQuotaCacheExpired(account)) {
-        await this.refreshQuota(account)
-        if (this.isAccountFailed(account)) {
-          continue
-        }
+      if (!this.isModelSupportedForEndpoint(model, candidate.endpoint)) {
+        continue
       }
 
-      // Check if account has remaining quota
-      if (
-        account.premiumRemaining === undefined
-        || account.premiumRemaining > 0
-      ) {
-        // Optimistic decrement
-        if (account.premiumRemaining !== undefined) {
-          account.premiumRemaining--
-        }
-        return account
-      }
+      return { candidate, model }
     }
 
     return null
   }
 
   /**
-   * Finalize quota after a request completes.
-   * This refreshes the actual quota from the API.
+   * Select an available account for a specific request (model + endpoint).
+   * Uses reservation to avoid oversubscribing premium quota under concurrency.
    */
-  async finalizeQuota(account: AccountRuntime): Promise<void> {
+  // eslint-disable-next-line complexity
+  async selectAccountForRequest(
+    candidates: Array<AccountRequestCandidate>,
+  ): Promise<SelectAccountForRequestResult> {
+    if (candidates.length === 0) {
+      throw new Error("selectAccountForRequest requires at least one candidate")
+    }
+
+    const orderedAccounts: Array<AccountRuntime> = []
+
+    if (this.temporaryAccount) {
+      orderedAccounts.push(this.temporaryAccount)
+    }
+
+    for (const id of this.accountOrder) {
+      const account = this.accounts.get(id)
+      if (account) {
+        orderedAccounts.push(account)
+      }
+    }
+
+    if (orderedAccounts.length === 0) {
+      return { ok: false, reason: "NO_ACCOUNTS" }
+    }
+
+    let supportedCandidateFound = false
+
+    for (const account of orderedAccounts) {
+      if (this.isAccountFailed(account)) {
+        continue
+      }
+
+      const supported = this.pickSupportedCandidate(account, candidates)
+      if (!supported) {
+        continue
+      }
+
+      supportedCandidateFound = true
+
+      const { candidate, model } = supported
+
+      if (!account.unlimited && this.isQuotaCacheExpired(account)) {
+        await this.refreshQuota(account)
+      }
+
+      if (this.isAccountFailed(account)) {
+        continue
+      }
+
+      const costUnits = this.getCostUnits(model)
+
+      if (account.unlimited || costUnits <= 0) {
+        return {
+          ok: true,
+          account,
+          selectedModel: model,
+          endpoint: candidate.endpoint,
+          costUnits,
+        }
+      }
+
+      const effectiveRemaining = this.getEffectivePremiumRemaining(account)
+      if (effectiveRemaining !== undefined && effectiveRemaining < costUnits) {
+        continue
+      }
+
+      const reservation = this.reservePremiumUnits(account, costUnits)
+
+      return {
+        ok: true,
+        account,
+        selectedModel: model,
+        endpoint: candidate.endpoint,
+        costUnits,
+        reservation,
+      }
+    }
+
+    if (!supportedCandidateFound) {
+      return { ok: false, reason: "MODEL_NOT_SUPPORTED" }
+    }
+
+    return { ok: false, reason: "NO_QUOTA" }
+  }
+
+  /**
+   * Finalize quota after a request completes.
+   * This releases any in-flight reservation and refreshes the actual quota from the API.
+   */
+  async finalizeQuota(
+    account: AccountRuntime,
+    reservation?: QuotaReservation,
+  ): Promise<void> {
+    this.releasePremiumReservation(account, reservation)
+
     try {
       await this.refreshQuota(account)
     } catch (error) {

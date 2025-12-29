@@ -65,6 +65,10 @@ export interface AccountRuntime extends AccountMeta {
   models?: ModelsResponse
   /** Remaining premium interactions quota */
   premiumRemaining?: number
+  /** Reserved premium interaction units for in-flight requests */
+  premiumReserved?: number
+  /** Internal reservation map for idempotent release */
+  premiumReservations?: Map<symbol, number>
   /** Whether this account has unlimited quota */
   unlimited?: boolean
   /** Timestamp of last quota fetch */
@@ -77,6 +81,8 @@ export interface AccountRuntime extends AccountMeta {
   failureReason?: string
   /** Whether quota refresh is in progress (prevents concurrent refreshes) */
   isRefreshingQuota?: boolean
+  /** Promise for an in-flight quota refresh (allows concurrent callers to await the same refresh) */
+  quotaRefreshPromise?: Promise<void>
 }
 
 /**
