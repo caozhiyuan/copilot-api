@@ -412,6 +412,40 @@ export class AccountsManager {
   }
 
   /**
+   * Get account context by index.
+   * Index 0 is the temporary account (if exists), otherwise the first registered account.
+   * Returns null if index is out of bounds.
+   */
+  getAccountContextByIndex(index: number): AccountContext | null {
+    // Build the same order as getAccountStatus()
+    const allAccounts: Array<AccountRuntime> = []
+
+    if (this.temporaryAccount) {
+      allAccounts.push(this.temporaryAccount)
+    }
+
+    for (const id of this.accountOrder) {
+      const account = this.accounts.get(id)
+      if (account) {
+        allAccounts.push(account)
+      }
+    }
+
+    if (index < 0 || index >= allAccounts.length) {
+      return null
+    }
+
+    return this.toAccountContext(allAccounts[index])
+  }
+
+  /**
+   * Get the total number of accounts (including temporary).
+   */
+  getAccountCount(): number {
+    return (this.temporaryAccount ? 1 : 0) + this.accountOrder.length
+  }
+
+  /**
    * Convert AccountRuntime to AccountContext for service calls.
    */
   private toAccountContext(account: AccountRuntime): AccountContext {
