@@ -1,10 +1,13 @@
+import type { AccountContext } from "~/lib/types/account"
+
 import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
-import { state } from "~/lib/state"
+import { accountFromState } from "~/lib/state"
 
-export const getModels = async () => {
-  const response = await fetch(`${copilotBaseUrl(state)}/models`, {
-    headers: copilotHeaders(state),
+export const getModels = async (account?: AccountContext) => {
+  const ctx = account ?? accountFromState()
+  const response = await fetch(`${copilotBaseUrl(ctx)}/models`, {
+    headers: copilotHeaders(ctx),
   })
 
   if (!response.ok) throw new HTTPError("Failed to get models", response)

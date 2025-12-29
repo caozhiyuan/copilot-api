@@ -1,19 +1,15 @@
 import { Hono } from "hono"
 
+import { accountsManager } from "~/lib/accounts-manager"
 import { forwardError } from "~/lib/error"
-import { state } from "~/lib/state"
-import { cacheModels } from "~/lib/utils"
 
 export const modelRoutes = new Hono()
 
 modelRoutes.get("/", async (c) => {
   try {
-    if (!state.models) {
-      // This should be handled by startup logic, but as a fallback.
-      await cacheModels()
-    }
+    const accountModels = accountsManager.getFirstAccountModels()
 
-    const models = state.models?.data.map((model) => ({
+    const models = accountModels?.data.map((model) => ({
       id: model.id,
       object: "model",
       type: "model",
@@ -25,7 +21,7 @@ modelRoutes.get("/", async (c) => {
 
     return c.json({
       object: "list",
-      data: models,
+      data: models ?? [],
       has_more: false,
     })
   } catch (error) {

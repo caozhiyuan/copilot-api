@@ -1,9 +1,11 @@
 import consola from "consola"
 import { events } from "fetch-event-stream"
 
+import type { AccountContext } from "~/lib/types/account"
+
 import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
-import { state } from "~/lib/state"
+import { accountFromState } from "~/lib/state"
 
 export interface ResponsesPayload {
   model: string
@@ -329,18 +331,20 @@ interface ResponsesRequestOptions {
 export const createResponses = async (
   payload: ResponsesPayload,
   { vision, initiator }: ResponsesRequestOptions,
+  account?: AccountContext,
 ): Promise<CreateResponsesReturn> => {
-  if (!state.copilotToken) throw new Error("Copilot token not found")
+  const ctx = account ?? accountFromState()
+  if (!ctx.copilotToken) throw new Error("Copilot token not found")
 
   const headers: Record<string, string> = {
-    ...copilotHeaders(state, vision),
+    ...copilotHeaders(ctx, vision),
     "X-Initiator": initiator,
   }
 
   // service_tier is not supported by github copilot
   payload.service_tier = null
 
-  const response = await fetch(`${copilotBaseUrl(state)}/responses`, {
+  const response = await fetch(`${copilotBaseUrl(ctx)}/responses`, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),

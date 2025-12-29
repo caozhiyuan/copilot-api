@@ -1,10 +1,12 @@
 import type { ModelsResponse } from "~/services/copilot/get-models"
 
+import type { AccountContext, AccountType } from "./types/account"
+
 export interface State {
   githubToken?: string
   copilotToken?: string
 
-  accountType: string
+  accountType: AccountType
   models?: ModelsResponse
   vsCodeVersion?: string
 
@@ -24,4 +26,21 @@ export const state: State = {
   rateLimitWait: false,
   showToken: false,
   verbose: false,
+}
+
+/**
+ * Create an AccountContext from the current global state.
+ * This is a compatibility layer for transitioning to multi-account support.
+ * @throws Error if githubToken is not set in state
+ */
+export function accountFromState(): AccountContext {
+  if (!state.githubToken) {
+    throw new Error("GitHub token not set in state")
+  }
+  return {
+    githubToken: state.githubToken,
+    copilotToken: state.copilotToken,
+    accountType: state.accountType,
+    vsCodeVersion: state.vsCodeVersion,
+  }
 }

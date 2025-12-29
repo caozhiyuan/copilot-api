@@ -2,6 +2,9 @@ import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
 
+import type { AccountContext, AccountRuntime } from "~/lib/types/account"
+
+import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import { getSmallModel } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
@@ -43,6 +46,20 @@ const logger = createHandlerLogger("messages-handler")
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
+  // Select an account with available quota
+  const account = await accountsManager.selectAccount()
+  if (!account) {
+    return c.json(
+      {
+        error: {
+          message: "All accounts exhausted. Please try again later.",
+          type: "rate_limit_error",
+        },
+      },
+      429,
+    )
+  }
+
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
 
@@ -54,24 +71,37 @@ export async function handleCompletion(c: Context) {
     anthropicPayload.model = getSmallModel()
   }
 
-  const useResponsesApi = shouldUseResponsesApi(anthropicPayload.model)
+  const useResponsesApi = shouldUseResponsesApi(anthropicPayload.model, account)
 
   if (state.manualApprove) {
     await awaitApproval()
   }
 
-  if (useResponsesApi) {
-    return await handleWithResponsesApi(c, anthropicPayload)
-  }
+  try {
+    if (useResponsesApi) {
+      return await handleWithResponsesApi(c, anthropicPayload, account)
+    }
 
-  return await handleWithChatCompletions(c, anthropicPayload)
+    return await handleWithChatCompletions(c, anthropicPayload, account)
+  } finally {
+    // Refresh quota after request completes
+    await accountsManager.finalizeQuota(account)
+  }
 }
 
 const RESPONSES_ENDPOINT = "/responses"
 
+const toAccountContext = (account: AccountRuntime): AccountContext => ({
+  githubToken: account.githubToken,
+  copilotToken: account.copilotToken,
+  accountType: account.accountType,
+  vsCodeVersion: account.vsCodeVersion,
+})
+
 const handleWithChatCompletions = async (
   c: Context,
   anthropicPayload: AnthropicMessagesPayload,
+  account: AccountRuntime,
 ) => {
   const openAIPayload = translateToOpenAI(anthropicPayload)
   logger.debug(
@@ -79,7 +109,8 @@ const handleWithChatCompletions = async (
     JSON.stringify(openAIPayload),
   )
 
-  const response = await createChatCompletions(openAIPayload)
+  const ctx = toAccountContext(account)
+  const response = await createChatCompletions(openAIPayload, ctx)
 
   if (isNonStreaming(response)) {
     logger.debug(
@@ -131,6 +162,7 @@ const handleWithChatCompletions = async (
 const handleWithResponsesApi = async (
   c: Context,
   anthropicPayload: AnthropicMessagesPayload,
+  account: AccountRuntime,
 ) => {
   const responsesPayload =
     translateAnthropicMessagesToResponsesPayload(anthropicPayload)
@@ -140,10 +172,15 @@ const handleWithResponsesApi = async (
   )
 
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
-  const response = await createResponses(responsesPayload, {
-    vision,
-    initiator,
-  })
+  const ctx = toAccountContext(account)
+  const response = await createResponses(
+    responsesPayload,
+    {
+      vision,
+      initiator,
+    },
+    ctx,
+  )
 
   if (responsesPayload.stream && isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Responses API)")
@@ -212,8 +249,13 @@ const handleWithResponsesApi = async (
   return c.json(anthropicResponse)
 }
 
-const shouldUseResponsesApi = (modelId: string): boolean => {
-  const selectedModel = state.models?.data.find((model) => model.id === modelId)
+const shouldUseResponsesApi = (
+  modelId: string,
+  account: AccountRuntime,
+): boolean => {
+  const selectedModel = account.models?.data.find(
+    (model) => model.id === modelId,
+  )
   return (
     selectedModel?.supported_endpoints?.includes(RESPONSES_ENDPOINT) ?? false
   )
