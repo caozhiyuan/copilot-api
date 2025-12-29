@@ -1,4 +1,5 @@
 import consola from "consola"
+import fs from "node:fs"
 
 import type {
   AccountContext,
@@ -20,9 +21,13 @@ import {
   saveAccountToken,
   addAccountToRegistry,
 } from "./accounts-registry"
+import { PATHS } from "./paths"
 
 /** Quota cache TTL in milliseconds (45 seconds) */
 const QUOTA_CACHE_TTL = 45 * 1000
+
+/** Debounce delay for registry reload in milliseconds */
+const RELOAD_DEBOUNCE_MS = 500
 
 /**
  * Manages multiple GitHub Copilot accounts at runtime.
@@ -33,6 +38,11 @@ export class AccountsManager {
   private accountOrder: Array<string> = []
   private temporaryAccount?: AccountRuntime
   private vsCodeVersion?: string
+
+  // Registry file watcher for hot reload
+  private registryWatcher?: fs.FSWatcher
+  private reloadDebounceTimer?: ReturnType<typeof setTimeout>
+  private isReloading = false
 
   /**
    * Initialize the accounts manager.
@@ -81,6 +91,9 @@ export class AccountsManager {
     }
 
     consola.info(`Loaded ${this.accounts.size} account(s)`)
+
+    // Start watching the registry file for hot reload
+    this.startRegistryWatcher()
   }
 
   /**
@@ -458,9 +471,167 @@ export class AccountsManager {
   }
 
   /**
+   * Start watching the registry file for changes.
+   * Enables hot reload of accounts when the file is modified.
+   */
+  private startRegistryWatcher(): void {
+    // Stop existing watcher if any
+    this.stopRegistryWatcher()
+
+    try {
+      this.registryWatcher = fs.watch(
+        PATHS.ACCOUNTS_REGISTRY_PATH,
+        (eventType) => {
+          // Only react to 'change' events (file content modified)
+          if (eventType === "change") {
+            this.scheduleReload()
+          }
+        },
+      )
+
+      // Handle watcher errors (e.g., file deleted)
+      this.registryWatcher.on("error", (error) => {
+        consola.debug("Registry watcher error:", error)
+        // Try to restart the watcher after a delay
+        setTimeout(() => this.startRegistryWatcher(), 1000)
+      })
+
+      consola.debug("Started registry file watcher")
+    } catch (error) {
+      consola.warn("Failed to start registry watcher:", error)
+    }
+  }
+
+  /**
+   * Schedule a registry reload with debouncing.
+   */
+  private scheduleReload(): void {
+    // Clear existing timer
+    if (this.reloadDebounceTimer) {
+      clearTimeout(this.reloadDebounceTimer)
+    }
+
+    // Schedule reload after debounce delay
+    this.reloadDebounceTimer = setTimeout(() => {
+      void this.reloadRegistry()
+    }, RELOAD_DEBOUNCE_MS)
+  }
+
+  /**
+   * Reload the registry and perform incremental updates.
+   * Only adds new accounts and removes deleted ones.
+   */
+  private async reloadRegistry(): Promise<void> {
+    // Prevent concurrent reloads
+    if (this.isReloading) {
+      return
+    }
+    this.isReloading = true
+
+    try {
+      const newMetas = await listAccountsFromRegistry()
+      const newIds = new Set(newMetas.map((m) => m.id))
+      const currentIds = new Set(this.accountOrder)
+
+      // Track changes for logging
+      const added: Array<string> = []
+      const removed: Array<string> = []
+
+      // 1. Find and remove deleted accounts (currentIds - newIds)
+      for (const id of currentIds) {
+        if (!newIds.has(id)) {
+          const account = this.accounts.get(id)
+          if (account) {
+            this.stopTokenRefresh(account)
+            this.accounts.delete(id)
+            removed.push(id)
+          }
+        }
+      }
+
+      // 2. Find and add new accounts (newIds - currentIds)
+      for (const meta of newMetas) {
+        if (!currentIds.has(meta.id)) {
+          await this.addNewAccount(meta, added)
+        }
+      }
+
+      // 3. Update accountOrder to reflect new order
+      this.accountOrder = newMetas
+        .map((m) => m.id)
+        .filter((id) => this.accounts.has(id))
+
+      // Log changes if any
+      if (added.length > 0 || removed.length > 0) {
+        const changes: Array<string> = []
+        if (added.length > 0) {
+          changes.push(`added: ${added.join(", ")}`)
+        }
+        if (removed.length > 0) {
+          changes.push(`removed: ${removed.join(", ")}`)
+        }
+        consola.info(
+          `Registry reloaded (${changes.join("; ")}). Total: ${this.accounts.size} account(s)`,
+        )
+      }
+    } catch (error) {
+      consola.error("Failed to reload registry:", error)
+    } finally {
+      this.isReloading = false
+    }
+  }
+
+  /**
+   * Helper to add a new account during reload.
+   */
+  private async addNewAccount(
+    meta: { id: string; accountType: AccountType; addedAt: number },
+    added: Array<string>,
+  ): Promise<void> {
+    const token = await loadAccountToken(meta.id)
+    if (!token) {
+      consola.warn(`No token found for new account ${meta.id}, skipping`)
+      return
+    }
+
+    const runtime: AccountRuntime = {
+      ...meta,
+      githubToken: token,
+      vsCodeVersion: this.vsCodeVersion,
+    }
+
+    try {
+      await this.initializeAccount(runtime)
+      this.accounts.set(meta.id, runtime)
+      added.push(meta.id)
+    } catch (error) {
+      consola.error(`Failed to initialize new account ${meta.id}:`, error)
+      runtime.failed = true
+      runtime.failureReason = String(error)
+      this.accounts.set(meta.id, runtime)
+      added.push(`${meta.id} (failed)`)
+    }
+  }
+
+  /**
+   * Stop the registry file watcher.
+   */
+  private stopRegistryWatcher(): void {
+    if (this.reloadDebounceTimer) {
+      clearTimeout(this.reloadDebounceTimer)
+      this.reloadDebounceTimer = undefined
+    }
+    if (this.registryWatcher) {
+      this.registryWatcher.close()
+      this.registryWatcher = undefined
+    }
+  }
+
+  /**
    * Shutdown the manager and clean up resources.
    */
   shutdown(): void {
+    this.stopRegistryWatcher()
     this.stopAllTokenRefresh()
     this.accounts.clear()
     this.accountOrder = []
