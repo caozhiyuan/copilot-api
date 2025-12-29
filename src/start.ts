@@ -9,12 +9,16 @@ import invariant from "tiny-invariant"
 import type { AccountType } from "./lib/types/account"
 
 import { accountsManager } from "./lib/accounts-manager"
+import { addAccountToRegistry, saveAccountToken } from "./lib/accounts-registry"
 import { mergeConfigWithDefaults } from "./lib/config"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { cacheVSCodeVersion } from "./lib/utils"
+import { getDeviceCode } from "./services/github/get-device-code"
+import { getGitHubUser } from "./services/github/get-user"
+import { pollAccessToken } from "./services/github/poll-access-token"
 
 interface RunServerOptions {
   port: number
@@ -27,6 +31,44 @@ interface RunServerOptions {
   claudeCode: boolean
   showToken: boolean
   proxyEnv: boolean
+}
+
+/**
+ * Run the interactive authentication flow to add a new account.
+ * Called automatically when no accounts are found.
+ */
+async function runAuthFlow(accountType: AccountType): Promise<void> {
+  consola.warn("No accounts found. Starting authentication flow...")
+
+  // Start device code flow
+  const deviceResponse = await getDeviceCode()
+  consola.info(
+    `Please enter the code "${deviceResponse.user_code}" at ${deviceResponse.verification_uri}`,
+  )
+
+  // Poll for access token
+  const token = await pollAccessToken(deviceResponse)
+
+  if (state.showToken) {
+    consola.info("GitHub token:", token)
+  }
+
+  // Get user info to determine account ID
+  const user = await getGitHubUser({
+    githubToken: token,
+    accountType,
+  })
+  const accountId = user.login
+
+  // Save token and add to registry
+  await saveAccountToken(accountId, token)
+  await addAccountToRegistry({
+    id: accountId,
+    accountType,
+    addedAt: Date.now(),
+  })
+
+  consola.success(`Account "${accountId}" added successfully!`)
 }
 
 export async function runServer(options: RunServerOptions): Promise<void> {
@@ -68,12 +110,18 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     consola.info("Using provided GitHub token as temporary account")
   }
 
-  // Check if we have any accounts
+  // Check if we have any accounts, if not, start the auth flow
   if (!accountsManager.hasAccounts()) {
-    consola.error(
-      "No accounts available. Please run 'copilot-api auth add' to add an account.",
-    )
-    process.exit(1)
+    try {
+      await runAuthFlow(options.accountType)
+
+      // Re-initialize accounts manager with the new account
+      accountsManager.shutdown()
+      await accountsManager.initialize(state.vsCodeVersion)
+    } catch (error) {
+      consola.error("Failed to add account:", error)
+      process.exit(1)
+    }
   }
 
   // Get models from the first available account
