@@ -3,8 +3,6 @@
 import { defineCommand } from "citty"
 import consola from "consola"
 
-import type { AccountMeta, AccountType } from "./lib/types/account"
-
 import {
   addAccountToRegistry,
   listAccountsFromRegistry,
@@ -15,6 +13,11 @@ import {
 } from "./lib/accounts-registry"
 import { ensurePaths } from "./lib/paths"
 import { state } from "./lib/state"
+import {
+  parseAccountType,
+  type AccountMeta,
+  type AccountType,
+} from "./lib/types/account"
 import { getCopilotUsage } from "./services/github/get-copilot-usage"
 import { getDeviceCode } from "./services/github/get-device-code"
 import { getGitHubUser } from "./services/github/get-user"
@@ -79,7 +82,14 @@ const authAdd = defineCommand({
     }
 
     state.showToken = args["show-token"]
-    const accountType = args["account-type"] as AccountType
+
+    let accountType: AccountType
+    try {
+      accountType = parseAccountType(args["account-type"])
+    } catch (error) {
+      consola.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
 
     await ensurePaths()
 

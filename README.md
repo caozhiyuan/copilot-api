@@ -85,6 +85,8 @@ docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api co
 
 To add multiple accounts when running in Docker:
 
+> **Note:** The Docker image uses an entrypoint that runs the `start` command by default. To run `auth` subcommands inside the container, prefix them with `--auth` (e.g. `--auth add`).
+
 ```sh
 # Add accounts interactively (one at a time)
 docker run -it -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api --auth add
@@ -108,7 +110,7 @@ docker build --build-arg GH_TOKEN=your_github_token_here -t copilot-api .
 docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here copilot-api
 
 # Run with additional options
-docker run -p 4141:4141 -e GH_TOKEN=your_token copilot-api start --verbose --port 4141
+docker run -p 4141:4141 -e GH_TOKEN=your_token copilot-api --verbose --port 4141
 ```
 
 ### Docker Compose Example
@@ -274,6 +276,11 @@ Endpoints for monitoring your Copilot usage and quotas across all accounts.
 | `GET /usage`         | `GET`  | Get status of all registered accounts (ID, remaining quota, unlimited flag).  |
 | `GET /usage/:index`  | `GET`  | Get detailed Copilot usage for a specific account by index (0-based).         |
 | `GET /token`         | `GET`  | Get the current Copilot token being used by the API.                          |
+
+> **Note on account indices**
+> - `/usage/:index` is **0-based**.
+> - If you start the server with `start --github-token ...`, a temporary account is included and shown as `"(temporary)"` in `GET /usage`. In that case, `index=0` refers to the temporary account and registered accounts start at `index=1`.
+> - `auth rm <index>` uses a **1-based** index (as shown by `auth ls`).
 
 ## Example Usage
 

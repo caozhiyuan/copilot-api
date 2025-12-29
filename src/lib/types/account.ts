@@ -5,6 +5,30 @@ import type { ModelsResponse } from "~/services/copilot/get-models"
  */
 export type AccountType = "individual" | "business" | "enterprise"
 
+export const ACCOUNT_TYPE_VALUES: ReadonlyArray<AccountType> = [
+  "individual",
+  "business",
+  "enterprise",
+]
+
+export function isAccountType(value: unknown): value is AccountType {
+  return (
+    typeof value === "string"
+    && (ACCOUNT_TYPE_VALUES as ReadonlyArray<string>).includes(value)
+  )
+}
+
+export function parseAccountType(value: unknown): AccountType {
+  if (!isAccountType(value)) {
+    throw new Error(
+      `Invalid account type: ${String(value)}. Valid values: ${ACCOUNT_TYPE_VALUES.join(
+        ", ",
+      )}`,
+    )
+  }
+  return value
+}
+
 /**
  * Metadata for a registered account, stored in the registry file.
  */

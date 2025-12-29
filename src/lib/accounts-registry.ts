@@ -1,18 +1,39 @@
 import fs from "node:fs/promises"
+import { z } from "zod"
 
 import type { AccountMeta, AccountRegistry } from "~/lib/types/account"
 
 import { accountTokenPath, PATHS } from "./paths"
 
 /**
- * Validate account ID to prevent path traversal attacks.
- * Only allows alphanumeric characters, hyphens, and underscores.
+ * Validate account ID (GitHub login).
+ * Rules:
+ * - Only alphanumeric characters or single hyphens
+ * - 1-39 chars
+ * - Cannot begin or end with a hyphen
+ * - No consecutive hyphens
  */
 export function validateAccountId(id: string): boolean {
-  // GitHub usernames: alphanumeric and hyphens, 1-39 chars, no consecutive hyphens
-  // We're a bit more permissive here to handle edge cases
-  return /^[a-z0-9][-\w]{0,38}$/i.test(id)
+  if (id.length === 0 || id.length > 39) return false
+  if (!/^[a-z0-9-]+$/i.test(id)) return false
+  if (id.startsWith("-") || id.endsWith("-")) return false
+  if (id.includes("--")) return false
+  return true
 }
+
+const accountMetaSchema = z.object({
+  id: z.string().refine(validateAccountId, {
+    message:
+      "Invalid account id. Expected a GitHub login (1-39 chars, alphanumeric or single hyphens, no leading/trailing hyphen, no consecutive hyphens).",
+  }),
+  accountType: z.enum(["individual", "business", "enterprise"]),
+  addedAt: z.number(),
+})
+
+const accountRegistrySchema = z.object({
+  version: z.literal(1),
+  accounts: z.array(accountMetaSchema),
+})
 
 /**
  * Create an empty registry with the current schema version.
@@ -34,12 +55,41 @@ export async function loadRegistry(): Promise<AccountRegistry> {
     if (!content.trim()) {
       return createEmptyRegistry()
     }
-    const registry = JSON.parse(content) as AccountRegistry
-    // Validate version (type assertion for future-proofing)
-    const version = registry.version as number
-    if (version !== 1) {
-      throw new Error(`Unsupported registry version: ${version}`)
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(content) as unknown
+    } catch (error) {
+      throw new Error(
+        `Invalid accounts registry JSON at ${PATHS.ACCOUNTS_REGISTRY_PATH}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
     }
+
+    const result = accountRegistrySchema.safeParse(parsed)
+    if (!result.success) {
+      const issues = result.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ")
+
+      throw new Error(
+        `Invalid accounts registry at ${PATHS.ACCOUNTS_REGISTRY_PATH}: ${issues}`,
+      )
+    }
+
+    const registry = result.data
+
+    const seen = new Set<string>()
+    for (const account of registry.accounts) {
+      if (seen.has(account.id)) {
+        throw new Error(
+          `Invalid accounts registry at ${PATHS.ACCOUNTS_REGISTRY_PATH}: duplicate account id "${account.id}"`,
+        )
+      }
+      seen.add(account.id)
+    }
+
     return registry
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -197,10 +247,6 @@ export async function readLegacyToken(): Promise<string | null> {
  * Check if the registry file exists and has accounts.
  */
 export async function hasRegistry(): Promise<boolean> {
-  try {
-    const registry = await loadRegistry()
-    return registry.accounts.length > 0
-  } catch {
-    return false
-  }
+  const registry = await loadRegistry()
+  return registry.accounts.length > 0
 }

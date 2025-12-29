@@ -7,6 +7,7 @@ import type {
   AccountType,
 } from "~/lib/types/account"
 
+import { HTTPError } from "~/lib/error"
 import { getModels } from "~/services/copilot/get-models"
 import { getCopilotToken } from "~/services/github/get-copilot-token"
 import { getCopilotUsage } from "~/services/github/get-copilot-usage"
@@ -234,8 +235,13 @@ export class AccountsManager {
       // eslint-disable-next-line require-atomic-updates
       account.failureReason = undefined
     } catch (error) {
+      if (error instanceof HTTPError && error.response.status === 401) {
+        this.markAccountFailed(account.id, "Unauthorized (401)")
+        return
+      }
+
       consola.error(`Failed to refresh quota for ${account.id}:`, error)
-      // Don't mark as failed for quota refresh errors
+      // Don't mark as failed for non-401 quota refresh errors
     } finally {
       // eslint-disable-next-line require-atomic-updates
       account.isRefreshingQuota = false
@@ -250,38 +256,46 @@ export class AccountsManager {
     return Date.now() - account.lastQuotaFetch > QUOTA_CACHE_TTL
   }
 
+  private isAccountFailed(account: AccountRuntime): boolean {
+    return account.failed === true
+  }
+
   /**
    * Select an available account based on quota.
    * Returns null if all accounts are exhausted.
    */
   // eslint-disable-next-line complexity
   async selectAccount(): Promise<AccountRuntime | null> {
+    const tempAccount = this.temporaryAccount
+
     // Check temporary account first (--github-token)
-    if (this.temporaryAccount && !this.temporaryAccount.failed) {
-      if (this.temporaryAccount.unlimited) {
-        return this.temporaryAccount
+    if (tempAccount && !this.isAccountFailed(tempAccount)) {
+      if (tempAccount.unlimited) {
+        return tempAccount
       }
 
-      if (this.isQuotaCacheExpired(this.temporaryAccount)) {
-        await this.refreshQuota(this.temporaryAccount)
+      if (this.isQuotaCacheExpired(tempAccount)) {
+        await this.refreshQuota(tempAccount)
       }
 
-      if (
-        this.temporaryAccount.premiumRemaining === undefined
-        || this.temporaryAccount.premiumRemaining > 0
-      ) {
+      const hasQuota =
+        tempAccount.premiumRemaining === undefined
+        || tempAccount.premiumRemaining > 0
+
+      // refreshQuota may mark the account as failed (e.g., 401)
+      if (!this.isAccountFailed(tempAccount) && hasQuota) {
         // Optimistic decrement
-        if (this.temporaryAccount.premiumRemaining !== undefined) {
-          this.temporaryAccount.premiumRemaining--
+        if (tempAccount.premiumRemaining !== undefined) {
+          tempAccount.premiumRemaining--
         }
-        return this.temporaryAccount
+        return tempAccount
       }
     }
 
     // Check registered accounts in order
     for (const id of this.accountOrder) {
       const account = this.accounts.get(id)
-      if (!account || account.failed) continue
+      if (!account || this.isAccountFailed(account)) continue
 
       // Unlimited accounts are always available
       if (account.unlimited) {
@@ -290,14 +304,9 @@ export class AccountsManager {
 
       // Refresh quota if cache is expired
       if (this.isQuotaCacheExpired(account)) {
-        try {
-          await this.refreshQuota(account)
-        } catch (error) {
-          // If quota refresh fails with 401, mark account as failed
-          if (error instanceof Error && error.message.includes("401")) {
-            this.markAccountFailed(id, "Unauthorized (401)")
-            continue
-          }
+        await this.refreshQuota(account)
+        if (this.isAccountFailed(account)) {
+          continue
         }
       }
 
@@ -337,6 +346,13 @@ export class AccountsManager {
     if (account) {
       account.failed = true
       account.failureReason = reason
+      consola.warn(`Account ${id} marked as failed: ${reason}`)
+      return
+    }
+
+    if (this.temporaryAccount && this.temporaryAccount.id === id) {
+      this.temporaryAccount.failed = true
+      this.temporaryAccount.failureReason = reason
       consola.warn(`Account ${id} marked as failed: ${reason}`)
     }
   }
@@ -589,6 +605,8 @@ export class AccountsManager {
       }
     } catch (error) {
       consola.error("Failed to reload registry:", error)
+      this.shutdown()
+      process.exit(1)
     } finally {
       this.isReloading = false
     }
