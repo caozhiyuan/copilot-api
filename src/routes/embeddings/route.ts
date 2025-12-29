@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 
 import { accountsManager } from "~/lib/accounts-manager"
-import { forwardError } from "~/lib/error"
+import { forwardError, HTTPError } from "~/lib/error"
 import {
   createEmbeddings,
   type EmbeddingRequest,
@@ -37,6 +37,11 @@ embeddingRoutes.post("/", async (c) => {
       const response = await createEmbeddings(payload, ctx)
 
       return c.json(response)
+    } catch (error) {
+      if (error instanceof HTTPError && error.response.status === 401) {
+        accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
+      }
+      throw error
     } finally {
       // Refresh quota after request completes
       await accountsManager.finalizeQuota(account)

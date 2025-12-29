@@ -6,8 +6,6 @@ import consola from "consola"
 import { serve, type ServerHandler } from "srvx"
 import invariant from "tiny-invariant"
 
-import type { AccountType } from "./lib/types/account"
-
 import { accountsManager } from "./lib/accounts-manager"
 import { addAccountToRegistry, saveAccountToken } from "./lib/accounts-registry"
 import { mergeConfigWithDefaults } from "./lib/config"
@@ -15,6 +13,7 @@ import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
+import { parseAccountType, type AccountType } from "./lib/types/account"
 import { cacheVSCodeVersion } from "./lib/utils"
 import { getDeviceCode } from "./services/github/get-device-code"
 import { getGitHubUser } from "./services/github/get-user"
@@ -263,10 +262,18 @@ export const start = defineCommand({
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       rateLimitRaw === undefined ? undefined : Number.parseInt(rateLimitRaw, 10)
 
+    let accountType: AccountType
+    try {
+      accountType = parseAccountType(args["account-type"])
+    } catch (error) {
+      consola.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+
     return runServer({
       port: Number.parseInt(args.port, 10),
       verbose: args.verbose,
-      accountType: args["account-type"] as AccountType,
+      accountType,
       manual: args.manual,
       rateLimit,
       rateLimitWait: args.wait,

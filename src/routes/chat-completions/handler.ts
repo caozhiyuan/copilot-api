@@ -4,6 +4,7 @@ import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
+import { HTTPError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
@@ -85,6 +86,11 @@ export async function handleCompletion(c: Context) {
         await stream.writeSSE(chunk as SSEMessage)
       }
     })
+  } catch (error) {
+    if (error instanceof HTTPError && error.response.status === 401) {
+      accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
+    }
+    throw error
   } finally {
     // Refresh quota after request completes
     await accountsManager.finalizeQuota(account)

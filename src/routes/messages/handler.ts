@@ -7,6 +7,7 @@ import type { AccountContext, AccountRuntime } from "~/lib/types/account"
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import { getSmallModel } from "~/lib/config"
+import { HTTPError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
@@ -83,6 +84,11 @@ export async function handleCompletion(c: Context) {
     }
 
     return await handleWithChatCompletions(c, anthropicPayload, account)
+  } catch (error) {
+    if (error instanceof HTTPError && error.response.status === 401) {
+      accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
+    }
+    throw error
   } finally {
     // Refresh quota after request completes
     await accountsManager.finalizeQuota(account)
