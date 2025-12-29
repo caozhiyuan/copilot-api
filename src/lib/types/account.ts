@@ -51,6 +51,8 @@ export interface AccountRuntime extends AccountMeta {
   failed?: boolean
   /** Failure reason if failed */
   failureReason?: string
+  /** Whether quota refresh is in progress (prevents concurrent refreshes) */
+  isRefreshingQuota?: boolean
 }
 
 /**
