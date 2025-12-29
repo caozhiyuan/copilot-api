@@ -1,10 +1,15 @@
+import type { AccountContext } from "~/lib/types/account"
+
 import { GITHUB_API_BASE_URL, githubHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
-import { state } from "~/lib/state"
+import { accountFromState } from "~/lib/state"
 
-export const getCopilotUsage = async (): Promise<CopilotUsageResponse> => {
+export const getCopilotUsage = async (
+  account?: AccountContext,
+): Promise<CopilotUsageResponse> => {
+  const ctx = account ?? accountFromState()
   const response = await fetch(`${GITHUB_API_BASE_URL}/copilot_internal/user`, {
-    headers: githubHeaders(state),
+    headers: githubHeaders(ctx),
   })
 
   if (!response.ok) {

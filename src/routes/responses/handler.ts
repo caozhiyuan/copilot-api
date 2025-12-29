@@ -2,6 +2,7 @@ import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
 
+import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
@@ -21,10 +22,24 @@ const RESPONSES_ENDPOINT = "/responses"
 export const handleResponses = async (c: Context) => {
   await checkRateLimit(state)
 
+  // Select an account with available quota
+  const account = await accountsManager.selectAccount()
+  if (!account) {
+    return c.json(
+      {
+        error: {
+          message: "All accounts exhausted. Please try again later.",
+          type: "rate_limit_error",
+        },
+      },
+      429,
+    )
+  }
+
   const payload = await c.req.json<ResponsesPayload>()
   logger.debug("Responses request payload:", JSON.stringify(payload))
 
-  const selectedModel = state.models?.data.find(
+  const selectedModel = account.models?.data.find(
     (model) => model.id === payload.model,
   )
   const supportsResponses =
@@ -49,27 +64,38 @@ export const handleResponses = async (c: Context) => {
     await awaitApproval()
   }
 
-  const response = await createResponses(payload, { vision, initiator })
+  try {
+    const ctx = {
+      githubToken: account.githubToken,
+      copilotToken: account.copilotToken,
+      accountType: account.accountType,
+      vsCodeVersion: account.vsCodeVersion,
+    }
+    const response = await createResponses(payload, { vision, initiator }, ctx)
 
-  if (isStreamingRequested(payload) && isAsyncIterable(response)) {
-    logger.debug("Forwarding native Responses stream")
-    return streamSSE(c, async (stream) => {
-      for await (const chunk of response) {
-        logger.debug("Responses stream chunk:", JSON.stringify(chunk))
-        await stream.writeSSE({
-          id: (chunk as { id?: string }).id,
-          event: (chunk as { event?: string }).event,
-          data: (chunk as { data?: string }).data ?? "",
-        })
-      }
-    })
+    if (isStreamingRequested(payload) && isAsyncIterable(response)) {
+      logger.debug("Forwarding native Responses stream")
+      return streamSSE(c, async (stream) => {
+        for await (const chunk of response) {
+          logger.debug("Responses stream chunk:", JSON.stringify(chunk))
+          await stream.writeSSE({
+            id: (chunk as { id?: string }).id,
+            event: (chunk as { event?: string }).event,
+            data: (chunk as { data?: string }).data ?? "",
+          })
+        }
+      })
+    }
+
+    logger.debug(
+      "Forwarding native Responses result:",
+      JSON.stringify(response).slice(-400),
+    )
+    return c.json(response as ResponsesResult)
+  } finally {
+    // Refresh quota after request completes
+    await accountsManager.finalizeQuota(account)
   }
-
-  logger.debug(
-    "Forwarding native Responses result:",
-    JSON.stringify(response).slice(-400),
-  )
-  return c.json(response as ResponsesResult)
 }
 
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>

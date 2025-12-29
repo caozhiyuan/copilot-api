@@ -6,18 +6,20 @@ import consola from "consola"
 import { serve, type ServerHandler } from "srvx"
 import invariant from "tiny-invariant"
 
+import type { AccountType } from "./lib/types/account"
+
+import { accountsManager } from "./lib/accounts-manager"
 import { mergeConfigWithDefaults } from "./lib/config"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
-import { setupCopilotToken, setupGitHubToken } from "./lib/token"
-import { cacheModels, cacheVSCodeVersion } from "./lib/utils"
+import { cacheVSCodeVersion } from "./lib/utils"
 
 interface RunServerOptions {
   port: number
   verbose: boolean
-  accountType: string
+  accountType: AccountType
   manual: boolean
   rateLimit?: number
   rateLimitWait: boolean
@@ -54,30 +56,43 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   await ensurePaths()
   await cacheVSCodeVersion()
 
+  // Initialize accounts manager with VS Code version
+  await accountsManager.initialize(state.vsCodeVersion)
+
+  // If --github-token is provided, set it as a temporary (high priority) account
   if (options.githubToken) {
-    state.githubToken = options.githubToken
-    consola.info("Using provided GitHub token")
-  } else {
-    await setupGitHubToken()
+    await accountsManager.setTemporaryAccount(
+      options.githubToken,
+      options.accountType,
+    )
+    consola.info("Using provided GitHub token as temporary account")
   }
 
-  await setupCopilotToken()
-  await cacheModels()
+  // Check if we have any accounts
+  if (!accountsManager.hasAccounts()) {
+    consola.error(
+      "No accounts available. Please run 'copilot-api auth add' to add an account.",
+    )
+    process.exit(1)
+  }
+
+  // Get models from the first available account
+  const models = accountsManager.getFirstAccountModels()
 
   consola.info(
-    `Available models: \n${state.models?.data.map((model) => `- ${model.id}`).join("\n")}`,
+    `Available models: \n${models?.data.map((model) => `- ${model.id}`).join("\n") ?? "(no models loaded)"}`,
   )
 
   const serverUrl = `http://localhost:${options.port}`
 
   if (options.claudeCode) {
-    invariant(state.models, "Models should be loaded by now")
+    invariant(models, "Models should be loaded by now")
 
     const selectedModel = await consola.prompt(
       "Select a model to use with Claude Code",
       {
         type: "select",
-        options: state.models.data.map((model) => model.id),
+        options: models.data.map((model) => model.id),
       },
     )
 
@@ -85,7 +100,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
       "Select a small model to use with Claude Code",
       {
         type: "select",
-        options: state.models.data.map((model) => model.id),
+        options: models.data.map((model) => model.id),
       },
     )
 
@@ -203,7 +218,7 @@ export const start = defineCommand({
     return runServer({
       port: Number.parseInt(args.port, 10),
       verbose: args.verbose,
-      accountType: args["account-type"],
+      accountType: args["account-type"] as AccountType,
       manual: args.manual,
       rateLimit,
       rateLimitWait: args.wait,

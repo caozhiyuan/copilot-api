@@ -1,11 +1,15 @@
+import type { AccountContext } from "~/lib/types/account"
+
 import { GITHUB_API_BASE_URL, standardHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
-export async function getGitHubUser() {
+export async function getGitHubUser(account?: AccountContext) {
+  // Use provided account or fall back to state (for legacy compatibility)
+  const token = account?.githubToken ?? state.githubToken
   const response = await fetch(`${GITHUB_API_BASE_URL}/user`, {
     headers: {
-      authorization: `token ${state.githubToken}`,
+      authorization: `token ${token}`,
       ...standardHeaders(),
     },
   })
@@ -16,6 +20,6 @@ export async function getGitHubUser() {
 }
 
 // Trimmed for the sake of simplicity
-interface GithubUserResponse {
+export interface GithubUserResponse {
   login: string
 }

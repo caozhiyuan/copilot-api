@@ -1,15 +1,17 @@
 import { Hono } from "hono"
 
-import { getCopilotUsage } from "~/services/github/get-copilot-usage"
+import { accountsManager } from "~/lib/accounts-manager"
 
 export const usageRoute = new Hono()
 
-usageRoute.get("/", async (c) => {
+usageRoute.get("/", (c) => {
   try {
-    const usage = await getCopilotUsage()
-    return c.json(usage)
+    const accountStatuses = accountsManager.getAccountStatus()
+    return c.json({
+      accounts: accountStatuses,
+    })
   } catch (error) {
-    console.error("Error fetching Copilot usage:", error)
-    return c.json({ error: "Failed to fetch Copilot usage" }, 500)
+    console.error("Error fetching account status:", error)
+    return c.json({ error: "Failed to fetch account status" }, 500)
   }
 })
