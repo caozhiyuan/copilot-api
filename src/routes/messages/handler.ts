@@ -25,6 +25,7 @@ import {
   createChatCompletions,
   type ChatCompletionChunk,
   type ChatCompletionResponse,
+  type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
 import {
   createResponses,
@@ -47,20 +48,6 @@ const logger = createHandlerLogger("messages-handler")
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
-  // Select an account with available quota
-  const account = await accountsManager.selectAccount()
-  if (!account) {
-    return c.json(
-      {
-        error: {
-          message: "All accounts exhausted. Please try again later.",
-          type: "rate_limit_error",
-        },
-      },
-      429,
-    )
-  }
-
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
 
@@ -72,18 +59,55 @@ export async function handleCompletion(c: Context) {
     anthropicPayload.model = getSmallModel()
   }
 
-  const useResponsesApi = shouldUseResponsesApi(anthropicPayload.model, account)
+  const openAIPayload = translateToOpenAI(anthropicPayload)
+
+  const selection = await accountsManager.selectAccountForRequest([
+    {
+      modelId: anthropicPayload.model,
+      endpoint: RESPONSES_ENDPOINT,
+    },
+    {
+      modelId: openAIPayload.model,
+      endpoint: CHAT_COMPLETIONS_ENDPOINT,
+    },
+  ])
+
+  if (!selection.ok) {
+    if (selection.reason === "MODEL_NOT_SUPPORTED") {
+      return c.json(
+        {
+          error: {
+            message: `Model "${anthropicPayload.model}" is not available for any configured account.`,
+            type: "invalid_request_error",
+          },
+        },
+        400,
+      )
+    }
+
+    return c.json(
+      {
+        error: {
+          message: "All accounts exhausted. Please try again later.",
+          type: "rate_limit_error",
+        },
+      },
+      429,
+    )
+  }
+
+  const { account, reservation, endpoint } = selection
 
   if (state.manualApprove) {
     await awaitApproval()
   }
 
   try {
-    if (useResponsesApi) {
+    if (endpoint === RESPONSES_ENDPOINT) {
       return await handleWithResponsesApi(c, anthropicPayload, account)
     }
 
-    return await handleWithChatCompletions(c, anthropicPayload, account)
+    return await handleWithChatCompletions(c, openAIPayload, account)
   } catch (error) {
     if (error instanceof HTTPError && error.response.status === 401) {
       accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
@@ -91,10 +115,11 @@ export async function handleCompletion(c: Context) {
     throw error
   } finally {
     // Refresh quota after request completes
-    await accountsManager.finalizeQuota(account)
+    await accountsManager.finalizeQuota(account, reservation)
   }
 }
 
+const CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
 const RESPONSES_ENDPOINT = "/responses"
 
 const toAccountContext = (account: AccountRuntime): AccountContext => ({
@@ -106,10 +131,9 @@ const toAccountContext = (account: AccountRuntime): AccountContext => ({
 
 const handleWithChatCompletions = async (
   c: Context,
-  anthropicPayload: AnthropicMessagesPayload,
+  openAIPayload: ChatCompletionsPayload,
   account: AccountRuntime,
 ) => {
-  const openAIPayload = translateToOpenAI(anthropicPayload)
   logger.debug(
     "Translated OpenAI request payload:",
     JSON.stringify(openAIPayload),
@@ -253,18 +277,6 @@ const handleWithResponsesApi = async (
     JSON.stringify(anthropicResponse),
   )
   return c.json(anthropicResponse)
-}
-
-const shouldUseResponsesApi = (
-  modelId: string,
-  account: AccountRuntime,
-): boolean => {
-  const selectedModel = account.models?.data.find(
-    (model) => model.id === modelId,
-  )
-  return (
-    selectedModel?.supported_endpoints?.includes(RESPONSES_ENDPOINT) ?? false
-  )
 }
 
 const isNonStreaming = (

@@ -68,7 +68,13 @@ interface ModelCapabilities {
   type: string
 }
 
+interface ModelBilling {
+  is_premium?: boolean
+  multiplier?: number
+}
+
 export interface Model {
+  billing?: ModelBilling
   capabilities: ModelCapabilities
   id: string
   model_picker_enabled: boolean
