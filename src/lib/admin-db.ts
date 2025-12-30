@@ -10,6 +10,31 @@ const DEFAULT_DB_PATH = path.join(PATHS.APP_DIR, ADMIN_DB_FILENAME)
 let sharedDb: Database | null = null
 let initialized = false
 
+const INIT_WARN_THROTTLE_MS = 30_000
+
+let lastInitWarnAtMs = 0
+let suppressedInitWarnCount = 0
+
+function warnAdminDbInitFailure(error: unknown): void {
+  const now = Date.now()
+
+  if (now - lastInitWarnAtMs < INIT_WARN_THROTTLE_MS) {
+    suppressedInitWarnCount++
+    return
+  }
+
+  const suppressed = suppressedInitWarnCount
+  suppressedInitWarnCount = 0
+  lastInitWarnAtMs = now
+
+  const suffix =
+    suppressed > 0 ? ` (suppressed ${suppressed} similar errors)` : ""
+  consola.warn(
+    `Failed to initialize admin DB; admin features disabled${suffix}`,
+    error,
+  )
+}
+
 export function getAdminDbPath(): string {
   return DEFAULT_DB_PATH
 }
@@ -34,15 +59,12 @@ export function getAdminDb(): Database {
     sharedDb = openAdminDb()
   }
   if (!initialized) {
-    initialized = true
     try {
       initAdminDb(sharedDb)
+      initialized = true
     } catch (error) {
       // Admin DB is a best-effort feature; server should continue to run.
-      consola.warn(
-        "Failed to initialize admin DB; admin features disabled",
-        error,
-      )
+      warnAdminDbInitFailure(error)
     }
   }
   return sharedDb

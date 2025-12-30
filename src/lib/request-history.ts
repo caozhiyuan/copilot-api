@@ -19,6 +19,28 @@ import { getAdminDb, getAdminDbPath, getAdminDbUserVersion } from "./admin-db"
 const DEFAULT_RETENTION_DAYS = 14
 const DEFAULT_MAX_ROWS = 200_000
 
+const INSERT_WARN_THROTTLE_MS = 30_000
+
+let lastInsertWarnAtMs = 0
+let suppressedInsertWarnCount = 0
+
+function warnInsertFailure(error: unknown): void {
+  const now = Date.now()
+
+  if (now - lastInsertWarnAtMs < INSERT_WARN_THROTTLE_MS) {
+    suppressedInsertWarnCount++
+    return
+  }
+
+  const suppressed = suppressedInsertWarnCount
+  suppressedInsertWarnCount = 0
+  lastInsertWarnAtMs = now
+
+  const suffix =
+    suppressed > 0 ? ` (suppressed ${suppressed} similar errors)` : ""
+  consola.warn(`Failed to insert request log${suffix}`, error)
+}
+
 function toDbNull<T>(value: T | null | undefined): T | null {
   return value === undefined ? null : value
 }
@@ -324,7 +346,7 @@ export class RequestHistoryStore {
 
       this.insertStmt.run(...args)
     } catch (error) {
-      consola.debug("Failed to insert request log", error)
+      warnInsertFailure(error)
     }
   }
 
@@ -503,28 +525,97 @@ export class RequestHistoryStore {
   }
 }
 
-let sharedStore: RequestHistoryStore | null = null
-let maintenanceStarted = false
+export type RequestHistoryStoreApi = {
+  insert(record: RequestLogInsert): void
+  getByRequestId(requestId: string): RequestLogRow | null
+  query(params: RequestLogQuery): RequestLogQueryResult
+  getAccountStatsSince(
+    sinceMs: number,
+  ): Record<string, AccountStatsRow | undefined>
+  cleanupRetention(retentionDays?: number, maxRows?: number): void
+  meta(): {
+    dbPath: string
+    userVersion: number
+    retentionDays: number
+    maxRows: number
+  }
+}
 
-export function getRequestHistoryStore(): RequestHistoryStore {
-  sharedStore ??= new RequestHistoryStore(getAdminDb())
+const STORE_INIT_WARN_THROTTLE_MS = 30_000
+const STORE_INIT_RETRY_DELAY_MS = 30_000
 
-  if (!maintenanceStarted) {
-    maintenanceStarted = true
+let lastStoreInitWarnAtMs = 0
+let suppressedStoreInitWarnCount = 0
+let nextStoreRetryAtMs = 0
 
-    // Run once at startup.
-    sharedStore.cleanupRetention()
+function warnStoreInitFailure(error: unknown): void {
+  const now = Date.now()
 
-    // Then daily.
-    setInterval(
-      () => {
-        sharedStore?.cleanupRetention()
-      },
-      24 * 60 * 60 * 1000,
-    )
+  if (now - lastStoreInitWarnAtMs < STORE_INIT_WARN_THROTTLE_MS) {
+    suppressedStoreInitWarnCount++
+    return
   }
 
-  return sharedStore
+  const suppressed = suppressedStoreInitWarnCount
+  suppressedStoreInitWarnCount = 0
+  lastStoreInitWarnAtMs = now
+
+  const suffix =
+    suppressed > 0 ? ` (suppressed ${suppressed} similar errors)` : ""
+  consola.warn(`Request history store is disabled${suffix}`, error)
+}
+
+const disabledStore: RequestHistoryStoreApi = {
+  insert: () => {},
+  getByRequestId: () => null,
+  query: () => ({ items: [], hasMore: false }),
+  getAccountStatsSince: () => ({}),
+  cleanupRetention: () => {},
+  meta: () => ({
+    dbPath: getAdminDbPath(),
+    userVersion: 0,
+    retentionDays: DEFAULT_RETENTION_DAYS,
+    maxRows: DEFAULT_MAX_ROWS,
+  }),
+}
+
+let sharedStore: RequestHistoryStoreApi | null = null
+let maintenanceStarted = false
+
+export function getRequestHistoryStore(): RequestHistoryStoreApi {
+  if (sharedStore) {
+    return sharedStore
+  }
+
+  const now = Date.now()
+  if (now < nextStoreRetryAtMs) {
+    return disabledStore
+  }
+
+  try {
+    sharedStore = new RequestHistoryStore(getAdminDb())
+
+    if (!maintenanceStarted) {
+      maintenanceStarted = true
+
+      // Run once at startup.
+      sharedStore.cleanupRetention()
+
+      // Then daily.
+      setInterval(
+        () => {
+          sharedStore?.cleanupRetention()
+        },
+        24 * 60 * 60 * 1000,
+      )
+    }
+
+    return sharedStore
+  } catch (error) {
+    nextStoreRetryAtMs = now + STORE_INIT_RETRY_DELAY_MS
+    warnStoreInitFailure(error)
+    return disabledStore
+  }
 }
 
 export function extractResponsesUsageFromStreamEvent(
