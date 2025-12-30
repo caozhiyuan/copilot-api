@@ -115,17 +115,36 @@ function mergeDefaultFreeModelLoadBalancing(config: AppConfig): {
   }
 }
 
+type ConfigMergeResult = {
+  mergedConfig: AppConfig
+  changed: boolean
+}
+
+type ConfigMergeFn = (config: AppConfig) => ConfigMergeResult
+
+function applyConfigMerges(
+  config: AppConfig,
+  mergeFns: ReadonlyArray<ConfigMergeFn>,
+): ConfigMergeResult {
+  return mergeFns.reduce<ConfigMergeResult>(
+    (acc, mergeFn) => {
+      const result = mergeFn(acc.mergedConfig)
+      return {
+        mergedConfig: result.mergedConfig,
+        changed: acc.changed || result.changed,
+      }
+    },
+    { mergedConfig: config, changed: false },
+  )
+}
+
 export function mergeConfigWithDefaults(): AppConfig {
   const config = readConfigFromDisk()
 
-  const extraPromptsMerge = mergeDefaultExtraPrompts(config)
-  const freeModelLoadBalancingMerge = mergeDefaultFreeModelLoadBalancing(
-    extraPromptsMerge.mergedConfig,
-  )
-
-  const mergedConfig = freeModelLoadBalancingMerge.mergedConfig
-  const changed =
-    extraPromptsMerge.changed || freeModelLoadBalancingMerge.changed
+  const { mergedConfig, changed } = applyConfigMerges(config, [
+    mergeDefaultExtraPrompts,
+    mergeDefaultFreeModelLoadBalancing,
+  ])
 
   if (changed) {
     try {
