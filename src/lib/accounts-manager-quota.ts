@@ -1,6 +1,8 @@
 import type { AccountRuntime } from "~/lib/types/account"
 import type { Model } from "~/services/copilot/get-models"
 
+export type QuotaReservation = Readonly<{ id: symbol }>
+
 export const getCostUnits = (model: Model): number => {
   // Per user decision: missing billing => treat as free (costUnits = 0)
   const billing = model.billing
@@ -38,7 +40,7 @@ export const getEffectivePremiumRemaining = (
 export const reservePremiumUnits = (
   account: AccountRuntime,
   units: number,
-): { id: symbol } | undefined => {
+): QuotaReservation | undefined => {
   if (units <= 0) {
     return undefined
   }
@@ -57,7 +59,7 @@ export const reservePremiumUnits = (
 
 export const releasePremiumReservation = (
   account: AccountRuntime,
-  reservation?: { id: symbol },
+  reservation?: QuotaReservation,
 ): void => {
   if (!reservation) {
     return

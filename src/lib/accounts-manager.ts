@@ -32,6 +32,7 @@ import {
   getEffectivePremiumRemaining,
   releasePremiumReservation,
   reservePremiumUnits,
+  type QuotaReservation,
 } from "./accounts-manager-quota"
 import {
   hasLegacyToken,
@@ -60,9 +61,7 @@ export interface AccountRequestCandidate {
   endpoint: string
 }
 
-export interface QuotaReservation {
-  id: symbol
-}
+export type { QuotaReservation } from "./accounts-manager-quota"
 
 export type SelectAccountForRequestFailureReason =
   | "NO_ACCOUNTS"
