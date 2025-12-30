@@ -6,6 +6,7 @@ import { state } from "../src/lib/state"
 import { createChatCompletions } from "../src/services/copilot/create-chat-completions"
 
 // Mock state
+state.githubToken = "test-github-token"
 state.copilotToken = "test-token"
 state.vsCodeVersion = "1.0.0"
 state.accountType = "individual"

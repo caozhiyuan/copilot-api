@@ -2,8 +2,12 @@ import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
 
+import type { AccountContext, AccountRuntime } from "~/lib/types/account"
+
+import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import { getSmallModel } from "~/lib/config"
+import { HTTPError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
@@ -21,6 +25,7 @@ import {
   createChatCompletions,
   type ChatCompletionChunk,
   type ChatCompletionResponse,
+  type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
 import {
   createResponses,
@@ -54,32 +59,89 @@ export async function handleCompletion(c: Context) {
     anthropicPayload.model = getSmallModel()
   }
 
-  const useResponsesApi = shouldUseResponsesApi(anthropicPayload.model)
+  const openAIPayload = translateToOpenAI(anthropicPayload)
+
+  const selection = await accountsManager.selectAccountForRequest([
+    {
+      modelId: anthropicPayload.model,
+      endpoint: RESPONSES_ENDPOINT,
+    },
+    {
+      modelId: openAIPayload.model,
+      endpoint: CHAT_COMPLETIONS_ENDPOINT,
+    },
+  ])
+
+  if (!selection.ok) {
+    if (selection.reason === "MODEL_NOT_SUPPORTED") {
+      return c.json(
+        {
+          error: {
+            message: `Model "${anthropicPayload.model}" is not available for any configured account.`,
+            type: "invalid_request_error",
+          },
+        },
+        400,
+      )
+    }
+
+    return c.json(
+      {
+        error: {
+          message:
+            "All accounts have exhausted their quota. Please wait for quota refresh or add additional accounts.",
+          type: "rate_limit_error",
+        },
+      },
+      429,
+    )
+  }
+
+  const { account, reservation, endpoint } = selection
 
   if (state.manualApprove) {
     await awaitApproval()
   }
 
-  if (useResponsesApi) {
-    return await handleWithResponsesApi(c, anthropicPayload)
-  }
+  try {
+    if (endpoint === RESPONSES_ENDPOINT) {
+      return await handleWithResponsesApi(c, anthropicPayload, account)
+    }
 
-  return await handleWithChatCompletions(c, anthropicPayload)
+    return await handleWithChatCompletions(c, openAIPayload, account)
+  } catch (error) {
+    if (error instanceof HTTPError && error.response.status === 401) {
+      accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
+    }
+    throw error
+  } finally {
+    // Refresh quota after request completes
+    await accountsManager.finalizeQuota(account, reservation)
+  }
 }
 
+const CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
 const RESPONSES_ENDPOINT = "/responses"
+
+const toAccountContext = (account: AccountRuntime): AccountContext => ({
+  githubToken: account.githubToken,
+  copilotToken: account.copilotToken,
+  accountType: account.accountType,
+  vsCodeVersion: account.vsCodeVersion,
+})
 
 const handleWithChatCompletions = async (
   c: Context,
-  anthropicPayload: AnthropicMessagesPayload,
+  openAIPayload: ChatCompletionsPayload,
+  account: AccountRuntime,
 ) => {
-  const openAIPayload = translateToOpenAI(anthropicPayload)
   logger.debug(
     "Translated OpenAI request payload:",
     JSON.stringify(openAIPayload),
   )
 
-  const response = await createChatCompletions(openAIPayload)
+  const ctx = toAccountContext(account)
+  const response = await createChatCompletions(openAIPayload, ctx)
 
   if (isNonStreaming(response)) {
     logger.debug(
@@ -131,6 +193,7 @@ const handleWithChatCompletions = async (
 const handleWithResponsesApi = async (
   c: Context,
   anthropicPayload: AnthropicMessagesPayload,
+  account: AccountRuntime,
 ) => {
   const responsesPayload =
     translateAnthropicMessagesToResponsesPayload(anthropicPayload)
@@ -140,10 +203,15 @@ const handleWithResponsesApi = async (
   )
 
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
-  const response = await createResponses(responsesPayload, {
-    vision,
-    initiator,
-  })
+  const ctx = toAccountContext(account)
+  const response = await createResponses(
+    responsesPayload,
+    {
+      vision,
+      initiator,
+    },
+    ctx,
+  )
 
   if (responsesPayload.stream && isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Responses API)")
@@ -210,13 +278,6 @@ const handleWithResponsesApi = async (
     JSON.stringify(anthropicResponse),
   )
   return c.json(anthropicResponse)
-}
-
-const shouldUseResponsesApi = (modelId: string): boolean => {
-  const selectedModel = state.models?.data.find((model) => model.id === modelId)
-  return (
-    selectedModel?.supported_endpoints?.includes(RESPONSES_ENDPOINT) ?? false
-  )
 }
 
 const isNonStreaming = (

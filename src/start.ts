@@ -6,18 +6,23 @@ import consola from "consola"
 import { serve, type ServerHandler } from "srvx"
 import invariant from "tiny-invariant"
 
+import { accountsManager } from "./lib/accounts-manager"
+import { addAccountToRegistry, saveAccountToken } from "./lib/accounts-registry"
 import { mergeConfigWithDefaults } from "./lib/config"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
-import { setupCopilotToken, setupGitHubToken } from "./lib/token"
-import { cacheModels, cacheVSCodeVersion } from "./lib/utils"
+import { parseAccountType, type AccountType } from "./lib/types/account"
+import { cacheVSCodeVersion } from "./lib/utils"
+import { getDeviceCode } from "./services/github/get-device-code"
+import { getGitHubUser } from "./services/github/get-user"
+import { pollAccessToken } from "./services/github/poll-access-token"
 
 interface RunServerOptions {
   port: number
   verbose: boolean
-  accountType: string
+  accountType: AccountType
   manual: boolean
   rateLimit?: number
   rateLimitWait: boolean
@@ -25,6 +30,44 @@ interface RunServerOptions {
   claudeCode: boolean
   showToken: boolean
   proxyEnv: boolean
+}
+
+/**
+ * Run the interactive authentication flow to add a new account.
+ * Called automatically when no accounts are found.
+ */
+async function runAuthFlow(accountType: AccountType): Promise<void> {
+  consola.warn("No accounts found. Starting authentication flow...")
+
+  // Start device code flow
+  const deviceResponse = await getDeviceCode()
+  consola.info(
+    `Please enter the code "${deviceResponse.user_code}" at ${deviceResponse.verification_uri}`,
+  )
+
+  // Poll for access token
+  const token = await pollAccessToken(deviceResponse)
+
+  if (state.showToken) {
+    consola.info("GitHub token:", token)
+  }
+
+  // Get user info to determine account ID
+  const user = await getGitHubUser({
+    githubToken: token,
+    accountType,
+  })
+  const accountId = user.login
+
+  // Save token and add to registry
+  await saveAccountToken(accountId, token)
+  await addAccountToRegistry({
+    id: accountId,
+    accountType,
+    addedAt: Date.now(),
+  })
+
+  consola.success(`Account "${accountId}" added successfully!`)
 }
 
 export async function runServer(options: RunServerOptions): Promise<void> {
@@ -54,30 +97,49 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   await ensurePaths()
   await cacheVSCodeVersion()
 
+  // Initialize accounts manager with VS Code version
+  await accountsManager.initialize(state.vsCodeVersion)
+
+  // If --github-token is provided, set it as a temporary (high priority) account
   if (options.githubToken) {
-    state.githubToken = options.githubToken
-    consola.info("Using provided GitHub token")
-  } else {
-    await setupGitHubToken()
+    await accountsManager.setTemporaryAccount(
+      options.githubToken,
+      options.accountType,
+    )
+    consola.info("Using provided GitHub token as temporary account")
   }
 
-  await setupCopilotToken()
-  await cacheModels()
+  // Check if we have any accounts, if not, start the auth flow
+  if (!accountsManager.hasAccounts()) {
+    try {
+      await runAuthFlow(options.accountType)
+
+      // Re-initialize accounts manager with the new account
+      accountsManager.shutdown()
+      await accountsManager.initialize(state.vsCodeVersion)
+    } catch (error) {
+      consola.error("Failed to add account:", error)
+      process.exit(1)
+    }
+  }
+
+  // Get models from the first available account
+  const models = accountsManager.getFirstAccountModels()
 
   consola.info(
-    `Available models: \n${state.models?.data.map((model) => `- ${model.id}`).join("\n")}`,
+    `Available models: \n${models?.data.map((model) => `- ${model.id}`).join("\n") ?? "(no models loaded)"}`,
   )
 
   const serverUrl = `http://localhost:${options.port}`
 
   if (options.claudeCode) {
-    invariant(state.models, "Models should be loaded by now")
+    invariant(models, "Models should be loaded by now")
 
     const selectedModel = await consola.prompt(
       "Select a model to use with Claude Code",
       {
         type: "select",
-        options: state.models.data.map((model) => model.id),
+        options: models.data.map((model) => model.id),
       },
     )
 
@@ -85,7 +147,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
       "Select a small model to use with Claude Code",
       {
         type: "select",
-        options: state.models.data.map((model) => model.id),
+        options: models.data.map((model) => model.id),
       },
     )
 
@@ -200,10 +262,18 @@ export const start = defineCommand({
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       rateLimitRaw === undefined ? undefined : Number.parseInt(rateLimitRaw, 10)
 
+    let accountType: AccountType
+    try {
+      accountType = parseAccountType(args["account-type"])
+    } catch (error) {
+      consola.error(error instanceof Error ? error.message : String(error))
+      process.exit(1)
+    }
+
     return runServer({
       port: Number.parseInt(args.port, 10),
       verbose: args.verbose,
-      accountType: args["account-type"],
+      accountType,
       manual: args.manual,
       rateLimit,
       rateLimitWait: args.wait,
