@@ -39,7 +39,7 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **Token Visibility**: Option to display GitHub and Copilot tokens during authentication and refresh for debugging (`--show-token`).
 - **Flexible Authentication**: Authenticate interactively or provide a GitHub token directly, suitable for CI/CD environments.
 - **Support for Different Account Types**: Works with individual, business, and enterprise GitHub Copilot plans.
-- **Multi-Account Support**: Use multiple GitHub Copilot accounts with automatic switching. When one account's quota is exhausted, the proxy automatically switches to the next available account.
+- **Multi-Account Support**: Use multiple GitHub Copilot accounts with automatic routing: premium models use accounts in order and fall back on quota exhaustion; free models are distributed round-robin across accounts by default (configurable in config.json).
 
 ## Demo
 
@@ -96,7 +96,8 @@ docker run -it -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api
 docker run -it -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api --auth ls -q
 ```
 
-> **Note:** When using multiple accounts, all account data (tokens and registry) is stored in the mounted `copilot-data` directory. The proxy will automatically switch to the next account when the current account's quota is exhausted.
+> **Note:** When using multiple accounts, all account data (tokens and registry) is stored in the mounted `copilot-data` directory.
+> Premium-model requests use accounts in order and automatically switch when premium quota is exhausted; free-model requests are distributed round-robin across accounts by default (configurable in config.json).
 
 ### Docker with Environment Variables
 
@@ -232,6 +233,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
       "gpt-5.1-codex-max": "<built-in exploration prompt>"
     },
     "smallModel": "gpt-5-mini",
+    "freeModelLoadBalancing": true,
     "modelReasoningEfforts": {
       "gpt-5-mini": "low"
     }
@@ -239,6 +241,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
   ```
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts.
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to `gpt-5-mini`.
+- **freeModelLoadBalancing:** Enable round-robin routing for free-model requests across multiple accounts. Defaults to `true`. Set to `false` to route free-model requests sequentially (same ordering strategy as premium models).
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
@@ -438,4 +441,7 @@ bun run start
   - `--rate-limit <seconds>`: Enforces a minimum time interval between requests. For example, `copilot-api start --rate-limit 30` will ensure there's at least a 30-second gap between requests.
   - `--wait`: Use this with `--rate-limit`. It makes the server wait for the cooldown period to end instead of rejecting the request with an error. This is useful for clients that don't automatically retry on rate limit errors.
 - If you have a GitHub business or enterprise plan account with Copilot, use the `--account-type` flag (e.g., `--account-type business`). See the [official documentation](https://docs.github.com/en/enterprise-cloud@latest/copilot/managing-copilot/managing-github-copilot-in-your-organization/managing-access-to-github-copilot-in-your-organization/managing-github-copilot-access-to-your-organizations-network#configuring-copilot-subscription-based-network-routing-for-your-enterprise-or-organization) for more details.
-- **Multi-account quota management**: Add multiple GitHub Copilot accounts using `auth add`. Accounts are used in the order they were added. When an account's premium request quota (`remaining=0`) is exhausted, the proxy automatically switches to the next account.
+- **Multi-account request routing**: Add multiple GitHub Copilot accounts using `auth add`.
+  - **Premium models**: Accounts are tried in the order they were added. When an account's premium request quota (`remaining=0`) is exhausted (or insufficient for the selected model), the proxy automatically switches to the next eligible account.
+  - **Free models**: By default, requests are distributed round-robin across all eligible accounts (including the temporary account created via `start --github-token ...`). Set `freeModelLoadBalancing=false` in `config.json` to disable this and route free-model requests sequentially.
+  - **Model classification**: Based on Copilot model metadata (`billing.is_premium` / `billing.multiplier`). Missing billing info or `billing.is_premium !== true` is treated as free.
