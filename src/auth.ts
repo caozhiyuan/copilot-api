@@ -10,6 +10,7 @@ import {
   removeAccountFromRegistry,
   removeAccountToken,
   saveAccountToken,
+  saveRegistry,
 } from "./lib/accounts-registry"
 import { ensurePaths } from "./lib/paths"
 import { state } from "./lib/state"
@@ -116,8 +117,12 @@ const authAdd = defineCommand({
     // Save token and check if account already exists
     await saveAccountToken(accountId, token)
     const existingAccounts = await listAccountsFromRegistry()
+    const alreadyExists = existingAccounts.some((acc) => acc.id === accountId)
 
-    if (existingAccounts.some((acc) => acc.id === accountId)) {
+    if (alreadyExists) {
+      // Touch registry file so a running server can hot-reload updated tokens.
+      await saveRegistry({ version: 1, accounts: existingAccounts })
+
       consola.success(
         `Account "${accountId}" already exists. Token has been updated.`,
       )

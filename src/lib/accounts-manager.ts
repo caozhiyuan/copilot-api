@@ -37,6 +37,11 @@ const QUOTA_CACHE_TTL = 45 * 1000
 /** Debounce delay for registry reload in milliseconds */
 const RELOAD_DEBOUNCE_MS = 500
 
+/** Registry watcher restart initial delay in milliseconds */
+const WATCHER_RESTART_INITIAL_DELAY_MS = 1000
+/** Registry watcher restart max delay in milliseconds */
+const WATCHER_RESTART_MAX_DELAY_MS = 60 * 1000
+
 export interface AccountRequestCandidate {
   modelId: string
   endpoint: string
@@ -78,6 +83,8 @@ export class AccountsManager {
   // Registry file watcher for hot reload
   private registryWatcher?: fs.FSWatcher
   private reloadDebounceTimer?: ReturnType<typeof setTimeout>
+  private registryWatcherRestartTimer?: ReturnType<typeof setTimeout>
+  private registryWatcherRestartDelayMs = WATCHER_RESTART_INITIAL_DELAY_MS
   private isReloading = false
 
   /**
@@ -207,6 +214,10 @@ export class AccountsManager {
         const { token, refresh_in } = await getCopilotToken(ctx)
         // eslint-disable-next-line require-atomic-updates
         account.copilotToken = token
+        // eslint-disable-next-line require-atomic-updates
+        account.failed = false
+        // eslint-disable-next-line require-atomic-updates
+        account.failureReason = undefined
         consola.debug(`Refreshed token for account ${account.id}`)
 
         // Update the timer with new refresh interval
@@ -709,11 +720,33 @@ export class AccountsManager {
         },
       )
 
+      // Successful start: reset restart backoff.
+      this.registryWatcherRestartDelayMs = WATCHER_RESTART_INITIAL_DELAY_MS
+      if (this.registryWatcherRestartTimer) {
+        clearTimeout(this.registryWatcherRestartTimer)
+        this.registryWatcherRestartTimer = undefined
+      }
+
       // Handle watcher errors (e.g., file deleted)
       this.registryWatcher.on("error", (error) => {
         consola.debug("Registry watcher error:", error)
-        // Try to restart the watcher after a delay
-        setTimeout(() => this.startRegistryWatcher(), 1000)
+
+        const delayMs = this.registryWatcherRestartDelayMs
+        this.registryWatcherRestartDelayMs = Math.min(
+          this.registryWatcherRestartDelayMs * 2,
+          WATCHER_RESTART_MAX_DELAY_MS,
+        )
+
+        // Close broken watcher to avoid repeated error events.
+        this.stopRegistryWatcher()
+
+        // Try to restart the watcher after a delay (with backoff)
+        this.registryWatcherRestartTimer = setTimeout(() => {
+          this.registryWatcherRestartTimer = undefined
+          this.startRegistryWatcher()
+        }, delayMs)
+
+        consola.debug(`Restarting registry watcher in ${delayMs}ms`)
       })
 
       consola.debug("Started registry file watcher")
@@ -739,7 +772,8 @@ export class AccountsManager {
 
   /**
    * Reload the registry and perform incremental updates.
-   * Only adds new accounts and removes deleted ones.
+   * Adds new accounts, removes deleted ones, and reinitializes existing accounts
+   * when token/accountType changes.
    */
   private async reloadRegistry(): Promise<void> {
     // Prevent concurrent reloads
@@ -756,44 +790,26 @@ export class AccountsManager {
       // Track changes for logging
       const added: Array<string> = []
       const removed: Array<string> = []
+      const updated: Array<string> = []
 
-      // 1. Find and remove deleted accounts (currentIds - newIds)
-      for (const id of currentIds) {
-        if (!newIds.has(id)) {
-          const account = this.accounts.get(id)
-          if (account) {
-            this.stopTokenRefresh(account)
-            this.accounts.delete(id)
-            removed.push(id)
-          }
-        }
-      }
+      this.removeDeletedAccounts(currentIds, newIds, removed)
 
-      // 2. Find and add new accounts (newIds - currentIds)
+      // Add new accounts (newIds - currentIds)
       for (const meta of newMetas) {
         if (!currentIds.has(meta.id)) {
           await this.addNewAccount(meta, added)
         }
       }
 
-      // 3. Update accountOrder to reflect new order
+      // Update existing accounts when meta/token changed
+      await this.reinitializeUpdatedAccounts(newMetas, currentIds, updated)
+
+      // Update accountOrder to reflect new order
       this.accountOrder = newMetas
         .map((m) => m.id)
         .filter((id) => this.accounts.has(id))
 
-      // Log changes if any
-      if (added.length > 0 || removed.length > 0) {
-        const changes: Array<string> = []
-        if (added.length > 0) {
-          changes.push(`added: ${added.join(", ")}`)
-        }
-        if (removed.length > 0) {
-          changes.push(`removed: ${removed.join(", ")}`)
-        }
-        consola.info(
-          `Registry reloaded (${changes.join("; ")}). Total: ${this.accounts.size} account(s)`,
-        )
-      }
+      this.logRegistryReloadChanges(added, removed, updated)
     } catch (error) {
       consola.error("Failed to reload registry:", error)
       this.shutdown()
@@ -801,6 +817,105 @@ export class AccountsManager {
     } finally {
       this.isReloading = false
     }
+  }
+
+  private removeDeletedAccounts(
+    currentIds: Set<string>,
+    newIds: Set<string>,
+    removed: Array<string>,
+  ): void {
+    for (const id of currentIds) {
+      if (!newIds.has(id)) {
+        const account = this.accounts.get(id)
+        if (!account) {
+          continue
+        }
+
+        this.stopTokenRefresh(account)
+        this.accounts.delete(id)
+        removed.push(id)
+      }
+    }
+  }
+
+  private async reinitializeUpdatedAccounts(
+    newMetas: Array<{ id: string; accountType: AccountType; addedAt: number }>,
+    currentIds: Set<string>,
+    updated: Array<string>,
+  ): Promise<void> {
+    for (const meta of newMetas) {
+      if (!currentIds.has(meta.id)) {
+        continue
+      }
+
+      const account = this.accounts.get(meta.id)
+      if (!account) {
+        continue
+      }
+
+      const token = await loadAccountToken(meta.id)
+      if (!token) {
+        consola.warn(`No token found for account ${meta.id}, skipping update`)
+        continue
+      }
+
+      const accountTypeChanged = account.accountType !== meta.accountType
+      const tokenChanged = account.githubToken !== token
+      const addedAtChanged = account.addedAt !== meta.addedAt
+
+      // Keep runtime metadata in sync with the registry.
+      if (accountTypeChanged) {
+        account.accountType = meta.accountType
+      }
+      if (addedAtChanged) {
+        account.addedAt = meta.addedAt
+      }
+      if (tokenChanged) {
+        account.githubToken = token
+      }
+
+      if (!accountTypeChanged && !tokenChanged) {
+        continue
+      }
+
+      try {
+        await this.initializeAccount(account)
+        updated.push(meta.id)
+      } catch (error) {
+        consola.error(
+          `Failed to reinitialize account ${meta.id} after update:`,
+          error,
+        )
+        account.failed = true
+        account.failureReason = String(error)
+        updated.push(`${meta.id} (failed)`)
+      }
+    }
+  }
+
+  private logRegistryReloadChanges(
+    added: Array<string>,
+    removed: Array<string>,
+    updated: Array<string>,
+  ): void {
+    if (added.length === 0 && removed.length === 0 && updated.length === 0) {
+      return
+    }
+
+    const changes: Array<string> = []
+    if (added.length > 0) {
+      changes.push(`added: ${added.join(", ")}`)
+    }
+    if (removed.length > 0) {
+      changes.push(`removed: ${removed.join(", ")}`)
+    }
+    if (updated.length > 0) {
+      changes.push(`updated: ${updated.join(", ")}`)
+    }
+
+    consola.info(
+      `Registry reloaded (${changes.join("; ")}). Total: ${this.accounts.size} account(s)`,
+    )
   }
 
   /**
@@ -842,6 +957,10 @@ export class AccountsManager {
     if (this.reloadDebounceTimer) {
       clearTimeout(this.reloadDebounceTimer)
       this.reloadDebounceTimer = undefined
+    }
+    if (this.registryWatcherRestartTimer) {
+      clearTimeout(this.registryWatcherRestartTimer)
+      this.registryWatcherRestartTimer = undefined
     }
     if (this.registryWatcher) {
       this.registryWatcher.close()
