@@ -6,6 +6,7 @@ import { PATHS } from "./paths"
 export interface AppConfig {
   extraPrompts?: Record<string, string>
   smallModel?: string
+  freeModelLoadBalancing?: boolean
   modelReasoningEfforts?: Record<
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -25,6 +26,7 @@ const defaultConfig: AppConfig = {
     "gpt-5.1-codex-max": gpt5ExplorationPrompt,
   },
   smallModel: "gpt-5-mini",
+  freeModelLoadBalancing: true,
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
   },
@@ -96,9 +98,53 @@ function mergeDefaultExtraPrompts(config: AppConfig): {
   }
 }
 
+function mergeDefaultFreeModelLoadBalancing(config: AppConfig): {
+  mergedConfig: AppConfig
+  changed: boolean
+} {
+  if (typeof config.freeModelLoadBalancing === "boolean") {
+    return { mergedConfig: config, changed: false }
+  }
+
+  return {
+    mergedConfig: {
+      ...config,
+      freeModelLoadBalancing: defaultConfig.freeModelLoadBalancing ?? true,
+    },
+    changed: true,
+  }
+}
+
+type ConfigMergeResult = {
+  mergedConfig: AppConfig
+  changed: boolean
+}
+
+type ConfigMergeFn = (config: AppConfig) => ConfigMergeResult
+
+function applyConfigMerges(
+  config: AppConfig,
+  mergeFns: ReadonlyArray<ConfigMergeFn>,
+): ConfigMergeResult {
+  return mergeFns.reduce<ConfigMergeResult>(
+    (acc, mergeFn) => {
+      const result = mergeFn(acc.mergedConfig)
+      return {
+        mergedConfig: result.mergedConfig,
+        changed: acc.changed || result.changed,
+      }
+    },
+    { mergedConfig: config, changed: false },
+  )
+}
+
 export function mergeConfigWithDefaults(): AppConfig {
   const config = readConfigFromDisk()
-  const { mergedConfig, changed } = mergeDefaultExtraPrompts(config)
+
+  const { mergedConfig, changed } = applyConfigMerges(config, [
+    mergeDefaultExtraPrompts,
+    mergeDefaultFreeModelLoadBalancing,
+  ])
 
   if (changed) {
     try {
@@ -108,10 +154,7 @@ export function mergeConfigWithDefaults(): AppConfig {
         "utf8",
       )
     } catch (writeError) {
-      consola.warn(
-        "Failed to write merged extraPrompts to config file",
-        writeError,
-      )
+      consola.warn("Failed to write merged config defaults", writeError)
     }
   }
 
@@ -132,6 +175,11 @@ export function getExtraPromptForModel(model: string): string {
 export function getSmallModel(): string {
   const config = getConfig()
   return config.smallModel ?? "gpt-5-mini"
+}
+
+export function isFreeModelLoadBalancingEnabled(): boolean {
+  const config = getConfig()
+  return config.freeModelLoadBalancing ?? true
 }
 
 export function getReasoningEffortForModel(

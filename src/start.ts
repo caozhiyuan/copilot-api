@@ -8,7 +8,10 @@ import invariant from "tiny-invariant"
 
 import { accountsManager } from "./lib/accounts-manager"
 import { addAccountToRegistry, saveAccountToken } from "./lib/accounts-registry"
-import { mergeConfigWithDefaults } from "./lib/config"
+import {
+  isFreeModelLoadBalancingEnabled,
+  mergeConfigWithDefaults,
+} from "./lib/config"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
@@ -73,6 +76,9 @@ async function runAuthFlow(accountType: AccountType): Promise<void> {
 export async function runServer(options: RunServerOptions): Promise<void> {
   // Ensure config is merged with defaults at startup
   mergeConfigWithDefaults()
+  accountsManager.setFreeModelLoadBalancingEnabled(
+    isFreeModelLoadBalancingEnabled(),
+  )
 
   if (options.proxyEnv) {
     initProxyFromEnv()

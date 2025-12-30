@@ -79,6 +79,8 @@ export class AccountsManager {
   private accountOrder: Array<string> = []
   private temporaryAccount?: AccountRuntime
   private vsCodeVersion?: string
+  private freeModelCursor = 0
+  private freeModelLoadBalancingEnabled = true
 
   // Registry file watcher for hot reload
   private registryWatcher?: fs.FSWatcher
@@ -137,6 +139,10 @@ export class AccountsManager {
 
     // Start watching the registry file for hot reload
     this.startRegistryWatcher()
+  }
+
+  setFreeModelLoadBalancingEnabled(enabled: boolean): void {
+    this.freeModelLoadBalancingEnabled = enabled
   }
 
   /**
@@ -434,6 +440,55 @@ export class AccountsManager {
     return null
   }
 
+  private selectFreeAccountForRequest(
+    orderedAccounts: Array<AccountRuntime>,
+    candidates: Array<AccountRequestCandidate>,
+  ): SelectAccountForRequestResult {
+    const count = orderedAccounts.length
+    const start = this.freeModelCursor % count
+
+    let supportedCandidateFound = false
+
+    for (let i = 0; i < count; i++) {
+      const idx = (start + i) % count
+      const account = orderedAccounts[idx]
+      if (this.isAccountFailed(account)) {
+        continue
+      }
+
+      const supported = this.pickSupportedCandidate(account, candidates)
+      if (!supported) {
+        continue
+      }
+
+      supportedCandidateFound = true
+
+      const { candidate, model } = supported
+      const costUnits = this.getCostUnits(model)
+
+      // Defensive: free path should only be used for free models.
+      if (costUnits > 0) {
+        continue
+      }
+
+      this.freeModelCursor = (idx + 1) % count
+
+      return {
+        ok: true,
+        account,
+        selectedModel: model,
+        endpoint: candidate.endpoint,
+        costUnits,
+      }
+    }
+
+    if (!supportedCandidateFound) {
+      return { ok: false, reason: "MODEL_NOT_SUPPORTED" }
+    }
+
+    return { ok: false, reason: "NO_QUOTA" }
+  }
+
   /**
    * Select an available account for a specific request (model + endpoint).
    * Uses reservation to avoid oversubscribing premium quota under concurrency.
@@ -478,6 +533,23 @@ export class AccountsManager {
       supportedCandidateFound = true
 
       const { candidate, model } = supported
+      const costUnits = this.getCostUnits(model)
+
+      if (costUnits <= 0) {
+        if (this.freeModelLoadBalancingEnabled) {
+          // Free model: RR load balancing across accounts (including temporaryAccount).
+          return this.selectFreeAccountForRequest(orderedAccounts, candidates)
+        }
+
+        // Free model: sequential routing (same ordering strategy as premium models).
+        return {
+          ok: true,
+          account,
+          selectedModel: model,
+          endpoint: candidate.endpoint,
+          costUnits,
+        }
+      }
 
       if (!account.unlimited && this.isQuotaCacheExpired(account)) {
         await this.refreshQuota(account)
@@ -487,9 +559,7 @@ export class AccountsManager {
         continue
       }
 
-      const costUnits = this.getCostUnits(model)
-
-      if (account.unlimited || costUnits <= 0) {
+      if (account.unlimited) {
         return {
           ok: true,
           account,
@@ -808,6 +878,9 @@ export class AccountsManager {
       this.accountOrder = newMetas
         .map((m) => m.id)
         .filter((id) => this.accounts.has(id))
+
+      // Reset free-model RR cursor on account list/order changes.
+      this.freeModelCursor = 0
 
       this.logRegistryReloadChanges(added, removed, updated)
     } catch (error) {
