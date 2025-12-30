@@ -13,3 +13,5 @@ node_modules/
 # build output
 dist/
 /.serena
+.DS_Store
+/.claude
