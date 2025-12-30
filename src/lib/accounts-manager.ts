@@ -14,6 +14,27 @@ import { getCopilotUsage } from "~/services/github/get-copilot-usage"
 import { getGitHubUser } from "~/services/github/get-user"
 
 import {
+  applyCopilotTokenIfCurrent,
+  applyModelsIfCurrent,
+  applyQuotaRefreshSuccessIfCurrent,
+  applyTokenRefreshFailureIfCurrent,
+  applyTokenRefreshSuccessIfCurrent,
+  applyUnauthorizedIfCurrent,
+  isAuthSnapshotCurrent,
+  isSameAuthSnapshot,
+  setAccountFailedState,
+  takeAuthSnapshot,
+  toAccountContextFromSnapshot,
+  type AuthSnapshot,
+} from "./accounts-manager-auth"
+import {
+  getCostUnits,
+  getEffectivePremiumRemaining,
+  releasePremiumReservation,
+  reservePremiumUnits,
+  type QuotaReservation,
+} from "./accounts-manager-quota"
+import {
   hasLegacyToken,
   hasRegistry,
   listAccountsFromRegistry,
@@ -24,14 +45,7 @@ import {
 } from "./accounts-registry"
 import { PATHS } from "./paths"
 
-/**
- * Quota cache TTL in milliseconds (45 seconds).
- *
- * This TTL only applies to the cached quota used during the pre-request
- * check in `selectAccountForRequest`. After a request completes,
- * `finalizeQuota` calls `refreshQuota`, which always fetches the latest
- * quota from the API, effectively bypassing this TTL for active accounts.
- */
+/** Quota cache TTL in milliseconds (45 seconds) for pre-request selection. */
 const QUOTA_CACHE_TTL = 45 * 1000
 
 /** Debounce delay for registry reload in milliseconds */
@@ -47,9 +61,7 @@ export interface AccountRequestCandidate {
   endpoint: string
 }
 
-export interface QuotaReservation {
-  id: symbol
-}
+export type { QuotaReservation } from "./accounts-manager-quota"
 
 export type SelectAccountForRequestFailureReason =
   | "NO_ACCOUNTS"
@@ -70,10 +82,7 @@ export type SelectAccountForRequestResult =
       reason: SelectAccountForRequestFailureReason
     }
 
-/**
- * Manages multiple GitHub Copilot accounts at runtime.
- * Handles account selection, token refresh, and quota management.
- */
+/** Manages multiple GitHub Copilot accounts at runtime. */
 export class AccountsManager {
   private accounts: Map<string, AccountRuntime> = new Map()
   private accountOrder: Array<string> = []
@@ -82,6 +91,12 @@ export class AccountsManager {
   private freeModelCursor = 0
   private freeModelLoadBalancingEnabled = true
 
+  private quotaRefreshSnapshotByAccount = new WeakMap<
+    AccountRuntime,
+    AuthSnapshot
+  >()
+  private tokenRefreshEnabledAccounts = new WeakSet<AccountRuntime>()
+
   // Registry file watcher for hot reload
   private registryWatcher?: fs.FSWatcher
   private reloadDebounceTimer?: ReturnType<typeof setTimeout>
@@ -89,10 +104,7 @@ export class AccountsManager {
   private registryWatcherRestartDelayMs = WATCHER_RESTART_INITIAL_DELAY_MS
   private isReloading = false
 
-  /**
-   * Initialize the accounts manager.
-   * Loads accounts from registry and migrates legacy token if needed.
-   */
+  /** Initialize accounts manager (load registry, migrate legacy token). */
   async initialize(vsCodeVersion?: string): Promise<void> {
     this.vsCodeVersion = vsCodeVersion
 
@@ -145,34 +157,122 @@ export class AccountsManager {
     this.freeModelLoadBalancingEnabled = enabled
   }
 
-  /**
-   * Initialize a single account: get Copilot token and start refresh timer.
-   */
-  private async initializeAccount(account: AccountRuntime): Promise<void> {
-    const ctx = this.toAccountContext(account)
-
-    // Get Copilot token
-    const { token, refresh_in } = await getCopilotToken(ctx)
-    // eslint-disable-next-line require-atomic-updates
-    account.copilotToken = token
-
-    // Start token refresh timer
-    this.startTokenRefresh(account, refresh_in)
-
-    // Get models
-    const updatedCtx = this.toAccountContext(account)
-    // eslint-disable-next-line require-atomic-updates
-    account.models = await getModels(updatedCtx)
-
-    // Refresh quota
-    await this.refreshQuota(account)
-
-    consola.debug(`Account ${account.id} initialized`)
+  private computeTokenRefreshDelayMs(refreshInSeconds: number): number {
+    return Math.max((refreshInSeconds - 60) * 1000, 1000)
   }
 
-  /**
-   * Migrate legacy github_token to the new multi-account system.
-   */
+  private shouldContinueTokenRefresh(
+    account: AccountRuntime,
+    snapshot: AuthSnapshot,
+  ): boolean {
+    return (
+      this.tokenRefreshEnabledAccounts.has(account)
+      && isAuthSnapshotCurrent(account, snapshot)
+    )
+  }
+
+  private async runTokenRefreshTick(
+    account: AccountRuntime,
+    snapshot: AuthSnapshot,
+    refreshInSeconds: number,
+  ): Promise<void> {
+    if (!this.shouldContinueTokenRefresh(account, snapshot)) {
+      return
+    }
+
+    try {
+      const ctx = toAccountContextFromSnapshot(account, snapshot)
+      const { token, refresh_in } = await getCopilotToken(ctx)
+
+      if (!this.shouldContinueTokenRefresh(account, snapshot)) {
+        return
+      }
+
+      const applied = applyTokenRefreshSuccessIfCurrent(
+        account,
+        snapshot,
+        token,
+      )
+      if (!applied) {
+        return
+      }
+
+      consola.debug(`Refreshed token for account ${account.id}`)
+
+      // Schedule next refresh using the new refresh interval.
+      if (!this.shouldContinueTokenRefresh(account, snapshot)) {
+        return
+      }
+      this.startTokenRefresh(account, refresh_in)
+    } catch (error) {
+      consola.error(`Failed to refresh token for ${account.id}:`, error)
+
+      if (!this.shouldContinueTokenRefresh(account, snapshot)) {
+        return
+      }
+
+      applyTokenRefreshFailureIfCurrent(account, snapshot, error)
+
+      // Retry using the previous refresh interval (best effort).
+      if (!this.shouldContinueTokenRefresh(account, snapshot)) {
+        return
+      }
+      this.startTokenRefresh(account, refreshInSeconds)
+    }
+  }
+
+  private finalizeQuotaRefreshPromise(
+    account: AccountRuntime,
+    promise: Promise<void>,
+  ): void {
+    if (account.quotaRefreshPromise !== promise) {
+      return
+    }
+
+    account.isRefreshingQuota = false
+    account.quotaRefreshPromise = undefined
+    this.quotaRefreshSnapshotByAccount.delete(account)
+  }
+
+  /** Initialize a single account. */
+  private async initializeAccount(account: AccountRuntime): Promise<void> {
+    const snapshot = takeAuthSnapshot(account)
+
+    try {
+      // Get Copilot token
+      const tokenCtx = toAccountContextFromSnapshot(account, snapshot)
+      const { token, refresh_in } = await getCopilotToken(tokenCtx)
+
+      if (!applyCopilotTokenIfCurrent(account, snapshot, token)) {
+        return
+      }
+
+      // Start token refresh timer
+      this.startTokenRefresh(account, refresh_in)
+
+      // Get models
+      const modelsCtx = toAccountContextFromSnapshot(account, snapshot, token)
+      const models = await getModels(modelsCtx)
+
+      if (!applyModelsIfCurrent(account, snapshot, models)) {
+        return
+      }
+
+      // Refresh quota
+      await this.refreshQuota(account)
+
+      consola.debug(`Account ${account.id} initialized`)
+    } catch (error) {
+      // Ignore stale results if registry hot reload changed auth.
+      if (!isAuthSnapshotCurrent(account, snapshot)) {
+        return
+      }
+
+      throw error
+    }
+  }
+
+  /** Migrate legacy github_token to the new multi-account system. */
   private async migrateLegacyToken(): Promise<void> {
     const token = await readLegacyToken()
     if (!token) return
@@ -201,9 +301,7 @@ export class AccountsManager {
     }
   }
 
-  /**
-   * Start token refresh timer for an account.
-   */
+  /** Start token refresh timer for an account. */
   private startTokenRefresh(
     account: AccountRuntime,
     refreshInSeconds: number,
@@ -211,46 +309,27 @@ export class AccountsManager {
     // Stop existing timer if any
     this.stopTokenRefresh(account)
 
-    // Refresh 60 seconds before expiration
-    const intervalMs = Math.max((refreshInSeconds - 60) * 1000, 1000)
+    this.tokenRefreshEnabledAccounts.add(account)
 
-    account.refreshTimer = setInterval(async () => {
-      try {
-        const ctx = this.toAccountContext(account)
-        const { token, refresh_in } = await getCopilotToken(ctx)
-        // eslint-disable-next-line require-atomic-updates
-        account.copilotToken = token
-        // eslint-disable-next-line require-atomic-updates
-        account.failed = false
-        // eslint-disable-next-line require-atomic-updates
-        account.failureReason = undefined
-        consola.debug(`Refreshed token for account ${account.id}`)
+    const snapshot = takeAuthSnapshot(account)
+    const delayMs = this.computeTokenRefreshDelayMs(refreshInSeconds)
 
-        // Update the timer with new refresh interval
-        this.startTokenRefresh(account, refresh_in)
-      } catch (error) {
-        consola.error(`Failed to refresh token for ${account.id}:`, error)
-
-        account.failed = true
-
-        account.failureReason = String(error)
-      }
-    }, intervalMs)
+    account.refreshTimer = setTimeout(() => {
+      void this.runTokenRefreshTick(account, snapshot, refreshInSeconds)
+    }, delayMs)
   }
 
-  /**
-   * Stop token refresh timer for an account.
-   */
+  /** Stop token refresh timer for an account. */
   private stopTokenRefresh(account: AccountRuntime): void {
+    this.tokenRefreshEnabledAccounts.delete(account)
+
     if (account.refreshTimer) {
-      clearInterval(account.refreshTimer)
+      clearTimeout(account.refreshTimer)
       account.refreshTimer = undefined
     }
   }
 
-  /**
-   * Stop all token refresh timers.
-   */
+  /** Stop all token refresh timers. */
   private stopAllTokenRefresh(): void {
     for (const account of this.accounts.values()) {
       this.stopTokenRefresh(account)
@@ -260,57 +339,48 @@ export class AccountsManager {
     }
   }
 
-  /**
-   * Refresh quota information for an account.
-   * Uses a flag to prevent concurrent refresh calls.
-   */
+  /** Refresh quota information for an account. */
   async refreshQuota(account: AccountRuntime): Promise<void> {
+    const snapshot = takeAuthSnapshot(account)
+
     if (account.quotaRefreshPromise) {
-      await account.quotaRefreshPromise
-      return
+      const existingSnapshot = this.quotaRefreshSnapshotByAccount.get(account)
+      if (isSameAuthSnapshot(existingSnapshot, snapshot)) {
+        await account.quotaRefreshPromise
+        return
+      }
     }
 
+    account.isRefreshingQuota = true
+
+    const ctx = toAccountContextFromSnapshot(account, snapshot)
     const promise = (async () => {
       try {
-        const ctx = this.toAccountContext(account)
         const usage = await getCopilotUsage(ctx)
         const premium = usage.quota_snapshots.premium_interactions
-
-        // eslint-disable-next-line require-atomic-updates
-        account.premiumRemaining = premium.remaining
-        // eslint-disable-next-line require-atomic-updates
-        account.unlimited = premium.unlimited
-        // eslint-disable-next-line require-atomic-updates
-        account.lastQuotaFetch = Date.now()
-        // eslint-disable-next-line require-atomic-updates
-        account.failed = false
-        // eslint-disable-next-line require-atomic-updates
-        account.failureReason = undefined
+        applyQuotaRefreshSuccessIfCurrent(account, snapshot, premium)
       } catch (error) {
         if (error instanceof HTTPError && error.response.status === 401) {
-          this.markAccountFailed(account.id, "Unauthorized (401)")
+          applyUnauthorizedIfCurrent(account, snapshot, "Unauthorized (401)")
           return
         }
 
         consola.error(`Failed to refresh quota for ${account.id}:`, error)
         // Don't mark as failed for non-401 quota refresh errors
-      } finally {
-        // eslint-disable-next-line require-atomic-updates
-        account.isRefreshingQuota = false
-        // eslint-disable-next-line require-atomic-updates
-        account.quotaRefreshPromise = undefined
       }
     })()
 
-    account.isRefreshingQuota = true
     account.quotaRefreshPromise = promise
+    this.quotaRefreshSnapshotByAccount.set(account, snapshot)
+
+    void promise.finally(() => {
+      this.finalizeQuotaRefreshPromise(account, promise)
+    })
 
     await promise
   }
 
-  /**
-   * Check if quota cache is expired.
-   */
+  /** Check if quota cache is expired. */
   private isQuotaCacheExpired(account: AccountRuntime): boolean {
     if (!account.lastQuotaFetch) return true
     return Date.now() - account.lastQuotaFetch > QUOTA_CACHE_TTL
@@ -331,88 +401,6 @@ export class AccountsManager {
     }
 
     return supported.includes(endpoint)
-  }
-
-  private getCostUnits(model: Model): number {
-    // Per user decision: missing billing => treat as free (costUnits = 0)
-    const billing = model.billing
-    if (!billing) {
-      return 0
-    }
-
-    if (billing.is_premium !== true) {
-      return 0
-    }
-
-    const multiplier = billing.multiplier
-    if (
-      typeof multiplier !== "number"
-      || !Number.isFinite(multiplier)
-      || multiplier <= 0
-    ) {
-      return 1
-    }
-
-    return multiplier
-  }
-
-  private getEffectivePremiumRemaining(
-    account: AccountRuntime,
-  ): number | undefined {
-    if (account.premiumRemaining === undefined) {
-      return undefined
-    }
-
-    const reserved = account.premiumReserved ?? 0
-    return account.premiumRemaining - reserved
-  }
-
-  private reservePremiumUnits(
-    account: AccountRuntime,
-    units: number,
-  ): QuotaReservation | undefined {
-    if (units <= 0) {
-      return undefined
-    }
-
-    const id = Symbol("quotaReservation")
-
-    if (!account.premiumReservations) {
-      account.premiumReservations = new Map()
-    }
-
-    account.premiumReservations.set(id, units)
-    account.premiumReserved = (account.premiumReserved ?? 0) + units
-
-    return { id }
-  }
-
-  private releasePremiumReservation(
-    account: AccountRuntime,
-    reservation?: QuotaReservation,
-  ): void {
-    if (!reservation) {
-      return
-    }
-
-    const reservations = account.premiumReservations
-    if (!reservations) {
-      return
-    }
-
-    const reservedUnits = reservations.get(reservation.id)
-    if (reservedUnits === undefined) {
-      return
-    }
-
-    reservations.delete(reservation.id)
-
-    const nextReserved = (account.premiumReserved ?? 0) - reservedUnits
-    account.premiumReserved = Math.max(0, nextReserved)
-
-    if (reservations.size === 0) {
-      account.premiumReservations = undefined
-    }
   }
 
   private pickSupportedCandidate(
@@ -464,7 +452,7 @@ export class AccountsManager {
       supportedCandidateFound = true
 
       const { candidate, model } = supported
-      const costUnits = this.getCostUnits(model)
+      const costUnits = getCostUnits(model)
 
       // Defensive: free path should only be used for free models.
       if (costUnits > 0) {
@@ -533,7 +521,7 @@ export class AccountsManager {
       supportedCandidateFound = true
 
       const { candidate, model } = supported
-      const costUnits = this.getCostUnits(model)
+      const costUnits = getCostUnits(model)
 
       if (costUnits <= 0) {
         if (this.freeModelLoadBalancingEnabled) {
@@ -569,12 +557,12 @@ export class AccountsManager {
         }
       }
 
-      const effectiveRemaining = this.getEffectivePremiumRemaining(account)
+      const effectiveRemaining = getEffectivePremiumRemaining(account)
       if (effectiveRemaining !== undefined && effectiveRemaining < costUnits) {
         continue
       }
 
-      const reservation = this.reservePremiumUnits(account, costUnits)
+      const reservation = reservePremiumUnits(account, costUnits)
 
       return {
         ok: true,
@@ -601,7 +589,7 @@ export class AccountsManager {
     account: AccountRuntime,
     reservation?: QuotaReservation,
   ): Promise<void> {
-    this.releasePremiumReservation(account, reservation)
+    releasePremiumReservation(account, reservation)
 
     try {
       await this.refreshQuota(account)
@@ -616,16 +604,12 @@ export class AccountsManager {
   markAccountFailed(id: string, reason: string): void {
     const account = this.accounts.get(id)
     if (account) {
-      account.failed = true
-      account.failureReason = reason
-      consola.warn(`Account ${id} marked as failed: ${reason}`)
+      setAccountFailedState(account, reason)
       return
     }
 
     if (this.temporaryAccount && this.temporaryAccount.id === id) {
-      this.temporaryAccount.failed = true
-      this.temporaryAccount.failureReason = reason
-      consola.warn(`Account ${id} marked as failed: ${reason}`)
+      setAccountFailedState(this.temporaryAccount, reason)
     }
   }
 
