@@ -302,3 +302,50 @@ test("free RR does not affect premium selection", async () => {
   expect([free1.account.id, free2.account.id]).toEqual(["a", "b"])
   expect(premiumSelection.account.id).toBe("a")
 })
+
+test("selectAccountForRequest routes free models sequentially when freeModelLoadBalancing is disabled", async () => {
+  const model = makeModel({ id: "free-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([model]),
+  }
+
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([model]),
+  }
+
+  const c: AccountRuntime = {
+    id: "c",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_c",
+    models: makeModelsResponse([model]),
+  }
+
+  const manager = setupManager([a, b, c])
+  manager.setFreeModelLoadBalancingEnabled(false)
+
+  const seen: Array<string> = []
+  for (let i = 0; i < 3; i++) {
+    const selection = await manager.selectAccountForRequest([
+      { modelId: "free-model", endpoint: "/chat/completions" },
+    ])
+
+    expect(selection.ok).toBe(true)
+    if (!selection.ok) return
+
+    seen.push(selection.account.id)
+    expect(selection.costUnits).toBe(0)
+    expect(selection.reservation).toBeUndefined()
+  }
+
+  expect(seen).toEqual(["a", "a", "a"])
+})

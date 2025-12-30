@@ -80,6 +80,7 @@ export class AccountsManager {
   private temporaryAccount?: AccountRuntime
   private vsCodeVersion?: string
   private freeModelCursor = 0
+  private freeModelLoadBalancingEnabled = true
 
   // Registry file watcher for hot reload
   private registryWatcher?: fs.FSWatcher
@@ -138,6 +139,10 @@ export class AccountsManager {
 
     // Start watching the registry file for hot reload
     this.startRegistryWatcher()
+  }
+
+  setFreeModelLoadBalancingEnabled(enabled: boolean): void {
+    this.freeModelLoadBalancingEnabled = enabled
   }
 
   /**
@@ -530,9 +535,20 @@ export class AccountsManager {
       const { candidate, model } = supported
       const costUnits = this.getCostUnits(model)
 
-      // Free model: RR load balancing across accounts (including temporaryAccount).
       if (costUnits <= 0) {
-        return this.selectFreeAccountForRequest(orderedAccounts, candidates)
+        if (this.freeModelLoadBalancingEnabled) {
+          // Free model: RR load balancing across accounts (including temporaryAccount).
+          return this.selectFreeAccountForRequest(orderedAccounts, candidates)
+        }
+
+        // Free model: sequential routing (same ordering strategy as premium models).
+        return {
+          ok: true,
+          account,
+          selectedModel: model,
+          endpoint: candidate.endpoint,
+          costUnits,
+        }
       }
 
       if (!account.unlimited && this.isQuotaCacheExpired(account)) {
