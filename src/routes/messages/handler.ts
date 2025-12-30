@@ -88,7 +88,8 @@ export async function handleCompletion(c: Context) {
     return c.json(
       {
         error: {
-          message: "All accounts exhausted. Please try again later.",
+          message:
+            "All accounts have exhausted their quota. Please wait for quota refresh or add additional accounts.",
           type: "rate_limit_error",
         },
       },

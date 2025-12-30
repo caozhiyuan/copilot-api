@@ -24,7 +24,14 @@ import {
 } from "./accounts-registry"
 import { PATHS } from "./paths"
 
-/** Quota cache TTL in milliseconds (45 seconds) */
+/**
+ * Quota cache TTL in milliseconds (45 seconds).
+ *
+ * This TTL only applies to the cached quota used during the pre-request
+ * check in `selectAccountForRequest`. After a request completes,
+ * `finalizeQuota` calls `refreshQuota`, which always fetches the latest
+ * quota from the API, effectively bypassing this TTL for active accounts.
+ */
 const QUOTA_CACHE_TTL = 45 * 1000
 
 /** Debounce delay for registry reload in milliseconds */
@@ -192,7 +199,7 @@ export class AccountsManager {
     this.stopTokenRefresh(account)
 
     // Refresh 60 seconds before expiration
-    const intervalMs = (refreshInSeconds - 60) * 1000
+    const intervalMs = Math.max((refreshInSeconds - 60) * 1000, 1000)
 
     account.refreshTimer = setInterval(async () => {
       try {

@@ -302,10 +302,12 @@ export const auth = defineCommand({
     },
   },
   async run(ctx) {
-    // Check if a subcommand was specified in rawArgs
-    // If so, don't run the default 'add' behavior (the subcommand will handle it)
-    const subCommandNames = new Set(["add", "ls", "rm"])
-    const hasSubCommand = ctx.rawArgs.some((arg) => subCommandNames.has(arg))
+    // Check if a subcommand was specified in rawArgs.
+    // Only treat the *first* raw arg as a subcommand to avoid false positives
+    // when flags accept values like "add"/"ls"/"rm".
+    const firstArg = ctx.rawArgs[0]
+    const hasSubCommand =
+      firstArg === "add" || firstArg === "ls" || firstArg === "rm"
 
     // Backward compatibility: if no subcommand, run 'add'
     if (!hasSubCommand && authAdd.run) {
