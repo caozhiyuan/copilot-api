@@ -186,7 +186,7 @@ const html = `<!doctype html>
       }
 
       function pill(text, kind) {
-        return '<span class="pill ' + (kind || '') + '">' + text + '</span>'
+        return '<span class="pill ' + (kind || '') + '">' + escapeHtml(text) + '</span>'
       }
 
       function qs() {
@@ -260,13 +260,13 @@ const html = `<!doctype html>
             const last = stats.last_request_at_ms ? fmtMs(stats.last_request_at_ms) : ''
             const accountId = a.account_id
             const failureReason = failed
-              ? '<div class="muted">' + (a.runtime?.failureReason || '') + '</div>'
+              ? '<div class="muted">' + escapeHtml(a.runtime?.failureReason || '') + '</div>'
               : ''
 
             return '<tr>'
               + '<td class="mono"><a href="#/requests?account_id='
               + encodeURIComponent(accountId)
-              + '">' + accountId + '</a></td>'
+              + '">' + escapeHtml(accountId) + '</a></td>'
               + '<td>' + statusPill + failureReason + '</td>'
               + '<td>' + rem + '</td>'
               + '<td>' + fmtNum(stats.request_count) + '</td>'
@@ -403,10 +403,10 @@ const html = `<!doctype html>
               rowsEl.insertAdjacentHTML('beforeend',
                 '<tr>'
                 + '<td class="mono">' + when + '</td>'
-                + '<td class="mono"><a href="#/request/' + encodeURIComponent(r.request_id) + '">' + r.path + '</a></td>'
-                + '<td class="mono">' + (r.upstream_endpoint || '') + '</td>'
-                + '<td class="mono">' + acct + '</td>'
-                + '<td class="mono">' + model + '</td>'
+                + '<td class="mono"><a href="#/request/' + encodeURIComponent(r.request_id) + '">' + escapeHtml(r.path) + '</a></td>'
+                + '<td class="mono">' + escapeHtml(r.upstream_endpoint || '') + '</td>'
+                + '<td class="mono">' + escapeHtml(acct) + '</td>'
+                + '<td class="mono">' + escapeHtml(model) + '</td>'
                 + '<td class="mono">' + tokens + '</td>'
                 + '<td class="mono">' + (r.cost_units ?? '') + '</td>'
                 + '<td class="mono">' + quotaDiff + '</td>'
@@ -419,7 +419,7 @@ const html = `<!doctype html>
             nextCursor = data.next_cursor_id || ''
             moreBtn.disabled = !data.has_more
           } catch (e) {
-            rowsEl.innerHTML = '<tr><td colspan="10" class="muted">' + String(e) + '</td></tr>'
+            rowsEl.innerHTML = '<tr><td colspan="10" class="muted">' + escapeHtml(String(e)) + '</td></tr>'
           } finally {
             loading = false
           }
@@ -444,7 +444,7 @@ const html = `<!doctype html>
         app.innerHTML = [
           '<div class="panel">',
           '  <div class="row">',
-          '    <div class="mono">request_id: ' + r.request_id + '</div>',
+          '    <div class="mono">request_id: ' + escapeHtml(r.request_id) + '</div>',
           '    <div class="mono">status: ' + r.http_status + '</div>',
           '    <div class="mono">dur_ms: ' + (r.duration_ms ?? '') + '</div>',
           '    <div class="mono">ttfb_ms: ' + (r.ttfb_ms ?? '') + '</div>',
@@ -457,11 +457,11 @@ const html = `<!doctype html>
           '    <table>',
           '      <tbody>',
           '        <tr><th>time</th><td class="mono">' + fmtMs(r.started_at_ms) + '</td></tr>',
-          '        <tr><th>path</th><td class="mono">' + r.path + '</td></tr>',
-          '        <tr><th>endpoint</th><td class="mono">' + (r.upstream_endpoint || '') + '</td></tr>',
-          '        <tr><th>account</th><td class="mono">' + (r.account_id || '') + '</td></tr>',
-          '        <tr><th>model</th><td class="mono">' + (r.upstream_model || '') + '</td></tr>',
-          '        <tr><th>client</th><td class="mono">' + (r.client_ip || '') + ' ' + (r.user_agent ? '(' + r.user_agent + ')' : '') + '</td></tr>',
+          '        <tr><th>path</th><td class="mono">' + escapeHtml(r.path) + '</td></tr>',
+          '        <tr><th>endpoint</th><td class="mono">' + escapeHtml(r.upstream_endpoint || '') + '</td></tr>',
+          '        <tr><th>account</th><td class="mono">' + escapeHtml(r.account_id || '') + '</td></tr>',
+          '        <tr><th>model</th><td class="mono">' + escapeHtml(r.upstream_model || '') + '</td></tr>',
+          '        <tr><th>client</th><td class="mono">' + escapeHtml(r.client_ip || '') + ' ' + (r.user_agent ? '(' + escapeHtml(r.user_agent) + ')' : '') + '</td></tr>',
           '        <tr><th>tokens</th><td class="mono">in=' + (r.tokens_input ?? '') + ' out=' + (r.tokens_output ?? '') + ' total=' + (r.tokens_total ?? '') + ' cached=' + (r.tokens_cached_input ?? '') + '</td></tr>',
           '        <tr><th>quota</th><td class="mono">before=' + (r.premium_remaining_before ?? '') + ' after=' + (r.premium_remaining_after ?? '') + ' diff=' + (r.premium_remaining_diff ?? '') + '</td></tr>',
           '      </tbody>',
@@ -481,6 +481,8 @@ const html = `<!doctype html>
           .replaceAll('&', '&amp;')
           .replaceAll('<', '&lt;')
           .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;')
       }
 
       function route() {
