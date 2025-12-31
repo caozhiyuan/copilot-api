@@ -413,7 +413,7 @@ const html = `<!doctype html>
           '        <th>Model</th>',
           '        <th>Tokens</th>',
           '        <th>Cost</th>',
-          '        <th>Quota diff</th>',
+          '        <th>Quota</th>',
           '        <th>Dur</th>',
           '        <th>Status</th>',
           '      </tr>',
@@ -461,7 +461,9 @@ const html = `<!doctype html>
               const status = r.http_status
               const statusP = status >= 400 ? pill(status, 'bad') : pill(status, 'good')
               const when = fmtMs(r.started_at_ms)
-              const quotaDiff = r.premium_remaining_diff != null ? fmtNum(r.premium_remaining_diff) : ''
+              const quota = Number(r.premium_unlimited_after) > 0
+                ? '∞'
+                : (r.premium_remaining_after != null ? fmtNum(r.premium_remaining_after) : '')
               const dur = r.duration_ms != null ? fmtNum(r.duration_ms) : ''
               const acct = r.account_id || ''
               const model = r.upstream_model || ''
@@ -476,7 +478,7 @@ const html = `<!doctype html>
                 + '<td class="mono">' + escapeHtml(model) + '</td>'
                 + '<td class="mono">' + tokens + '</td>'
                 + '<td class="mono">' + (r.cost_units ?? '') + '</td>'
-                + '<td class="mono">' + quotaDiff + '</td>'
+                + '<td class="mono">' + quota + '</td>'
                 + '<td class="mono">' + dur + '</td>'
                 + '<td>' + statusP + '</td>'
                 + '</tr>'
