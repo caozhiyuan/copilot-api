@@ -63,6 +63,19 @@ const html = `<!doctype html>
         border-color: #3a4a7e;
         background: rgba(255,255,255,.04);
       }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .token-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .token-controls input {
+        min-width: 160px;
+      }
       main {
         padding: 16px;
         max-width: 1200px;
@@ -157,10 +170,18 @@ const html = `<!doctype html>
   <body>
     <header>
       <h1>copilot-api / admin</h1>
-      <nav>
-        <a href="#/accounts" data-nav="accounts">Accounts</a>
-        <a href="#/requests" data-nav="requests">Requests</a>
-      </nav>
+      <div class="header-right">
+        <nav>
+          <a href="#/accounts" data-nav="accounts">Accounts</a>
+          <a href="#/requests" data-nav="requests">Requests</a>
+        </nav>
+        <div class="token-controls">
+          <input id="adminToken" type="password" placeholder="x-admin-token" />
+          <button id="adminTokenSave">Set</button>
+          <button id="adminTokenClear">Clear</button>
+          <span id="adminTokenStatus" class="muted"></span>
+        </div>
+      </div>
     </header>
 
     <main id="app"></main>
@@ -168,6 +189,50 @@ const html = `<!doctype html>
     <script type="module">
       const app = document.getElementById('app')
       const navLinks = [...document.querySelectorAll('a[data-nav]')]
+
+      const ADMIN_TOKEN_STORAGE_KEY = 'adminToken'
+
+      function getAdminToken() {
+        return sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ''
+      }
+
+      function setAdminToken(value) {
+        const token = (value || '').trim()
+        if (!token) sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY)
+        else sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token)
+      }
+
+      function refreshAdminTokenUi() {
+        const el = document.getElementById('adminTokenStatus')
+        if (!el) return
+        el.textContent = getAdminToken() ? 'token set' : ''
+      }
+
+      function initAdminTokenControls() {
+        const input = document.getElementById('adminToken')
+        const saveBtn = document.getElementById('adminTokenSave')
+        const clearBtn = document.getElementById('adminTokenClear')
+
+        if (saveBtn && input) {
+          saveBtn.addEventListener('click', () => {
+            setAdminToken(input.value)
+            input.value = ''
+            refreshAdminTokenUi()
+          })
+        }
+
+        if (clearBtn && input) {
+          clearBtn.addEventListener('click', () => {
+            setAdminToken('')
+            input.value = ''
+            refreshAdminTokenUi()
+          })
+        }
+
+        refreshAdminTokenUi()
+      }
+
+      initAdminTokenControls()
 
       function setActiveNav(key) {
         for (const a of navLinks) {
@@ -194,7 +259,9 @@ const html = `<!doctype html>
       }
 
       async function api(path) {
-        const res = await fetch(path)
+        const token = getAdminToken()
+        const headers = token ? { 'x-admin-token': token } : {}
+        const res = await fetch(path, { headers })
         if (!res.ok) {
           const txt = await res.text().catch(() => '')
           throw new Error('HTTP ' + res.status + ': ' + txt)

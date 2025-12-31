@@ -5,7 +5,11 @@ import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
-import { HTTPError } from "~/lib/error"
+import {
+  computeDiff,
+  extractErrorDetails,
+  toAccountContext,
+} from "~/lib/handler-utils"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import {
@@ -69,7 +73,7 @@ export const handleResponses = async (c: Context) => {
 
   if (state.manualApprove) await awaitApproval()
 
-  const accountCtx = buildAccountCtx(account)
+  const accountCtx = toAccountContext(account)
 
   if (streamRequested) {
     return handleStreamingResponses({
@@ -126,14 +130,6 @@ type RequestLogInsert = Parameters<Store["insert"]>[0]
 
 type StreamSseStream = Parameters<Parameters<typeof streamSSE>[1]>[0]
 
-type ErrorDetails = {
-  httpStatus: number
-  errorName: string
-  errorStatus: number | undefined
-  errorMessage: string
-  unauthorized: boolean
-}
-
 function buildRequestContext(c: Context): RequestContext {
   const requestId = randomUUID()
   const startedAtMs = Date.now()
@@ -152,35 +148,6 @@ function buildRequestContext(c: Context): RequestContext {
     clientIp,
     clientIpSource,
     userAgent,
-  }
-}
-
-function buildAccountCtx(
-  account: AccountSelectionOk["account"],
-): Parameters<typeof createResponses>[2] {
-  return {
-    githubToken: account.githubToken,
-    copilotToken: account.copilotToken,
-    accountType: account.accountType,
-    vsCodeVersion: account.vsCodeVersion,
-  }
-}
-
-function extractErrorDetails(error: unknown): ErrorDetails {
-  const errorName = error instanceof Error ? error.name : "Error"
-  const errorMessage =
-    error instanceof Error ? truncate(error.message) : truncate(String(error))
-
-  const errorStatus =
-    error instanceof HTTPError ? error.response.status : undefined
-  const httpStatus = errorStatus ?? 500
-
-  return {
-    httpStatus,
-    errorName,
-    errorStatus,
-    errorMessage,
-    unauthorized: errorStatus === 401,
   }
 }
 
@@ -717,13 +684,3 @@ async function handleNonStreamingResponses(params: {
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
-
-function truncate(value: string, max: number = 2000): string {
-  if (value.length <= max) return value
-  return `${value.slice(0, max)}…`
-}
-
-function computeDiff(before?: number, after?: number): number | undefined {
-  if (typeof before !== "number" || typeof after !== "number") return undefined
-  return after - before
-}
