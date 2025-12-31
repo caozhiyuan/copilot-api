@@ -461,7 +461,7 @@ const html = `<!doctype html>
               const status = r.http_status
               const statusP = status >= 400 ? pill(status, 'bad') : pill(status, 'good')
               const when = fmtMs(r.started_at_ms)
-              const quota = Number(r.premium_unlimited_after) > 0
+              const quota = r.premium_unlimited_after
                 ? '∞'
                 : (r.premium_remaining_after != null ? fmtNum(r.premium_remaining_after) : '')
               const dur = r.duration_ms != null ? fmtNum(r.duration_ms) : ''
