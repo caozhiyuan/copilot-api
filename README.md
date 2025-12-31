@@ -34,6 +34,7 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **OpenAI & Anthropic Compatibility**: Exposes GitHub Copilot as an OpenAI-compatible (`/v1/chat/completions`, `/v1/models`, `/v1/embeddings`) and Anthropic-compatible (`/v1/messages`) API.
 - **Claude Code Integration**: Easily configure and launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) to use Copilot as its backend with a simple command-line flag (`--claude-code`).
 - **Usage Dashboard**: A web-based dashboard to monitor your Copilot API usage, view quotas, and see detailed statistics.
+- **Admin UI**: Built-in admin page (`/admin`) to inspect account runtime status and request history (models/endpoints, tokens/usage, errors).
 - **Rate Limit Control**: Manage API usage with rate-limiting options (`--rate-limit`) and a waiting mechanism (`--wait`) to prevent errors from rapid requests.
 - **Manual Request Approval**: Manually approve or deny each API request for fine-grained control over usage (`--manual`).
 - **Token Visibility**: Option to display GitHub and Copilot tokens during authentication and refresh for debugging (`--show-token`).
@@ -79,7 +80,7 @@ docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api co
 ```
 
 > **Note:**
-> The GitHub token and related data will be stored in `copilot-data` on your host. This is mapped to `/root/.local/share/copilot-api` inside the container, ensuring persistence across restarts.
+> The GitHub token and related data will be stored in `copilot-data` on your host. This is mapped to `/root/.local/share/copilot-api` inside the container, ensuring persistence across restarts. This directory also stores the admin request history database (`admin.sqlite`) used by `/admin`.
 
 ### Adding Multiple Accounts in Docker
 
@@ -110,6 +111,10 @@ docker build --build-arg GH_TOKEN=your_github_token_here -t copilot-api .
 # Run with GitHub token
 docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here copilot-api
 
+# (Optional) Enable remote admin UI/API access
+# This requires setting ADMIN_TOKEN and sending it via request headers (x-admin-token / Authorization: Bearer)
+docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here -e ADMIN_TOKEN=your_admin_token_here copilot-api
+
 # Run with additional options
 docker run -p 4141:4141 -e GH_TOKEN=your_token copilot-api --verbose --port 4141
 ```
@@ -125,6 +130,7 @@ services:
       - "4141:4141"
     environment:
       - GH_TOKEN=your_github_token_here
+      - ADMIN_TOKEN=your_admin_token_here
     restart: unless-stopped
 ```
 
@@ -285,6 +291,34 @@ Endpoints for monitoring your Copilot usage and quotas across all accounts.
 > - If you start the server with `start --github-token ...`, a temporary account is included and shown as `"(temporary)"` in `GET /usage`. In that case, `index=0` refers to the temporary account and registered accounts start at `index=1`.
 > - `auth rm <index>` uses a **1-based** index (as shown by `auth ls`).
 
+### Admin UI & Admin API
+
+The server also exposes a built-in admin UI and API for inspecting account status and request history captured by the proxy.
+
+| Endpoint                            | Method | Description                                                          |
+| ----------------------------------- | ------ | -------------------------------------------------------------------- |
+| `GET /admin`                        | `GET`  | Built-in admin UI (single-page web app).                             |
+| `GET /api/admin/meta`               | `GET`  | Admin DB metadata (db path, retention, etc.).                        |
+| `GET /api/admin/accounts`           | `GET`  | List accounts with runtime status and (optional) aggregated stats.    |
+| `GET /api/admin/requests`           | `GET`  | Query request logs with filters and cursor pagination.               |
+| `GET /api/admin/requests/:requestId`| `GET`  | Get a single request log entry by request ID.                        |
+
+#### Authentication & access
+
+- **Loopback access** is allowed by default when the hostname is `localhost`, `127.0.0.1`, or `::1`.
+- **Remote access** is disabled unless you set `ADMIN_TOKEN` on the server.
+- When `ADMIN_TOKEN` is set, send the token using one of:
+  - `x-admin-token: <token>`
+  - `Authorization: Bearer <token>`
+- Tokens in URL query parameters are intentionally not supported.
+
+#### Requests query (pagination & filters)
+
+- `limit` defaults to 50 and is clamped to a max of 200.
+- `cursor_id` is an integer cursor for pagination (use the `next_cursor_id` from the previous response).
+- Filters: `account_id`, `upstream_model`, `client_model`, `upstream_endpoint`, `path`, `status`, `has_error`, `from_ms`, `to_ms`.
+- Response fields: `items`, `next_cursor_id`, `has_more`.
+
 ## Example Usage
 
 Using with npx:
@@ -349,6 +383,27 @@ npx copilot-api@latest debug --json
 npx copilot-api@latest start --proxy-env
 ```
 
+### Admin API examples
+
+```sh
+# Loopback access (no token required)
+curl "http://localhost:4141/api/admin/meta"
+
+# Enable remote admin UI/API access (server-side)
+# ADMIN_TOKEN=your_admin_token_here npx copilot-api@latest start
+
+# Remote access (token required)
+curl -H "x-admin-token: your_admin_token_here" "http://localhost:4141/api/admin/accounts?include_stats=1"
+
+# Request logs (filters + pagination)
+curl "http://localhost:4141/api/admin/requests?limit=50&has_error=1"
+# Use next_cursor_id from the response for pagination:
+curl "http://localhost:4141/api/admin/requests?limit=50&cursor_id=<next_cursor_id>"
+
+# Single request detail
+curl "http://localhost:4141/api/admin/requests/<requestId>"
+```
+
 ## Using the Usage Viewer
 
 After starting the server, a URL to the Copilot Usage Dashboard will be displayed in your console. This dashboard is a web interface for monitoring your API usage.
@@ -369,6 +424,36 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 - **Detailed Information**: See the full JSON response from the API for a detailed breakdown of all available usage statistics.
 - **URL-based Configuration**: You can also specify the API endpoint directly in the URL using a query parameter. This is useful for bookmarks or sharing links. For example:
   `https://ericc-ch.github.io/copilot-api?endpoint=http://your-api-server/usage`
+
+## Using the Admin UI (/admin)
+
+The proxy includes a built-in admin UI served from your running instance. It lets you inspect account status and request history captured by the proxy (models/endpoints, tokens/usage, timing, and error summaries).
+
+1. Start the server. For example, using npx:
+    ```sh
+    npx copilot-api@latest start
+    ```
+2. Open the UI in your browser:
+    - `http://localhost:4141/admin` (replace the port if you changed it)
+
+### Access control
+
+- When accessing via `localhost` / `127.0.0.1` / `::1`, the admin API is available without a token.
+- For non-loopback access (e.g. using a machine IP or hostname), you must enable remote access by setting `ADMIN_TOKEN` on the server and provide the token in requests.
+
+The UI stores the token in `sessionStorage` and sends it as the `x-admin-token` header (it is never placed in the URL).
+
+If you see:
+- `403 forbidden`: the admin API is restricted to localhost unless `ADMIN_TOKEN` is set (or the request was blocked as cross-origin).
+- `401 unauthorized`: `ADMIN_TOKEN` is set but the request did not include a valid token.
+
+### Data storage (admin.sqlite)
+
+- Request history is stored in `admin.sqlite` under the app data directory:
+  - Linux/macOS: `~/.local/share/copilot-api/admin.sqlite`
+  - Windows: `%USERPROFILE%\.local\share\copilot-api\admin.sqlite`
+- By default, the proxy keeps up to 14 days of logs and caps the DB at 200,000 rows (older entries are cleaned up automatically).
+- For safety, the admin DB stores metadata only (no GitHub/Copilot tokens and no request/response content).
 
 ## Using with Claude Code
 
