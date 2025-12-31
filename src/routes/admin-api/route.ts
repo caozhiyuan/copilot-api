@@ -20,10 +20,7 @@ type AdminAccessDecision =
 
 function isLoopbackHostname(hostname: string): boolean {
   return (
-    hostname === "localhost"
-    || hostname === "127.0.0.1"
-    || hostname === "::1"
-    || hostname === "0.0.0.0"
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
   )
 }
 
@@ -43,9 +40,7 @@ function getRequestAdminToken(c: Context): string | undefined {
     if (token) return token
   }
 
-  const url = new URL(c.req.url, "http://local")
-  const queryToken = url.searchParams.get("admin_token")?.trim()
-  return queryToken || undefined
+  return undefined
 }
 
 function isSameOrigin(requestUrl: URL, originHeader: string): boolean {

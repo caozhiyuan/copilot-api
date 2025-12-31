@@ -3,12 +3,16 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 import { randomUUID } from "node:crypto"
 
-import type { AccountContext, AccountRuntime } from "~/lib/types/account"
+import type { AccountRuntime } from "~/lib/types/account"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import { getSmallModel } from "~/lib/config"
-import { HTTPError } from "~/lib/error"
+import {
+  computeDiff,
+  extractErrorDetails,
+  toAccountContext,
+} from "~/lib/handler-utils"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import {
@@ -210,13 +214,6 @@ export async function handleCompletion(c: Context) {
   return await handleWithChatCompletions(c, openAIPayload, instr)
 }
 
-const toAccountContext = (account: AccountRuntime): AccountContext => ({
-  githubToken: account.githubToken,
-  copilotToken: account.copilotToken,
-  accountType: account.accountType,
-  vsCodeVersion: account.vsCodeVersion,
-})
-
 const handleWithChatCompletions = async (
   c: Context,
   openAIPayload: ChatCompletionsPayload,
@@ -325,32 +322,6 @@ type ChatCompletionsStream = Exclude<
   ChatCompletionsResult,
   ChatCompletionResponse
 >
-
-type ErrorDetails = {
-  httpStatus: number
-  errorName: string
-  errorStatus: number | undefined
-  errorMessage: string
-  unauthorized: boolean
-}
-
-function extractErrorDetails(error: unknown): ErrorDetails {
-  const errorName = error instanceof Error ? error.name : "Error"
-  const errorMessage =
-    error instanceof Error ? truncate(error.message) : truncate(String(error))
-
-  const errorStatus =
-    error instanceof HTTPError ? error.response.status : undefined
-  const httpStatus = errorStatus ?? 500
-
-  return {
-    httpStatus,
-    errorName,
-    errorStatus,
-    errorMessage,
-    unauthorized: errorStatus === 401,
-  }
-}
 
 function insertRequestLog(
   instr: InstrumentationContext,
@@ -863,13 +834,3 @@ const isNonStreaming = (
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
-
-function truncate(value: string, max: number = 2000): string {
-  if (value.length <= max) return value
-  return `${value.slice(0, max)}…`
-}
-
-function computeDiff(before?: number, after?: number): number | undefined {
-  if (typeof before !== "number" || typeof after !== "number") return undefined
-  return after - before
-}

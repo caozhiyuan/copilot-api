@@ -2,7 +2,12 @@ import { Hono, type Context } from "hono"
 import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
-import { forwardError, HTTPError } from "~/lib/error"
+import { forwardError } from "~/lib/error"
+import {
+  computeDiff,
+  extractErrorDetails,
+  toAccountContext,
+} from "~/lib/handler-utils"
 import {
   getClientIpInfo,
   getRequestHistoryStore,
@@ -177,12 +182,7 @@ async function runEmbeddingsWithAccount({
   let finishedAtMs: number | undefined
 
   try {
-    const accountCtx = {
-      githubToken: account.githubToken,
-      copilotToken: account.copilotToken,
-      accountType: account.accountType,
-      vsCodeVersion: account.vsCodeVersion,
-    }
+    const accountCtx = toAccountContext(account)
 
     const response = await createEmbeddings(payload, accountCtx)
 
@@ -192,14 +192,15 @@ async function runEmbeddingsWithAccount({
     return c.json(response)
   } catch (error) {
     finishedAtMs = Date.now()
-    httpStatus = error instanceof HTTPError ? error.response.status : 500
 
-    errorName = error instanceof Error ? error.name : "Error"
-    errorStatus = error instanceof HTTPError ? error.response.status : undefined
-    errorMessage =
-      error instanceof Error ? truncate(error.message) : truncate(String(error))
+    const details = extractErrorDetails(error)
 
-    if (error instanceof HTTPError && error.response.status === 401) {
+    httpStatus = details.httpStatus
+    errorName = details.errorName
+    errorStatus = details.errorStatus
+    errorMessage = details.errorMessage
+
+    if (details.unauthorized) {
       accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
     }
 
@@ -244,14 +245,4 @@ async function runEmbeddingsWithAccount({
       errorMessage,
     })
   }
-}
-
-function truncate(value: string, max: number = 2000): string {
-  if (value.length <= max) return value
-  return `${value.slice(0, max)}…`
-}
-
-function computeDiff(before?: number, after?: number): number | undefined {
-  if (typeof before !== "number" || typeof after !== "number") return undefined
-  return after - before
 }
