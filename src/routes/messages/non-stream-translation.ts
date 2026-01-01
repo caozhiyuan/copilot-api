@@ -14,7 +14,6 @@ import {
 import {
   type AnthropicAssistantContentBlock,
   type AnthropicAssistantMessage,
-  type AnthropicMessage,
   type AnthropicMessagesPayload,
   type AnthropicResponse,
   type AnthropicTextBlock,
@@ -38,9 +37,9 @@ export function translateToOpenAI(
   return {
     model: modelId,
     messages: translateAnthropicMessagesToOpenAI(
-      payload.messages,
-      payload.system,
+      payload,
       modelId,
+      thinkingBudget,
     ),
     max_tokens: payload.max_tokens,
     stop: payload.stop_sequences,
@@ -86,32 +85,60 @@ function translateModelName(model: string): string {
 }
 
 function translateAnthropicMessagesToOpenAI(
-  anthropicMessages: Array<AnthropicMessage>,
-  system: string | Array<AnthropicTextBlock> | undefined,
+  payload: AnthropicMessagesPayload,
   modelId: string,
+  thinkingBudget: number | undefined,
 ): Array<Message> {
-  const systemMessages = handleSystemPrompt(system)
-
-  const otherMessages = anthropicMessages.flatMap((message) =>
+  const systemMessages = handleSystemPrompt(
+    payload.system,
+    modelId,
+    thinkingBudget,
+  )
+  const otherMessages = payload.messages.flatMap((message) =>
     message.role === "user" ?
       handleUserMessage(message)
     : handleAssistantMessage(message, modelId),
   )
-
+  if (modelId.startsWith("claude") && thinkingBudget) {
+    const thinkingMessage = {
+      role: "user",
+      content:
+        "<system-reminder>Please strictly follow Interleaved thinking</system-reminder>",
+    } as Message
+    return [...systemMessages, thinkingMessage, ...otherMessages]
+  }
   return [...systemMessages, ...otherMessages]
 }
 
 function handleSystemPrompt(
   system: string | Array<AnthropicTextBlock> | undefined,
+  modelId: string,
+  thinkingBudget: number | undefined,
 ): Array<Message> {
   if (!system) {
     return []
   }
 
+  let extraPrompt = ""
+  if (modelId.startsWith("claude") && thinkingBudget) {
+    extraPrompt = `
+## Interleaved thinking
+- Interleaved thinking is enabled
+- You MUST think after receiving tool results before deciding the next action or final answer.
+`
+  }
+
   if (typeof system === "string") {
-    return [{ role: "system", content: system }]
+    return [{ role: "system", content: system + extraPrompt }]
   } else {
-    const systemText = system.map((block) => block.text).join("\n\n")
+    const systemText = system
+      .map((block, index) => {
+        if (index === 0) {
+          return block.text + extraPrompt
+        }
+        return block.text
+      })
+      .join("\n\n")
     return [{ role: "system", content: systemText }]
   }
 }
