@@ -1,4 +1,3 @@
-import consola from "consola"
 import { events } from "fetch-event-stream"
 
 import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
@@ -347,7 +346,6 @@ export const createResponses = async (
   })
 
   if (!response.ok) {
-    consola.error("Failed to create responses", response)
     throw new HTTPError("Failed to create responses", response)
   }
 

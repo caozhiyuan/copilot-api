@@ -3,6 +3,7 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 
 import { awaitApproval } from "~/lib/approval"
+import { HTTPError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
@@ -49,7 +50,18 @@ export const handleResponses = async (c: Context) => {
     await awaitApproval()
   }
 
-  const response = await createResponses(payload, { vision, initiator })
+  let response: Awaited<ReturnType<typeof createResponses>>
+
+  try {
+    response = await createResponses(payload, { vision, initiator })
+  } catch (error) {
+    if (error instanceof HTTPError) {
+      logger.error("Failed to create responses", error.response)
+    } else {
+      logger.error("Failed to create responses", error)
+    }
+    throw error
+  }
 
   if (isStreamingRequested(payload) && isAsyncIterable(response)) {
     logger.debug("Forwarding native Responses stream")

@@ -3,6 +3,7 @@ import type { Context } from "hono"
 import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { awaitApproval } from "~/lib/approval"
+import { HTTPError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
@@ -49,7 +50,18 @@ export async function handleCompletion(c: Context) {
     logger.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
   }
 
-  const response = await createChatCompletions(payload)
+  let response: Awaited<ReturnType<typeof createChatCompletions>>
+
+  try {
+    response = await createChatCompletions(payload)
+  } catch (error) {
+    if (error instanceof HTTPError) {
+      logger.error("Failed to create chat completions", error.response)
+    } else {
+      logger.error("Failed to create chat completions", error)
+    }
+    throw error
+  }
 
   if (isNonStreaming(response)) {
     logger.debug("Non-streaming response:", JSON.stringify(response))

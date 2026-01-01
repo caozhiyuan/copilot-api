@@ -4,6 +4,7 @@ import { streamSSE } from "hono/streaming"
 
 import { awaitApproval } from "~/lib/approval"
 import { getSmallModel } from "~/lib/config"
+import { HTTPError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
@@ -69,6 +70,34 @@ export async function handleCompletion(c: Context) {
 
 const RESPONSES_ENDPOINT = "/responses"
 
+function stripIncompatibleSignatures(
+  payload: AnthropicMessagesPayload,
+): AnthropicMessagesPayload {
+  return {
+    ...payload,
+    messages: payload.messages.map((message) => {
+      if (message.role !== "assistant" || typeof message.content === "string") {
+        return message
+      }
+
+      return {
+        ...message,
+        content: message.content.map((block) => {
+          if (block.type === "thinking" && block.signature) {
+            // Keep thinking text, remove incompatible signature
+            return {
+              type: "thinking" as const,
+              thinking: block.thinking,
+              signature: "",
+            }
+          }
+          return block
+        }),
+      }
+    }),
+  }
+}
+
 const handleWithChatCompletions = async (
   c: Context,
   anthropicPayload: AnthropicMessagesPayload,
@@ -79,7 +108,28 @@ const handleWithChatCompletions = async (
     JSON.stringify(openAIPayload),
   )
 
-  const response = await createChatCompletions(openAIPayload)
+  let response: Awaited<ReturnType<typeof createChatCompletions>>
+
+  try {
+    response = await createChatCompletions(openAIPayload)
+  } catch (error) {
+    // Handle signature incompatibility when switching between Claude API and Copilot API
+    if (error instanceof HTTPError) {
+      const errorText = await error.response.text()
+      if (errorText.includes("Invalid") && errorText.includes("signature") && errorText.includes("thinking")) {
+        logger.info("Detected signature incompatibility, stripping signatures and retrying")
+        const strippedPayload = stripIncompatibleSignatures(anthropicPayload)
+        const retryOpenAIPayload = translateToOpenAI(strippedPayload)
+        response = await createChatCompletions(retryOpenAIPayload)
+      } else {
+        logger.error("Failed to create chat completions", error.response)
+        throw error
+      }
+    } else {
+      logger.error("Failed to create chat completions", error)
+      throw error
+    }
+  }
 
   if (isNonStreaming(response)) {
     logger.debug(
@@ -140,10 +190,35 @@ const handleWithResponsesApi = async (
   )
 
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
-  const response = await createResponses(responsesPayload, {
-    vision,
-    initiator,
-  })
+
+  let response: Awaited<ReturnType<typeof createResponses>>
+
+  try {
+    response = await createResponses(responsesPayload, {
+      vision,
+      initiator,
+    })
+  } catch (error) {
+    // Handle signature incompatibility when switching between Claude API and Copilot API
+    if (error instanceof HTTPError) {
+      const errorText = await error.response.text()
+      if (errorText.includes("Invalid") && errorText.includes("signature") && errorText.includes("thinking")) {
+        logger.info("Detected signature incompatibility in Responses API, stripping signatures and retrying")
+        const strippedPayload = stripIncompatibleSignatures(anthropicPayload)
+        const retryResponsesPayload = translateAnthropicMessagesToResponsesPayload(strippedPayload)
+        response = await createResponses(retryResponsesPayload, {
+          vision,
+          initiator,
+        })
+      } else {
+        logger.error("Failed to create responses", error.response)
+        throw error
+      }
+    } else {
+      logger.error("Failed to create responses", error)
+      throw error
+    }
+  }
 
   if (responsesPayload.stream && isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Responses API)")
