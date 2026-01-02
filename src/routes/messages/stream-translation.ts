@@ -322,6 +322,8 @@ function handleThinkingText(
     // this is an extremely abnormal situation, probably a server-side bug
     // only occurs in the claude model, with a very low probability of occurrence
     if (state.contentBlockOpen) {
+      // Convert reasoning_text to regular content to append to the existing block
+      // If a tool block is open, handleContent will close it first before adding text
       delta.content = delta.reasoning_text
       delta.reasoning_text = undefined
       return
