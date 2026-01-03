@@ -36,8 +36,13 @@ let cachedConfig: AppConfig | null = null
 
 function ensureConfigFile(): void {
   try {
-    fs.accessSync(PATHS.CONFIG_PATH, fs.constants.R_OK | fs.constants.W_OK)
+    fs.accessSync(PATHS.CONFIG_PATH, fs.constants.R_OK)
+    return
   } catch {
+    // Fall through to try creating the default config file.
+  }
+
+  try {
     fs.mkdirSync(PATHS.APP_DIR, { recursive: true })
     fs.writeFileSync(
       PATHS.CONFIG_PATH,
@@ -47,8 +52,10 @@ function ensureConfigFile(): void {
     try {
       fs.chmodSync(PATHS.CONFIG_PATH, 0o600)
     } catch {
-      return
+      // Ignore chmod errors (e.g. unsupported filesystem).
     }
+  } catch {
+    // Best-effort only: if we can't create the file, reads will fall back to defaults.
   }
 }
 

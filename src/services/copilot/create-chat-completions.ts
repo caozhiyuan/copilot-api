@@ -4,8 +4,31 @@ import { events } from "fetch-event-stream"
 import type { AccountContext } from "~/lib/types/account"
 
 import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
+import { getReasoningEffortForModel } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
+
+function isGpt5MiniFamily(modelId: string): boolean {
+  return modelId === "gpt-5-mini" || modelId.startsWith("gpt-5-mini-")
+}
+
+function applyDefaultReasoningEffort(
+  payload: ChatCompletionsPayload,
+): ChatCompletionsPayload {
+  if (!isGpt5MiniFamily(payload.model)) return payload
+
+  // Only inject when omitted/null; allow callers to explicitly override.
+  if (
+    payload.reasoning_effort !== null
+    && payload.reasoning_effort !== undefined
+  )
+    return payload
+
+  return {
+    ...payload,
+    reasoning_effort: getReasoningEffortForModel("gpt-5-mini"),
+  }
+}
 
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
@@ -32,10 +55,12 @@ export const createChatCompletions = async (
     "X-Initiator": isAgentCall ? "agent" : "user",
   }
 
+  const upstreamPayload = applyDefaultReasoningEffort(payload)
+
   const response = await fetch(`${copilotBaseUrl(ctx)}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(upstreamPayload),
   })
 
   if (!response.ok) {
@@ -156,6 +181,14 @@ export interface ChatCompletionsPayload {
     | { type: "function"; function: { name: string } }
     | null
   user?: string | null
+  reasoning_effort?:
+    | "none"
+    | "minimal"
+    | "low"
+    | "medium"
+    | "high"
+    | "xhigh"
+    | null
   thinking_budget?: number
 }
 
