@@ -22,7 +22,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up QEMU
-        if: startsWith(github.ref, 'refs/tags/')
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64,amd64
@@ -63,7 +62,7 @@ jobs:
           fi
 
           echo "tag=$clean" >> "$GITHUB_OUTPUT"
-          echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
+          echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -72,3 +71,5 @@ jobs:
           push: true
           tags: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/copilot-api:${{ steps.tag.outputs.tag }}
           platforms: ${{ steps.tag.outputs.platforms }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
