@@ -19,11 +19,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install admin-ui dependencies
+        run: bun install --cwd admin-ui
+
       - name: Run linter
         run: bun run lint:all
 
+      - name: Run admin-ui linter
+        run: bun run lint:admin
+
       - name: Run type check
         run: bun run typecheck
+
+      - name: Run admin-ui type check
+        run: bun run typecheck:admin
 
       - name: Run tests
         run: bun test
