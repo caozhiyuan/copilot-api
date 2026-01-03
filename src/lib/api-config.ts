@@ -14,11 +14,14 @@ const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
 const API_VERSION = "2025-10-01"
 
 export const copilotBaseUrl = (account: AccountContext) =>
-  account.accountType === "individual"
-    ? "https://api.githubcopilot.com"
-    : `https://api.${account.accountType}.githubcopilot.com`
+  account.accountType === "individual" ?
+    "https://api.githubcopilot.com"
+  : `https://api.${account.accountType}.githubcopilot.com`
 
-export const copilotHeaders = (account: AccountContext, vision: boolean = false) => {
+export const copilotHeaders = (
+  account: AccountContext,
+  vision: boolean = false,
+) => {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${account.copilotToken}`,
     "content-type": standardHeaders()["content-type"],
