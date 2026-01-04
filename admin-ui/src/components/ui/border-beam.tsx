@@ -1,6 +1,7 @@
 import { motion } from "motion/react"
 import type { MotionStyle, Transition } from "motion/react"
 
+import { useMotionPreference } from "@/lib/motion-preference"
 import { cn } from "@/lib/utils"
 
 interface BorderBeamProps {
@@ -63,6 +64,12 @@ export const BorderBeam = ({
   initialOffset = 0,
   borderWidth = 1,
 }: BorderBeamProps) => {
+  const { effective } = useMotionPreference()
+
+  if (effective === "off") return null
+
+  const effectiveDuration = effective === "subtle" ? duration * 2 : duration
+
   return (
     <div
       className="pointer-events-none absolute inset-0 rounded-[inherit] border-(length:--border-beam-width) border-transparent [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)] [mask-composite:intersect] [mask-clip:padding-box,border-box]"
@@ -96,7 +103,7 @@ export const BorderBeam = ({
         transition={{
           repeat: Infinity,
           ease: "linear",
-          duration,
+          duration: effectiveDuration,
           delay: -delay,
           ...transition,
         }}

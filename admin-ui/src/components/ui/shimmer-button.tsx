@@ -1,6 +1,7 @@
 import React from "react"
 import type { ComponentPropsWithoutRef, CSSProperties } from "react"
 
+import { useMotionPreference } from "@/lib/motion-preference"
 import { cn } from "@/lib/utils"
 
 export interface ShimmerButtonProps extends ComponentPropsWithoutRef<"button"> {
@@ -30,6 +31,18 @@ export const ShimmerButton = React.forwardRef<
     },
     ref
   ) => {
+    const { effective } = useMotionPreference()
+
+    const shimmerSlideClass =
+      effective === "subtle"
+        ? "animate-none group-hover:animate-shimmer-slide"
+        : "animate-shimmer-slide"
+
+    const spinAroundClass =
+      effective === "subtle"
+        ? "animate-none group-hover:animate-spin-around"
+        : "animate-spin-around"
+
     return (
       <button
         style={
@@ -51,18 +64,30 @@ export const ShimmerButton = React.forwardRef<
         {...props}
       >
         {/* spark container */}
-        <div
-          className={cn(
-            "-z-30 blur-[2px]",
-            "[container-type:size] absolute inset-0 overflow-visible"
-          )}
-        >
-          {/* spark */}
-          <div className="animate-shimmer-slide absolute inset-0 [aspect-ratio:1] h-[100cqh] [border-radius:0] [mask:none]">
-            {/* spark before */}
-            <div className="animate-spin-around absolute -inset-full w-auto [translate:0_0] rotate-0 [background:conic-gradient(from_calc(270deg-(var(--spread)*0.5)),transparent_0,var(--shimmer-color)_var(--spread),transparent_var(--spread))]" />
+        {effective === "off" ? null : (
+          <div
+            className={cn(
+              "-z-30 blur-[2px]",
+              "[container-type:size] absolute inset-0 overflow-visible"
+            )}
+          >
+            {/* spark */}
+            <div
+              className={cn(
+                shimmerSlideClass,
+                "absolute inset-0 [aspect-ratio:1] h-[100cqh] [border-radius:0] [mask:none]"
+              )}
+            >
+              {/* spark before */}
+              <div
+                className={cn(
+                  spinAroundClass,
+                  "absolute -inset-full w-auto [translate:0_0] rotate-0 [background:conic-gradient(from_calc(270deg-(var(--spread)*0.5)),transparent_0,var(--shimmer-color)_var(--spread),transparent_var(--spread))]"
+                )}
+              />
+            </div>
           </div>
-        </div>
+        )}
         {children}
 
         {/* Highlight */}

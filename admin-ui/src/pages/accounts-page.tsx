@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import { toast } from "sonner"
 
 import {
@@ -10,6 +11,9 @@ import {
 import { fmtIso, fmtNum } from "@/lib/format"
 import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion"
 import { Badge } from "@/components/ui/badge"
+import { InlineAlert } from "@/components/ui/inline-alert"
+import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Card,
   CardContent,
@@ -39,6 +43,8 @@ import { ShimmerButton } from "@/components/ui/shimmer-button"
 
 type WindowPreset = "86400000" | "604800000"
 
+type SortBy = "account" | "requests" | "errors" | "tokens" | "last_req"
+
 function sum(items: Array<number | undefined>): number {
   return items.reduce<number>((acc, x) => acc + (x ?? 0), 0)
 }
@@ -59,19 +65,55 @@ function calcWeightedAvgDurationMs(accounts: AdminAccountItem[]): number {
   return totalReq > 0 ? Math.round(weighted / totalReq) : 0
 }
 
-function KpiValue({ value }: { value: number }): React.JSX.Element {
+function KpiValue({
+  value,
+  decimalPlaces = 0,
+}: {
+  value: number
+  decimalPlaces?: number
+}): React.JSX.Element {
   const reducedMotion = usePrefersReducedMotion()
 
   if (reducedMotion) {
-    return <span className="tabular-nums">{fmtNum(value)}</span>
+    return (
+      <span className="tabular-nums">
+        {Intl.NumberFormat("en-US", {
+          minimumFractionDigits: decimalPlaces,
+          maximumFractionDigits: decimalPlaces,
+        }).format(value)}
+      </span>
+    )
   }
 
-  return <NumberTicker value={value} />
+  return <NumberTicker value={value} decimalPlaces={decimalPlaces} />
+}
+
+function AccountsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
+  const cols = 8
+
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => (
+        <TableRow key={i}>
+          {Array.from({ length: cols }).map((__, j) => (
+            <TableCell key={j} className="py-3">
+              <Skeleton className={j === 0 ? "h-4 w-56" : "h-4 w-24"} />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  )
 }
 
 export function AccountsPage(): React.JSX.Element {
   const [windowPreset, setWindowPreset] = useState<WindowPreset>("86400000")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [query, setQuery] = useState("")
+  const [sortBy, setSortBy] = useState<SortBy>("requests")
+
   const [accounts, setAccounts] = useState<AdminAccountItem[]>([])
   const [meta, setMeta] = useState<{ userVersion?: number; dbPath?: string } | null>(
     null
@@ -79,6 +121,7 @@ export function AccountsPage(): React.JSX.Element {
 
   const refresh = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const windowMs = Number(windowPreset)
       const sinceMs = Date.now() - windowMs
@@ -92,6 +135,7 @@ export function AccountsPage(): React.JSX.Element {
       setMeta(metaRes)
     } catch (err) {
       const msg = err instanceof AdminApiError ? err.message : String(err)
+      setError(msg)
       toast.error("Failed to load accounts", { description: msg })
     } finally {
       setLoading(false)
@@ -111,6 +155,9 @@ export function AccountsPage(): React.JSX.Element {
     const totalTokens = sum(accounts.map((a) => a.stats?.tokens_total))
     const avgDurationMs = calcWeightedAvgDurationMs(accounts)
 
+    const errorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0
+    const tokensPerRequest = totalRequests > 0 ? totalTokens / totalRequests : 0
+
     return {
       totalAccounts,
       failedAccounts,
@@ -118,8 +165,46 @@ export function AccountsPage(): React.JSX.Element {
       totalErrors,
       totalTokens,
       avgDurationMs,
+      errorRatePct,
+      tokensPerRequest,
     }
   }, [accounts])
+
+  const visibleAccounts = useMemo(() => {
+    const q = query.trim().toLowerCase()
+
+    const filtered = q
+      ? accounts.filter((a) => a.account_id.toLowerCase().includes(q))
+      : accounts
+
+    const out = [...filtered]
+
+    out.sort((a, b) => {
+      if (sortBy === "account") return a.account_id.localeCompare(b.account_id)
+
+      if (sortBy === "last_req") {
+        return (b.stats?.last_request_at_ms ?? 0) - (a.stats?.last_request_at_ms ?? 0)
+      }
+
+      if (sortBy === "errors") {
+        return (b.stats?.error_count ?? 0) - (a.stats?.error_count ?? 0)
+      }
+
+      if (sortBy === "tokens") {
+        return (b.stats?.tokens_total ?? 0) - (a.stats?.tokens_total ?? 0)
+      }
+
+      // default: requests
+      return (b.stats?.request_count ?? 0) - (a.stats?.request_count ?? 0)
+    })
+
+    return out
+  }, [accounts, query, sortBy])
+
+  const windowMs = Number(windowPreset)
+  const nowMs = Date.now()
+  const fromMs = String(nowMs - windowMs)
+  const toMs = String(nowMs)
 
   return (
     <div className="space-y-6">
@@ -150,6 +235,16 @@ export function AccountsPage(): React.JSX.Element {
           {meta?.dbPath ? `DB v${meta.userVersion ?? "?"} · ${meta.dbPath}` : null}
         </div>
       </div>
+
+      {error ? (
+        <InlineAlert
+          variant="error"
+          title="Failed to load accounts"
+          description={error}
+          actionLabel="Retry"
+          onAction={() => void refresh()}
+        />
+      ) : null}
 
       <BentoGrid className="auto-rows-min grid-cols-1 gap-3 md:grid-cols-3">
         <MagicCard className="rounded-xl">
@@ -190,6 +285,25 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
+            <div className="text-muted-foreground text-xs">Error rate</div>
+            <div className="mt-1 flex items-baseline gap-1 text-2xl font-semibold">
+              <KpiValue value={kpis.errorRatePct} decimalPlaces={1} />
+              <span className="text-muted-foreground text-sm">%</span>
+            </div>
+          </div>
+        </MagicCard>
+
+        <MagicCard className="rounded-xl">
+          <div className="p-4">
+            <div className="text-muted-foreground text-xs">Tokens / req</div>
+            <div className="mt-1 text-2xl font-semibold">
+              <KpiValue value={kpis.tokensPerRequest} decimalPlaces={1} />
+            </div>
+          </div>
+        </MagicCard>
+
+        <MagicCard className="rounded-xl">
+          <div className="p-4">
             <div className="text-muted-foreground text-xs">Tokens</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.totalTokens} />
@@ -214,7 +328,35 @@ export function AccountsPage(): React.JSX.Element {
             Click an account to filter requests.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <Input
+              placeholder="Filter account"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="sm:max-w-xs"
+            />
+
+            <div className="flex items-center gap-2">
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectItem value="requests">Requests</SelectItem>
+                  <SelectItem value="errors">Errors</SelectItem>
+                  <SelectItem value="tokens">Tokens</SelectItem>
+                  <SelectItem value="last_req">Last req</SelectItem>
+                  <SelectItem value="account">Account</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="text-muted-foreground text-sm tabular-nums">
+                {visibleAccounts.length}/{accounts.length}
+              </div>
+            </div>
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -229,14 +371,26 @@ export function AccountsPage(): React.JSX.Element {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.length === 0 && !loading ? (
+              {loading && accounts.length === 0 ? (
+                <AccountsTableSkeleton rows={6} />
+              ) : visibleAccounts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-muted-foreground">
-                    No data.
+                  <TableCell colSpan={8}>
+                    <InlineAlert
+                      variant="info"
+                      title={accounts.length === 0 ? "No accounts" : "No matches"}
+                      description={
+                        accounts.length === 0
+                          ? "No accounts found."
+                          : "No accounts match the current filter."
+                      }
+                      actionLabel={query.trim() ? "Clear filter" : undefined}
+                      onAction={query.trim() ? () => setQuery("") : undefined}
+                    />
                   </TableCell>
                 </TableRow>
               ) : (
-                accounts.map((a) => {
+                visibleAccounts.map((a) => {
                   const failed = a.runtime?.failed
                   const statusBadge = failed ? (
                     <Badge variant="destructive">failed</Badge>
@@ -257,12 +411,12 @@ export function AccountsPage(): React.JSX.Element {
                   return (
                     <TableRow key={a.account_id}>
                       <TableCell className="font-mono">
-                        <a
-                          href={`#/requests?account_id=${encodeURIComponent(a.account_id)}`}
+                        <Link
+                          to={`/requests?account_id=${encodeURIComponent(a.account_id)}&from_ms=${fromMs}&to_ms=${toMs}`}
                           className="underline decoration-border hover:decoration-foreground"
                         >
                           {a.account_id}
-                        </a>
+                        </Link>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">

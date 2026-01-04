@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { TokenDialog } from "@/components/token-dialog"
+import { MotionToggle } from "@/components/motion-toggle"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 function NavItem({
   to,
@@ -75,6 +77,8 @@ export function AppShell(): React.JSX.Element {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
+            <MotionToggle />
+            <ThemeToggle />
             <TokenDialog />
           </div>
         </div>

@@ -8,8 +8,11 @@
     <script>
       ;(() => {
         try {
-          const mq = window.matchMedia("(prefers-color-scheme: dark)")
-          document.documentElement.classList.toggle("dark", mq.matches)
+          const stored = window.localStorage.getItem("theme")
+          const theme = stored === "light" || stored === "dark" || stored === "system" ? stored : "system"
+          const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+          const isDark = theme === "dark" || (theme === "system" && systemDark)
+          document.documentElement.classList.toggle("dark", isDark)
         } catch {
           // ignore
         }

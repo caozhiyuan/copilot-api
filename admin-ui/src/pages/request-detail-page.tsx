@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
-import { useParams } from "react-router-dom"
+import { ArrowLeftIcon, DownloadIcon } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Link, useLocation, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import {
@@ -8,7 +9,10 @@ import {
   getAdminRequestDetail,
 } from "@/lib/admin-api"
 import { fmtIso, fmtNum } from "@/lib/format"
+import { JsonViewer } from "@/components/json/json-viewer"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Card,
   CardContent,
@@ -17,7 +21,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { BorderBeam } from "@/components/ui/border-beam"
+import { InlineAlert } from "@/components/ui/inline-alert"
 import { ShimmerButton } from "@/components/ui/shimmer-button"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -35,9 +41,14 @@ function StatusBadge({ status }: { status: number }): React.JSX.Element {
 
 export function RequestDetailPage(): React.JSX.Element {
   const { requestId = "" } = useParams()
+  const location = useLocation()
+
+  const fromSearch = (location.state as { fromSearch?: string } | null)?.fromSearch
+  const backTo = fromSearch ? `/requests?${fromSearch}` : "/requests"
 
   const [loading, setLoading] = useState(true)
   const [item, setItem] = useState<AdminRequestItem | null>(null)
+  const [search, setSearch] = useState("")
 
   useEffect(() => {
     let cancelled = false
@@ -65,18 +76,35 @@ export function RequestDetailPage(): React.JSX.Element {
     }
   }, [requestId])
 
-  const raw = useMemo(() => {
-    return item ? JSON.stringify(item, null, 2) : ""
-  }, [item])
-
   async function copyRaw(): Promise<void> {
-    if (!raw) return
+    if (!item) return
 
     try {
+      const raw = JSON.stringify(item, null, 2)
       await navigator.clipboard.writeText(raw)
       toast.success("Copied JSON")
     } catch (err) {
       toast.error("Copy failed", { description: String(err) })
+    }
+  }
+
+  function downloadRaw(): void {
+    if (!item) return
+
+    try {
+      const raw = JSON.stringify(item, null, 2)
+      const blob = new Blob([raw], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${item.request_id}.json`
+      a.click()
+
+      URL.revokeObjectURL(url)
+      toast.success("Downloaded JSON")
+    } catch (err) {
+      toast.error("Download failed", { description: String(err) })
     }
   }
 
@@ -85,8 +113,17 @@ export function RequestDetailPage(): React.JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>Request</CardTitle>
-          <CardDescription>Loading...</CardDescription>
+          <CardDescription>
+            <Skeleton className="h-4 w-40" />
+          </CardDescription>
         </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-64" />
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        </CardContent>
       </Card>
     )
   }
@@ -95,9 +132,16 @@ export function RequestDetailPage(): React.JSX.Element {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Request not found</CardTitle>
-          <CardDescription>request_id: {requestId}</CardDescription>
+          <CardTitle>Request</CardTitle>
+          <CardDescription>Request not found.</CardDescription>
         </CardHeader>
+        <CardContent>
+          <InlineAlert
+            variant="warning"
+            title="Request not found"
+            description={`request_id: ${requestId}`}
+          />
+        </CardContent>
       </Card>
     )
   }
@@ -110,6 +154,15 @@ export function RequestDetailPage(): React.JSX.Element {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to={backTo}>
+            <ArrowLeftIcon className="size-4" />
+            Back
+          </Link>
+        </Button>
+      </div>
+
       <div className="relative">
         <BorderBeam className="opacity-40" borderWidth={1} />
         <Card className="relative">
@@ -147,7 +200,14 @@ export function RequestDetailPage(): React.JSX.Element {
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">path</TableCell>
-                  <TableCell className="font-mono text-xs">{item.path}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <Link
+                      to={`/requests?path=${encodeURIComponent(item.path)}`}
+                      className="underline decoration-border hover:decoration-foreground"
+                    >
+                      {item.path}
+                    </Link>
+                  </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">endpoint</TableCell>
@@ -158,7 +218,16 @@ export function RequestDetailPage(): React.JSX.Element {
                 <TableRow>
                   <TableCell className="text-muted-foreground">account</TableCell>
                   <TableCell className="font-mono text-xs">
-                    {item.account_id || ""}
+                    {item.account_id ? (
+                      <Link
+                        to={`/requests?account_id=${encodeURIComponent(item.account_id)}`}
+                        className="underline decoration-border hover:decoration-foreground"
+                      >
+                        {item.account_id}
+                      </Link>
+                    ) : (
+                      ""
+                    )}
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -196,23 +265,34 @@ export function RequestDetailPage(): React.JSX.Element {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <div>
-              <CardTitle>Raw</CardTitle>
-              <CardDescription>Full record as JSON.</CardDescription>
-            </div>
-            <ShimmerButton
-              onClick={() => void copyRaw()}
-              background="hsl(var(--primary))"
-              className="h-9 px-4"
-            >
-              Copy JSON
-            </ShimmerButton>
+          <CardHeader>
+            <CardTitle>Raw</CardTitle>
+            <CardDescription>Full record as JSON.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <pre className="bg-muted overflow-auto rounded-md p-3 text-xs">
-              {raw}
-            </pre>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                placeholder="Search key/value"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="sm:max-w-xs"
+              />
+              <div className="flex items-center gap-2 sm:ml-auto">
+                <Button type="button" variant="outline" size="sm" onClick={downloadRaw}>
+                  <DownloadIcon className="size-4" />
+                  Download
+                </Button>
+                <ShimmerButton
+                  onClick={() => void copyRaw()}
+                  background="hsl(var(--primary))"
+                  className="h-9 px-4"
+                >
+                  Copy JSON
+                </ShimmerButton>
+              </div>
+            </div>
+
+            <JsonViewer value={item} search={search} />
           </CardContent>
         </Card>
       </div>
