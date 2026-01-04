@@ -1,4 +1,48 @@
 import { Hono } from "hono"
+import { existsSync } from "node:fs"
+import { readFile } from "node:fs/promises"
+import * as path from "node:path"
+import { fileURLToPath } from "node:url"
+
+function resolveAdminDistDir(): string | null {
+  // Prefer locating dist/admin relative to the compiled output (dist/*.js).
+  const candidates = [
+    fileURLToPath(new URL("./admin/", import.meta.url)),
+    // Fallback for local dev (src/routes/admin/route.ts -> ../../../dist/admin).
+    fileURLToPath(new URL("../../../dist/admin/", import.meta.url)),
+  ]
+
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir
+  }
+
+  return null
+}
+
+function safeResolveFile(distDir: string, relPath: string): string | null {
+  const normalized = relPath.startsWith("/") ? relPath.slice(1) : relPath
+  const full = path.resolve(distDir, normalized)
+  const rel = path.relative(distDir, full)
+
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null
+  return full
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+}
+
+function contentTypeFor(filePath: string): string | undefined {
+  return CONTENT_TYPES[path.extname(filePath).toLowerCase()]
+}
 
 const html = `<!doctype html>
 <html lang="en">
@@ -575,4 +619,77 @@ const html = `<!doctype html>
 
 export const adminRoutes = new Hono()
 
-adminRoutes.get("/", (c) => c.html(html))
+adminRoutes.get("*", async (c) => {
+  // Optional rollback: serve legacy inlined admin UI.
+  if (process.env.ADMIN_UI_LEGACY === "1") {
+    return c.html(html)
+  }
+
+  const distDir = resolveAdminDistDir()
+  if (!distDir) {
+    return c.html(html)
+  }
+
+  const url = new URL(c.req.url)
+
+  // Compute path relative to the mounted /admin prefix.
+  let relPath = url.pathname
+  if (relPath.startsWith("/admin")) {
+    relPath = relPath.slice("/admin".length)
+    if (relPath === "") relPath = "/"
+  }
+
+  const requested = relPath === "/" ? "/index.html" : relPath
+  const filePath = safeResolveFile(distDir, requested)
+  if (!filePath) {
+    return c.html(html)
+  }
+
+  try {
+    const fileBuf = await readFile(filePath)
+    const data = new Uint8Array(
+      fileBuf.buffer.slice(
+        fileBuf.byteOffset,
+        fileBuf.byteOffset + fileBuf.byteLength,
+      ) as ArrayBuffer,
+    )
+    const headers: Record<string, string> = {}
+
+    const contentType = contentTypeFor(filePath)
+    if (contentType) headers["content-type"] = contentType
+
+    if (requested.startsWith("/assets/")) {
+      headers["cache-control"] = "public, max-age=31536000, immutable"
+    } else if (requested.endsWith(".html")) {
+      headers["cache-control"] = "no-cache"
+    } else {
+      headers["cache-control"] = "public, max-age=31536000"
+    }
+
+    return c.body(data, 200, headers)
+  } catch {
+    // For non-asset paths (e.g. /admin/settings), fall back to index.html.
+    if (!relPath.includes(".")) {
+      const indexPath = safeResolveFile(distDir, "/index.html")
+      if (indexPath) {
+        try {
+          const indexBuf = await readFile(indexPath)
+          const indexData = new Uint8Array(
+            indexBuf.buffer.slice(
+              indexBuf.byteOffset,
+              indexBuf.byteOffset + indexBuf.byteLength,
+            ) as ArrayBuffer,
+          )
+          return c.body(indexData, 200, {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-cache",
+          })
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    return c.html(html)
+  }
+})

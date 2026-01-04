@@ -34,7 +34,7 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **OpenAI & Anthropic Compatibility**: Exposes GitHub Copilot as an OpenAI-compatible (`/v1/chat/completions`, `/v1/models`, `/v1/embeddings`) and Anthropic-compatible (`/v1/messages`) API.
 - **Claude Code Integration**: Easily configure and launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) to use Copilot as its backend with a simple command-line flag (`--claude-code`).
 - **Usage Dashboard**: A web-based dashboard to monitor your Copilot API usage, view quotas, and see detailed statistics.
-- **Admin UI**: Built-in admin page (`/admin`) to inspect account runtime status and request history (models/endpoints, tokens/usage, errors).
+- **Admin UI**: Modern admin console (`/admin`) to inspect account runtime status and request history, with rich filtering and a request-detail JSON viewer (search/copy/download). Includes theme (system/light/dark) and motion (magic/subtle/off) toggles.
 - **Rate Limit Control**: Manage API usage with rate-limiting options (`--rate-limit`) and a waiting mechanism (`--wait`) to prevent errors from rapid requests.
 - **Manual Request Approval**: Manually approve or deny each API request for fine-grained control over usage (`--manual`).
 - **Token Visibility**: Option to display GitHub and Copilot tokens during authentication and refresh for debugging (`--show-token`).
@@ -435,6 +435,19 @@ The proxy includes a built-in admin UI served from your running instance. It let
     ```
 2. Open the UI in your browser:
     - `http://localhost:4141/admin` (replace the port if you changed it)
+
+### UI tips
+
+- **Header controls (top-right)**
+  - **Motion**: `Magic` / `Subtle` / `Off` (auto-forced to `Off` when your OS has reduced motion enabled)
+  - **Theme**: `System` / `Light` / `Dark`
+  - **Admin token**: stored in `sessionStorage` (use the Token dialog to save/test it)
+- **Navigation**
+  - **Accounts**: KPI overview (incl. error rate, tokens/request), plus filter + sort; click an account to jump into Requests with filters applied.
+  - **Requests**: Quick/Advanced filters, time range presets (15m/1h/6h/24h/7d) + custom date/time, cursor pagination.
+  - **Request detail**: Back button returns to Requests (preserving filters when navigated from the list); summary fields link back into Requests; JSON viewer supports search/highlight, expand/collapse, and Copy/Download.
+- **Deep links**
+  - The admin UI uses hash routing, so sharable links look like: `http://localhost:4141/admin/#/requests?...`
 
 ### Access control
 
