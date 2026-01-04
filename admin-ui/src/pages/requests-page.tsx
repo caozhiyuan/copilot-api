@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -142,16 +142,15 @@ function presetToRange(preset: Exclude<TimeRange, "__any__" | "custom">): {
 } {
   const now = Date.now()
 
-  const windowMs =
-    preset === "15m"
-      ? 15 * 60 * 1000
-      : preset === "1h"
-        ? 60 * 60 * 1000
-        : preset === "6h"
-          ? 6 * 60 * 60 * 1000
-          : preset === "24h"
-            ? 24 * 60 * 60 * 1000
-            : 7 * 24 * 60 * 60 * 1000
+  const windowMsByPreset: Record<Exclude<TimeRange, "__any__" | "custom">, number> = {
+    "15m": 15 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "6h": 6 * 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000,
+  }
+
+  const windowMs = windowMsByPreset[preset]
 
   return { from_ms: String(now - windowMs), to_ms: String(now) }
 }
@@ -208,38 +207,46 @@ export function RequestsPage(): React.JSX.Element {
     return validateTimeRange(filters.from_ms, filters.to_ms)
   }, [filters.from_ms, filters.to_ms])
 
-  async function load(reset: boolean): Promise<void> {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(
+    async ({
+      reset,
+      cursor,
+    }: {
+      reset: boolean
+      cursor: number | null
+    }): Promise<void> => {
+      setLoading(true)
+      setError(null)
 
-    try {
-      const data = await queryAdminRequests({
-        ...activeFilters,
-        limit: 50,
-        cursor_id: reset ? null : nextCursor,
-      })
+      try {
+        const data = await queryAdminRequests({
+          ...activeFilters,
+          limit: 50,
+          cursor_id: reset ? null : cursor,
+        })
 
-      setItems((prev) => (reset ? data.items : prev.concat(data.items)))
-      setNextCursor(data.next_cursor_id ?? null)
-      setHasMore(Boolean(data.has_more))
-    } catch (err) {
-      const msg = err instanceof AdminApiError ? err.message : String(err)
-      setError(msg)
-      toast.error("Failed to load requests", { description: msg })
+        setItems((prev) => (reset ? data.items : prev.concat(data.items)))
+        setNextCursor(data.next_cursor_id ?? null)
+        setHasMore(Boolean(data.has_more))
+      } catch (err) {
+        const msg = err instanceof AdminApiError ? err.message : String(err)
+        setError(msg)
+        toast.error("Failed to load requests", { description: msg })
 
-      if (reset) setItems([])
-      setHasMore(false)
-      setNextCursor(null)
-    } finally {
-      setLoading(false)
-    }
-  }
+        if (reset) setItems([])
+        setHasMore(false)
+        setNextCursor(null)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [activeFilters]
+  )
 
   // Reload when filters in URL change.
   useEffect(() => {
-    void load(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams.toString()])
+    void load({ reset: true, cursor: null })
+  }, [load])
 
   function apply(): void {
     if (validationError) return
@@ -518,7 +525,7 @@ export function RequestsPage(): React.JSX.Element {
                 title="Failed to load requests"
                 description={error}
                 actionLabel="Retry"
-                onAction={() => void load(true)}
+                onAction={() => void load({ reset: true, cursor: null })}
               />
             ) : null}
 
@@ -546,7 +553,7 @@ export function RequestsPage(): React.JSX.Element {
                         title="Failed to load requests"
                         description={error}
                         actionLabel="Retry"
-                        onAction={() => void load(true)}
+                        onAction={() => void load({ reset: true, cursor: null })}
                       />
                     </TableCell>
                   </TableRow>
@@ -625,7 +632,7 @@ export function RequestsPage(): React.JSX.Element {
 
             <div className="flex items-center justify-end gap-2">
               <ShimmerButton
-                onClick={() => void load(false)}
+                onClick={() => void load({ reset: false, cursor: nextCursor })}
                 disabled={loading || !hasMore}
                 background="hsl(var(--secondary))"
                 className="h-9 px-4"

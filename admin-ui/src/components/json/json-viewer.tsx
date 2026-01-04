@@ -273,11 +273,13 @@ export function JsonViewer({
   function expandAll(): void {
     setBaseExpandDepth(99)
     setCollapsedPaths(new Set())
+    setExpandedPaths(new Set())
   }
 
   function collapseAll(): void {
     setBaseExpandDepth(0)
     setExpandedPaths(new Set())
+    setCollapsedPaths(new Set())
   }
 
   return (
