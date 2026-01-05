@@ -100,12 +100,20 @@ function translateAnthropicMessagesToOpenAI(
     : handleAssistantMessage(message, modelId),
   )
   if (modelId.startsWith("claude") && thinkingBudget) {
-    const thinkingMessage = {
-      role: "user",
-      content:
-        "<system-reminder>Please strictly follow Interleaved thinking</system-reminder>",
-    } as Message
-    return [...systemMessages, thinkingMessage, ...otherMessages]
+    const reminder =
+      "<system-reminder>you MUST follow interleaved_thinking_protocol</system-reminder>"
+    const firstUserIndex = otherMessages.findIndex((m) => m.role === "user")
+    if (firstUserIndex !== -1) {
+      const userMessage = otherMessages[firstUserIndex]
+      if (typeof userMessage.content === "string") {
+        userMessage.content = reminder + "\n\n" + userMessage.content
+      } else if (Array.isArray(userMessage.content)) {
+        userMessage.content = [
+          { type: "text", text: reminder },
+          ...userMessage.content,
+        ] as Array<ContentPart>
+      }
+    }
   }
   return [...systemMessages, ...otherMessages]
 }
@@ -122,10 +130,16 @@ function handleSystemPrompt(
   let extraPrompt = ""
   if (modelId.startsWith("claude") && thinkingBudget) {
     extraPrompt = `
-## Interleaved thinking
-- Interleaved thinking is enabled
-- You MUST think after receiving tool results before deciding the next action or final answer.
-`
+<interleaved_thinking_protocol>
+ABSOLUTE REQUIREMENT - NON-NEGOTIABLE:
+The current thinking_mode is interleaved, Whenever you have the result of a function call, think carefully , MUST output a thinking block
+RULES:
+Tool result → thinking block (ALWAYS, no exceptions)
+This is NOT optional - it is a hard requirement
+The thinking block must contain substantive reasoning (minimum 3-5 sentences)
+Think about: what the results mean, what to do next, how to answer the user
+NEVER skip this step, even if the result seems simple or obvious
+</interleaved_thinking_protocol>`
   }
 
   if (typeof system === "string") {
