@@ -9,6 +9,7 @@ import {
   getAdminMeta,
 } from "@/lib/admin-api"
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion"
 import { Badge } from "@/components/ui/badge"
 import { InlineAlert } from "@/components/ui/inline-alert"
@@ -88,15 +89,26 @@ function KpiValue({
   return <NumberTicker value={value} decimalPlaces={decimalPlaces} />
 }
 
+const accountsTableColVisibility = [
+  null,
+  null,
+  "hidden lg:table-cell",
+  null,
+  null,
+  "hidden xl:table-cell",
+  "hidden xl:table-cell",
+  "hidden lg:table-cell",
+] as const
+
 function AccountsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
-  const cols = 8
+  const cols = accountsTableColVisibility.length
 
   return (
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <TableRow key={i}>
           {Array.from({ length: cols }).map((__, j) => (
-            <TableCell key={j} className="py-3">
+            <TableCell key={j} className={cn("py-3", accountsTableColVisibility[j])}>
               <Skeleton className={j === 0 ? "h-4 w-56" : "h-4 w-24"} />
             </TableCell>
           ))}
@@ -207,12 +219,12 @@ export function AccountsPage(): React.JSX.Element {
   const toMs = String(nowMs)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground text-sm">Stats window</span>
           <Select value={windowPreset} onValueChange={(v) => setWindowPreset(v as WindowPreset)}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger size="sm" className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -222,7 +234,7 @@ export function AccountsPage(): React.JSX.Element {
           </Select>
         </div>
 
-        <RainbowButton onClick={refresh} disabled={loading} className="h-9 px-4">
+        <RainbowButton onClick={refresh} disabled={loading} size="sm">
           {loading ? "Refreshing..." : "Refresh"}
         </RainbowButton>
 
@@ -241,7 +253,7 @@ export function AccountsPage(): React.JSX.Element {
         />
       ) : null}
 
-      <BentoGrid className="auto-rows-min grid-cols-1 gap-3 md:grid-cols-3">
+      <BentoGrid className="auto-rows-min grid-cols-1 gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         <MagicCard className="rounded-xl">
           <div className="p-4">
             <div className="text-muted-foreground text-xs">Accounts</div>
@@ -316,25 +328,25 @@ export function AccountsPage(): React.JSX.Element {
         </MagicCard>
       </BentoGrid>
 
-      <Card>
-        <CardHeader>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
           <CardTitle>Accounts</CardTitle>
-          <CardDescription>
+          <CardDescription className="hidden sm:block">
             Click an account to filter requests.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 px-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <Input
               placeholder="Filter account"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="sm:max-w-xs"
+              className="h-8 sm:max-w-xs"
             />
 
             <div className="flex items-center gap-2">
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger size="sm" className="w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent align="end">
@@ -352,17 +364,17 @@ export function AccountsPage(): React.JSX.Element {
             </div>
           </div>
 
-          <Table>
+          <Table className="[&_th]:h-9 [&_td]:py-1.5">
             <TableHeader>
               <TableRow>
                 <TableHead>Account</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Remaining</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[2])}>Remaining</TableHead>
                 <TableHead>Requests</TableHead>
                 <TableHead>Errors</TableHead>
-                <TableHead>Tokens</TableHead>
-                <TableHead>Avg ms</TableHead>
-                <TableHead>Last req</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[5])}>Tokens</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[6])}>Avg ms</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[7])}>Last req</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -370,7 +382,7 @@ export function AccountsPage(): React.JSX.Element {
                 <AccountsTableSkeleton rows={6} />
               ) : visibleAccounts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8}>
+                  <TableCell colSpan={accountsTableColVisibility.length}>
                     <InlineAlert
                       variant="info"
                       title={accounts.length === 0 ? "No accounts" : "No matches"}
@@ -423,16 +435,20 @@ export function AccountsPage(): React.JSX.Element {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell>{remaining}</TableCell>
+                      <TableCell className={cn(accountsTableColVisibility[2])}>{remaining}</TableCell>
                       <TableCell>{fmtNum(a.stats?.request_count)}</TableCell>
                       <TableCell>{fmtNum(a.stats?.error_count)}</TableCell>
-                      <TableCell>{fmtNum(a.stats?.tokens_total)}</TableCell>
-                      <TableCell>
+                      <TableCell className={cn(accountsTableColVisibility[5])}>
+                        {fmtNum(a.stats?.tokens_total)}
+                      </TableCell>
+                      <TableCell className={cn(accountsTableColVisibility[6])}>
                         {a.stats?.avg_duration_ms != null
                           ? fmtNum(Math.round(a.stats.avg_duration_ms))
                           : ""}
                       </TableCell>
-                      <TableCell className="font-mono text-xs">{last}</TableCell>
+                      <TableCell className={cn(accountsTableColVisibility[7], "font-mono text-xs")}>
+                        {last}
+                      </TableCell>
                     </TableRow>
                   )
                 })

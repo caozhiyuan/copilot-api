@@ -41,7 +41,7 @@ export function AppShell(): React.JSX.Element {
   return (
     <div className="min-h-svh bg-background text-foreground">
       <header className="bg-background/70 sticky top-0 z-50 border-b backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3">
+        <div className="flex w-full items-center gap-3 px-4 py-3 lg:px-6">
           <div className="md:hidden">
             <Sheet>
               <SheetTrigger asChild>
@@ -84,7 +84,7 @@ export function AppShell(): React.JSX.Element {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-6">
+      <main className="w-full px-4 py-4 lg:px-6 lg:py-6">
         <Outlet />
       </main>
     </div>

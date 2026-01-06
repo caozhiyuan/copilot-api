@@ -8,10 +8,12 @@ import {
   queryAdminRequests,
 } from "@/lib/admin-api"
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -155,15 +157,28 @@ function presetToRange(preset: Exclude<TimeRange, "__any__" | "custom">): {
   return { from_ms: String(now - windowMs), to_ms: String(now) }
 }
 
+const requestsTableColVisibility = [
+  null,
+  null,
+  "hidden md:table-cell",
+  "hidden md:table-cell",
+  "hidden lg:table-cell",
+  "hidden xl:table-cell",
+  "hidden xl:table-cell",
+  "hidden 2xl:table-cell",
+  "hidden lg:table-cell",
+  null,
+] as const
+
 function TableSkeleton({ rows }: { rows: number }): React.JSX.Element {
-  const cols = 10
+  const cols = requestsTableColVisibility.length
 
   return (
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <TableRow key={i}>
           {Array.from({ length: cols }).map((__, j) => (
-            <TableCell key={j} className="py-3">
+            <TableCell key={j} className={cn("py-3", requestsTableColVisibility[j])}>
               <Skeleton className={j === 1 ? "h-4 w-56" : "h-4 w-24"} />
             </TableCell>
           ))}
@@ -283,29 +298,48 @@ export function RequestsPage(): React.JSX.Element {
 
   const canApply = !loading && !validationError
 
-  const colSpan = 10
+  const colSpan = requestsTableColVisibility.length
   const hasQuery = searchParams.toString().length > 0
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
+    <div className="space-y-4">
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
           <CardTitle>Requests</CardTitle>
-          <CardDescription>Filter and inspect recent requests.</CardDescription>
+          <CardDescription className="hidden sm:block">
+            Filter and inspect recent requests.
+          </CardDescription>
+          <CardAction className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={clearAll}
+              disabled={!hasQuery || loading}
+            >
+              Clear
+            </Button>
+            <RainbowButton onClick={apply} disabled={!canApply} size="sm">
+              Apply
+            </RainbowButton>
+          </CardAction>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <Tabs defaultValue="quick">
-            <TabsList>
+        <CardContent className="space-y-3 px-4">
+          <Tabs defaultValue="quick" className="gap-1.5">
+            <TabsList className="h-8 p-[2px]">
               <TabsTrigger value="quick">Quick</TabsTrigger>
               <TabsTrigger value="advanced">Advanced</TabsTrigger>
             </TabsList>
 
             <TabsContent value="quick">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="grid gap-2">
-                  <Label htmlFor="account_id">Account</Label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="account_id" className="text-muted-foreground lg:text-xs">
+                    Account
+                  </Label>
                   <Input
                     id="account_id"
+                    className="h-8"
                     placeholder="octocat"
                     value={filters.account_id}
                     onChange={(e) =>
@@ -314,10 +348,10 @@ export function RequestsPage(): React.JSX.Element {
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label>Time range</Label>
+                <div className="grid gap-1.5">
+                  <Label className="text-muted-foreground lg:text-xs">Time range</Label>
                   <Select value={timeRange} onValueChange={(v) => onTimeRangeChange(v as TimeRange)}>
-                    <SelectTrigger>
+                    <SelectTrigger size="sm" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -332,10 +366,13 @@ export function RequestsPage(): React.JSX.Element {
                   </Select>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="status">Status</Label>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="status" className="text-muted-foreground lg:text-xs">
+                    Status
+                  </Label>
                   <Input
                     id="status"
+                    className="h-8"
                     placeholder="200"
                     value={filters.status}
                     onChange={(e) =>
@@ -344,8 +381,8 @@ export function RequestsPage(): React.JSX.Element {
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label>Has error</Label>
+                <div className="grid gap-1.5">
+                  <Label className="text-muted-foreground lg:text-xs">Has error</Label>
                   <Select
                     value={filters.has_error || "__any__"}
                     onValueChange={(v) =>
@@ -355,7 +392,7 @@ export function RequestsPage(): React.JSX.Element {
                       }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger size="sm" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -368,10 +405,13 @@ export function RequestsPage(): React.JSX.Element {
 
                 {timeRange === "custom" ? (
                   <>
-                    <div className="grid gap-2">
-                      <Label htmlFor="from_dt">From</Label>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="from_dt" className="text-muted-foreground lg:text-xs">
+                        From
+                      </Label>
                       <Input
                         id="from_dt"
+                        className="h-8"
                         type="datetime-local"
                         value={fromLocal}
                         onChange={(e) => {
@@ -383,10 +423,13 @@ export function RequestsPage(): React.JSX.Element {
                         }}
                       />
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="to_dt">To</Label>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="to_dt" className="text-muted-foreground lg:text-xs">
+                        To
+                      </Label>
                       <Input
                         id="to_dt"
+                        className="h-8"
                         type="datetime-local"
                         value={toLocal}
                         onChange={(e) => {
@@ -404,11 +447,14 @@ export function RequestsPage(): React.JSX.Element {
             </TabsContent>
 
             <TabsContent value="advanced">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="grid gap-2">
-                  <Label htmlFor="upstream_model">Upstream model</Label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="upstream_model" className="text-muted-foreground lg:text-xs">
+                    Upstream model
+                  </Label>
                   <Input
                     id="upstream_model"
+                    className="h-8"
                     placeholder="gpt-5"
                     value={filters.upstream_model}
                     onChange={(e) =>
@@ -417,10 +463,13 @@ export function RequestsPage(): React.JSX.Element {
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="client_model">Client model</Label>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="client_model" className="text-muted-foreground lg:text-xs">
+                    Client model
+                  </Label>
                   <Input
                     id="client_model"
+                    className="h-8"
                     placeholder="claude-sonnet-4"
                     value={filters.client_model}
                     onChange={(e) =>
@@ -429,10 +478,16 @@ export function RequestsPage(): React.JSX.Element {
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="upstream_endpoint">Endpoint</Label>
+                <div className="grid gap-1.5">
+                  <Label
+                    htmlFor="upstream_endpoint"
+                    className="text-muted-foreground lg:text-xs"
+                  >
+                    Endpoint
+                  </Label>
                   <Input
                     id="upstream_endpoint"
+                    className="h-8"
                     placeholder="/responses"
                     value={filters.upstream_endpoint}
                     onChange={(e) =>
@@ -444,10 +499,13 @@ export function RequestsPage(): React.JSX.Element {
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="path">Path</Label>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="path" className="text-muted-foreground lg:text-xs">
+                    Path
+                  </Label>
                   <Input
                     id="path"
+                    className="h-8"
                     placeholder="/v1/messages"
                     value={filters.path}
                     onChange={(e) =>
@@ -468,27 +526,14 @@ export function RequestsPage(): React.JSX.Element {
             />
           ) : null}
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={clearAll}
-              disabled={!hasQuery || loading}
-            >
-              Clear filters
-            </Button>
-            <RainbowButton onClick={apply} disabled={!canApply} className="h-9 px-4">
-              Apply
-            </RainbowButton>
-          </div>
         </CardContent>
       </Card>
 
       <div className="relative">
         {/* subtle highlight for the table container */}
         <BorderBeam className="opacity-30" borderWidth={1} />
-        <Card className="relative">
-          <CardContent className="space-y-4 pt-6">
+        <Card className="relative gap-4 py-4">
+          <CardContent className="space-y-4 px-4">
             {error && items.length > 0 ? (
               <InlineAlert
                 variant="error"
@@ -499,18 +544,18 @@ export function RequestsPage(): React.JSX.Element {
               />
             ) : null}
 
-            <Table>
+            <Table className="[&_th]:h-9 [&_td]:py-1.5">
               <TableHeader>
                 <TableRow>
                   <TableHead>Time</TableHead>
                   <TableHead>Path</TableHead>
-                  <TableHead>Endpoint</TableHead>
-                  <TableHead>Account</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Tokens</TableHead>
-                  <TableHead>Cost</TableHead>
-                  <TableHead>Quota</TableHead>
-                  <TableHead>Dur</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[2])}>Endpoint</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[3])}>Account</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[4])}>Model</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[5])}>Tokens</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[6])}>Cost</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[7])}>Quota</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[8])}>Dur</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -564,7 +609,7 @@ export function RequestsPage(): React.JSX.Element {
                         <TableCell className="font-mono text-xs">
                           {fmtLocalDateTime(r.started_at_ms)}
                         </TableCell>
-                        <TableCell className="font-mono">
+                        <TableCell className="font-mono whitespace-normal break-words">
                           <Link
                             to={`/request/${encodeURIComponent(r.request_id)}`}
                             state={{ fromSearch: searchParams.toString() }}
@@ -573,23 +618,35 @@ export function RequestsPage(): React.JSX.Element {
                             {r.path}
                           </Link>
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell
+                          className={cn(
+                            requestsTableColVisibility[2],
+                            "font-mono text-xs whitespace-normal break-words"
+                          )}
+                        >
                           {r.upstream_endpoint || ""}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell
+                          className={cn(
+                            requestsTableColVisibility[3],
+                            "font-mono text-xs whitespace-normal break-words"
+                          )}
+                        >
                           {r.account_id || ""}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[4], "font-mono text-xs")}>
                           {r.upstream_model || ""}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[5], "font-mono text-xs")}>
                           {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[6], "font-mono text-xs")}>
                           {r.cost_units ?? ""}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{quota}</TableCell>
-                        <TableCell className="font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[7], "font-mono text-xs")}>
+                          {quota}
+                        </TableCell>
+                        <TableCell className={cn(requestsTableColVisibility[8], "font-mono text-xs")}>
                           {r.duration_ms != null ? fmtNum(r.duration_ms) : ""}
                         </TableCell>
                         <TableCell>{statusBadge}</TableCell>
@@ -604,7 +661,7 @@ export function RequestsPage(): React.JSX.Element {
               <RainbowButton
                 onClick={() => void load({ reset: false, cursor: nextCursor })}
                 disabled={loading || !hasMore}
-                className="h-9 px-4"
+                size="sm"
               >
                 {loading && hasMore ? "Loading..." : hasMore ? "Load more" : "No more"}
               </RainbowButton>

@@ -153,7 +153,7 @@ export function RequestDetailPage(): React.JSX.Element {
       : ""
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" asChild>
           <Link to={backTo}>
@@ -184,7 +184,7 @@ export function RequestDetailPage(): React.JSX.Element {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1fr_2fr]">
         <Card>
           <CardHeader>
             <CardTitle>Summary</CardTitle>
@@ -200,7 +200,7 @@ export function RequestDetailPage(): React.JSX.Element {
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">path</TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
                     <Link
                       to={`/requests?path=${encodeURIComponent(item.path)}`}
                       className="underline decoration-border hover:decoration-foreground"
@@ -211,13 +211,13 @@ export function RequestDetailPage(): React.JSX.Element {
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">endpoint</TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.upstream_endpoint || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">account</TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.account_id ? (
                       <Link
                         to={`/requests?account_id=${encodeURIComponent(item.account_id)}`}
@@ -238,14 +238,14 @@ export function RequestDetailPage(): React.JSX.Element {
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">client</TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.client_ip || ""}
                     {item.user_agent ? ` (${item.user_agent})` : ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">tokens</TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
                     in={item.tokens_input ?? ""} out={item.tokens_output ?? ""} total={
                       item.tokens_total ?? ""
                     } cached={item.tokens_cached_input ?? ""}
@@ -253,7 +253,7 @@ export function RequestDetailPage(): React.JSX.Element {
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">quota</TableCell>
-                  <TableCell className="font-mono text-xs">
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
                     before={item.premium_remaining_before ?? ""} after={
                       item.premium_remaining_after ?? ""
                     } diff={item.premium_remaining_diff ?? ""} ({quota})
@@ -275,14 +275,14 @@ export function RequestDetailPage(): React.JSX.Element {
                 placeholder="Search key/value"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="sm:max-w-xs"
+                className="h-8 sm:max-w-xs"
               />
               <div className="flex items-center gap-2 sm:ml-auto">
                 <Button type="button" variant="outline" size="sm" onClick={downloadRaw}>
                   <DownloadIcon className="size-4" />
                   Download
                 </Button>
-                <RainbowButton onClick={() => void copyRaw()} className="h-9 px-4">
+                <RainbowButton onClick={() => void copyRaw()} size="sm">
                   Copy JSON
                 </RainbowButton>
               </div>
