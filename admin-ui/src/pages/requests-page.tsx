@@ -8,6 +8,7 @@ import {
   queryAdminRequests,
 } from "@/lib/admin-api"
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -156,27 +157,28 @@ function presetToRange(preset: Exclude<TimeRange, "__any__" | "custom">): {
   return { from_ms: String(now - windowMs), to_ms: String(now) }
 }
 
+const requestsTableColVisibility = [
+  null,
+  null,
+  "hidden md:table-cell",
+  "hidden md:table-cell",
+  "hidden lg:table-cell",
+  "hidden xl:table-cell",
+  "hidden xl:table-cell",
+  "hidden 2xl:table-cell",
+  "hidden lg:table-cell",
+  null,
+] as const
+
 function TableSkeleton({ rows }: { rows: number }): React.JSX.Element {
-  const cols = 10
-  const hiddenByCol: Array<string | null> = [
-    null,
-    null,
-    "hidden md:table-cell",
-    "hidden md:table-cell",
-    "hidden lg:table-cell",
-    "hidden xl:table-cell",
-    "hidden xl:table-cell",
-    "hidden 2xl:table-cell",
-    "hidden lg:table-cell",
-    null,
-  ]
+  const cols = requestsTableColVisibility.length
 
   return (
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <TableRow key={i}>
           {Array.from({ length: cols }).map((__, j) => (
-            <TableCell key={j} className={`py-3 ${hiddenByCol[j] ?? ""}`}>
+            <TableCell key={j} className={cn("py-3", requestsTableColVisibility[j])}>
               <Skeleton className={j === 1 ? "h-4 w-56" : "h-4 w-24"} />
             </TableCell>
           ))}
@@ -296,7 +298,7 @@ export function RequestsPage(): React.JSX.Element {
 
   const canApply = !loading && !validationError
 
-  const colSpan = 10
+  const colSpan = requestsTableColVisibility.length
   const hasQuery = searchParams.toString().length > 0
 
   return (
@@ -547,13 +549,13 @@ export function RequestsPage(): React.JSX.Element {
                 <TableRow>
                   <TableHead>Time</TableHead>
                   <TableHead>Path</TableHead>
-                  <TableHead className="hidden md:table-cell">Endpoint</TableHead>
-                  <TableHead className="hidden md:table-cell">Account</TableHead>
-                  <TableHead className="hidden lg:table-cell">Model</TableHead>
-                  <TableHead className="hidden xl:table-cell">Tokens</TableHead>
-                  <TableHead className="hidden xl:table-cell">Cost</TableHead>
-                  <TableHead className="hidden 2xl:table-cell">Quota</TableHead>
-                  <TableHead className="hidden lg:table-cell">Dur</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[2])}>Endpoint</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[3])}>Account</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[4])}>Model</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[5])}>Tokens</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[6])}>Cost</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[7])}>Quota</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[8])}>Dur</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -616,23 +618,35 @@ export function RequestsPage(): React.JSX.Element {
                             {r.path}
                           </Link>
                         </TableCell>
-                        <TableCell className="hidden md:table-cell font-mono text-xs whitespace-normal break-words">
+                        <TableCell
+                          className={cn(
+                            requestsTableColVisibility[2],
+                            "font-mono text-xs whitespace-normal break-words"
+                          )}
+                        >
                           {r.upstream_endpoint || ""}
                         </TableCell>
-                        <TableCell className="hidden md:table-cell font-mono text-xs whitespace-normal break-words">
+                        <TableCell
+                          className={cn(
+                            requestsTableColVisibility[3],
+                            "font-mono text-xs whitespace-normal break-words"
+                          )}
+                        >
                           {r.account_id || ""}
                         </TableCell>
-                        <TableCell className="hidden lg:table-cell font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[4], "font-mono text-xs")}>
                           {r.upstream_model || ""}
                         </TableCell>
-                        <TableCell className="hidden xl:table-cell font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[5], "font-mono text-xs")}>
                           {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}
                         </TableCell>
-                        <TableCell className="hidden xl:table-cell font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[6], "font-mono text-xs")}>
                           {r.cost_units ?? ""}
                         </TableCell>
-                        <TableCell className="hidden 2xl:table-cell font-mono text-xs">{quota}</TableCell>
-                        <TableCell className="hidden lg:table-cell font-mono text-xs">
+                        <TableCell className={cn(requestsTableColVisibility[7], "font-mono text-xs")}>
+                          {quota}
+                        </TableCell>
+                        <TableCell className={cn(requestsTableColVisibility[8], "font-mono text-xs")}>
                           {r.duration_ms != null ? fmtNum(r.duration_ms) : ""}
                         </TableCell>
                         <TableCell>{statusBadge}</TableCell>

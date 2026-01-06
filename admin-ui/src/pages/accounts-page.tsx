@@ -9,6 +9,7 @@ import {
   getAdminMeta,
 } from "@/lib/admin-api"
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion"
 import { Badge } from "@/components/ui/badge"
 import { InlineAlert } from "@/components/ui/inline-alert"
@@ -88,25 +89,26 @@ function KpiValue({
   return <NumberTicker value={value} decimalPlaces={decimalPlaces} />
 }
 
+const accountsTableColVisibility = [
+  null,
+  null,
+  "hidden lg:table-cell",
+  null,
+  null,
+  "hidden xl:table-cell",
+  "hidden xl:table-cell",
+  "hidden lg:table-cell",
+] as const
+
 function AccountsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
-  const cols = 8
-  const hiddenByCol: Array<string | null> = [
-    null,
-    null,
-    "hidden lg:table-cell",
-    null,
-    null,
-    "hidden xl:table-cell",
-    "hidden xl:table-cell",
-    "hidden lg:table-cell",
-  ]
+  const cols = accountsTableColVisibility.length
 
   return (
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <TableRow key={i}>
           {Array.from({ length: cols }).map((__, j) => (
-            <TableCell key={j} className={`py-3 ${hiddenByCol[j] ?? ""}`}>
+            <TableCell key={j} className={cn("py-3", accountsTableColVisibility[j])}>
               <Skeleton className={j === 0 ? "h-4 w-56" : "h-4 w-24"} />
             </TableCell>
           ))}
@@ -367,12 +369,12 @@ export function AccountsPage(): React.JSX.Element {
               <TableRow>
                 <TableHead>Account</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="hidden lg:table-cell">Remaining</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[2])}>Remaining</TableHead>
                 <TableHead>Requests</TableHead>
                 <TableHead>Errors</TableHead>
-                <TableHead className="hidden xl:table-cell">Tokens</TableHead>
-                <TableHead className="hidden xl:table-cell">Avg ms</TableHead>
-                <TableHead className="hidden lg:table-cell">Last req</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[5])}>Tokens</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[6])}>Avg ms</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[7])}>Last req</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -380,7 +382,7 @@ export function AccountsPage(): React.JSX.Element {
                 <AccountsTableSkeleton rows={6} />
               ) : visibleAccounts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8}>
+                  <TableCell colSpan={accountsTableColVisibility.length}>
                     <InlineAlert
                       variant="info"
                       title={accounts.length === 0 ? "No accounts" : "No matches"}
@@ -433,18 +435,18 @@ export function AccountsPage(): React.JSX.Element {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell">{remaining}</TableCell>
+                      <TableCell className={cn(accountsTableColVisibility[2])}>{remaining}</TableCell>
                       <TableCell>{fmtNum(a.stats?.request_count)}</TableCell>
                       <TableCell>{fmtNum(a.stats?.error_count)}</TableCell>
-                      <TableCell className="hidden xl:table-cell">
+                      <TableCell className={cn(accountsTableColVisibility[5])}>
                         {fmtNum(a.stats?.tokens_total)}
                       </TableCell>
-                      <TableCell className="hidden xl:table-cell">
+                      <TableCell className={cn(accountsTableColVisibility[6])}>
                         {a.stats?.avg_duration_ms != null
                           ? fmtNum(Math.round(a.stats.avg_duration_ms))
                           : ""}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell font-mono text-xs">
+                      <TableCell className={cn(accountsTableColVisibility[7], "font-mono text-xs")}>
                         {last}
                       </TableCell>
                     </TableRow>
