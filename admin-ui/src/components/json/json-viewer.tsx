@@ -74,6 +74,14 @@ function formatPrimitive(
       return <span className="text-foreground">{raw}</span>
     }
 
+    // Guard against misleading dates when the value isn't a real epoch-ms timestamp.
+    // Keep this conservative: only show local-time hints for values in a reasonable range.
+    const MIN_TIMESTAMP_MS = 946684800000 // 2000-01-01
+    const MAX_TIMESTAMP_MS = 4102444800000 // 2100-01-01
+    if (value < MIN_TIMESTAMP_MS || value > MAX_TIMESTAMP_MS) {
+      return <span className="text-foreground">{raw}</span>
+    }
+
     const local = fmtLocalDateTime(value)
     if (!local) return <span className="text-foreground">{raw}</span>
 
