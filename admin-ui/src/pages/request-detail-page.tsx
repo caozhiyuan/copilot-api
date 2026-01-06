@@ -8,7 +8,7 @@ import {
   type AdminRequestItem,
   getAdminRequestDetail,
 } from "@/lib/admin-api"
-import { fmtIso, fmtNum } from "@/lib/format"
+import { fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { JsonViewer } from "@/components/json/json-viewer"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/card"
 import { BorderBeam } from "@/components/ui/border-beam"
 import { InlineAlert } from "@/components/ui/inline-alert"
-import { ShimmerButton } from "@/components/ui/shimmer-button"
+import { RainbowButton } from "@/components/ui/rainbow-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -178,7 +178,7 @@ export function RequestDetailPage(): React.JSX.Element {
               ) : null}
             </CardTitle>
             <CardDescription className="font-mono text-xs">
-              {fmtIso(item.started_at_ms)}
+              {fmtLocalDateTime(item.started_at_ms)}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -195,7 +195,7 @@ export function RequestDetailPage(): React.JSX.Element {
                 <TableRow>
                   <TableCell className="w-36 text-muted-foreground">time</TableCell>
                   <TableCell className="font-mono text-xs">
-                    {fmtIso(item.started_at_ms)}
+                    {fmtLocalDateTime(item.started_at_ms)}
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -282,13 +282,9 @@ export function RequestDetailPage(): React.JSX.Element {
                   <DownloadIcon className="size-4" />
                   Download
                 </Button>
-                <ShimmerButton
-                  onClick={() => void copyRaw()}
-                  background="hsl(var(--primary))"
-                  className="h-9 px-4"
-                >
+                <RainbowButton onClick={() => void copyRaw()} className="h-9 px-4">
                   Copy JSON
-                </ShimmerButton>
+                </RainbowButton>
               </div>
             </div>
 

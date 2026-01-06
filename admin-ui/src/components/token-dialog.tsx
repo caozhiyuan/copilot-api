@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ShimmerButton } from "@/components/ui/shimmer-button"
+import { RainbowButton } from "@/components/ui/rainbow-button"
 
 export function TokenDialog(): React.JSX.Element {
   const { token, setToken, clearToken } = useAdminToken()
@@ -112,13 +112,9 @@ export function TokenDialog(): React.JSX.Element {
           <Button variant="outline" onClick={clear} disabled={!token && !draft.trim()}>
             Clear
           </Button>
-          <ShimmerButton
-            onClick={save}
-            background="hsl(var(--primary))"
-            className="h-9 px-4"
-          >
+          <RainbowButton onClick={save} className="h-9 px-4">
             Save
-          </ShimmerButton>
+          </RainbowButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

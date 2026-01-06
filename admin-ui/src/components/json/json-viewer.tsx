@@ -2,6 +2,7 @@ import * as React from "react"
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { fmtLocalDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 export interface JsonViewerProps {
@@ -51,7 +52,11 @@ function highlight(text: string, query: string | undefined): React.ReactNode {
   return <>{parts}</>
 }
 
-function formatPrimitive(value: unknown, search: string | undefined): React.ReactNode {
+function formatPrimitive(
+  value: unknown,
+  search: string | undefined,
+  name: string | undefined
+): React.ReactNode {
   if (value == null) return <span className="text-muted-foreground">null</span>
 
   if (typeof value === "string") {
@@ -63,7 +68,33 @@ function formatPrimitive(value: unknown, search: string | undefined): React.Reac
   }
 
   if (typeof value === "number") {
-    return <span className="text-foreground">{String(value)}</span>
+    const raw = String(value)
+
+    if (!name || !/_at_ms$/.test(name)) {
+      return <span className="text-foreground">{raw}</span>
+    }
+
+    // Guard against misleading dates when the value isn't a real epoch-ms timestamp.
+    // Keep this conservative: only show local-time hints for values in a reasonable range.
+    const MIN_TIMESTAMP_MS = 946684800000 // 2000-01-01
+    const MAX_TIMESTAMP_MS = 4102444800000 // 2100-01-01
+    if (value < MIN_TIMESTAMP_MS || value > MAX_TIMESTAMP_MS) {
+      return <span className="text-foreground">{raw}</span>
+    }
+
+    const local = fmtLocalDateTime(value)
+    if (!local) return <span className="text-foreground">{raw}</span>
+
+    return (
+      <>
+        <span className="text-foreground" title={local}>
+          {raw}
+        </span>
+        <span className="text-muted-foreground ml-1">
+          ({highlight(local, search)})
+        </span>
+      </>
+    )
   }
 
   if (typeof value === "boolean") {
@@ -161,7 +192,7 @@ function JsonNode({
       <NodeRow
         depth={depth}
         name={name ? highlight(name, search) : undefined}
-        valuePreview={formatPrimitive(value, search)}
+        valuePreview={formatPrimitive(value, search, name)}
         expanded={false}
       />
     )

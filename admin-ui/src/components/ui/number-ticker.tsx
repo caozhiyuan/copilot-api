@@ -45,7 +45,7 @@ export function NumberTicker({
           ref.current.textContent = Intl.NumberFormat("en-US", {
             minimumFractionDigits: decimalPlaces,
             maximumFractionDigits: decimalPlaces,
-          }).format(latest)
+          }).format(Number(latest.toFixed(decimalPlaces)))
         }
       }),
     [springValue, decimalPlaces]

@@ -8,7 +8,7 @@ import {
   getAdminAccounts,
   getAdminMeta,
 } from "@/lib/admin-api"
-import { fmtIso, fmtNum } from "@/lib/format"
+import { fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion"
 import { Badge } from "@/components/ui/badge"
 import { InlineAlert } from "@/components/ui/inline-alert"
@@ -39,7 +39,7 @@ import {
 import { BentoGrid } from "@/components/ui/bento-grid"
 import { MagicCard } from "@/components/ui/magic-card"
 import { NumberTicker } from "@/components/ui/number-ticker"
-import { ShimmerButton } from "@/components/ui/shimmer-button"
+import { RainbowButton } from "@/components/ui/rainbow-button"
 
 type WindowPreset = "86400000" | "604800000"
 
@@ -222,14 +222,9 @@ export function AccountsPage(): React.JSX.Element {
           </Select>
         </div>
 
-        <ShimmerButton
-          onClick={refresh}
-          disabled={loading}
-          background="hsl(var(--primary))"
-          className="h-9 px-4"
-        >
+        <RainbowButton onClick={refresh} disabled={loading} className="h-9 px-4">
           {loading ? "Refreshing..." : "Refresh"}
-        </ShimmerButton>
+        </RainbowButton>
 
         <div className="text-muted-foreground ml-auto text-sm">
           {meta?.dbPath ? `DB v${meta.userVersion ?? "?"} · ${meta.dbPath}` : null}
@@ -405,7 +400,7 @@ export function AccountsPage(): React.JSX.Element {
                   )
 
                   const last = a.stats?.last_request_at_ms
-                    ? fmtIso(a.stats.last_request_at_ms)
+                    ? fmtLocalDateTime(a.stats.last_request_at_ms)
                     : ""
 
                   return (

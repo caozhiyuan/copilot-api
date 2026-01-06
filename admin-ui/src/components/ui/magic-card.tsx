@@ -1,3 +1,5 @@
+"use client"
+
 import React, { useCallback, useEffect } from "react"
 import { motion, useMotionTemplate, useMotionValue } from "motion/react"
 
@@ -24,6 +26,10 @@ export function MagicCard({
 }: MagicCardProps) {
   const mouseX = useMotionValue(-gradientSize)
   const mouseY = useMotionValue(-gradientSize)
+
+  const borderGradient = useMotionTemplate`radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px, ${gradientFrom}, ${gradientTo}, var(--border) 100%)`
+  const hoverGradient = useMotionTemplate`radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px, ${gradientColor}, transparent 100%)`
+
   const reset = useCallback(() => {
     mouseX.set(-gradientSize)
     mouseY.set(-gradientSize)
@@ -65,9 +71,6 @@ export function MagicCard({
       document.removeEventListener("visibilitychange", handleVisibility)
     }
   }, [reset])
-
-  const borderGradient = useMotionTemplate`radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px, ${gradientFrom}, ${gradientTo}, var(--border) 100%)`
-  const hoverGradient = useMotionTemplate`radial-gradient(${gradientSize}px circle at ${mouseX}px ${mouseY}px, ${gradientColor}, transparent 100%)`
 
   return (
     <div
