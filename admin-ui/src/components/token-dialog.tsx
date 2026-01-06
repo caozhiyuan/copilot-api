@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RainbowButton } from "@/registry/magicui/rainbow-button"
+import { RainbowButton } from "@/components/ui/rainbow-button"
 
 export function TokenDialog(): React.JSX.Element {
   const { token, setToken, clearToken } = useAdminToken()

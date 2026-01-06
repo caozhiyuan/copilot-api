@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { RainbowButton } from "@/registry/magicui/rainbow-button"
+import { RainbowButton } from "@/components/ui/rainbow-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,

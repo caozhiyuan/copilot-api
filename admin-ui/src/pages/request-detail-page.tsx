@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/card"
 import { BorderBeam } from "@/components/ui/border-beam"
 import { InlineAlert } from "@/components/ui/inline-alert"
-import { RainbowButton } from "@/registry/magicui/rainbow-button"
+import { RainbowButton } from "@/components/ui/rainbow-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,

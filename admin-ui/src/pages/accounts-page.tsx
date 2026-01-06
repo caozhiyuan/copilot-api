@@ -39,7 +39,7 @@ import {
 import { BentoGrid } from "@/components/ui/bento-grid"
 import { MagicCard } from "@/components/ui/magic-card"
 import { NumberTicker } from "@/components/ui/number-ticker"
-import { RainbowButton } from "@/registry/magicui/rainbow-button"
+import { RainbowButton } from "@/components/ui/rainbow-button"
 
 type WindowPreset = "86400000" | "604800000"
 
