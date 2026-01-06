@@ -7,7 +7,7 @@ import {
   type AdminRequestItem,
   queryAdminRequests,
 } from "@/lib/admin-api"
-import { fmtIso, fmtNum } from "@/lib/format"
+import { fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ShimmerButton } from "@/components/ui/shimmer-button"
+import { RainbowButton } from "@/registry/magicui/rainbow-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -456,31 +456,6 @@ export function RequestsPage(): React.JSX.Element {
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="from_ms">From (ms)</Label>
-                  <Input
-                    id="from_ms"
-                    placeholder=""
-                    value={filters.from_ms}
-                    onChange={(e) => {
-                      setTimeRange("custom")
-                      setFilters((p) => ({ ...p, from_ms: e.target.value }))
-                    }}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="to_ms">To (ms)</Label>
-                  <Input
-                    id="to_ms"
-                    placeholder=""
-                    value={filters.to_ms}
-                    onChange={(e) => {
-                      setTimeRange("custom")
-                      setFilters((p) => ({ ...p, to_ms: e.target.value }))
-                    }}
-                  />
-                </div>
               </div>
             </TabsContent>
           </Tabs>
@@ -502,14 +477,9 @@ export function RequestsPage(): React.JSX.Element {
             >
               Clear filters
             </Button>
-            <ShimmerButton
-              onClick={apply}
-              disabled={!canApply}
-              background="hsl(var(--primary))"
-              className="h-9 px-4"
-            >
+            <RainbowButton onClick={apply} disabled={!canApply} className="h-9 px-4">
               Apply
-            </ShimmerButton>
+            </RainbowButton>
           </div>
         </CardContent>
       </Card>
@@ -592,7 +562,7 @@ export function RequestsPage(): React.JSX.Element {
                     return (
                       <TableRow key={r.request_id}>
                         <TableCell className="font-mono text-xs">
-                          {fmtIso(r.started_at_ms)}
+                          {fmtLocalDateTime(r.started_at_ms)}
                         </TableCell>
                         <TableCell className="font-mono">
                           <Link
@@ -631,14 +601,13 @@ export function RequestsPage(): React.JSX.Element {
             </Table>
 
             <div className="flex items-center justify-end gap-2">
-              <ShimmerButton
+              <RainbowButton
                 onClick={() => void load({ reset: false, cursor: nextCursor })}
                 disabled={loading || !hasMore}
-                background="hsl(var(--secondary))"
                 className="h-9 px-4"
               >
                 {loading && hasMore ? "Loading..." : hasMore ? "Load more" : "No more"}
-              </ShimmerButton>
+              </RainbowButton>
             </div>
           </CardContent>
         </Card>
