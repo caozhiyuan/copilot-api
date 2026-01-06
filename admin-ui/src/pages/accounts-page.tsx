@@ -253,7 +253,7 @@ export function AccountsPage(): React.JSX.Element {
         />
       ) : null}
 
-      <BentoGrid className="auto-rows-min grid-cols-1 gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <BentoGrid className="auto-rows-min grid-cols-1 gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
         <MagicCard className="rounded-xl">
           <div className="p-4">
             <div className="text-muted-foreground text-xs">Accounts</div>
