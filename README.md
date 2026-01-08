@@ -246,6 +246,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     },
     "smallModel": "gpt-5-mini",
     "freeModelLoadBalancing": true,
+    "apiKey": "<your_api_key_here>",
     "modelReasoningEfforts": {
       "gpt-5-mini": "low"
     }
@@ -254,7 +255,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts.
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to `gpt-5-mini`.
 - **freeModelLoadBalancing:** Enable round-robin routing for free-model requests across multiple accounts. Defaults to `true`. Set to `false` to route free-model requests sequentially (same ordering strategy as premium models).
-- **apiKey (optional):** API key used to protect selected endpoints. You can also set this via the `COPILOT_API_KEY` environment variable (takes precedence). See **API Key authentication** below.
+- **apiKey (optional):** API key used to protect selected endpoints (see **API Key authentication** below). Prefer setting the `COPILOT_API_KEY` environment variable (takes precedence over `config.json`). The server does not generate an API key automatically — you must provide one. If no key is configured, protected endpoints remain publicly accessible (fail-open). **Do not commit secrets.**
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
