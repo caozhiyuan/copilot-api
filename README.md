@@ -115,6 +115,11 @@ docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here copilot-api
 # This requires setting ADMIN_TOKEN and sending it via request headers (x-admin-token / Authorization: Bearer)
 docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here -e ADMIN_TOKEN=your_admin_token_here copilot-api
 
+# (Optional) Protect selected API endpoints with an API key
+# This protects /v1/*, /token, /usage(/usage/*), and also the non-/v1 OpenAI-style endpoints (/chat/completions, /models, /embeddings, /responses)
+# Clients must send Authorization: Bearer <key> or x-api-key: <key>
+docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here -e COPILOT_API_KEY=your_api_key_here copilot-api
+
 # Run with additional options
 docker run -p 4141:4141 -e GH_TOKEN=your_token copilot-api --verbose --port 4141
 ```
@@ -131,6 +136,7 @@ services:
     environment:
       - GH_TOKEN=your_github_token_here
       - ADMIN_TOKEN=your_admin_token_here
+      - COPILOT_API_KEY=your_api_key_here
     restart: unless-stopped
 ```
 
@@ -248,6 +254,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts.
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to `gpt-5-mini`.
 - **freeModelLoadBalancing:** Enable round-robin routing for free-model requests across multiple accounts. Defaults to `true`. Set to `false` to route free-model requests sequentially (same ordering strategy as premium models).
+- **apiKey (optional):** API key used to protect selected endpoints. You can also set this via the `COPILOT_API_KEY` environment variable (takes precedence). See **API Key authentication** below.
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
@@ -290,6 +297,23 @@ Endpoints for monitoring your Copilot usage and quotas across all accounts.
 > - `/usage/:index` is **0-based**.
 > - If you start the server with `start --github-token ...`, a temporary account is included and shown as `"(temporary)"` in `GET /usage`. In that case, `index=0` refers to the temporary account and registered accounts start at `index=1`.
 > - `auth rm <index>` uses a **1-based** index (as shown by `auth ls`).
+
+### API Key authentication (optional)
+
+You can protect selected public endpoints by setting an API key:
+
+- **Environment variable (preferred):** `COPILOT_API_KEY`
+- **config.json:** `"apiKey": "<key>"` (used only when `COPILOT_API_KEY` is not set)
+
+When a key is configured, requests to the following endpoints require authentication:
+- OpenAI-compatible: `/v1/*`, `/chat/completions`, `/models`, `/embeddings`, `/responses`
+- Usage/token: `/usage`, `/usage/*`, `/token`
+
+Send the key using one of:
+- `Authorization: Bearer <key>` (common for OpenAI clients)
+- `x-api-key: <key>` (common for Anthropic clients)
+
+If no key is configured, these endpoints are publicly accessible (fail-open).
 
 ### Admin UI & Admin API
 
@@ -416,6 +440,8 @@ After starting the server, a URL to the Copilot Usage Dashboard will be displaye
     `https://ericc-ch.github.io/copilot-api?endpoint=http://localhost:4141/usage`
     - If you use the `start.bat` script on Windows, this page will open automatically.
 
+> **API Key note:** If you enable API key authentication for `/usage`, your client must send the API key header. If a client cannot set headers, use `curl` or another API client instead.
+
 The dashboard provides a user-friendly interface to view your Copilot usage data:
 
 - **API Endpoint URL**: The dashboard is pre-configured to fetch data from your local server endpoint via the URL query parameter. You can change this URL to point to any other compatible API endpoint.
@@ -486,11 +512,15 @@ You will be prompted to select a primary model and a "small, fast" model for bac
 
 Paste and run this command in a new terminal to launch Claude Code.
 
+> **API Key note:** If you enabled API key authentication (via `COPILOT_API_KEY` or `config.json` `apiKey`), set `ANTHROPIC_AUTH_TOKEN` in the generated command to the same API key.
+
 ### Manual Configuration with `settings.json`
 
 Alternatively, you can configure Claude Code by creating a `.claude/settings.json` file in your project's root directory. This file should contain the environment variables needed by Claude Code. This way you don't need to run the interactive setup every time.
 
 Here is an example `.claude/settings.json` file:
+
+> **API Key note:** If API key authentication is enabled, set `ANTHROPIC_AUTH_TOKEN` to your API key so Claude Code can send `x-api-key`. If not enabled, any value works.
 
 ```json
 {
