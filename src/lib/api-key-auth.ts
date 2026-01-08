@@ -1,6 +1,8 @@
 import type { MiddlewareHandler } from "hono"
 
-import { getConfig } from "./config"
+import { timingSafeEqual } from "node:crypto"
+
+import { getConfig } from "~/lib/config"
 
 const API_KEY_ENV_VAR = "COPILOT_API_KEY"
 
@@ -72,6 +74,17 @@ export function isProtectedPath(pathnameRaw: string): boolean {
   )
 }
 
+function timingSafeKeyCompare(a: string, b: string): boolean {
+  try {
+    const aBuf = Buffer.from(a)
+    const bBuf = Buffer.from(b)
+    if (aBuf.length !== bBuf.length) return false
+    return timingSafeEqual(aBuf, bBuf)
+  } catch {
+    return false
+  }
+}
+
 export function createApiKeyAuthMiddleware(
   options: ApiKeyAuthOptions = {},
 ): MiddlewareHandler {
@@ -100,7 +113,7 @@ export function createApiKeyAuthMiddleware(
 
     const providedKey = extractRequestApiKey(c.req.raw.headers)
 
-    if (!providedKey || providedKey !== configuredKey) {
+    if (!providedKey || !timingSafeKeyCompare(providedKey, configuredKey)) {
       return c.json(
         {
           error: {

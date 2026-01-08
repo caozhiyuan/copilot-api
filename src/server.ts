@@ -2,7 +2,8 @@ import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 
-import { createApiKeyAuthMiddleware } from "./lib/api-key-auth"
+import { createApiKeyAuthMiddleware } from "~/lib/api-key-auth"
+
 import { adminApiRoutes } from "./routes/admin-api/route"
 import { adminRoutes } from "./routes/admin/route"
 import { completionRoutes } from "./routes/chat-completions/route"
