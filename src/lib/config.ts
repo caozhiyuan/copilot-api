@@ -7,6 +7,7 @@ export interface AppConfig {
   extraPrompts?: Record<string, string>
   smallModel?: string
   freeModelLoadBalancing?: boolean
+  apiKey?: string
   modelReasoningEfforts?: Record<
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
