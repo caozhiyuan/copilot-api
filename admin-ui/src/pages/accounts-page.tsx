@@ -436,15 +436,19 @@ export function AccountsPage(): React.JSX.Element {
                     <Badge variant="secondary">unlimited</Badge>
                   ) : (
                     <div className="flex flex-col gap-1">
-                      <div className="text-xs">
-                        <span className="text-muted-foreground">Used:</span>{" "}
-                        <span className="tabular-nums">{fmtNumOrDash(usedQuota)}</span>
-                      </div>
-                      <div className="text-xs">
-                        <span className="text-muted-foreground">Remaining:</span>{" "}
-                        <span className="tabular-nums">
-                          {fmtNumOrDash(remainingQuota)}
-                        </span>
+                      <div className="flex items-baseline justify-between gap-2 text-xs whitespace-nowrap">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-muted-foreground">Used</span>
+                          <span className="tabular-nums font-medium">
+                            {fmtNumOrDash(usedQuota)}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-muted-foreground">Remaining</span>
+                          <span className="tabular-nums font-medium">
+                            {fmtNumOrDash(remainingQuota)}
+                          </span>
+                        </div>
                       </div>
                       {percentUsed != null ? (
                         <Progress
