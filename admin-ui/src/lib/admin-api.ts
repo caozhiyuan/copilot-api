@@ -9,6 +9,7 @@ export type AdminAccountItem = {
   account_id: string
   account_type?: string
   runtime?: {
+    entitlement?: number
     remaining?: number
     unlimited?: boolean
     failed?: boolean

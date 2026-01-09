@@ -618,6 +618,7 @@ export class AccountsManager {
    */
   getAccountStatus(): Array<{
     id: string
+    entitlement?: number
     remaining?: number
     unlimited?: boolean
     failed?: boolean
@@ -625,6 +626,7 @@ export class AccountsManager {
   }> {
     const statuses: Array<{
       id: string
+      entitlement?: number
       remaining?: number
       unlimited?: boolean
       failed?: boolean
@@ -634,6 +636,7 @@ export class AccountsManager {
     if (this.temporaryAccount) {
       statuses.push({
         id: "(temporary)",
+        entitlement: this.temporaryAccount.premiumEntitlement,
         remaining: this.temporaryAccount.premiumRemaining,
         unlimited: this.temporaryAccount.unlimited,
         failed: this.temporaryAccount.failed,
@@ -646,6 +649,7 @@ export class AccountsManager {
       if (account) {
         statuses.push({
           id: account.id,
+          entitlement: account.premiumEntitlement,
           remaining: account.premiumRemaining,
           unlimited: account.unlimited,
           failed: account.failed,

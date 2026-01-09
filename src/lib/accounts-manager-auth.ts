@@ -107,6 +107,7 @@ export const applyQuotaRefreshSuccessIfCurrent = (
     return false
   }
 
+  account.premiumEntitlement = premium.entitlement
   account.premiumRemaining = premium.remaining
   account.unlimited = premium.unlimited
   account.lastQuotaFetch = Date.now()

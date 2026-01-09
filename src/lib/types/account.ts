@@ -63,6 +63,8 @@ export interface AccountRuntime extends AccountMeta {
   vsCodeVersion?: string
   /** Cached available models for this account */
   models?: ModelsResponse
+  /** Total premium interactions quota entitlement */
+  premiumEntitlement?: number
   /** Remaining premium interactions quota */
   premiumRemaining?: number
   /** Reserved premium interaction units for in-flight requests */
