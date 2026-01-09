@@ -92,6 +92,21 @@ type InstrumentationContext = {
   premiumUnlimitedBefore?: boolean
 }
 
+const isWarmupProbeRequest = (payload: AnthropicMessagesPayload): boolean => {
+  const lastMsg = payload.messages.at(-1)
+  if (!lastMsg || lastMsg.role !== "user" || !Array.isArray(lastMsg.content)) {
+    return false
+  }
+
+  const lastBlock = lastMsg.content.at(-1)
+  if (!lastBlock || lastBlock.type !== "text") {
+    return false
+  }
+
+  const text = lastBlock.text.trim().toLowerCase()
+  return text === "warmup" && lastBlock.cache_control?.type === "ephemeral"
+}
+
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
 
@@ -109,11 +124,10 @@ export async function handleCompletion(c: Context) {
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
 
-  // fix claude code 2.0.28+ warmup request consume premium request, forcing small model if no tools are used
+  // fix claude code 2.0.28+ warmup request consume premium request, forcing small model for warmup probe requests
   // set "CLAUDE_CODE_SUBAGENT_MODEL": "you small model" also can avoid this
   const anthropicBeta = c.req.header("anthropic-beta")
-  const noTools = !anthropicPayload.tools || anthropicPayload.tools.length === 0
-  if (anthropicBeta && noTools) {
+  if (anthropicBeta && isWarmupProbeRequest(anthropicPayload)) {
     anthropicPayload.model = getSmallModel()
   }
 

@@ -28,6 +28,9 @@ export interface AnthropicMessagesPayload {
 export interface AnthropicTextBlock {
   type: "text"
   text: string
+  cache_control?: {
+    type: string
+  }
 }
 
 export interface AnthropicImageBlock {
