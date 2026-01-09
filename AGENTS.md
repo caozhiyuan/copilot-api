@@ -1,5 +1,15 @@
 # AGENTS.md
 
+## Project Background
+
+This project is a fork of `ericc-ch/copilot-api`, created because the original repository appears to be unmaintained.
+
+- **Current Repository**: [nick3/copilot-api](https://github.com/nick3/copilot-api)
+- **Workflow**:
+  - All pushes and Pull Requests should be directed to `nick3/copilot-api`.
+  - The default active branch is `all` (not `master` or `main`).
+  - All Pull Requests should target the `all` branch.
+
 ## Build, Lint, and Test Commands
 
 - **Build:**  

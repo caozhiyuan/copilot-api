@@ -95,6 +95,7 @@ type AccountItem = {
   account_id: string
   account_type?: string
   runtime: {
+    entitlement?: number
     remaining?: number
     unlimited?: boolean
     failed?: boolean
@@ -185,6 +186,7 @@ adminApiRoutes.get("/accounts", async (c) => {
       account_id: s.id,
       account_type: accountType,
       runtime: {
+        entitlement: s.entitlement,
         remaining: s.remaining,
         unlimited: s.unlimited,
         failed: s.failed,

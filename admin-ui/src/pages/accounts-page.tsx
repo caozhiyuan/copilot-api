@@ -37,6 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Progress } from "@/components/ui/progress"
 import { BentoGrid } from "@/components/ui/bento-grid"
 import { MagicCard } from "@/components/ui/magic-card"
 import { NumberTicker } from "@/components/ui/number-ticker"
@@ -48,6 +49,15 @@ type SortBy = "account" | "requests" | "errors" | "tokens" | "last_req"
 
 function sum(items: Array<number | undefined>): number {
   return items.reduce<number>((acc, x) => acc + (x ?? 0), 0)
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value))
+}
+
+function fmtNumOrDash(n?: number | null): string {
+  const s = fmtNum(n)
+  return s || "—"
 }
 
 function calcWeightedAvgDurationMs(accounts: AdminAccountItem[]): number {
@@ -405,10 +415,45 @@ export function AccountsPage(): React.JSX.Element {
                     <Badge variant="secondary">ok</Badge>
                   )
 
-                  const remaining = a.runtime?.unlimited ? (
+                  const total = a.runtime?.entitlement
+                  const remainingQuota = a.runtime?.remaining
+                  const usedQuota =
+                    total != null && remainingQuota != null ?
+                      total - remainingQuota
+                    : undefined
+
+                  const percentUsedRaw =
+                    total != null && total > 0 && usedQuota != null ?
+                      (usedQuota / total) * 100
+                    : undefined
+
+                  const percentUsed =
+                    percentUsedRaw != null && Number.isFinite(percentUsedRaw) ?
+                      clampPercent(percentUsedRaw)
+                    : undefined
+
+                  const remainingCell = a.runtime?.unlimited ? (
                     <Badge variant="secondary">unlimited</Badge>
                   ) : (
-                    fmtNum(a.runtime?.remaining)
+                    <div className="flex flex-col gap-1">
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Used:</span>{" "}
+                        <span className="tabular-nums">{fmtNumOrDash(usedQuota)}</span>
+                      </div>
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Remaining:</span>{" "}
+                        <span className="tabular-nums">
+                          {fmtNumOrDash(remainingQuota)}
+                        </span>
+                      </div>
+                      {percentUsed != null ? (
+                        <Progress
+                          value={percentUsed}
+                          className="h-1.5"
+                          aria-label="Premium interactions quota used"
+                        />
+                      ) : null}
+                    </div>
                   )
 
                   const last = a.stats?.last_request_at_ms
@@ -435,7 +480,11 @@ export function AccountsPage(): React.JSX.Element {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className={cn(accountsTableColVisibility[2])}>{remaining}</TableCell>
+                      <TableCell
+                        className={cn(accountsTableColVisibility[2], "whitespace-normal")}
+                      >
+                        {remainingCell}
+                      </TableCell>
                       <TableCell>{fmtNum(a.stats?.request_count)}</TableCell>
                       <TableCell>{fmtNum(a.stats?.error_count)}</TableCell>
                       <TableCell className={cn(accountsTableColVisibility[5])}>
