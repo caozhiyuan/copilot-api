@@ -379,7 +379,7 @@ export function AccountsPage(): React.JSX.Element {
               <TableRow>
                 <TableHead>Account</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className={cn(accountsTableColVisibility[2])}>Remaining</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[2])}>Premium req</TableHead>
                 <TableHead>Requests</TableHead>
                 <TableHead>Errors</TableHead>
                 <TableHead className={cn(accountsTableColVisibility[5])}>Tokens</TableHead>
@@ -420,17 +420,17 @@ export function AccountsPage(): React.JSX.Element {
                   const usedQuota =
                     total != null && remainingQuota != null ?
                       total - remainingQuota
-                    : undefined
+                      : undefined
 
                   const percentUsedRaw =
                     total != null && total > 0 && usedQuota != null ?
                       (usedQuota / total) * 100
-                    : undefined
+                      : undefined
 
                   const percentUsed =
                     percentUsedRaw != null && Number.isFinite(percentUsedRaw) ?
                       clampPercent(percentUsedRaw)
-                    : undefined
+                      : undefined
 
                   const remainingCell = a.runtime?.unlimited ? (
                     <Badge variant="secondary">unlimited</Badge>
