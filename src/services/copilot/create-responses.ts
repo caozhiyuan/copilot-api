@@ -35,7 +35,7 @@ export interface ToolChoiceFunction {
   type: "function"
 }
 
-export type Tool = FunctionTool
+export type Tool = FunctionTool | Record<string, unknown>
 
 export interface FunctionTool {
   name: string

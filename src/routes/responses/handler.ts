@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
+import { getConfig } from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -42,6 +43,7 @@ export const handleResponses = async (c: Context) => {
   const payload = await c.req.json<ResponsesPayload>()
   logger.debug("Responses request payload:", JSON.stringify(payload))
 
+  useFunctionApplyPatch(payload)
   const streamRequested = Boolean(payload.stream)
 
   const selection = await accountsManager.selectAccountForRequest([
@@ -684,3 +686,35 @@ async function handleNonStreamingResponses(params: {
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
+
+const useFunctionApplyPatch = (payload: ResponsesPayload): void => {
+  const config = getConfig()
+  const enabled = config.useFunctionApplyPatch ?? true
+  if (!enabled) return
+
+  logger.debug("Using function tool apply_patch for responses")
+  if (Array.isArray(payload.tools)) {
+    const toolsArr = payload.tools
+    for (let i = 0; i < toolsArr.length; i++) {
+      const t = toolsArr[i]
+      if (t.type === "custom" && t.name === "apply_patch") {
+        toolsArr[i] = {
+          type: "function",
+          name: t.name,
+          description: "Use the `apply_patch` tool to edit files",
+          parameters: {
+            type: "object",
+            properties: {
+              input: {
+                type: "string",
+                description: "The entire contents of the apply_patch command",
+              },
+            },
+            required: ["input"],
+          },
+          strict: false,
+        }
+      }
+    }
+  }
+}

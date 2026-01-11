@@ -12,6 +12,7 @@ export interface AppConfig {
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >
+  useFunctionApplyPatch?: boolean
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -31,6 +32,7 @@ const defaultConfig: AppConfig = {
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
   },
+  useFunctionApplyPatch: true,
 }
 
 let cachedConfig: AppConfig | null = null
