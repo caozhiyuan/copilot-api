@@ -49,6 +49,8 @@ import {
 import type {
   AnthropicMessagesPayload,
   AnthropicStreamState,
+  AnthropicTextBlock,
+  AnthropicToolResultBlock,
 } from "./anthropic-types"
 
 import {
@@ -131,8 +133,14 @@ export async function handleCompletion(c: Context) {
     anthropicPayload.model = getSmallModel()
   }
 
-  const openAIPayload = translateToOpenAI(anthropicPayload)
   const streamRequested = Boolean(anthropicPayload.stream)
+
+  // fix claude code skill tool_result content and skill text are separated, need to merge them,
+  // otherwise it will consume premium request
+  // e.g. {"role":"user","content":[{"type":"tool_result","tool_use_id":"call_xOTodtnTctlfEHj983qwWNhk","content":"Launching skill: xxxx"},{"type":"text","text":"xxx"}]}
+  mergeToolResultForClaude(anthropicBeta, anthropicPayload)
+
+  const openAIPayload = translateToOpenAI(anthropicPayload)
 
   const selection = await accountsManager.selectAccountForRequest([
     {
@@ -848,3 +856,49 @@ const isNonStreaming = (
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
+
+const mergeToolResultForClaude = (
+  anthropicBeta: string | undefined,
+  anthropicPayload: AnthropicMessagesPayload,
+): void => {
+  if (anthropicBeta) {
+    for (const msg of anthropicPayload.messages) {
+      if (msg.role !== "user" || !Array.isArray(msg.content)) continue
+
+      const content = msg.content
+      const onlyToolResultAndText = content.every(
+        (b) => b.type === "tool_result" || b.type === "text",
+      )
+      if (!onlyToolResultAndText) continue
+
+      const toolResults = content.filter(
+        (b): b is AnthropicToolResultBlock => b.type === "tool_result",
+      )
+      const textBlocks = content.filter(
+        (b): b is AnthropicTextBlock => b.type === "text",
+      )
+      if (toolResults.length === textBlocks.length) {
+        const mergedToolResults = mergeToolResult(toolResults, textBlocks)
+        msg.content = mergedToolResults
+      }
+    }
+  }
+}
+
+const mergeToolResult = (
+  toolResults: Array<AnthropicToolResultBlock>,
+  textBlocks: Array<AnthropicTextBlock>,
+): Array<AnthropicToolResultBlock> => {
+  const mergedToolResults: Array<AnthropicToolResultBlock> = []
+  for (const [i, tr] of toolResults.entries()) {
+    const tb = textBlocks[i]
+    let skillText = tb.text
+    if (tr.content.includes("skill")) {
+      // need add please execute now, otherwise llm not execute skill directly only reply with text only
+      skillText = `Please execute now:${tb.text}`
+    }
+    const mergedText = `${tr.content}\n\n${skillText}`
+    mergedToolResults.push({ ...tr, content: mergedText })
+  }
+  return mergedToolResults
+}

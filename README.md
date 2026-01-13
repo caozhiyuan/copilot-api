@@ -543,6 +543,13 @@ Here is an example `.claude/settings.json` file:
 }
 ```
 
+### CLAUDE.md Recommended Content
+
+Please include the following in `CLAUDE.md` (for Claude usage):
+
+- Prohibited from directly asking questions to users, MUST use AskUserQuestion tool.
+- Once you can confirm that the task is complete, MUST use AskUserQuestion tool to make user confirm. The user may respond with feedback if they are not satisfied with the result, which you can use to make improvements and try again.
+
 You can find more options here: [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables)
 
 You can also read more about IDE integration here: [Add Claude Code to your IDE](https://docs.anthropic.com/en/docs/claude-code/ide-integrations)
