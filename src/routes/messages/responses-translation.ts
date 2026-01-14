@@ -612,7 +612,7 @@ const parseUserId = (
 }
 
 const convertToolResultContent = (
-  content: string | Array<AnthropicTextBlock> | Array<AnthropicImageBlock>,
+  content: string | Array<AnthropicTextBlock | AnthropicImageBlock>,
 ): string | Array<ResponseInputContent> => {
   if (typeof content === "string") {
     return content
