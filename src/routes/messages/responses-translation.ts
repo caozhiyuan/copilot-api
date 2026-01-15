@@ -78,7 +78,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
     parallel_tool_calls: true,
     reasoning: {
       effort: getReasoningEffortForModel(payload.model),
-      summary: "detailed",
+      summary: "auto",
     },
     include: ["reasoning.encrypted_content"],
   }
