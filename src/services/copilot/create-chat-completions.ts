@@ -4,7 +4,7 @@ import { events } from "fetch-event-stream"
 import type { AccountContext } from "~/lib/types/account"
 
 import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
-import { getReasoningEffortForModel } from "~/lib/config"
+import { getReasoningEffortForModel, isForceAgentEnabled } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
 
@@ -45,12 +45,19 @@ export const createChatCompletions = async (
 
   // Agent/user check for X-Initiator header
   // Determine if any message is from an agent ("assistant" or "tool")
-  // Refactor `isAgentCall` logic to check only the last message in the history rather than any message. This prevents valid user messages from being incorrectly flagged as agent calls due to previous assistant history, ensuring proper credit consumption for multi-turn conversations.
   let isAgentCall = false
   if (payload.messages.length > 0) {
-    const lastMessage = payload.messages.at(-1)
-    if (lastMessage) {
-      isAgentCall = ["assistant", "tool"].includes(lastMessage.role)
+    if (isForceAgentEnabled()) {
+      // forceAgent mode: check if ANY message has assistant/tool role
+      isAgentCall = payload.messages.some((msg) =>
+        ["assistant", "tool"].includes(msg.role),
+      )
+    } else {
+      // Default mode: only check the last message
+      const lastMessage = payload.messages.at(-1)
+      if (lastMessage) {
+        isAgentCall = ["assistant", "tool"].includes(lastMessage.role)
+      }
     }
   }
 

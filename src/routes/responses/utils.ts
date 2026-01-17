@@ -3,6 +3,8 @@ import type {
   ResponsesPayload,
 } from "~/services/copilot/create-responses"
 
+import { isForceAgentEnabled } from "~/lib/config"
+
 export const getResponsesRequestOptions = (
   payload: ResponsesPayload,
 ): { vision: boolean; initiator: "agent" | "user" } => {
@@ -13,16 +15,27 @@ export const getResponsesRequestOptions = (
 }
 
 export const hasAgentInitiator = (payload: ResponsesPayload): boolean => {
-  // Refactor `isAgentCall` logic to check only the last message in the history rather than any message. This prevents valid user messages from being incorrectly flagged as agent calls due to previous assistant history, ensuring proper credit consumption for multi-turn conversations.
-  const lastItem = getPayloadItems(payload).at(-1)
+  const items = getPayloadItems(payload)
+
+  if (isForceAgentEnabled()) {
+    // forceAgent mode: check if ANY item has assistant role
+    return items.some((item) => isAgentRole(item))
+  }
+
+  // Default mode: only check the last item
+  const lastItem = items.at(-1)
   if (!lastItem) {
     return false
   }
-  if (!("role" in lastItem) || !lastItem.role) {
-    return true
+  return isAgentRole(lastItem)
+}
+
+// Helper function: check if a single item has agent role
+const isAgentRole = (item: ResponseInputItem): boolean => {
+  if (!("role" in item) || !item.role) {
+    return true // No role means agent (preserve original logic)
   }
-  const role =
-    typeof lastItem.role === "string" ? lastItem.role.toLowerCase() : ""
+  const role = typeof item.role === "string" ? item.role.toLowerCase() : ""
   return role === "assistant"
 }
 
