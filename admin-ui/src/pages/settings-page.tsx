@@ -212,6 +212,204 @@ function parseReasoningJson(
   }
 }
 
+type ExtraPromptEditor = {
+  mode: JsonMode
+  items: ExtraPromptItem[]
+  json: string
+  jsonIssue: string | null
+  onToggleMode: (next: boolean) => void
+  onJsonChange: (value: string) => void
+  onAddItem: () => void
+  onRemoveItem: (id: string) => void
+  onUpdateItem: (id: string, patch: Partial<ExtraPromptItem>) => void
+  setFromRecord: (record?: Record<string, string>) => void
+}
+
+type ReasoningEditor = {
+  mode: JsonMode
+  items: ReasoningItem[]
+  json: string
+  jsonIssue: string | null
+  onToggleMode: (next: boolean) => void
+  onJsonChange: (value: string) => void
+  onAddItem: () => void
+  onRemoveItem: (id: string) => void
+  onUpdateItem: (id: string, patch: Partial<ReasoningItem>) => void
+  setFromRecord: (record?: Record<string, ReasoningEffort>) => void
+}
+
+function useExtraPromptEditor(
+  onRecordChange: (record: Record<string, string>) => void,
+): ExtraPromptEditor {
+  const [mode, setMode] = useState<JsonMode>("form")
+  const [items, setItems] = useState<ExtraPromptItem[]>([])
+  const [json, setJson] = useState("")
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  const jsonIssue = useMemo(
+    () => (jsonError ? `extraPrompts: ${jsonError}` : null),
+    [jsonError],
+  )
+
+  const setFromRecord = useCallback((record?: Record<string, string>) => {
+    setItems(extraPromptItemsFromRecord(record))
+    setJson(JSON.stringify(record ?? {}, null, 2))
+    setJsonError(null)
+  }, [])
+
+  const updateItems = useCallback(
+    (nextItems: ExtraPromptItem[]) => {
+      setItems(nextItems)
+      onRecordChange(extraPromptRecordFromItems(nextItems))
+    },
+    [onRecordChange],
+  )
+
+  const onJsonChange = useCallback(
+    (value: string) => {
+      updateJsonRecord({
+        value,
+        parse: parseExtraPromptsJson,
+        setJson,
+        setError: setJsonError,
+        onRecord: (record) => updateItems(extraPromptItemsFromRecord(record)),
+      })
+    },
+    [updateItems],
+  )
+
+  const onToggleMode = useCallback(
+    (next: boolean) => {
+      toggleJsonMode({
+        next,
+        record: extraPromptRecordFromItems(items),
+        setJson,
+        setError: setJsonError,
+        setMode,
+      })
+    },
+    [items],
+  )
+
+  const onAddItem = useCallback(() => {
+    updateItems(items.concat({ id: createItemId(), model: "", prompt: "" }))
+  }, [items, updateItems])
+
+  const onRemoveItem = useCallback(
+    (id: string) => {
+      updateItems(items.filter((item) => item.id !== id))
+    },
+    [items, updateItems],
+  )
+
+  const onUpdateItem = useCallback(
+    (id: string, patch: Partial<ExtraPromptItem>) => {
+      const next = items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      updateItems(next)
+    },
+    [items, updateItems],
+  )
+
+  return {
+    mode,
+    items,
+    json,
+    jsonIssue,
+    onToggleMode,
+    onJsonChange,
+    onAddItem,
+    onRemoveItem,
+    onUpdateItem,
+    setFromRecord,
+  }
+}
+
+function useReasoningEditor(
+  onRecordChange: (record: Record<string, ReasoningEffort>) => void,
+): ReasoningEditor {
+  const [mode, setMode] = useState<JsonMode>("form")
+  const [items, setItems] = useState<ReasoningItem[]>([])
+  const [json, setJson] = useState("")
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  const jsonIssue = useMemo(
+    () => (jsonError ? `modelReasoningEfforts: ${jsonError}` : null),
+    [jsonError],
+  )
+
+  const setFromRecord = useCallback((record?: Record<string, ReasoningEffort>) => {
+    setItems(reasoningItemsFromRecord(record))
+    setJson(JSON.stringify(record ?? {}, null, 2))
+    setJsonError(null)
+  }, [])
+
+  const updateItems = useCallback(
+    (nextItems: ReasoningItem[]) => {
+      setItems(nextItems)
+      onRecordChange(reasoningRecordFromItems(nextItems))
+    },
+    [onRecordChange],
+  )
+
+  const onJsonChange = useCallback(
+    (value: string) => {
+      updateJsonRecord({
+        value,
+        parse: parseReasoningJson,
+        setJson,
+        setError: setJsonError,
+        onRecord: (record) => updateItems(reasoningItemsFromRecord(record)),
+      })
+    },
+    [updateItems],
+  )
+
+  const onToggleMode = useCallback(
+    (next: boolean) => {
+      toggleJsonMode({
+        next,
+        record: reasoningRecordFromItems(items),
+        setJson,
+        setError: setJsonError,
+        setMode,
+      })
+    },
+    [items],
+  )
+
+  const onAddItem = useCallback(() => {
+    updateItems(items.concat({ id: createItemId(), model: "", effort: "high" }))
+  }, [items, updateItems])
+
+  const onRemoveItem = useCallback(
+    (id: string) => {
+      updateItems(items.filter((item) => item.id !== id))
+    },
+    [items, updateItems],
+  )
+
+  const onUpdateItem = useCallback(
+    (id: string, patch: Partial<ReasoningItem>) => {
+      const next = items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      updateItems(next)
+    },
+    [items, updateItems],
+  )
+
+  return {
+    mode,
+    items,
+    json,
+    jsonIssue,
+    onToggleMode,
+    onJsonChange,
+    onAddItem,
+    onRemoveItem,
+    onUpdateItem,
+    setFromRecord,
+  }
+}
+
 type GeneralSettingsCardProps = {
   hasModels: boolean
   smallModelLabel: string
@@ -237,6 +435,11 @@ function GeneralSettingsCard({
   onSmallModelInput,
   onApiKeyChange,
 }: GeneralSettingsCardProps): React.JSX.Element {
+  const showCustomModel =
+    hasModels
+    && smallModelValue !== "__default__"
+    && !models.includes(smallModelValue)
+
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
@@ -255,6 +458,11 @@ function GeneralSettingsCard({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__default__">(default)</SelectItem>
+                {showCustomModel ? (
+                  <SelectItem value={smallModelValue}>
+                    Custom: {smallModelValue}
+                  </SelectItem>
+                ) : null}
                 {models.map((model) => (
                   <SelectItem key={model} value={model}>
                     {model}
@@ -587,27 +795,49 @@ export function SettingsPage(): React.JSX.Element {
   const [models, setModels] = useState<string[]>([])
   const [draft, setDraft] = useState<AdminConfig>({})
 
-  const [extraMode, setExtraMode] = useState<JsonMode>("form")
-  const [extraItems, setExtraItems] = useState<ExtraPromptItem[]>([])
-  const [extraJson, setExtraJson] = useState("")
-  const [extraJsonError, setExtraJsonError] = useState<string | null>(null)
+  const extraEditor = useExtraPromptEditor((record) =>
+    setDraft((prev) => ({ ...prev, extraPrompts: record })),
+  )
+  const reasoningEditor = useReasoningEditor((record) =>
+    setDraft((prev) => ({ ...prev, modelReasoningEfforts: record })),
+  )
 
-  const [reasoningMode, setReasoningMode] = useState<JsonMode>("form")
-  const [reasoningItems, setReasoningItems] = useState<ReasoningItem[]>([])
-  const [reasoningJson, setReasoningJson] = useState("")
-  const [reasoningJsonError, setReasoningJsonError] = useState<string | null>(null)
+  const {
+    mode: extraMode,
+    items: extraItems,
+    json: extraJson,
+    jsonIssue: extraPromptJsonIssue,
+    onToggleMode: toggleExtraMode,
+    onJsonChange: onExtraJsonChange,
+    onAddItem: handleExtraItemAdd,
+    onRemoveItem: handleExtraItemRemove,
+    onUpdateItem: handleExtraItemUpdate,
+    setFromRecord: setExtraFromRecord,
+  } = extraEditor
 
-  const applyConfigResponse = useCallback((config: AdminConfigResponse) => {
-    const { _configPath, ...configData } = config
-    setConfigPath(_configPath ?? null)
-    setDraft(configData)
-    setExtraItems(extraPromptItemsFromRecord(configData.extraPrompts))
-    setExtraJson(JSON.stringify(configData.extraPrompts ?? {}, null, 2))
-    setExtraJsonError(null)
-    setReasoningItems(reasoningItemsFromRecord(configData.modelReasoningEfforts))
-    setReasoningJson(JSON.stringify(configData.modelReasoningEfforts ?? {}, null, 2))
-    setReasoningJsonError(null)
-  }, [])
+  const {
+    mode: reasoningMode,
+    items: reasoningItems,
+    json: reasoningJson,
+    jsonIssue: reasoningJsonIssue,
+    onToggleMode: toggleReasoningMode,
+    onJsonChange: onReasoningJsonChange,
+    onAddItem: handleReasoningItemAdd,
+    onRemoveItem: handleReasoningItemRemove,
+    onUpdateItem: handleReasoningItemUpdate,
+    setFromRecord: setReasoningFromRecord,
+  } = reasoningEditor
+
+  const applyConfigResponse = useCallback(
+    (config: AdminConfigResponse) => {
+      const { _configPath, ...configData } = config
+      setConfigPath(_configPath ?? null)
+      setDraft(configData)
+      setExtraFromRecord(configData.extraPrompts)
+      setReasoningFromRecord(configData.modelReasoningEfforts)
+    },
+    [setExtraFromRecord, setReasoningFromRecord],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -635,8 +865,8 @@ export function SettingsPage(): React.JSX.Element {
   const canSave =
     !saving
     && !loading
-    && !(extraMode === "json" && extraJsonError)
-    && !(reasoningMode === "json" && reasoningJsonError)
+    && !(extraMode === "json" && extraPromptJsonIssue)
+    && !(reasoningMode === "json" && reasoningJsonIssue)
 
   const envOverrideNote =
     "Environment variable COPILOT_API_KEY overrides this value when set."
@@ -644,16 +874,6 @@ export function SettingsPage(): React.JSX.Element {
   const smallModelLabel = hasModels ? "Small model" : "Small model (manual)"
   const smallModelInputValue = draft.smallModel ?? ""
   const apiKeyValue = draft.apiKey ?? ""
-
-  const extraPromptJsonIssue = useMemo(
-    () => (extraJsonError ? `extraPrompts: ${extraJsonError}` : null),
-    [extraJsonError]
-  )
-
-  const reasoningJsonIssue = useMemo(
-    () => (reasoningJsonError ? `modelReasoningEfforts: ${reasoningJsonError}` : null),
-    [reasoningJsonError]
-  )
 
   async function save(): Promise<void> {
     setSaving(true)
@@ -670,22 +890,6 @@ export function SettingsPage(): React.JSX.Element {
     } finally {
       setSaving(false)
     }
-  }
-
-  function updateExtraItems(nextItems: ExtraPromptItem[]): void {
-    setExtraItems(nextItems)
-    setDraft((prev) => ({
-      ...prev,
-      extraPrompts: extraPromptRecordFromItems(nextItems),
-    }))
-  }
-
-  function updateReasoningItems(nextItems: ReasoningItem[]): void {
-    setReasoningItems(nextItems)
-    setDraft((prev) => ({
-      ...prev,
-      modelReasoningEfforts: reasoningRecordFromItems(nextItems),
-    }))
   }
 
   function handleSmallModelSelect(value: string): void {
@@ -713,78 +917,6 @@ export function SettingsPage(): React.JSX.Element {
 
   function handleForceAgentToggle(value: boolean): void {
     setDraft((prev) => ({ ...prev, forceAgent: value }))
-  }
-
-  function handleExtraItemUpdate(id: string, patch: Partial<ExtraPromptItem>): void {
-    const next = extraItems.map((item) =>
-      item.id === id ? { ...item, ...patch } : item,
-    )
-    updateExtraItems(next)
-  }
-
-  function handleExtraItemRemove(id: string): void {
-    updateExtraItems(extraItems.filter((item) => item.id !== id))
-  }
-
-  function handleExtraItemAdd(): void {
-    updateExtraItems(extraItems.concat({ id: createItemId(), model: "", prompt: "" }))
-  }
-
-  function handleReasoningItemUpdate(id: string, patch: Partial<ReasoningItem>): void {
-    const next = reasoningItems.map((item) =>
-      item.id === id ? { ...item, ...patch } : item,
-    )
-    updateReasoningItems(next)
-  }
-
-  function handleReasoningItemRemove(id: string): void {
-    updateReasoningItems(reasoningItems.filter((item) => item.id !== id))
-  }
-
-  function handleReasoningItemAdd(): void {
-    updateReasoningItems(
-      reasoningItems.concat({ id: createItemId(), model: "", effort: "high" }),
-    )
-  }
-
-  function onExtraJsonChange(value: string): void {
-    updateJsonRecord({
-      value,
-      parse: parseExtraPromptsJson,
-      setJson: setExtraJson,
-      setError: setExtraJsonError,
-      onRecord: (record) => updateExtraItems(extraPromptItemsFromRecord(record)),
-    })
-  }
-
-  function onReasoningJsonChange(value: string): void {
-    updateJsonRecord({
-      value,
-      parse: parseReasoningJson,
-      setJson: setReasoningJson,
-      setError: setReasoningJsonError,
-      onRecord: (record) => updateReasoningItems(reasoningItemsFromRecord(record)),
-    })
-  }
-
-  function toggleExtraMode(next: boolean): void {
-    toggleJsonMode({
-      next,
-      record: draft.extraPrompts,
-      setJson: setExtraJson,
-      setError: setExtraJsonError,
-      setMode: setExtraMode,
-    })
-  }
-
-  function toggleReasoningMode(next: boolean): void {
-    toggleJsonMode({
-      next,
-      record: draft.modelReasoningEfforts,
-      setJson: setReasoningJson,
-      setError: setReasoningJsonError,
-      setMode: setReasoningMode,
-    })
   }
 
   return (

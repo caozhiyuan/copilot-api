@@ -213,7 +213,9 @@ function parseStringRecord(
 
   const record = Object.create(null) as Record<string, string>
   for (const [key, entry] of Object.entries(value)) {
-    if (BLOCKED_KEYS.has(key)) continue
+    if (BLOCKED_KEYS.has(key)) {
+      return { error: `${field}.${key} is not allowed` }
+    }
     if (typeof entry !== "string") {
       return { error: `${field}.${key} must be a string` }
     }
@@ -233,7 +235,9 @@ function parseReasoningRecord(
 
   const record = Object.create(null) as Record<string, ReasoningEffort>
   for (const [model, effort] of Object.entries(value)) {
-    if (BLOCKED_KEYS.has(model)) continue
+    if (BLOCKED_KEYS.has(model)) {
+      return { error: `modelReasoningEfforts.${model} is not allowed` }
+    }
     if (typeof effort !== "string") {
       return { error: `modelReasoningEfforts.${model} must be a string` }
     }
