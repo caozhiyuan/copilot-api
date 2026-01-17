@@ -37,6 +37,22 @@ function NavItem({
   )
 }
 
+const NAV_ITEMS = [
+  { to: "/accounts", label: "Accounts" },
+  { to: "/requests", label: "Requests" },
+  { to: "/settings", label: "Settings" },
+] as const
+
+function NavList(): React.JSX.Element {
+  return (
+    <>
+      {NAV_ITEMS.map((item) => (
+        <NavItem key={item.to} to={item.to} label={item.label} />
+      ))}
+    </>
+  )
+}
+
 export function AppShell(): React.JSX.Element {
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -58,8 +74,7 @@ export function AppShell(): React.JSX.Element {
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="mt-4 flex flex-col gap-3">
-                  <NavItem to="/accounts" label="Accounts" />
-                  <NavItem to="/requests" label="Requests" />
+                  <NavList />
                 </nav>
               </SheetContent>
             </Sheet>
@@ -72,8 +87,7 @@ export function AppShell(): React.JSX.Element {
           </div>
 
           <nav className="hidden items-center gap-5 md:flex">
-            <NavItem to="/accounts" label="Accounts" />
-            <NavItem to="/requests" label="Requests" />
+            <NavList />
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
