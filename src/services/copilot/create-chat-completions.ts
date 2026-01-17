@@ -46,18 +46,16 @@ export const createChatCompletions = async (
   // Agent/user check for X-Initiator header
   // Determine if any message is from an agent ("assistant" or "tool")
   let isAgentCall = false
-  if (payload.messages.length > 0) {
-    if (isForceAgentEnabled()) {
-      // forceAgent mode: check if ANY message has assistant/tool role
-      isAgentCall = payload.messages.some((msg) =>
-        ["assistant", "tool"].includes(msg.role),
-      )
-    } else {
-      // Default mode: only check the last message
-      const lastMessage = payload.messages.at(-1)
-      if (lastMessage) {
-        isAgentCall = ["assistant", "tool"].includes(lastMessage.role)
-      }
+  if (isForceAgentEnabled()) {
+    // forceAgent mode: check if ANY message has assistant/tool role
+    isAgentCall = payload.messages.some((msg) =>
+      ["assistant", "tool"].includes(msg.role),
+    )
+  } else {
+    // Default mode: only check the last message
+    const lastMessage = payload.messages.at(-1)
+    if (lastMessage) {
+      isAgentCall = ["assistant", "tool"].includes(lastMessage.role)
     }
   }
 
