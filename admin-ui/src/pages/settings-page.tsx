@@ -534,6 +534,7 @@ type ReasoningEffortsCardProps = {
   json: string
   jsonIssue: string | null
   items: ReasoningItem[]
+  models: string[]
   onToggleMode: (next: boolean) => void
   onJsonChange: (value: string) => void
   onAddItem: () => void
@@ -546,12 +547,16 @@ function ReasoningEffortsCard({
   json,
   jsonIssue,
   items,
+  models,
   onToggleMode,
   onJsonChange,
   onAddItem,
   onRemoveItem,
   onUpdateItem,
 }: ReasoningEffortsCardProps): React.JSX.Element {
+  const defaultModelValue = "__default__"
+  const hasModels = models.length > 0
+
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
@@ -590,45 +595,73 @@ function ReasoningEffortsCard({
                 No reasoning overrides. Add a model below.
               </div>
             ) : (
-              items.map((item) => (
-                <div key={item.id} className="grid gap-2 rounded-lg border p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      placeholder="model id"
-                      value={item.model}
-                      onChange={(e) => onUpdateItem(item.id, { model: e.target.value })}
-                    />
-                    <Select
-                      value={item.effort}
-                      onValueChange={(value) =>
-                        onUpdateItem(item.id, { effort: value as ReasoningEffort })
-                      }
-                    >
-                      <SelectTrigger className="w-40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {REASONING_EFFORTS.map((effort) => (
-                          <SelectItem key={effort} value={effort}>
-                            {effort}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onRemoveItem(item.id)}
-                    >
-                      Remove
-                    </Button>
+              items.map((item) => {
+                const modelValue = item.model || defaultModelValue
+                const showCustomModel =
+                  modelValue !== defaultModelValue && !models.includes(modelValue)
+                const disableModelSelect = !hasModels && !showCustomModel
+
+                return (
+                  <div key={item.id} className="grid gap-2 rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select
+                        value={modelValue}
+                        onValueChange={(value) =>
+                          onUpdateItem(item.id, {
+                            model: value === defaultModelValue ? "" : value,
+                          })
+                        }
+                        disabled={disableModelSelect}
+                      >
+                        <SelectTrigger className="min-w-[220px]">
+                          <SelectValue
+                            placeholder={hasModels ? "Select model" : "No models available"}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={defaultModelValue}>(default)</SelectItem>
+                          {showCustomModel ? (
+                            <SelectItem value={modelValue}>Custom: {modelValue}</SelectItem>
+                          ) : null}
+                          {models.map((model) => (
+                            <SelectItem key={model} value={model}>
+                              {model}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={item.effort}
+                        onValueChange={(value) =>
+                          onUpdateItem(item.id, { effort: value as ReasoningEffort })
+                        }
+                      >
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {REASONING_EFFORTS.map((effort) => (
+                            <SelectItem key={effort} value={effort}>
+                              {effort}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onRemoveItem(item.id)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                    <div className="text-muted-foreground text-xs">
+                      Overrides reasoning effort for this model.
+                    </div>
                   </div>
-                  <div className="text-muted-foreground text-xs">
-                    Overrides reasoning effort for this model.
-                  </div>
-                </div>
-              ))
+                )
+              })
             )}
 
             <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
@@ -646,6 +679,7 @@ type ExtraPromptsCardProps = {
   json: string
   jsonIssue: string | null
   items: ExtraPromptItem[]
+  models: string[]
   onToggleMode: (next: boolean) => void
   onJsonChange: (value: string) => void
   onAddItem: () => void
@@ -658,12 +692,16 @@ function ExtraPromptsCard({
   json,
   jsonIssue,
   items,
+  models,
   onToggleMode,
   onJsonChange,
   onAddItem,
   onRemoveItem,
   onUpdateItem,
 }: ExtraPromptsCardProps): React.JSX.Element {
+  const defaultModelValue = "__default__"
+  const hasModels = models.length > 0
+
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
@@ -700,34 +738,62 @@ function ExtraPromptsCard({
             {items.length === 0 ? (
               <div className="text-muted-foreground text-sm">No extra prompts configured.</div>
             ) : (
-              items.map((item) => (
-                <div key={item.id} className="grid gap-2 rounded-lg border p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      placeholder="model id"
-                      value={item.model}
-                      onChange={(e) => onUpdateItem(item.id, { model: e.target.value })}
+              items.map((item) => {
+                const modelValue = item.model || defaultModelValue
+                const showCustomModel =
+                  modelValue !== defaultModelValue && !models.includes(modelValue)
+                const disableModelSelect = !hasModels && !showCustomModel
+
+                return (
+                  <div key={item.id} className="grid gap-2 rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select
+                        value={modelValue}
+                        onValueChange={(value) =>
+                          onUpdateItem(item.id, {
+                            model: value === defaultModelValue ? "" : value,
+                          })
+                        }
+                        disabled={disableModelSelect}
+                      >
+                        <SelectTrigger className="min-w-[220px]">
+                          <SelectValue
+                            placeholder={hasModels ? "Select model" : "No models available"}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={defaultModelValue}>(default)</SelectItem>
+                          {showCustomModel ? (
+                            <SelectItem value={modelValue}>Custom: {modelValue}</SelectItem>
+                          ) : null}
+                          {models.map((model) => (
+                            <SelectItem key={model} value={model}>
+                              {model}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onRemoveItem(item.id)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={item.prompt}
+                      onChange={(e) => onUpdateItem(item.id, { prompt: e.target.value })}
+                      className="min-h-[120px] font-mono text-xs"
+                      placeholder="System prompt snippet..."
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onRemoveItem(item.id)}
-                    >
-                      Remove
-                    </Button>
+                    <div className="text-muted-foreground text-xs">
+                      Adds prompt content before model execution.
+                    </div>
                   </div>
-                  <Textarea
-                    value={item.prompt}
-                    onChange={(e) => onUpdateItem(item.id, { prompt: e.target.value })}
-                    className="min-h-[120px] font-mono text-xs"
-                    placeholder="System prompt snippet..."
-                  />
-                  <div className="text-muted-foreground text-xs">
-                    Adds prompt content before model execution.
-                  </div>
-                </div>
-              ))
+                )
+              })
             )}
 
             <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
@@ -1152,6 +1218,7 @@ function SettingsPageView({
         json={reasoningJson}
         jsonIssue={reasoningJsonIssue}
         items={reasoningItems}
+        models={models}
         onToggleMode={onReasoningToggleMode}
         onJsonChange={onReasoningJsonChange}
         onAddItem={onReasoningAddItem}
@@ -1164,6 +1231,7 @@ function SettingsPageView({
         json={extraJson}
         jsonIssue={extraJsonIssue}
         items={extraItems}
+        models={models}
         onToggleMode={onExtraToggleMode}
         onJsonChange={onExtraJsonChange}
         onAddItem={onExtraAddItem}
