@@ -245,6 +245,13 @@ function handleMessageStart(
   chunk: ChatCompletionChunk,
 ) {
   if (!state.messageStartSent) {
+    const cachedTokens = chunk.usage?.prompt_tokens_details?.cached_tokens
+    const upstreamPromptTokens = chunk.usage?.prompt_tokens
+    const inputTokens =
+      upstreamPromptTokens !== undefined ?
+        upstreamPromptTokens - (cachedTokens ?? 0)
+      : (state.estimatedInputTokens ?? 0)
+
     events.push({
       type: "message_start",
       message: {
@@ -256,14 +263,10 @@ function handleMessageStart(
         stop_reason: null,
         stop_sequence: null,
         usage: {
-          input_tokens:
-            (chunk.usage?.prompt_tokens ?? 0)
-            - (chunk.usage?.prompt_tokens_details?.cached_tokens ?? 0),
+          input_tokens: inputTokens,
           output_tokens: 0, // Will be updated in message_delta when finished
-          ...(chunk.usage?.prompt_tokens_details?.cached_tokens
-            !== undefined && {
-            cache_read_input_tokens:
-              chunk.usage.prompt_tokens_details.cached_tokens,
+          ...(cachedTokens !== undefined && {
+            cache_read_input_tokens: cachedTokens,
           }),
         },
       },
