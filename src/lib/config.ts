@@ -13,6 +13,7 @@ export interface AppConfig {
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >
   useFunctionApplyPatch?: boolean
+  forceAgent?: boolean
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -197,4 +198,9 @@ export function getReasoningEffortForModel(
 ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
   const config = getConfig()
   return config.modelReasoningEfforts?.[model] ?? "high"
+}
+
+export function isForceAgentEnabled(): boolean {
+  const config = getConfig()
+  return config.forceAgent ?? false
 }
