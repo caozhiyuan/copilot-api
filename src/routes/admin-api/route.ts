@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono"
+import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 
 import { accountsManager } from "~/lib/accounts-manager"
@@ -158,6 +159,8 @@ const REASONING_EFFORTS = new Set<ReasoningEffort>([
   "xhigh",
 ])
 
+const BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"])
+
 function jsonError(
   c: Context,
   status: 400 | 500,
@@ -208,8 +211,9 @@ function parseStringRecord(
     return { error: `${field} must be an object with string values` }
   }
 
-  const record: Record<string, string> = {}
+  const record = Object.create(null) as Record<string, string>
   for (const [key, entry] of Object.entries(value)) {
+    if (BLOCKED_KEYS.has(key)) continue
     if (typeof entry !== "string") {
       return { error: `${field}.${key} must be a string` }
     }
@@ -227,8 +231,9 @@ function parseReasoningRecord(
     return { error: "modelReasoningEfforts must be an object" }
   }
 
-  const record: Record<string, ReasoningEffort> = {}
+  const record = Object.create(null) as Record<string, ReasoningEffort>
   for (const [model, effort] of Object.entries(value)) {
+    if (BLOCKED_KEYS.has(model)) continue
     if (typeof effort !== "string") {
       return { error: `modelReasoningEfforts.${model} must be a string` }
     }
@@ -361,7 +366,7 @@ async function writeConfigFile(config: AppConfig): Promise<void> {
   await fs.mkdir(PATHS.APP_DIR, { recursive: true })
 
   const content = `${JSON.stringify(config, null, 2)}\n`
-  const tmpPath = `${PATHS.CONFIG_PATH}.tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const tmpPath = `${PATHS.CONFIG_PATH}.tmp-${randomUUID()}`
 
   await fs.writeFile(tmpPath, content, "utf8")
   try {
