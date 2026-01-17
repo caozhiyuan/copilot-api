@@ -201,6 +201,7 @@ export interface AnthropicStreamState {
   contentBlockIndex: number
   contentBlockOpen: boolean
   thinkingBlockOpen: boolean
+  estimatedInputTokens?: number
   toolCalls: {
     [openAIToolIndex: number]: {
       id: string

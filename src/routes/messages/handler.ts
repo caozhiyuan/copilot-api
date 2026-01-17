@@ -4,6 +4,7 @@ import { streamSSE } from "hono/streaming"
 import { randomUUID } from "node:crypto"
 
 import type { AccountRuntime } from "~/lib/types/account"
+import type { Model } from "~/services/copilot/get-models"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
@@ -24,6 +25,7 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
+import { getTokenCount } from "~/lib/tokenizer"
 import {
   buildErrorEvent,
   createResponsesStreamState,
@@ -49,14 +51,13 @@ import {
 import {
   type AnthropicMessagesPayload,
   type AnthropicStreamState,
-  type AnthropicTextBlock,
-  type AnthropicToolResultBlock,
 } from "./anthropic-types"
 import {
   translateToAnthropic,
   translateToOpenAI,
 } from "./non-stream-translation"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
+import { mergeToolResultForClaude } from "./utils"
 
 const logger = createHandlerLogger("messages-handler")
 
@@ -68,6 +69,23 @@ type AccountSelection = Awaited<
 >
 
 type AccountSelectionOk = Extract<AccountSelection, { ok: true }>
+
+type AccountSelectionFailure = Extract<AccountSelection, { ok: false }>
+
+type SelectionFailureContext = {
+  c: Context
+  store: ReturnType<typeof getRequestHistoryStore>
+  requestId: string
+  startedAtMs: number
+  method: string
+  path: string
+  streamRequested: boolean
+  clientModel: string
+  clientIp?: string
+  clientIpSource?: string
+  userAgent?: string
+  selection: AccountSelectionFailure
+}
 
 type InstrumentationContext = {
   store: ReturnType<typeof getRequestHistoryStore>
@@ -153,46 +171,20 @@ export async function handleCompletion(c: Context) {
   ])
 
   if (!selection.ok) {
-    const finishedAtMs = Date.now()
-
-    store.insert({
+    return handleSelectionFailure({
+      c,
+      store,
       requestId,
       startedAtMs,
-      finishedAtMs,
-      durationMs: finishedAtMs - startedAtMs,
       method,
       path,
-      stream: streamRequested,
+      streamRequested,
       clientModel: anthropicPayload.model,
       clientIp,
       clientIpSource,
       userAgent,
-      httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
-      selectionFailureReason: selection.reason,
+      selection,
     })
-
-    if (selection.reason === "MODEL_NOT_SUPPORTED") {
-      return c.json(
-        {
-          error: {
-            message: `Model "${anthropicPayload.model}" is not available for any configured account.`,
-            type: "invalid_request_error",
-          },
-        },
-        400,
-      )
-    }
-
-    return c.json(
-      {
-        error: {
-          message:
-            "All accounts have exhausted their quota. Please wait for quota refresh or add additional accounts.",
-          type: "rate_limit_error",
-        },
-      },
-      429,
-    )
   }
 
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
@@ -229,17 +221,100 @@ export async function handleCompletion(c: Context) {
   }
 
   if (endpoint === RESPONSES_ENDPOINT) {
-    return await handleWithResponsesApi(c, anthropicPayload, instr)
+    return await handleWithResponsesApi({
+      c,
+      anthropicPayload,
+      openAIPayload,
+      selectedModel,
+      instr,
+    })
   }
 
-  return await handleWithChatCompletions(c, openAIPayload, instr)
+  return await handleWithChatCompletions({
+    c,
+    openAIPayload,
+    selectedModel,
+    instr,
+  })
 }
 
-const handleWithChatCompletions = async (
-  c: Context,
-  openAIPayload: ChatCompletionsPayload,
-  instr: InstrumentationContext,
-): Promise<Response> => {
+const handleSelectionFailure = (context: SelectionFailureContext): Response => {
+  const {
+    c,
+    store,
+    requestId,
+    startedAtMs,
+    method,
+    path,
+    streamRequested,
+    clientModel,
+    clientIp,
+    clientIpSource,
+    userAgent,
+    selection,
+  } = context
+  const finishedAtMs = Date.now()
+
+  store.insert({
+    requestId,
+    startedAtMs,
+    finishedAtMs,
+    durationMs: finishedAtMs - startedAtMs,
+    method,
+    path,
+    stream: streamRequested,
+    clientModel,
+    clientIp,
+    clientIpSource,
+    userAgent,
+    httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
+    selectionFailureReason: selection.reason,
+  })
+
+  if (selection.reason === "MODEL_NOT_SUPPORTED") {
+    return c.json(
+      {
+        error: {
+          message: `Model "${clientModel}" is not available for any configured account.`,
+          type: "invalid_request_error",
+        },
+      },
+      400,
+    )
+  }
+
+  return c.json(
+    {
+      error: {
+        message:
+          "All accounts have exhausted their quota. Please wait for quota refresh or add additional accounts.",
+        type: "rate_limit_error",
+      },
+    },
+    429,
+  )
+}
+
+const estimateInputTokens = async (
+  payload: ChatCompletionsPayload,
+  selectedModel: Model,
+): Promise<number | undefined> => {
+  try {
+    const tokenCount = await getTokenCount(payload, selectedModel)
+    return tokenCount.input
+  } catch (error) {
+    logger.warn("Failed to estimate input tokens for message_start", error)
+    return undefined
+  }
+}
+
+const handleWithChatCompletions = async (params: {
+  c: Context
+  openAIPayload: ChatCompletionsPayload
+  selectedModel: Model
+  instr: InstrumentationContext
+}): Promise<Response> => {
+  const { c, openAIPayload, selectedModel, instr } = params
   logger.debug(
     "Translated OpenAI request payload:",
     JSON.stringify(openAIPayload),
@@ -269,20 +344,29 @@ const handleWithChatCompletions = async (
 
   logger.debug("Streaming response from Copilot")
 
+  const estimatedInputTokens = await estimateInputTokens(
+    openAIPayload,
+    selectedModel,
+  )
+
   return streamSSE(c, (stream) =>
     streamChatCompletionsAndLog({
       stream,
       response,
       instr,
+      estimatedInputTokens,
     }),
   )
 }
 
-const handleWithResponsesApi = async (
-  c: Context,
-  anthropicPayload: AnthropicMessagesPayload,
-  instr: InstrumentationContext,
-): Promise<Response> => {
+const handleWithResponsesApi = async (params: {
+  c: Context
+  anthropicPayload: AnthropicMessagesPayload
+  openAIPayload: ChatCompletionsPayload
+  selectedModel: Model
+  instr: InstrumentationContext
+}): Promise<Response> => {
+  const { c, anthropicPayload, openAIPayload, selectedModel, instr } = params
   const responsesPayload =
     translateAnthropicMessagesToResponsesPayload(anthropicPayload)
   logger.debug(
@@ -315,11 +399,17 @@ const handleWithResponsesApi = async (
   if (responsesPayload.stream && isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Responses API)")
 
+    const estimatedInputTokens = await estimateInputTokens(
+      openAIPayload,
+      selectedModel,
+    )
+
     return streamSSE(c, (stream) =>
       streamResponsesAndLog({
         stream,
         response,
         instr,
+        estimatedInputTokens,
       }),
     )
   }
@@ -528,8 +618,9 @@ async function streamChatCompletionsAndLog(params: {
   stream: StreamSseStream
   response: ChatCompletionsStream
   instr: InstrumentationContext
+  estimatedInputTokens?: number
 }): Promise<void> {
-  const { stream, response, instr } = params
+  const { stream, response, instr, estimatedInputTokens } = params
 
   let ttfbMs: number | undefined
   let lastUsage: NormalizedUsage = {}
@@ -544,6 +635,7 @@ async function streamChatCompletionsAndLog(params: {
     contentBlockOpen: false,
     toolCalls: {},
     thinkingBlockOpen: false,
+    estimatedInputTokens,
   }
 
   try {
@@ -749,8 +841,9 @@ async function streamResponsesAndLog(params: {
   stream: StreamSseStream
   response: AsyncIterable<unknown>
   instr: InstrumentationContext
+  estimatedInputTokens?: number
 }): Promise<void> {
-  const { stream, response, instr } = params
+  const { stream, response, instr, estimatedInputTokens } = params
 
   let ttfbMs: number | undefined
   let lastUsage: NormalizedUsage = {}
@@ -760,6 +853,7 @@ async function streamResponsesAndLog(params: {
   let errorMessage: string | undefined
 
   const streamState = createResponsesStreamState()
+  streamState.estimatedInputTokens = estimatedInputTokens
 
   try {
     for await (const chunk of response) {
@@ -855,73 +949,3 @@ const isNonStreaming = (
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
-
-const mergeContentWithText = (
-  tr: AnthropicToolResultBlock,
-  textBlock: AnthropicTextBlock,
-): AnthropicToolResultBlock => {
-  if (typeof tr.content === "string") {
-    return { ...tr, content: `${tr.content}\n\n${textBlock.text}` }
-  }
-  return {
-    ...tr,
-    content: [...tr.content, textBlock],
-  }
-}
-
-const mergeContentWithTexts = (
-  tr: AnthropicToolResultBlock,
-  textBlocks: Array<AnthropicTextBlock>,
-): AnthropicToolResultBlock => {
-  if (typeof tr.content === "string") {
-    const appendedTexts = textBlocks.map((tb) => tb.text).join("\n\n")
-    return { ...tr, content: `${tr.content}\n\n${appendedTexts}` }
-  }
-  return { ...tr, content: [...tr.content, ...textBlocks] }
-}
-
-const mergeToolResultForClaude = (
-  anthropicBeta: string | undefined,
-  anthropicPayload: AnthropicMessagesPayload,
-): void => {
-  if (!anthropicBeta) return
-
-  for (const msg of anthropicPayload.messages) {
-    if (msg.role !== "user" || !Array.isArray(msg.content)) continue
-
-    const toolResults: Array<AnthropicToolResultBlock> = []
-    const textBlocks: Array<AnthropicTextBlock> = []
-    let valid = true
-
-    for (const block of msg.content) {
-      if (block.type === "tool_result") {
-        toolResults.push(block)
-      } else if (block.type === "text") {
-        textBlocks.push(block)
-      } else {
-        valid = false
-        break
-      }
-    }
-
-    if (!valid || toolResults.length === 0 || textBlocks.length === 0) continue
-
-    msg.content = mergeToolResult(toolResults, textBlocks)
-  }
-}
-
-const mergeToolResult = (
-  toolResults: Array<AnthropicToolResultBlock>,
-  textBlocks: Array<AnthropicTextBlock>,
-): Array<AnthropicToolResultBlock> => {
-  // equal lengths -> pairwise merge
-  if (toolResults.length === textBlocks.length) {
-    return toolResults.map((tr, i) => mergeContentWithText(tr, textBlocks[i]))
-  }
-
-  // lengths differ -> append all textBlocks to the last tool_result
-  const lastIndex = toolResults.length - 1
-  return toolResults.map((tr, i) =>
-    i === lastIndex ? mergeContentWithTexts(tr, textBlocks) : tr,
-  )
-}

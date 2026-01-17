@@ -62,6 +62,7 @@ export interface ResponsesStreamState {
   openBlocks: Set<number>
   blockHasDelta: Set<number>
   functionCallStateByOutputIndex: Map<number, FunctionCallStreamState>
+  estimatedInputTokens?: number
 }
 
 type FunctionCallStreamState = {
@@ -482,8 +483,11 @@ const messageStart = (
 ): Array<AnthropicStreamEventData> => {
   state.messageStartSent = true
   const inputCachedTokens = response.usage?.input_tokens_details?.cached_tokens
+  const upstreamInputTokens = response.usage?.input_tokens
   const inputTokens =
-    (response.usage?.input_tokens ?? 0) - (inputCachedTokens ?? 0)
+    upstreamInputTokens !== undefined ?
+      upstreamInputTokens - (inputCachedTokens ?? 0)
+    : (state.estimatedInputTokens ?? 0)
   return [
     {
       type: "message_start",
