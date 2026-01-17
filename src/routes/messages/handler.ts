@@ -295,6 +295,19 @@ const handleSelectionFailure = (context: SelectionFailureContext): Response => {
   )
 }
 
+const estimateInputTokens = async (
+  payload: ChatCompletionsPayload,
+  selectedModel: Model,
+): Promise<number | undefined> => {
+  try {
+    const tokenCount = await getTokenCount(payload, selectedModel)
+    return tokenCount.input
+  } catch (error) {
+    logger.warn("Failed to estimate input tokens for message_start", error)
+    return undefined
+  }
+}
+
 const handleWithChatCompletions = async (params: {
   c: Context
   openAIPayload: ChatCompletionsPayload
@@ -331,13 +344,10 @@ const handleWithChatCompletions = async (params: {
 
   logger.debug("Streaming response from Copilot")
 
-  let estimatedInputTokens: number | undefined
-  try {
-    const tokenCount = await getTokenCount(openAIPayload, selectedModel)
-    estimatedInputTokens = tokenCount.input
-  } catch (error) {
-    logger.warn("Failed to estimate input tokens for message_start", error)
-  }
+  const estimatedInputTokens = await estimateInputTokens(
+    openAIPayload,
+    selectedModel,
+  )
 
   return streamSSE(c, (stream) =>
     streamChatCompletionsAndLog({
@@ -389,13 +399,10 @@ const handleWithResponsesApi = async (params: {
   if (responsesPayload.stream && isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Responses API)")
 
-    let estimatedInputTokens: number | undefined
-    try {
-      const tokenCount = await getTokenCount(openAIPayload, selectedModel)
-      estimatedInputTokens = tokenCount.input
-    } catch (error) {
-      logger.warn("Failed to estimate input tokens for message_start", error)
-    }
+    const estimatedInputTokens = await estimateInputTokens(
+      openAIPayload,
+      selectedModel,
+    )
 
     return streamSSE(c, (stream) =>
       streamResponsesAndLog({
