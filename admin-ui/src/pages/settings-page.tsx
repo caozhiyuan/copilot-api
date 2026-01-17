@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button"
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -1175,13 +1174,29 @@ function SettingsPageView({
           </div>
         </div>
 
-        <div className="ml-auto flex flex-wrap items-center gap-2 lg:hidden">
-          <Button type="button" variant="outline" size="sm" onClick={onReload} disabled={loading || saving}>
-            {loading ? "Reloading..." : "Reload"}
-          </Button>
-          <RainbowButton type="button" size="sm" onClick={onSave} disabled={!canSave}>
-            {saving ? "Saving..." : "Save"}
-          </RainbowButton>
+        <div className="ml-auto flex flex-col items-end gap-1 text-right">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onReload}
+              disabled={loading || saving}
+            >
+              {loading ? "Reloading..." : "Reload"}
+            </Button>
+            <RainbowButton type="button" size="sm" onClick={onSave} disabled={!canSave}>
+              {saving ? "Saving..." : "Save"}
+            </RainbowButton>
+          </div>
+          {configPath ? (
+            <div className="text-muted-foreground text-xs leading-tight hidden sm:block">
+              Config path: {configPath}
+            </div>
+          ) : null}
+          <div className="text-muted-foreground text-xs leading-tight hidden sm:block">
+            Changes apply to config.json immediately. Environment variables take precedence.
+          </div>
         </div>
       </div>
 
@@ -1249,35 +1264,6 @@ function SettingsPageView({
             onToggleForceAgent={onForceAgentToggle}
           />
 
-          <Card className="hidden gap-4 py-4 lg:block">
-            <CardHeader className="px-4">
-              <CardTitle>Actions</CardTitle>
-              <CardAction className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={onReload}
-                  disabled={loading || saving}
-                >
-                  {loading ? "Reloading..." : "Reload"}
-                </Button>
-                <RainbowButton type="button" size="sm" onClick={onSave} disabled={!canSave}>
-                  {saving ? "Saving..." : "Save"}
-                </RainbowButton>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="space-y-2 px-4">
-              {configPath ? (
-                <div className="text-muted-foreground text-xs">
-                  Config path: {configPath}
-                </div>
-              ) : null}
-              <div className="text-muted-foreground text-xs">
-                Changes apply to config.json immediately. Environment variables take precedence.
-              </div>
-            </CardContent>
-          </Card>
         </aside>
       </div>
     </div>
