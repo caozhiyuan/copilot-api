@@ -844,9 +844,26 @@ export function SettingsPage(): React.JSX.Element {
     setError(null)
 
     try {
-      const [configRes, modelsRes] = await Promise.all([getAdminConfig(), getAdminModels()])
-      applyConfigResponse(configRes)
-      setModels(modelsRes.items ?? [])
+      const [configRes, modelsRes] = await Promise.allSettled([
+        getAdminConfig(),
+        getAdminModels(),
+      ])
+
+      if (configRes.status === "fulfilled") {
+        applyConfigResponse(configRes.value)
+      } else {
+        throw configRes.reason
+      }
+
+      if (modelsRes.status === "fulfilled") {
+        setModels(modelsRes.value.items ?? [])
+      } else {
+        setModels([])
+        toast.error("Failed to load models", {
+          description:
+            modelsRes.reason instanceof Error ? modelsRes.reason.message : String(modelsRes.reason),
+        })
+      }
     } catch (err) {
       const msg = err instanceof AdminApiError ? err.message : String(err)
       setError(msg)

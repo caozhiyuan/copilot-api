@@ -372,13 +372,18 @@ async function writeConfigFile(config: AppConfig): Promise<void> {
   const content = `${JSON.stringify(config, null, 2)}\n`
   const tmpPath = `${PATHS.CONFIG_PATH}.tmp-${randomUUID()}`
 
-  await fs.writeFile(tmpPath, content, "utf8")
   try {
-    await fs.chmod(tmpPath, 0o600)
-  } catch {
-    // Ignore chmod errors (e.g. unsupported filesystem).
+    await fs.writeFile(tmpPath, content, "utf8")
+    try {
+      await fs.chmod(tmpPath, 0o600)
+    } catch {
+      // Ignore chmod errors (e.g. unsupported filesystem).
+    }
+    await fs.rename(tmpPath, PATHS.CONFIG_PATH)
+  } catch (error) {
+    await fs.rm(tmpPath, { force: true }).catch(() => {})
+    throw error
   }
-  await fs.rename(tmpPath, PATHS.CONFIG_PATH)
 }
 
 export const adminApiRoutes = new Hono()
@@ -461,7 +466,12 @@ adminApiRoutes.post("/config", async (c) => {
 adminApiRoutes.get("/models", (c) => {
   try {
     const accountModels = accountsManager.getFirstAccountModels()
-    const items = accountModels?.data.map((model) => model.id) ?? []
+    const items =
+      accountModels?.data
+        .map((model) => model.id)
+        .filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0,
+        ) ?? []
     const uniqueItems = Array.from(new Set(items)).sort()
     return c.json({ items: uniqueItems })
   } catch {
