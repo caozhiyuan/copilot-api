@@ -786,7 +786,51 @@ function AdvancedSettingsCard({
   )
 }
 
-export function SettingsPage(): React.JSX.Element {
+type SettingsPageViewProps = {
+  loading: boolean
+  saving: boolean
+  error: string | null
+  configPath: string | null
+  canSave: boolean
+  onReload: () => void
+  onSave: () => void
+  hasModels: boolean
+  smallModelLabel: string
+  smallModelValue: string
+  smallModelInputValue: string
+  models: string[]
+  apiKeyValue: string
+  envOverrideNote: string
+  onSmallModelSelect: (value: string) => void
+  onSmallModelInput: (value: string) => void
+  onApiKeyChange: (value: string) => void
+  loadBalancingEnabled: boolean
+  onLoadBalancingToggle: (value: boolean) => void
+  reasoningMode: JsonMode
+  reasoningJson: string
+  reasoningJsonIssue: string | null
+  reasoningItems: ReasoningItem[]
+  onReasoningToggleMode: (next: boolean) => void
+  onReasoningJsonChange: (value: string) => void
+  onReasoningAddItem: () => void
+  onReasoningRemoveItem: (id: string) => void
+  onReasoningUpdateItem: (id: string, value: Partial<ReasoningItem>) => void
+  extraMode: JsonMode
+  extraJson: string
+  extraJsonIssue: string | null
+  extraItems: ExtraPromptItem[]
+  onExtraToggleMode: (next: boolean) => void
+  onExtraJsonChange: (value: string) => void
+  onExtraAddItem: () => void
+  onExtraRemoveItem: (id: string) => void
+  onExtraUpdateItem: (id: string, value: Partial<ExtraPromptItem>) => void
+  useFunctionApplyPatch: boolean
+  forceAgent: boolean
+  onUseFunctionApplyPatchToggle: (value: boolean) => void
+  onForceAgentToggle: (value: boolean) => void
+}
+
+function useSettingsPageState(): SettingsPageViewProps {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -806,12 +850,12 @@ export function SettingsPage(): React.JSX.Element {
     mode: extraMode,
     items: extraItems,
     json: extraJson,
-    jsonIssue: extraPromptJsonIssue,
-    onToggleMode: toggleExtraMode,
+    jsonIssue: extraJsonIssue,
+    onToggleMode: onExtraToggleMode,
     onJsonChange: onExtraJsonChange,
-    onAddItem: handleExtraItemAdd,
-    onRemoveItem: handleExtraItemRemove,
-    onUpdateItem: handleExtraItemUpdate,
+    onAddItem: onExtraAddItem,
+    onRemoveItem: onExtraRemoveItem,
+    onUpdateItem: onExtraUpdateItem,
     setFromRecord: setExtraFromRecord,
   } = extraEditor
 
@@ -820,11 +864,11 @@ export function SettingsPage(): React.JSX.Element {
     items: reasoningItems,
     json: reasoningJson,
     jsonIssue: reasoningJsonIssue,
-    onToggleMode: toggleReasoningMode,
+    onToggleMode: onReasoningToggleMode,
     onJsonChange: onReasoningJsonChange,
-    onAddItem: handleReasoningItemAdd,
-    onRemoveItem: handleReasoningItemRemove,
-    onUpdateItem: handleReasoningItemUpdate,
+    onAddItem: onReasoningAddItem,
+    onRemoveItem: onReasoningRemoveItem,
+    onUpdateItem: onReasoningUpdateItem,
     setFromRecord: setReasoningFromRecord,
   } = reasoningEditor
 
@@ -877,22 +921,7 @@ export function SettingsPage(): React.JSX.Element {
     void load()
   }, [load])
 
-  const hasModels = models.length > 0
-  const smallModelValue = draft.smallModel ? draft.smallModel : "__default__"
-  const canSave =
-    !saving
-    && !loading
-    && !(extraMode === "json" && extraPromptJsonIssue)
-    && !(reasoningMode === "json" && reasoningJsonIssue)
-
-  const envOverrideNote =
-    "Environment variable COPILOT_API_KEY overrides this value when set."
-
-  const smallModelLabel = hasModels ? "Small model" : "Small model (manual)"
-  const smallModelInputValue = draft.smallModel ?? ""
-  const apiKeyValue = draft.apiKey ?? ""
-
-  async function save(): Promise<void> {
+  const save = useCallback(async () => {
     setSaving(true)
     setError(null)
 
@@ -907,35 +936,168 @@ export function SettingsPage(): React.JSX.Element {
     } finally {
       setSaving(false)
     }
-  }
+  }, [applyConfigResponse, draft])
 
-  function handleSmallModelSelect(value: string): void {
-    setDraft((prev) => ({
-      ...prev,
-      smallModel: value === "__default__" ? "" : value,
-    }))
-  }
+  const onReload = useCallback(() => {
+    void load()
+  }, [load])
 
-  function handleSmallModelInput(value: string): void {
-    setDraft((prev) => ({ ...prev, smallModel: value }))
-  }
+  const onSave = useCallback(() => {
+    void save()
+  }, [save])
 
-  function handleApiKeyChange(value: string): void {
-    setDraft((prev) => ({ ...prev, apiKey: value }))
-  }
+  const handleSmallModelSelect = useCallback(
+    (value: string) => {
+      setDraft((prev) => ({
+        ...prev,
+        smallModel: value === "__default__" ? "" : value,
+      }))
+    },
+    [setDraft],
+  )
 
-  function handleLoadBalancingToggle(value: boolean): void {
-    setDraft((prev) => ({ ...prev, freeModelLoadBalancing: value }))
-  }
+  const handleSmallModelInput = useCallback(
+    (value: string) => {
+      setDraft((prev) => ({ ...prev, smallModel: value }))
+    },
+    [setDraft],
+  )
 
-  function handleUseFunctionApplyPatchToggle(value: boolean): void {
-    setDraft((prev) => ({ ...prev, useFunctionApplyPatch: value }))
-  }
+  const handleApiKeyChange = useCallback(
+    (value: string) => {
+      setDraft((prev) => ({ ...prev, apiKey: value }))
+    },
+    [setDraft],
+  )
 
-  function handleForceAgentToggle(value: boolean): void {
-    setDraft((prev) => ({ ...prev, forceAgent: value }))
-  }
+  const handleLoadBalancingToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, freeModelLoadBalancing: value }))
+    },
+    [setDraft],
+  )
 
+  const handleUseFunctionApplyPatchToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, useFunctionApplyPatch: value }))
+    },
+    [setDraft],
+  )
+
+  const handleForceAgentToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, forceAgent: value }))
+    },
+    [setDraft],
+  )
+
+  const hasModels = models.length > 0
+  const smallModelValue = draft.smallModel ? draft.smallModel : "__default__"
+  const canSave =
+    !saving
+    && !loading
+    && !(extraMode === "json" && extraJsonIssue)
+    && !(reasoningMode === "json" && reasoningJsonIssue)
+
+  const envOverrideNote =
+    "Environment variable COPILOT_API_KEY overrides this value when set."
+
+  const smallModelLabel = hasModels ? "Small model" : "Small model (manual)"
+  const smallModelInputValue = draft.smallModel ?? ""
+  const apiKeyValue = draft.apiKey ?? ""
+
+  const loadBalancingEnabled = draft.freeModelLoadBalancing ?? true
+  const useFunctionApplyPatch = draft.useFunctionApplyPatch ?? true
+  const forceAgent = draft.forceAgent ?? false
+
+  return {
+    loading,
+    saving,
+    error,
+    configPath,
+    canSave,
+    onReload,
+    onSave,
+    hasModels,
+    smallModelLabel,
+    smallModelValue,
+    smallModelInputValue,
+    models,
+    apiKeyValue,
+    envOverrideNote,
+    onSmallModelSelect: handleSmallModelSelect,
+    onSmallModelInput: handleSmallModelInput,
+    onApiKeyChange: handleApiKeyChange,
+    loadBalancingEnabled,
+    onLoadBalancingToggle: handleLoadBalancingToggle,
+    reasoningMode,
+    reasoningJson,
+    reasoningJsonIssue,
+    reasoningItems,
+    onReasoningToggleMode,
+    onReasoningJsonChange,
+    onReasoningAddItem,
+    onReasoningRemoveItem,
+    onReasoningUpdateItem,
+    extraMode,
+    extraJson,
+    extraJsonIssue,
+    extraItems,
+    onExtraToggleMode,
+    onExtraJsonChange,
+    onExtraAddItem,
+    onExtraRemoveItem,
+    onExtraUpdateItem,
+    useFunctionApplyPatch,
+    forceAgent,
+    onUseFunctionApplyPatchToggle: handleUseFunctionApplyPatchToggle,
+    onForceAgentToggle: handleForceAgentToggle,
+  }
+}
+
+function SettingsPageView({
+  loading,
+  saving,
+  error,
+  configPath,
+  canSave,
+  onReload,
+  onSave,
+  hasModels,
+  smallModelLabel,
+  smallModelValue,
+  smallModelInputValue,
+  models,
+  apiKeyValue,
+  envOverrideNote,
+  onSmallModelSelect,
+  onSmallModelInput,
+  onApiKeyChange,
+  loadBalancingEnabled,
+  onLoadBalancingToggle,
+  reasoningMode,
+  reasoningJson,
+  reasoningJsonIssue,
+  reasoningItems,
+  onReasoningToggleMode,
+  onReasoningJsonChange,
+  onReasoningAddItem,
+  onReasoningRemoveItem,
+  onReasoningUpdateItem,
+  extraMode,
+  extraJson,
+  extraJsonIssue,
+  extraItems,
+  onExtraToggleMode,
+  onExtraJsonChange,
+  onExtraAddItem,
+  onExtraRemoveItem,
+  onExtraUpdateItem,
+  useFunctionApplyPatch,
+  forceAgent,
+  onUseFunctionApplyPatchToggle,
+  onForceAgentToggle,
+}: SettingsPageViewProps): React.JSX.Element {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -947,16 +1109,10 @@ export function SettingsPage(): React.JSX.Element {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void load()}
-            disabled={loading || saving}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={onReload} disabled={loading || saving}>
             {loading ? "Reloading..." : "Reload"}
           </Button>
-          <RainbowButton type="button" size="sm" onClick={() => void save()} disabled={!canSave}>
+          <RainbowButton type="button" size="sm" onClick={onSave} disabled={!canSave}>
             {saving ? "Saving..." : "Save"}
           </RainbowButton>
         </div>
@@ -972,7 +1128,7 @@ export function SettingsPage(): React.JSX.Element {
           title="Settings error"
           description={error}
           actionLabel="Retry"
-          onAction={() => void load()}
+          onAction={onReload}
         />
       ) : null}
 
@@ -984,46 +1140,48 @@ export function SettingsPage(): React.JSX.Element {
         models={models}
         apiKeyValue={apiKeyValue}
         envOverrideNote={envOverrideNote}
-        onSmallModelSelect={handleSmallModelSelect}
-        onSmallModelInput={handleSmallModelInput}
-        onApiKeyChange={handleApiKeyChange}
+        onSmallModelSelect={onSmallModelSelect}
+        onSmallModelInput={onSmallModelInput}
+        onApiKeyChange={onApiKeyChange}
       />
 
-      <LoadBalancingCard
-        enabled={draft.freeModelLoadBalancing ?? true}
-        onToggle={handleLoadBalancingToggle}
-      />
+      <LoadBalancingCard enabled={loadBalancingEnabled} onToggle={onLoadBalancingToggle} />
 
       <ReasoningEffortsCard
         mode={reasoningMode}
         json={reasoningJson}
         jsonIssue={reasoningJsonIssue}
         items={reasoningItems}
-        onToggleMode={toggleReasoningMode}
+        onToggleMode={onReasoningToggleMode}
         onJsonChange={onReasoningJsonChange}
-        onAddItem={handleReasoningItemAdd}
-        onRemoveItem={handleReasoningItemRemove}
-        onUpdateItem={handleReasoningItemUpdate}
+        onAddItem={onReasoningAddItem}
+        onRemoveItem={onReasoningRemoveItem}
+        onUpdateItem={onReasoningUpdateItem}
       />
 
       <ExtraPromptsCard
         mode={extraMode}
         json={extraJson}
-        jsonIssue={extraPromptJsonIssue}
+        jsonIssue={extraJsonIssue}
         items={extraItems}
-        onToggleMode={toggleExtraMode}
+        onToggleMode={onExtraToggleMode}
         onJsonChange={onExtraJsonChange}
-        onAddItem={handleExtraItemAdd}
-        onRemoveItem={handleExtraItemRemove}
-        onUpdateItem={handleExtraItemUpdate}
+        onAddItem={onExtraAddItem}
+        onRemoveItem={onExtraRemoveItem}
+        onUpdateItem={onExtraUpdateItem}
       />
 
       <AdvancedSettingsCard
-        useFunctionApplyPatch={draft.useFunctionApplyPatch ?? true}
-        forceAgent={draft.forceAgent ?? false}
-        onToggleUseFunctionApplyPatch={handleUseFunctionApplyPatchToggle}
-        onToggleForceAgent={handleForceAgentToggle}
+        useFunctionApplyPatch={useFunctionApplyPatch}
+        forceAgent={forceAgent}
+        onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
+        onToggleForceAgent={onForceAgentToggle}
       />
     </div>
   )
+}
+
+export function SettingsPage(): React.JSX.Element {
+  const state = useSettingsPageState()
+  return <SettingsPageView {...state} />
 }

@@ -454,7 +454,7 @@ adminApiRoutes.post("/config", async (c) => {
     accountsManager.setFreeModelLoadBalancingEnabled(
       isFreeModelLoadBalancingEnabled(),
     )
-    return c.json(merged)
+    return c.json({ ...merged, _configPath: PATHS.CONFIG_PATH })
   } catch {
     return jsonError(c, 500, {
       message: "Failed to write config.",
