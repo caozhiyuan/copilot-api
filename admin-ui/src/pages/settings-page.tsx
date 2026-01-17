@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -581,7 +582,7 @@ function ReasoningEffortsCard({
             <Textarea
               value={json}
               onChange={(e) => onJsonChange(e.target.value)}
-              className="min-h-[160px] font-mono text-xs"
+              className="min-h-[160px] lg:min-h-[120px] max-h-[36vh] overflow-auto font-mono text-xs"
               placeholder='{ "gpt-5-mini": "low" }'
             />
             {jsonIssue ? (
@@ -726,7 +727,7 @@ function ExtraPromptsCard({
             <Textarea
               value={json}
               onChange={(e) => onJsonChange(e.target.value)}
-              className="min-h-[200px] font-mono text-xs"
+              className="min-h-[200px] lg:min-h-[140px] max-h-[40vh] overflow-auto font-mono text-xs"
               placeholder='{ "gpt-5-mini": "..." }'
             />
             {jsonIssue ? (
@@ -785,7 +786,7 @@ function ExtraPromptsCard({
                     <Textarea
                       value={item.prompt}
                       onChange={(e) => onUpdateItem(item.id, { prompt: e.target.value })}
-                      className="min-h-[120px] font-mono text-xs"
+                      className="min-h-[120px] lg:min-h-[96px] max-h-[30vh] overflow-auto font-mono text-xs"
                       placeholder="System prompt snippet..."
                     />
                     <div className="text-muted-foreground text-xs">
@@ -1165,7 +1166,7 @@ function SettingsPageView({
   onForceAgentToggle,
 }: SettingsPageViewProps): React.JSX.Element {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">
           <div className="text-lg font-semibold">Settings</div>
@@ -1174,7 +1175,7 @@ function SettingsPageView({
           </div>
         </div>
 
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2 lg:hidden">
           <Button type="button" variant="outline" size="sm" onClick={onReload} disabled={loading || saving}>
             {loading ? "Reloading..." : "Reload"}
           </Button>
@@ -1183,10 +1184,6 @@ function SettingsPageView({
           </RainbowButton>
         </div>
       </div>
-
-      {configPath ? (
-        <div className="text-muted-foreground text-xs">Config path: {configPath}</div>
-      ) : null}
 
       {error ? (
         <InlineAlert
@@ -1198,53 +1195,91 @@ function SettingsPageView({
         />
       ) : null}
 
-      <GeneralSettingsCard
-        hasModels={hasModels}
-        smallModelLabel={smallModelLabel}
-        smallModelValue={smallModelValue}
-        smallModelInputValue={smallModelInputValue}
-        models={models}
-        apiKeyValue={apiKeyValue}
-        envOverrideNote={envOverrideNote}
-        onSmallModelSelect={onSmallModelSelect}
-        onSmallModelInput={onSmallModelInput}
-        onApiKeyChange={onApiKeyChange}
-      />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 auto-rows-min">
+        <div className="space-y-4 lg:col-span-8">
+          <GeneralSettingsCard
+            hasModels={hasModels}
+            smallModelLabel={smallModelLabel}
+            smallModelValue={smallModelValue}
+            smallModelInputValue={smallModelInputValue}
+            models={models}
+            apiKeyValue={apiKeyValue}
+            envOverrideNote={envOverrideNote}
+            onSmallModelSelect={onSmallModelSelect}
+            onSmallModelInput={onSmallModelInput}
+            onApiKeyChange={onApiKeyChange}
+          />
 
-      <LoadBalancingCard enabled={loadBalancingEnabled} onToggle={onLoadBalancingToggle} />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <ReasoningEffortsCard
+              mode={reasoningMode}
+              json={reasoningJson}
+              jsonIssue={reasoningJsonIssue}
+              items={reasoningItems}
+              models={models}
+              onToggleMode={onReasoningToggleMode}
+              onJsonChange={onReasoningJsonChange}
+              onAddItem={onReasoningAddItem}
+              onRemoveItem={onReasoningRemoveItem}
+              onUpdateItem={onReasoningUpdateItem}
+            />
 
-      <ReasoningEffortsCard
-        mode={reasoningMode}
-        json={reasoningJson}
-        jsonIssue={reasoningJsonIssue}
-        items={reasoningItems}
-        models={models}
-        onToggleMode={onReasoningToggleMode}
-        onJsonChange={onReasoningJsonChange}
-        onAddItem={onReasoningAddItem}
-        onRemoveItem={onReasoningRemoveItem}
-        onUpdateItem={onReasoningUpdateItem}
-      />
+            <ExtraPromptsCard
+              mode={extraMode}
+              json={extraJson}
+              jsonIssue={extraJsonIssue}
+              items={extraItems}
+              models={models}
+              onToggleMode={onExtraToggleMode}
+              onJsonChange={onExtraJsonChange}
+              onAddItem={onExtraAddItem}
+              onRemoveItem={onExtraRemoveItem}
+              onUpdateItem={onExtraUpdateItem}
+            />
+          </div>
+        </div>
 
-      <ExtraPromptsCard
-        mode={extraMode}
-        json={extraJson}
-        jsonIssue={extraJsonIssue}
-        items={extraItems}
-        models={models}
-        onToggleMode={onExtraToggleMode}
-        onJsonChange={onExtraJsonChange}
-        onAddItem={onExtraAddItem}
-        onRemoveItem={onExtraRemoveItem}
-        onUpdateItem={onExtraUpdateItem}
-      />
+        <aside className="space-y-4 self-start lg:col-span-4 lg:sticky lg:top-6">
+          <LoadBalancingCard enabled={loadBalancingEnabled} onToggle={onLoadBalancingToggle} />
 
-      <AdvancedSettingsCard
-        useFunctionApplyPatch={useFunctionApplyPatch}
-        forceAgent={forceAgent}
-        onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
-        onToggleForceAgent={onForceAgentToggle}
-      />
+          <AdvancedSettingsCard
+            useFunctionApplyPatch={useFunctionApplyPatch}
+            forceAgent={forceAgent}
+            onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
+            onToggleForceAgent={onForceAgentToggle}
+          />
+
+          <Card className="hidden gap-4 py-4 lg:block">
+            <CardHeader className="px-4">
+              <CardTitle>Actions</CardTitle>
+              <CardAction className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onReload}
+                  disabled={loading || saving}
+                >
+                  {loading ? "Reloading..." : "Reload"}
+                </Button>
+                <RainbowButton type="button" size="sm" onClick={onSave} disabled={!canSave}>
+                  {saving ? "Saving..." : "Save"}
+                </RainbowButton>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="space-y-2 px-4">
+              {configPath ? (
+                <div className="text-muted-foreground text-xs">
+                  Config path: {configPath}
+                </div>
+              ) : null}
+              <div className="text-muted-foreground text-xs">
+                Changes apply to config.json immediately. Environment variables take precedence.
+              </div>
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
     </div>
   )
 }
