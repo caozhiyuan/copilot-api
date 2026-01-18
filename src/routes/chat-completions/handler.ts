@@ -23,10 +23,13 @@ import { getTokenCount } from "~/lib/tokenizer"
 import { isNullish } from "~/lib/utils"
 import {
   createChatCompletions,
+  getChatInitiator,
   type ChatCompletionChunk,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
+
+import { parseUserId } from "../messages/responses-translation"
 
 const logger = createHandlerLogger("chat-completions-handler")
 
@@ -40,6 +43,15 @@ export async function handleCompletion(c: Context) {
 
   const payload = await c.req.json<ChatCompletionsPayload>()
   const streamRequested = Boolean(payload.stream)
+
+  const initiator = getChatInitiator(payload.messages)
+  const userId = payload.user ?? undefined
+  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+
+  request.userId = userId
+  request.safetyIdentifier = safetyIdentifier
+  request.promptCacheKey = promptCacheKey
+  request.initiator = initiator
 
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
@@ -76,6 +88,8 @@ export async function handleCompletion(c: Context) {
   const payloadWithMaxTokens = applyDefaultMaxTokens(payload, selectedModel)
 
   const accountCtx = toAccountContext(account)
+  const upstreamRequestId = randomUUID()
+  request.upstreamRequestId = upstreamRequestId
 
   if (streamRequested) {
     return handleStreamingRequest({
@@ -120,6 +134,12 @@ type RequestContext = {
   clientIp?: string
   clientIpSource?: string
   userAgent?: string
+
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
+  upstreamRequestId?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -178,6 +198,11 @@ function insertRequestLog(
     clientIp: request.clientIp,
     clientIpSource: request.clientIpSource,
     userAgent: request.userAgent,
+    userId: request.userId,
+    safetyIdentifier: request.safetyIdentifier,
+    promptCacheKey: request.promptCacheKey,
+    initiator: request.initiator,
+    upstreamRequestId: request.upstreamRequestId,
     ...record,
   })
 }
@@ -293,7 +318,9 @@ async function handleStreamingRequest(params: {
   let response: ChatCompletionsResult
 
   try {
-    response = await createChatCompletions(payload, accountCtx)
+    response = await createChatCompletions(payload, accountCtx, {
+      upstreamRequestId: request.upstreamRequestId,
+    })
   } catch (error) {
     return handleUpstreamCreateError({
       store,
@@ -609,7 +636,9 @@ async function handleNonStreamingRequest(params: {
   let finishedAtMs: number | undefined
 
   try {
-    const response = await createChatCompletions(payload, accountCtx)
+    const response = await createChatCompletions(payload, accountCtx, {
+      upstreamRequestId: request.upstreamRequestId,
+    })
     finishedAtMs = Date.now()
 
     if (!isNonStreaming(response)) {

@@ -231,6 +231,40 @@ export function RequestDetailPage(): React.JSX.Element {
                   </TableCell>
                 </TableRow>
                 <TableRow>
+                  <TableCell className="text-muted-foreground">user_id</TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.user_id || ""}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    safety_identifier
+                  </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.safety_identifier || ""}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">prompt_cache_key</TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.prompt_cache_key || ""}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">initiator</TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.initiator || ""}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    upstream_request_id
+                  </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.upstream_request_id || ""}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
                   <TableCell className="text-muted-foreground">model</TableCell>
                   <TableCell className="font-mono text-xs">
                     {item.upstream_model || ""}

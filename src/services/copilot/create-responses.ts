@@ -326,18 +326,19 @@ export type CreateResponsesReturn = ResponsesResult | ResponsesStream
 interface ResponsesRequestOptions {
   vision: boolean
   initiator: "agent" | "user"
+  upstreamRequestId?: string
 }
 
 export const createResponses = async (
   payload: ResponsesPayload,
-  { vision, initiator }: ResponsesRequestOptions,
+  { vision, initiator, upstreamRequestId }: ResponsesRequestOptions,
   account?: AccountContext,
 ): Promise<CreateResponsesReturn> => {
   const ctx = account ?? accountFromState()
   if (!ctx.copilotToken) throw new Error("Copilot token not found")
 
   const headers: Record<string, string> = {
-    ...copilotHeaders(ctx, vision),
+    ...copilotHeaders(ctx, vision, upstreamRequestId),
     "X-Initiator": initiator,
   }
 

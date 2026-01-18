@@ -30,9 +30,26 @@ function applyDefaultReasoningEffort(
   }
 }
 
+export const getChatInitiator = (
+  messages: Array<Message>,
+): "agent" | "user" => {
+  if (isForceAgentEnabled()) {
+    const hasAgent = messages.some((msg) =>
+      ["assistant", "tool"].includes(msg.role),
+    )
+    return hasAgent ? "agent" : "user"
+  }
+
+  const lastMessage = messages.at(-1)
+  if (!lastMessage) return "user"
+
+  return ["assistant", "tool"].includes(lastMessage.role) ? "agent" : "user"
+}
+
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
   account?: AccountContext,
+  options?: { upstreamRequestId?: string },
 ) => {
   const ctx = account ?? accountFromState()
   if (!ctx.copilotToken) throw new Error("Copilot token not found")
@@ -43,26 +60,12 @@ export const createChatCompletions = async (
       && x.content?.some((x) => x.type === "image_url"),
   )
 
-  // Agent/user check for X-Initiator header
-  // Determine if any message is from an agent ("assistant" or "tool")
-  let isAgentCall = false
-  if (isForceAgentEnabled()) {
-    // forceAgent mode: check if ANY message has assistant/tool role
-    isAgentCall = payload.messages.some((msg) =>
-      ["assistant", "tool"].includes(msg.role),
-    )
-  } else {
-    // Default mode: only check the last message
-    const lastMessage = payload.messages.at(-1)
-    if (lastMessage) {
-      isAgentCall = ["assistant", "tool"].includes(lastMessage.role)
-    }
-  }
+  const initiator = getChatInitiator(payload.messages)
 
   // Build headers and add X-Initiator
   const headers: Record<string, string> = {
-    ...copilotHeaders(ctx, enableVision),
-    "X-Initiator": isAgentCall ? "agent" : "user",
+    ...copilotHeaders(ctx, enableVision, options?.upstreamRequestId),
+    "X-Initiator": initiator,
   }
 
   const upstreamPayload = applyDefaultReasoningEffort(payload)

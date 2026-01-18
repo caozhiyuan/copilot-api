@@ -154,6 +154,12 @@ export type RequestLogInsert = {
   clientIpSource?: string
   userAgent?: string
 
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
+  upstreamRequestId?: string
+
   tokensInput?: number
   tokensOutput?: number
   tokensTotal?: number
@@ -195,6 +201,12 @@ export type RequestLogRow = {
   client_ip: string | null
   client_ip_source: string | null
   user_agent: string | null
+
+  user_id: string | null
+  safety_identifier: string | null
+  prompt_cache_key: string | null
+  initiator: string | null
+  upstream_request_id: string | null
 
   tokens_input: number | null
   tokens_output: number | null
@@ -273,6 +285,11 @@ export class RequestHistoryStore {
         client_ip,
         client_ip_source,
         user_agent,
+        user_id,
+        safety_identifier,
+        prompt_cache_key,
+        initiator,
+        upstream_request_id,
         tokens_input,
         tokens_output,
         tokens_total,
@@ -292,7 +309,8 @@ export class RequestHistoryStore {
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
-        ?,?,?,?,?,?,?,?
+        ?,?,?,?,?,?,?,?,
+        ?,?,?,?,?,?
       );
     `)
 
@@ -324,6 +342,11 @@ export class RequestHistoryStore {
         toDbNull(record.clientIp),
         toDbNull(record.clientIpSource),
         toDbNull(record.userAgent),
+        toDbNull(record.userId),
+        toDbNull(record.safetyIdentifier),
+        toDbNull(record.promptCacheKey),
+        toDbNull(record.initiator),
+        toDbNull(record.upstreamRequestId),
 
         toDbNull(record.tokensInput),
         toDbNull(record.tokensOutput),

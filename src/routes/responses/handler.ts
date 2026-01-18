@@ -28,6 +28,7 @@ import {
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
 
+import { parseUserId } from "../messages/responses-translation"
 import { getResponsesRequestOptions } from "./utils"
 
 const logger = createHandlerLogger("responses-handler")
@@ -45,6 +46,16 @@ export const handleResponses = async (c: Context) => {
 
   useFunctionApplyPatch(payload)
   const streamRequested = Boolean(payload.stream)
+
+  const { vision, initiator } = getResponsesRequestOptions(payload)
+  const userId = (payload.metadata as { user_id?: string } | null | undefined)
+    ?.user_id
+  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+
+  request.userId = userId
+  request.safetyIdentifier = safetyIdentifier
+  request.promptCacheKey = promptCacheKey
+  request.initiator = initiator
 
   const selection = await accountsManager.selectAccountForRequest([
     {
@@ -71,11 +82,11 @@ export const handleResponses = async (c: Context) => {
   const premiumRemainingBefore = account.premiumRemaining
   const premiumUnlimitedBefore = account.unlimited
 
-  const { vision, initiator } = getResponsesRequestOptions(payload)
-
   if (state.manualApprove) await awaitApproval()
 
   const accountCtx = toAccountContext(account)
+  const upstreamRequestId = randomUUID()
+  request.upstreamRequestId = upstreamRequestId
 
   if (streamRequested) {
     return handleStreamingResponses({
@@ -124,6 +135,12 @@ type RequestContext = {
   clientIp?: string
   clientIpSource?: string
   userAgent?: string
+
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
+  upstreamRequestId?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -175,6 +192,11 @@ function insertRequestLog(
     clientIp: request.clientIp,
     clientIpSource: request.clientIpSource,
     userAgent: request.userAgent,
+    userId: request.userId,
+    safetyIdentifier: request.safetyIdentifier,
+    promptCacheKey: request.promptCacheKey,
+    initiator: request.initiator,
+    upstreamRequestId: request.upstreamRequestId,
     ...record,
   })
 }
@@ -293,7 +315,15 @@ async function handleStreamingResponses(params: {
   let response: Awaited<ReturnType<typeof createResponses>>
 
   try {
-    response = await createResponses(payload, { vision, initiator }, accountCtx)
+    response = await createResponses(
+      payload,
+      {
+        vision,
+        initiator,
+        upstreamRequestId: request.upstreamRequestId,
+      },
+      accountCtx,
+    )
   } catch (error) {
     return handleUpstreamCreateError({
       store,

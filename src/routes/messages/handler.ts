@@ -1,3 +1,5 @@
+/* eslint-disable max-lines */
+
 import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
@@ -32,12 +34,14 @@ import {
   translateResponsesStreamEvent,
 } from "~/routes/messages/responses-stream-translation"
 import {
+  parseUserId,
   translateAnthropicMessagesToResponsesPayload,
   translateResponsesResultToAnthropic,
 } from "~/routes/messages/responses-translation"
 import { getResponsesRequestOptions } from "~/routes/responses/utils"
 import {
   createChatCompletions,
+  getChatInitiator,
   type ChatCompletionChunk,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
@@ -84,6 +88,10 @@ type SelectionFailureContext = {
   clientIp?: string
   clientIpSource?: string
   userAgent?: string
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
   selection: AccountSelectionFailure
 }
 
@@ -98,6 +106,12 @@ type InstrumentationContext = {
   clientIp?: string
   clientIpSource?: string
   userAgent?: string
+
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
+  upstreamRequestId?: string
 
   clientModel: string
 
@@ -158,6 +172,9 @@ export async function handleCompletion(c: Context) {
   mergeToolResultForClaude(anthropicBeta, anthropicPayload)
 
   const openAIPayload = translateToOpenAI(anthropicPayload)
+  const userId = anthropicPayload.metadata?.user_id
+  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const fallbackInitiator = getChatInitiator(openAIPayload.messages)
 
   const selection = await accountsManager.selectAccountForRequest([
     {
@@ -183,6 +200,10 @@ export async function handleCompletion(c: Context) {
       clientIp,
       clientIpSource,
       userAgent,
+      userId,
+      safetyIdentifier,
+      promptCacheKey,
+      initiator: fallbackInitiator,
       selection,
     })
   }
@@ -207,6 +228,9 @@ export async function handleCompletion(c: Context) {
     clientIp,
     clientIpSource,
     userAgent,
+    userId,
+    safetyIdentifier,
+    promptCacheKey,
 
     clientModel: anthropicPayload.model,
 
@@ -251,6 +275,10 @@ const handleSelectionFailure = (context: SelectionFailureContext): Response => {
     clientIp,
     clientIpSource,
     userAgent,
+    userId,
+    safetyIdentifier,
+    promptCacheKey,
+    initiator,
     selection,
   } = context
   const finishedAtMs = Date.now()
@@ -267,6 +295,10 @@ const handleSelectionFailure = (context: SelectionFailureContext): Response => {
     clientIp,
     clientIpSource,
     userAgent,
+    userId,
+    safetyIdentifier,
+    promptCacheKey,
+    initiator,
     httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
     selectionFailureReason: selection.reason,
   })
@@ -321,11 +353,18 @@ const handleWithChatCompletions = async (params: {
   )
 
   const ctx = toAccountContext(instr.account)
+  const initiator = getChatInitiator(openAIPayload.messages)
+  const upstreamRequestId = randomUUID()
+
+  instr.initiator = initiator
+  instr.upstreamRequestId = upstreamRequestId
 
   let response: ChatCompletionsResult
 
   try {
-    response = await createChatCompletions(openAIPayload, ctx)
+    response = await createChatCompletions(openAIPayload, ctx, {
+      upstreamRequestId,
+    })
   } catch (error) {
     return await handleChatCompletionsCreateError({
       error,
@@ -376,6 +415,10 @@ const handleWithResponsesApi = async (params: {
 
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
   const ctx = toAccountContext(instr.account)
+  const upstreamRequestId = randomUUID()
+
+  instr.initiator = initiator
+  instr.upstreamRequestId = upstreamRequestId
 
   let response: Awaited<ReturnType<typeof createResponses>>
 
@@ -385,6 +428,7 @@ const handleWithResponsesApi = async (params: {
       {
         vision,
         initiator,
+        upstreamRequestId,
       },
       ctx,
     )
@@ -481,6 +525,11 @@ function insertRequestLog(
     clientIp,
     clientIpSource,
     userAgent,
+    userId: instr.userId,
+    safetyIdentifier: instr.safetyIdentifier,
+    promptCacheKey: instr.promptCacheKey,
+    initiator: instr.initiator,
+    upstreamRequestId: instr.upstreamRequestId,
     clientModel,
     upstreamEndpoint,
     accountId: account.id,
