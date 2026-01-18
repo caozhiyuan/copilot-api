@@ -28,6 +28,7 @@ import {
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
 
+import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
 import { getResponsesRequestOptions } from "./utils"
 
 const logger = createHandlerLogger("responses-handler")
@@ -522,6 +523,7 @@ async function streamResponsesAndLog(params: {
 
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
 
+  const idTracker = createStreamIdTracker()
   let ttfbMs: number | undefined
   let lastUsage: NormalizedUsage = {}
   let errorName: string | undefined
@@ -535,8 +537,9 @@ async function streamResponsesAndLog(params: {
       }
 
       const { id, event, data } = getStreamChunkFields(chunk)
+      const processedData = fixStreamIds(data ?? "", event, idTracker)
 
-      const usage = extractUsageFromChunkData(data)
+      const usage = extractUsageFromChunkData(processedData)
       if (usage) {
         lastUsage = usage
       }
@@ -546,7 +549,7 @@ async function streamResponsesAndLog(params: {
       await stream.writeSSE({
         id,
         event,
-        data: data ?? "",
+        data: processedData,
       })
     }
   } catch (error) {
@@ -701,12 +704,15 @@ function handleUnexpectedResponsesStream(
   logger.debug("Forwarding native Responses stream (unexpected)")
 
   return streamSSE(c, async (stream) => {
+    const idTracker = createStreamIdTracker()
+
     for await (const chunk of response) {
       const { id, event, data } = getStreamChunkFields(chunk)
+      const processedData = fixStreamIds(data ?? "", event, idTracker)
       await stream.writeSSE({
         id,
         event,
-        data: data ?? "",
+        data: processedData,
       })
     }
   })

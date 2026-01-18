@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { Hono } from "hono"
+import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -98,7 +99,7 @@ const getBlockStatus = async (clientModel: string) => {
     const blocked = maybeBlockOriginalModelName({
       c,
       store: getRequestHistoryStore(),
-      requestId: "req-1",
+      requestId: randomUUID(),
       startedAtMs: Date.now(),
       method: "GET",
       path: "/",
