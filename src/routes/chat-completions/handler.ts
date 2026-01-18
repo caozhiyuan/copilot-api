@@ -5,10 +5,7 @@ import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
-import {
-  getAliasTargetSet,
-  isOriginalModelNameAllowedForAliases,
-} from "~/lib/config"
+import { getAliasTargetSet } from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -46,21 +43,19 @@ export async function handleCompletion(c: Context) {
   const clientModel = payload.model
   const streamRequested = Boolean(payload.stream)
 
-  if (!isOriginalModelNameAllowedForAliases()) {
-    const aliasTargets = getAliasTargetSet()
-    if (aliasTargets.has(clientModel.toLowerCase())) {
-      recordSelectionFailure(store, {
-        request,
-        clientModel,
-        stream: streamRequested,
-        reason: "MODEL_NOT_SUPPORTED",
-      })
+  const blockedTargets = getAliasTargetSet()
+  if (blockedTargets.has(clientModel.toLowerCase())) {
+    recordSelectionFailure(store, {
+      request,
+      clientModel,
+      stream: streamRequested,
+      reason: "MODEL_NOT_SUPPORTED",
+    })
 
-      return selectionFailureResponse(c, {
-        clientModel,
-        reason: "MODEL_NOT_SUPPORTED",
-      })
-    }
+    return selectionFailureResponse(c, {
+      clientModel,
+      reason: "MODEL_NOT_SUPPORTED",
+    })
   }
 
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))

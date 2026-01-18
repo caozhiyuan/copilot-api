@@ -257,46 +257,94 @@ function parseReasoningRecord(
   return { value: record }
 }
 
-function parseModelAliases(
-  value: unknown,
-): ParseFieldResult<Record<string, string>> {
-  if (value === null || value === undefined) return { clear: true }
-  if (!isPlainObject(value)) {
-    return { error: "modelAliases must be an object with string values" }
+type ParsedModelAlias = {
+  alias: string
+  target: string
+  allowOriginal?: boolean
+}
+
+function parseModelAliasEntry(
+  rawAlias: string,
+  rawTarget: unknown,
+): ParseFieldResult<ParsedModelAlias> {
+  if (BLOCKED_KEYS.has(rawAlias)) {
+    return { error: `modelAliases.${rawAlias} is not allowed` }
   }
 
-  const record = Object.create(null) as Record<string, string>
+  const alias = rawAlias.trim().toLowerCase()
+  if (!alias) {
+    return { error: "modelAliases keys must be non-empty strings" }
+  }
+  if (BLOCKED_KEYS.has(alias)) {
+    return { error: `modelAliases.${alias} is not allowed` }
+  }
+
+  let target: string | undefined
+  let allowOriginal: boolean | undefined
+
+  if (typeof rawTarget === "string") {
+    target = rawTarget.trim()
+  } else if (isPlainObject(rawTarget)) {
+    const rawTargetValue = rawTarget.target
+    if (typeof rawTargetValue !== "string") {
+      return { error: `modelAliases.${rawAlias}.target must be a string` }
+    }
+    target = rawTargetValue.trim()
+
+    if ("allowOriginal" in rawTarget) {
+      if (typeof rawTarget.allowOriginal !== "boolean") {
+        return {
+          error: `modelAliases.${rawAlias}.allowOriginal must be a boolean`,
+        }
+      }
+      allowOriginal = rawTarget.allowOriginal
+    }
+  } else {
+    return { error: `modelAliases.${rawAlias} must be a string or object` }
+  }
+
+  if (!target) {
+    return { error: `modelAliases.${rawAlias} must be a non-empty string` }
+  }
+  if (alias === target.toLowerCase()) {
+    return { error: `modelAliases.${rawAlias} cannot map to itself` }
+  }
+
+  return { value: { alias, target, allowOriginal } }
+}
+
+function parseModelAliases(
+  value: unknown,
+): ParseFieldResult<
+  Record<string, { target: string; allowOriginal?: boolean }>
+> {
+  if (value === null || value === undefined) return { clear: true }
+  if (!isPlainObject(value)) {
+    return { error: "modelAliases must be an object" }
+  }
+
+  const record = Object.create(null) as Record<
+    string,
+    { target: string; allowOriginal?: boolean }
+  >
 
   for (const [rawAlias, rawTarget] of Object.entries(value)) {
-    if (BLOCKED_KEYS.has(rawAlias)) {
-      return { error: `modelAliases.${rawAlias} is not allowed` }
-    }
-    if (typeof rawTarget !== "string") {
-      return { error: `modelAliases.${rawAlias} must be a string` }
-    }
+    const parsed = parseModelAliasEntry(rawAlias, rawTarget)
+    if ("error" in parsed) return parsed
+    if ("clear" in parsed) continue
 
-    const alias = rawAlias.trim().toLowerCase()
-    const target = rawTarget.trim()
-
-    if (!alias) {
-      return { error: "modelAliases keys must be non-empty strings" }
-    }
-    if (!target) {
-      return { error: `modelAliases.${rawAlias} must be a non-empty string` }
-    }
-    if (BLOCKED_KEYS.has(alias)) {
-      return { error: `modelAliases.${alias} is not allowed` }
-    }
-    if (alias === target.toLowerCase()) {
-      return { error: `modelAliases.${rawAlias} cannot map to itself` }
-    }
-
-    const existing = record[alias]
-    if (existing && existing !== target) {
+    const { alias, target, allowOriginal } = parsed.value
+    const existing = Object.hasOwn(record, alias) ? record[alias] : undefined
+    if (
+      existing
+      && (existing.target !== target
+        || existing.allowOriginal !== allowOriginal)
+    ) {
       return { error: `modelAliases.${rawAlias} conflicts with ${alias}` }
     }
 
-    record[alias] = target
+    record[alias] =
+      allowOriginal === undefined ? { target } : { target, allowOriginal }
   }
 
   return { value: record }

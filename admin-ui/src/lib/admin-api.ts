@@ -75,13 +75,18 @@ export type AdminRequestDetailResponse = {
 
 export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
 
+export type ModelAliasSpec = {
+  target: string
+  allowOriginal?: boolean
+}
+
 export type AdminConfig = {
   extraPrompts?: Record<string, string>
   smallModel?: string
   freeModelLoadBalancing?: boolean
   apiKey?: string
   modelReasoningEfforts?: Record<string, ReasoningEffort>
-  modelAliases?: Record<string, string>
+  modelAliases?: Record<string, ModelAliasSpec | string>
   allowOriginalModelNamesForAliases?: boolean
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean

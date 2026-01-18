@@ -251,7 +251,8 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
       "gpt-5-mini": "low"
     },
     "modelAliases": {
-      "fast": "gpt-5-mini"
+      "fast": { "target": "gpt-5-mini", "allowOriginal": false },
+      "draft": { "target": "gpt-5.1-codex-max" }
     },
     "allowOriginalModelNamesForAliases": false
   }
@@ -261,8 +262,8 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **freeModelLoadBalancing:** Enable round-robin routing for free-model requests across multiple accounts. Defaults to `true`. Set to `false` to route free-model requests sequentially (same ordering strategy as premium models).
 - **apiKey (optional):** API key used to protect selected endpoints (see **API Key authentication** below). Prefer setting the `COPILOT_API_KEY` environment variable (takes precedence over `config.json`). The server does not generate an API key automatically — you must provide one. If no key is configured, protected endpoints remain publicly accessible (fail-open). **Do not commit secrets.**
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
-- **modelAliases:** Map of `alias -> upstream model ID`. Aliases are case-insensitive and can be used in downstream requests.
-- **allowOriginalModelNamesForAliases:** When `false` (default), any model that is the target of an alias can only be called by its alias, and `/models` hides the original name. When `true`, both the original model name and its aliases are accepted.
+- **modelAliases:** Map of `alias -> { target, allowOriginal? }` (legacy string values are still accepted). `allowOriginal` overrides the global default per alias. If multiple aliases map to the same target, original names are allowed when any alias sets `allowOriginal: true` (allow-wins). Aliases are case-insensitive and can be used in downstream requests.
+- **allowOriginalModelNamesForAliases:** Global default for aliases that omit `allowOriginal`. When `false` (default), targets are blocked unless an alias explicitly allows them; when `true`, targets are allowed unless all aliases explicitly block them.
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
 

@@ -1,9 +1,6 @@
 import type { Context } from "hono"
 
-import {
-  getAliasTargetSet,
-  isOriginalModelNameAllowedForAliases,
-} from "~/lib/config"
+import { getAliasTargetSet } from "~/lib/config"
 import { getRequestHistoryStore } from "~/lib/request-history"
 
 import type {
@@ -207,12 +204,8 @@ export const handleSelectionFailure = (
 export const maybeBlockOriginalModelName = (
   context: Omit<SelectionFailureContext, "selection">,
 ): Response | null => {
-  if (isOriginalModelNameAllowedForAliases()) {
-    return null
-  }
-
-  const aliasTargets = getAliasTargetSet()
-  if (!aliasTargets.has(context.clientModel.toLowerCase())) {
+  const blockedTargets = getAliasTargetSet()
+  if (!blockedTargets.has(context.clientModel.toLowerCase())) {
     return null
   }
 

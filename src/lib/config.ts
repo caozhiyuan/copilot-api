@@ -12,7 +12,7 @@ export interface AppConfig {
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >
-  modelAliases?: Record<string, string>
+  modelAliases?: Record<string, { target: string; allowOriginal?: boolean }>
   allowOriginalModelNamesForAliases?: boolean
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean
@@ -181,7 +181,16 @@ export function getConfig(): AppConfig {
   return cachedConfig
 }
 
+type ModelAliasSpec = {
+  target: string
+  allowOriginal?: boolean
+}
+
 type ModelAliasMap = Record<string, string>
+
+type ModelAliasInfoMap = Record<string, ModelAliasSpec>
+
+type ModelAliasRawMap = Record<string, unknown>
 
 function normalizeAliasKey(value: string): string | null {
   const trimmed = value.trim().toLowerCase()
@@ -193,20 +202,57 @@ function normalizeAliasTarget(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-export function getModelAliases(): ModelAliasMap {
-  const config = getConfig()
-  const raw = config.modelAliases ?? {}
-  const normalized: ModelAliasMap = {}
+function normalizeAliasSpec(value: unknown): ModelAliasSpec | null {
+  if (typeof value === "string") {
+    const normalizedTarget = normalizeAliasTarget(value)
+    return normalizedTarget ? { target: normalizedTarget } : null
+  }
+  if (!value || typeof value !== "object") {
+    return null
+  }
 
-  for (const [alias, target] of Object.entries(raw)) {
+  const targetValue = (value as { target?: unknown }).target
+  if (typeof targetValue !== "string") {
+    return null
+  }
+
+  const normalizedTarget = normalizeAliasTarget(targetValue)
+  if (!normalizedTarget) {
+    return null
+  }
+
+  const allowOriginalValue = (value as { allowOriginal?: unknown })
+    .allowOriginal
+  const allowOriginal =
+    typeof allowOriginalValue === "boolean" ? allowOriginalValue : undefined
+  return { target: normalizedTarget, allowOriginal }
+}
+
+export function getModelAliasesInfo(): ModelAliasInfoMap {
+  const config = getConfig()
+  const raw = (config.modelAliases ?? {}) as ModelAliasRawMap
+  const normalized: ModelAliasInfoMap = {}
+
+  for (const [alias, rawSpec] of Object.entries(raw)) {
     const normalizedAlias = normalizeAliasKey(alias)
-    const normalizedTarget = normalizeAliasTarget(target)
-    if (!normalizedAlias || !normalizedTarget) {
+    const normalizedSpec = normalizeAliasSpec(rawSpec)
+    if (!normalizedAlias || !normalizedSpec) {
       continue
     }
     if (!Object.hasOwn(normalized, normalizedAlias)) {
-      normalized[normalizedAlias] = normalizedTarget
+      normalized[normalizedAlias] = normalizedSpec
     }
+  }
+
+  return normalized
+}
+
+export function getModelAliases(): ModelAliasMap {
+  const info = getModelAliasesInfo()
+  const normalized: ModelAliasMap = {}
+
+  for (const [alias, spec] of Object.entries(info)) {
+    normalized[alias] = spec.target
   }
 
   return normalized
@@ -225,14 +271,39 @@ export function isOriginalModelNameAllowedForAliases(): boolean {
 }
 
 export function getAliasTargetSet(): Set<string> {
-  const aliases = getModelAliases()
-  const targets = new Set<string>()
+  const aliases = getModelAliasesInfo()
+  const allowOriginalDefault = isOriginalModelNameAllowedForAliases()
+  const targetAllowMap = new Map<string, boolean>()
 
-  for (const target of Object.values(aliases)) {
-    targets.add(target.toLowerCase())
+  for (const { target, allowOriginal } of Object.values(aliases)) {
+    const normalizedTarget = target.toLowerCase()
+    const effectiveAllow = allowOriginal ?? allowOriginalDefault
+    const currentAllow = targetAllowMap.get(normalizedTarget)
+    if (currentAllow === true) {
+      continue
+    }
+    if (effectiveAllow) {
+      targetAllowMap.set(normalizedTarget, true)
+    } else if (currentAllow === undefined) {
+      targetAllowMap.set(normalizedTarget, false)
+    }
   }
 
-  return targets
+  const blockedTargets = new Set<string>()
+  for (const [target, allowed] of targetAllowMap.entries()) {
+    if (!allowed) {
+      blockedTargets.add(target)
+    }
+  }
+
+  return blockedTargets
+}
+
+export function isOriginalModelNameAllowedForTarget(modelId: string): boolean {
+  const normalized = normalizeAliasKey(modelId)
+  if (!normalized) return true
+  const blockedTargets = getAliasTargetSet()
+  return !blockedTargets.has(normalized)
 }
 
 export function getPreferredAliasForTarget(modelId: string): string | null {
@@ -293,12 +364,7 @@ export function getExtraPromptForModel(model: string): string {
 export function getSmallModel(): string {
   const config = getConfig()
   const model = config.smallModel ?? "gpt-5-mini"
-  if (isOriginalModelNameAllowedForAliases()) {
-    return model
-  }
-
-  const targets = getAliasTargetSet()
-  if (!targets.has(model.toLowerCase())) {
+  if (isOriginalModelNameAllowedForTarget(model)) {
     return model
   }
 

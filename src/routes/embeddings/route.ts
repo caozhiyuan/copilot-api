@@ -2,10 +2,7 @@ import { Hono, type Context } from "hono"
 import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
-import {
-  getAliasTargetSet,
-  isOriginalModelNameAllowedForAliases,
-} from "~/lib/config"
+import { getAliasTargetSet } from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import {
   computeDiff,
@@ -73,16 +70,14 @@ embeddingRoutes.post("/", async (c) => {
     const payload = await c.req.json<EmbeddingRequest>()
     const clientModel = payload.model
 
-    if (!isOriginalModelNameAllowedForAliases()) {
-      const aliasTargets = getAliasTargetSet()
-      if (aliasTargets.has(clientModel.toLowerCase())) {
-        recordSelectionFailure(store, {
-          ctx,
-          clientModel,
-          reason: "MODEL_NOT_SUPPORTED",
-        })
-        return selectionFailureResponse(c, clientModel, "MODEL_NOT_SUPPORTED")
-      }
+    const blockedTargets = getAliasTargetSet()
+    if (blockedTargets.has(clientModel.toLowerCase())) {
+      recordSelectionFailure(store, {
+        ctx,
+        clientModel,
+        reason: "MODEL_NOT_SUPPORTED",
+      })
+      return selectionFailureResponse(c, clientModel, "MODEL_NOT_SUPPORTED")
     }
 
     const selection = await accountsManager.selectAccountForRequest([

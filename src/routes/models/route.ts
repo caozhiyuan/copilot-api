@@ -1,11 +1,7 @@
 import { Hono } from "hono"
 
 import { accountsManager } from "~/lib/accounts-manager"
-import {
-  getAliasTargetSet,
-  getModelAliases,
-  isOriginalModelNameAllowedForAliases,
-} from "~/lib/config"
+import { getAliasTargetSet, getModelAliases } from "~/lib/config"
 import { forwardError } from "~/lib/error"
 
 export const modelRoutes = new Hono()
@@ -14,15 +10,10 @@ modelRoutes.get("/", async (c) => {
   try {
     const accountModels = accountsManager.getFirstAccountModels()
 
-    const aliasTargets = getAliasTargetSet()
+    const blockedTargets = getAliasTargetSet()
     const models =
       accountModels?.data
-        .filter((model) => {
-          if (isOriginalModelNameAllowedForAliases()) {
-            return true
-          }
-          return !aliasTargets.has(model.id.toLowerCase())
-        })
+        .filter((model) => !blockedTargets.has(model.id.toLowerCase()))
         .map((model) => ({
           id: model.id,
           object: "model",

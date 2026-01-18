@@ -14,8 +14,13 @@ import { modelRoutes } from "~/routes/models/route"
 
 type ModelsResponse = { data: Array<Model>; object: string }
 
+type ModelAliasSpec = {
+  target: string
+  allowOriginal?: boolean
+}
+
 type TestConfig = {
-  modelAliases: Record<string, string>
+  modelAliases: Record<string, ModelAliasSpec | string>
   allowOriginalModelNamesForAliases: boolean
   smallModel: string
 }
@@ -63,55 +68,158 @@ const withConfig = async (config: TestConfig, run: () => Promise<void>) => {
   }
 }
 
-test("alias-only blocks original model names and hides them from /models", async () => {
+const withMockedModels = async (run: () => Promise<void>) => {
+  const originalGetFirstAccountModels =
+    accountsManager.getFirstAccountModels.bind(accountsManager)
+  accountsManager.getFirstAccountModels = () =>
+    ({
+      data: [buildModel("gpt-5-mini"), buildModel("gpt-4")],
+      object: "list",
+    }) as ModelsResponse
+
+  try {
+    await run()
+  } finally {
+    // eslint-disable-next-line require-atomic-updates
+    accountsManager.getFirstAccountModels = originalGetFirstAccountModels
+  }
+}
+
+const getModelIds = async () => {
+  const res = await modelRoutes.fetch(new Request("http://local/"))
+  expect(res.status).toBe(200)
+  const body = (await res.json()) as { data: Array<{ id: string }> }
+  return body.data.map((model) => model.id)
+}
+
+const getBlockStatus = async (clientModel: string) => {
+  const app = new Hono()
+  app.get("/", (c) => {
+    const blocked = maybeBlockOriginalModelName({
+      c,
+      store: getRequestHistoryStore(),
+      requestId: "req-1",
+      startedAtMs: Date.now(),
+      method: "GET",
+      path: "/",
+      streamRequested: false,
+      clientModel,
+    })
+    return blocked ?? c.text("ok")
+  })
+
+  const res = await app.fetch(new Request("http://local/"))
+  return res.status
+}
+
+test("per-alias block overrides global allow", async () => {
   await withConfig(
     {
       modelAliases: {
-        fast: "gpt-5-mini",
+        fast: { target: "gpt-5-mini", allowOriginal: false },
+      },
+      allowOriginalModelNamesForAliases: true,
+      smallModel: "gpt-5-mini",
+    },
+    async () => {
+      await withMockedModels(async () => {
+        const ids = await getModelIds()
+        expect(ids).toContain("fast")
+        expect(ids).not.toContain("gpt-5-mini")
+      })
+
+      expect(getSmallModel()).toBe("fast")
+      expect(await getBlockStatus("gpt-5-mini")).toBe(400)
+    },
+  )
+})
+
+test("per-alias allow overrides global block", async () => {
+  await withConfig(
+    {
+      modelAliases: {
+        fast: { target: "gpt-5-mini", allowOriginal: true },
       },
       allowOriginalModelNamesForAliases: false,
       smallModel: "gpt-5-mini",
     },
     async () => {
-      const originalGetFirstAccountModels =
-        accountsManager.getFirstAccountModels.bind(accountsManager)
-      accountsManager.getFirstAccountModels = () =>
-        ({
-          data: [buildModel("gpt-5-mini"), buildModel("gpt-4")],
-          object: "list",
-        }) as ModelsResponse
-
-      try {
-        const res = await modelRoutes.fetch(new Request("http://local/"))
-        expect(res.status).toBe(200)
-        const body = (await res.json()) as { data: Array<{ id: string }> }
-        const ids = body.data.map((model) => model.id)
+      await withMockedModels(async () => {
+        const ids = await getModelIds()
         expect(ids).toContain("fast")
-        expect(ids).not.toContain("gpt-5-mini")
-      } finally {
-        // eslint-disable-next-line require-atomic-updates
-        accountsManager.getFirstAccountModels = originalGetFirstAccountModels
-      }
-
-      expect(getSmallModel()).toBe("fast")
-
-      const app = new Hono()
-      app.get("/", (c) => {
-        const blocked = maybeBlockOriginalModelName({
-          c,
-          store: getRequestHistoryStore(),
-          requestId: "req-1",
-          startedAtMs: Date.now(),
-          method: "GET",
-          path: "/",
-          streamRequested: false,
-          clientModel: "gpt-5-mini",
-        })
-        return blocked ?? c.text("ok")
+        expect(ids).toContain("gpt-5-mini")
       })
 
-      const blockedRes = await app.fetch(new Request("http://local/"))
-      expect(blockedRes.status).toBe(400)
+      expect(getSmallModel()).toBe("gpt-5-mini")
+      expect(await getBlockStatus("gpt-5-mini")).toBe(200)
+    },
+  )
+})
+
+test("allow-wins when multiple aliases map to the same target", async () => {
+  await withConfig(
+    {
+      modelAliases: {
+        fast: { target: "gpt-5-mini", allowOriginal: false },
+        rapid: { target: "gpt-5-mini", allowOriginal: true },
+      },
+      allowOriginalModelNamesForAliases: false,
+      smallModel: "gpt-5-mini",
+    },
+    async () => {
+      await withMockedModels(async () => {
+        const ids = await getModelIds()
+        expect(ids).toContain("fast")
+        expect(ids).toContain("rapid")
+        expect(ids).toContain("gpt-5-mini")
+      })
+
+      expect(getSmallModel()).toBe("gpt-5-mini")
+      expect(await getBlockStatus("gpt-5-mini")).toBe(200)
+    },
+  )
+})
+
+test("alias default inherits global block", async () => {
+  await withConfig(
+    {
+      modelAliases: {
+        fast: { target: "gpt-5-mini" },
+      },
+      allowOriginalModelNamesForAliases: false,
+      smallModel: "gpt-5-mini",
+    },
+    async () => {
+      await withMockedModels(async () => {
+        const ids = await getModelIds()
+        expect(ids).toContain("fast")
+        expect(ids).not.toContain("gpt-5-mini")
+      })
+
+      expect(getSmallModel()).toBe("fast")
+      expect(await getBlockStatus("gpt-5-mini")).toBe(400)
+    },
+  )
+})
+
+test("alias default inherits global allow", async () => {
+  await withConfig(
+    {
+      modelAliases: {
+        fast: { target: "gpt-5-mini" },
+      },
+      allowOriginalModelNamesForAliases: true,
+      smallModel: "gpt-5-mini",
+    },
+    async () => {
+      await withMockedModels(async () => {
+        const ids = await getModelIds()
+        expect(ids).toContain("fast")
+        expect(ids).toContain("gpt-5-mini")
+      })
+
+      expect(getSmallModel()).toBe("gpt-5-mini")
+      expect(await getBlockStatus("gpt-5-mini")).toBe(200)
     },
   )
 })

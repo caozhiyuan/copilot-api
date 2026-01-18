@@ -5,6 +5,7 @@ import {
   AdminApiError,
   type AdminConfig,
   type AdminConfigResponse,
+  type ModelAliasSpec,
   type ReasoningEffort,
   getAdminConfig,
   getAdminModels,
@@ -57,7 +58,12 @@ type ModelAliasItem = {
   id: string
   alias: string
   target: string
+  allowOriginal?: boolean
 }
+
+type ModelAliasRecord = Record<string, ModelAliasSpec>
+
+type ModelAliasRecordInput = Record<string, ModelAliasSpec | string>
 
 type ParseResult<T> = { record: T } | { error: string }
 
@@ -144,14 +150,25 @@ function reasoningItemsFromRecord(
 }
 
 function aliasItemsFromRecord(
-  record: Record<string, string> | undefined
+  record: ModelAliasRecordInput | undefined
 ): ModelAliasItem[] {
   if (!record) return []
-  return Object.entries(record).map(([alias, target]) => ({
-    id: createItemId(),
-    alias,
-    target,
-  }))
+  return Object.entries(record).map(([alias, spec]) => {
+    if (typeof spec === "string") {
+      return {
+        id: createItemId(),
+        alias,
+        target: spec,
+        allowOriginal: undefined,
+      }
+    }
+    return {
+      id: createItemId(),
+      alias,
+      target: spec.target,
+      allowOriginal: spec.allowOriginal,
+    }
+  })
 }
 
 function extraPromptRecordFromItems(items: ExtraPromptItem[]): Record<string, string> {
@@ -174,8 +191,8 @@ function reasoningRecordFromItems(items: ReasoningItem[]): Record<string, Reason
   return record
 }
 
-function aliasRecordFromItems(items: ModelAliasItem[]): Record<string, string> {
-  const record: Record<string, string> = {}
+function aliasRecordFromItems(items: ModelAliasItem[]): ModelAliasRecord {
+  const record: ModelAliasRecord = {}
   const seen = new Set<string>()
 
   for (const item of items) {
@@ -188,7 +205,10 @@ function aliasRecordFromItems(items: ModelAliasItem[]): Record<string, string> {
     if (seen.has(normalizedAlias)) continue
 
     seen.add(normalizedAlias)
-    record[alias] = target
+    record[alias] =
+      item.allowOriginal === undefined
+        ? { target }
+        : { target, allowOriginal: item.allowOriginal }
   }
 
   return record
@@ -251,28 +271,48 @@ function parseReasoningJson(
 
 function parseModelAliasesJson(
   value: string,
-): ParseResult<Record<string, string>> {
+): ParseResult<ModelAliasRecord> {
   if (!value.trim()) return { record: {} }
 
   try {
     const parsed = JSON.parse(value) as unknown
     if (!isPlainObject(parsed)) {
-      return { error: "modelAliases JSON must be an object of string values." }
+      return { error: "modelAliases JSON must be an object." }
     }
 
-    const record: Record<string, string> = {}
+    const record: ModelAliasRecord = {}
     const seen = new Set<string>()
 
     for (const [rawAlias, rawTarget] of Object.entries(parsed)) {
-      if (typeof rawTarget !== "string") {
-        return { error: `modelAliases.${rawAlias} must be a string.` }
-      }
-
       const alias = rawAlias.trim()
-      const target = rawTarget.trim()
       if (!alias) {
         return { error: "modelAliases keys must be non-empty strings." }
       }
+
+      let target: string | undefined
+      let allowOriginal: boolean | undefined
+
+      if (typeof rawTarget === "string") {
+        target = rawTarget.trim()
+      } else if (isPlainObject(rawTarget)) {
+        const rawTargetValue = rawTarget.target
+        if (typeof rawTargetValue !== "string") {
+          return { error: `modelAliases.${rawAlias}.target must be a string.` }
+        }
+        target = rawTargetValue.trim()
+
+        if ("allowOriginal" in rawTarget) {
+          if (typeof rawTarget.allowOriginal !== "boolean") {
+            return {
+              error: `modelAliases.${rawAlias}.allowOriginal must be a boolean.`,
+            }
+          }
+          allowOriginal = rawTarget.allowOriginal
+        }
+      } else {
+        return { error: `modelAliases.${rawAlias} must be a string or object.` }
+      }
+
       if (!target) {
         return { error: `modelAliases.${rawAlias} must be a non-empty string.` }
       }
@@ -286,7 +326,8 @@ function parseModelAliasesJson(
       }
 
       seen.add(normalizedAlias)
-      record[alias] = target
+      record[alias] =
+        allowOriginal === undefined ? { target } : { target, allowOriginal }
     }
 
     return { record }
@@ -331,7 +372,7 @@ type ModelAliasEditor = {
   onAddItem: () => void
   onRemoveItem: (id: string) => void
   onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
-  setFromRecord: (record?: Record<string, string>) => void
+  setFromRecord: (record?: ModelAliasRecordInput) => void
 }
 
 function useExtraPromptEditor(
@@ -507,7 +548,7 @@ function useReasoningEditor(
 }
 
 function useModelAliasEditor(
-  onRecordChange: (record: Record<string, string>) => void,
+  onRecordChange: (record: ModelAliasRecord) => void,
 ): ModelAliasEditor {
   const [mode, setMode] = useState<JsonMode>("form")
   const [items, setItems] = useState<ModelAliasItem[]>([])
@@ -519,9 +560,11 @@ function useModelAliasEditor(
     [jsonError],
   )
 
-  const setFromRecord = useCallback((record?: Record<string, string>) => {
-    setItems(aliasItemsFromRecord(record))
-    setJson(JSON.stringify(record ?? {}, null, 2))
+  const setFromRecord = useCallback((record?: ModelAliasRecordInput) => {
+    const nextItems = aliasItemsFromRecord(record)
+    const normalizedRecord = aliasRecordFromItems(nextItems)
+    setItems(nextItems)
+    setJson(JSON.stringify(normalizedRecord, null, 2))
     setJsonError(null)
   }, [])
 
@@ -560,7 +603,9 @@ function useModelAliasEditor(
   )
 
   const onAddItem = useCallback(() => {
-    updateItems(items.concat({ id: createItemId(), alias: "", target: "" }))
+    updateItems(
+      items.concat({ id: createItemId(), alias: "", target: "", allowOriginal: undefined }),
+    )
   }, [items, updateItems])
 
   const onRemoveItem = useCallback(
@@ -1016,6 +1061,7 @@ function ModelAliasesCard({
   onUpdateItem,
 }: ModelAliasesCardProps): React.JSX.Element {
   const emptyTargetValue = "__target__"
+  const allowOriginalDefaultValue = "__allow_original_default__"
   const hasModels = models.length > 0
 
   return (
@@ -1029,9 +1075,8 @@ function ModelAliasesCard({
       <CardContent className="space-y-3 px-4">
         <div className="flex items-center justify-between gap-3">
           <div className="text-muted-foreground text-xs">
-            {allowOriginalModelNamesForAliases
-              ? "Requests can use either the alias or the original model name."
-              : "Requests must use aliases; original model names are blocked."}
+            Default behavior: {allowOriginalModelNamesForAliases ? "allow" : "block"} original
+            model IDs. Each alias can override this setting.
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={mode === "json"} onCheckedChange={onToggleMode} />
@@ -1045,7 +1090,7 @@ function ModelAliasesCard({
               value={json}
               onChange={(e) => onJsonChange(e.target.value)}
               className="min-h-[160px] lg:min-h-[120px] max-h-[36vh] overflow-auto font-mono text-xs"
-              placeholder='{ "fast": "gpt-5-mini" }'
+              placeholder='{ "fast": { "target": "gpt-5-mini", "allowOriginal": true } }'
             />
             {jsonIssue ? (
               <InlineAlert variant="warning" title="Invalid JSON" description={jsonIssue} />
@@ -1061,6 +1106,12 @@ function ModelAliasesCard({
                 const showCustomTarget =
                   targetValue !== emptyTargetValue && !models.includes(targetValue)
                 const disableTargetSelect = !hasModels && !showCustomTarget
+                const allowOriginalValue =
+                  item.allowOriginal === undefined
+                    ? allowOriginalDefaultValue
+                    : item.allowOriginal
+                      ? "allow"
+                      : "block"
 
                 return (
                   <div key={item.id} className="grid gap-2 rounded-lg border p-3">
@@ -1095,6 +1146,26 @@ function ModelAliasesCard({
                               {model}
                             </SelectItem>
                           ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={allowOriginalValue}
+                        onValueChange={(value) =>
+                          onUpdateItem(item.id, {
+                            allowOriginal:
+                              value === allowOriginalDefaultValue
+                                ? undefined
+                                : value === "allow",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="min-w-[200px]">
+                          <SelectValue placeholder="Original model ID" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={allowOriginalDefaultValue}>Use default</SelectItem>
+                          <SelectItem value="allow">Allow original model ID</SelectItem>
+                          <SelectItem value="block">Block original model ID</SelectItem>
                         </SelectContent>
                       </Select>
                       <Button
@@ -1151,7 +1222,7 @@ function AdvancedSettingsCard({
           <div className="space-y-1">
             <div className="text-sm font-medium">Allow original model names</div>
             <div className="text-muted-foreground text-xs">
-              Keeps original model IDs callable when aliases exist.
+              Default behavior when aliases do not override original model IDs.
             </div>
           </div>
           <Switch
@@ -1301,11 +1372,14 @@ function useSettingsPageState(): SettingsPageViewProps {
   const applyConfigResponse = useCallback(
     (config: AdminConfigResponse) => {
       const { _configPath, ...configData } = config
+      const aliasItems = aliasItemsFromRecord(configData.modelAliases)
+      const normalizedAliases = aliasRecordFromItems(aliasItems)
+
       setConfigPath(_configPath ?? null)
-      setDraft(configData)
+      setDraft({ ...configData, modelAliases: normalizedAliases })
       setExtraFromRecord(configData.extraPrompts)
       setReasoningFromRecord(configData.modelReasoningEfforts)
-      setAliasFromRecord(configData.modelAliases)
+      setAliasFromRecord(normalizedAliases)
     },
     [setExtraFromRecord, setReasoningFromRecord, setAliasFromRecord],
   )

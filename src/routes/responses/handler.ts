@@ -5,11 +5,7 @@ import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
-import {
-  getAliasTargetSet,
-  getConfig,
-  isOriginalModelNameAllowedForAliases,
-} from "~/lib/config"
+import { getAliasTargetSet, getConfig } from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -50,20 +46,18 @@ export const handleResponses = async (c: Context) => {
 
   const streamRequested = Boolean(payload.stream)
 
-  if (!isOriginalModelNameAllowedForAliases()) {
-    const aliasTargets = getAliasTargetSet()
-    if (aliasTargets.has(clientModel.toLowerCase())) {
-      recordSelectionFailure(store, {
-        request,
-        stream: streamRequested,
-        clientModel,
-        reason: "MODEL_NOT_SUPPORTED",
-      })
+  const blockedTargets = getAliasTargetSet()
+  if (blockedTargets.has(clientModel.toLowerCase())) {
+    recordSelectionFailure(store, {
+      request,
+      stream: streamRequested,
+      clientModel,
+      reason: "MODEL_NOT_SUPPORTED",
+    })
 
-      return selectionFailureResponse(c, {
-        reason: "MODEL_NOT_SUPPORTED",
-      })
-    }
+    return selectionFailureResponse(c, {
+      reason: "MODEL_NOT_SUPPORTED",
+    })
   }
 
   const selection = await accountsManager.selectAccountForRequest([
