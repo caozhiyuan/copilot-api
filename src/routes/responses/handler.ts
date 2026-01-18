@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
-import { getConfig } from "~/lib/config"
+import { getAliasTargetSet, getConfig } from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -41,14 +41,30 @@ export const handleResponses = async (c: Context) => {
   const request = buildRequestContext(c)
 
   const payload = await c.req.json<ResponsesPayload>()
+  const clientModel = payload.model
   logger.debug("Responses request payload:", JSON.stringify(payload))
 
-  useFunctionApplyPatch(payload)
   const streamRequested = Boolean(payload.stream)
+
+  const blockedTargets = getAliasTargetSet()
+  if (blockedTargets.has(clientModel.toLowerCase())) {
+    recordSelectionFailure(store, {
+      request,
+      stream: streamRequested,
+      clientModel,
+      reason: "MODEL_NOT_SUPPORTED",
+    })
+
+    return selectionFailureResponse(c, {
+      reason: "MODEL_NOT_SUPPORTED",
+      message:
+        "This model is only available via an alias. Please use the alias model name.",
+    })
+  }
 
   const selection = await accountsManager.selectAccountForRequest([
     {
-      modelId: payload.model,
+      modelId: clientModel,
       endpoint: RESPONSES_ENDPOINT,
     },
   ])
@@ -57,7 +73,7 @@ export const handleResponses = async (c: Context) => {
     recordSelectionFailure(store, {
       request,
       stream: streamRequested,
-      clientModel: payload.model,
+      clientModel,
       reason: selection.reason,
     })
 
@@ -66,12 +82,15 @@ export const handleResponses = async (c: Context) => {
     })
   }
 
-  const { account } = selection
+  const { account, selectedModel } = selection
+
+  const upstreamPayload = { ...payload, model: selectedModel.id }
+  useFunctionApplyPatch(upstreamPayload)
 
   const premiumRemainingBefore = account.premiumRemaining
   const premiumUnlimitedBefore = account.unlimited
 
-  const { vision, initiator } = getResponsesRequestOptions(payload)
+  const { vision, initiator } = getResponsesRequestOptions(upstreamPayload)
 
   if (state.manualApprove) await awaitApproval()
 
@@ -82,8 +101,9 @@ export const handleResponses = async (c: Context) => {
       c,
       store,
       request,
-      payload,
+      payload: upstreamPayload,
       selection,
+      clientModel,
       accountCtx,
       vision,
       initiator,
@@ -96,8 +116,9 @@ export const handleResponses = async (c: Context) => {
     c,
     store,
     request,
-    payload,
+    payload: upstreamPayload,
     selection,
+    clientModel,
     accountCtx,
     vision,
     initiator,
@@ -207,16 +228,18 @@ function selectionFailureResponse(
   c: Context,
   params: {
     reason: AccountSelectionErr["reason"]
+    message?: string
   },
 ) {
-  const { reason } = params
+  const { reason, message } = params
 
   if (reason === "MODEL_NOT_SUPPORTED") {
     return c.json(
       {
         error: {
           message:
-            "This model does not support the responses endpoint. Please choose a different model.",
+            message
+            ?? "This model does not support the responses endpoint. Please choose a different model.",
           type: "invalid_request_error",
         },
       },
@@ -271,6 +294,7 @@ async function handleStreamingResponses(params: {
   request: RequestContext
   payload: ResponsesPayload
   selection: AccountSelectionOk
+  clientModel: string
   accountCtx: Parameters<typeof createResponses>[2]
   vision: boolean
   initiator: "agent" | "user"
@@ -283,6 +307,7 @@ async function handleStreamingResponses(params: {
     request,
     payload,
     selection,
+    clientModel,
     accountCtx,
     vision,
     initiator,
@@ -298,8 +323,8 @@ async function handleStreamingResponses(params: {
     return handleUpstreamCreateError({
       store,
       request,
-      payload,
       selection,
+      clientModel,
       premiumRemainingBefore,
       premiumUnlimitedBefore,
       error,
@@ -315,8 +340,8 @@ async function handleStreamingResponses(params: {
         response,
         store,
         request,
-        payload,
         selection,
+        clientModel,
         premiumRemainingBefore,
         premiumUnlimitedBefore,
       }),
@@ -327,8 +352,8 @@ async function handleStreamingResponses(params: {
     c,
     store,
     request,
-    payload,
     selection,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
     result: response,
@@ -338,8 +363,8 @@ async function handleStreamingResponses(params: {
 async function handleUpstreamCreateError(params: {
   store: Store
   request: RequestContext
-  payload: ResponsesPayload
   selection: AccountSelectionOk
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
   error: unknown
@@ -347,8 +372,8 @@ async function handleUpstreamCreateError(params: {
   const {
     store,
     request,
-    payload,
     selection,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
     error,
@@ -376,7 +401,7 @@ async function handleUpstreamCreateError(params: {
     accountId: account.id,
     accountType: account.accountType,
     costUnits,
-    clientModel: payload.model,
+    clientModel,
     upstreamModel: selectedModel.id,
     premiumRemainingBefore,
     premiumRemainingAfter,
@@ -399,8 +424,8 @@ async function handleNonStreamingUpstreamResult(params: {
   c: Context
   store: Store
   request: RequestContext
-  payload: ResponsesPayload
   selection: AccountSelectionOk
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
   result: ResponsesResult
@@ -409,8 +434,8 @@ async function handleNonStreamingUpstreamResult(params: {
     c,
     store,
     request,
-    payload,
     selection,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
     result,
@@ -455,7 +480,7 @@ async function handleNonStreamingUpstreamResult(params: {
       accountId: account.id,
       accountType: account.accountType,
       costUnits,
-      clientModel: payload.model,
+      clientModel,
       upstreamModel: selectedModel.id,
       ...usage,
       premiumRemainingBefore,
@@ -479,8 +504,8 @@ async function streamResponsesAndLog(params: {
   response: AsyncIterable<unknown>
   store: Store
   request: RequestContext
-  payload: ResponsesPayload
   selection: AccountSelectionOk
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
 }): Promise<void> {
@@ -489,8 +514,8 @@ async function streamResponsesAndLog(params: {
     response,
     store,
     request,
-    payload,
     selection,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   } = params
@@ -548,7 +573,7 @@ async function streamResponsesAndLog(params: {
       accountId: account.id,
       accountType: account.accountType,
       costUnits,
-      clientModel: payload.model,
+      clientModel,
       upstreamModel: selectedModel.id,
       ...lastUsage,
       premiumRemainingBefore,
@@ -573,6 +598,7 @@ async function handleNonStreamingResponses(params: {
   request: RequestContext
   payload: ResponsesPayload
   selection: AccountSelectionOk
+  clientModel: string
   accountCtx: Parameters<typeof createResponses>[2]
   vision: boolean
   initiator: "agent" | "user"
@@ -585,23 +611,20 @@ async function handleNonStreamingResponses(params: {
     request,
     payload,
     selection,
+    clientModel,
     accountCtx,
     vision,
     initiator,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   } = params
-
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
-
   let httpStatus = 200
   let usage: NormalizedUsage = {}
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
-
   let finishedAtMs: number | undefined
-
   try {
     const response = await createResponses(
       payload,
@@ -609,44 +632,27 @@ async function handleNonStreamingResponses(params: {
       accountCtx,
     )
     finishedAtMs = Date.now()
-
-    if (isAsyncIterable(response)) {
-      // Defensive guard: upstream returned stream unexpectedly.
-      logger.debug("Forwarding native Responses stream (unexpected)")
-
-      return streamSSE(c, async (stream) => {
-        for await (const chunk of response) {
-          const { id, event, data } = getStreamChunkFields(chunk)
-          await stream.writeSSE({
-            id,
-            event,
-            data: data ?? "",
-          })
-        }
-      })
+    const streamResponse = handleUnexpectedResponsesStream(c, response)
+    if (streamResponse) {
+      return streamResponse
     }
-
-    usage = extractResponsesUsageFromResult(response)
-
+    const result = response as ResponsesResult
+    usage = extractResponsesUsageFromResult(result)
     logger.debug(
       "Forwarding native Responses result:",
-      JSON.stringify(response).slice(-400),
+      JSON.stringify(result).slice(-400),
     )
-    return c.json(response)
+    return c.json(result)
   } catch (error) {
     finishedAtMs = Date.now()
-
     const details = extractErrorDetails(error)
     httpStatus = details.httpStatus
-
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
-
     if (details.unauthorized) {
       accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
     }
-
     throw error
   } finally {
     const finishedAtMsFinal = finishedAtMs ?? Date.now()
@@ -664,7 +670,7 @@ async function handleNonStreamingResponses(params: {
       accountId: account.id,
       accountType: account.accountType,
       costUnits,
-      clientModel: payload.model,
+      clientModel,
       upstreamModel: selectedModel.id,
       ...usage,
       premiumRemainingBefore,
@@ -681,6 +687,29 @@ async function handleNonStreamingResponses(params: {
       errorMessage,
     })
   }
+}
+
+function handleUnexpectedResponsesStream(
+  c: Context,
+  response: Awaited<ReturnType<typeof createResponses>>,
+): Response | null {
+  if (!isAsyncIterable(response)) {
+    return null
+  }
+
+  // Defensive guard: upstream returned stream unexpectedly.
+  logger.debug("Forwarding native Responses stream (unexpected)")
+
+  return streamSSE(c, async (stream) => {
+    for await (const chunk of response) {
+      const { id, event, data } = getStreamChunkFields(chunk)
+      await stream.writeSSE({
+        id,
+        event,
+        data: data ?? "",
+      })
+    }
+  })
 }
 
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>

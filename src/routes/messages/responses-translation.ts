@@ -47,7 +47,9 @@ const MESSAGE_TYPE = "message"
 
 export const translateAnthropicMessagesToResponsesPayload = (
   payload: AnthropicMessagesPayload,
+  modelOverride?: string,
 ): ResponsesPayload => {
+  const model = modelOverride ?? payload.model
   const input: Array<ResponseInputItem> = []
 
   for (const message of payload.messages) {
@@ -62,9 +64,9 @@ export const translateAnthropicMessagesToResponsesPayload = (
   )
 
   const responsesPayload: ResponsesPayload = {
-    model: payload.model,
+    model,
     input,
-    instructions: translateSystemPrompt(payload.system, payload.model),
+    instructions: translateSystemPrompt(payload.system, model),
     temperature: 1, // reasoning high temperature fixed to 1
     top_p: payload.top_p ?? null,
     max_output_tokens: Math.max(payload.max_tokens, 12800),
@@ -77,7 +79,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
     store: false,
     parallel_tool_calls: true,
     reasoning: {
-      effort: getReasoningEffortForModel(payload.model),
+      effort: getReasoningEffortForModel(model),
       summary: "auto",
     },
     include: ["reasoning.encrypted_content"],

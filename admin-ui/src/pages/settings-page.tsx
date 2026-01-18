@@ -5,6 +5,7 @@ import {
   AdminApiError,
   type AdminConfig,
   type AdminConfigResponse,
+  type ModelAliasSpec,
   type ReasoningEffort,
   getAdminConfig,
   getAdminModels,
@@ -32,7 +33,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 
-const REASONING_EFFORTS: ReasoningEffort[] = [
+const REASONING_EFFORTS: Array<ReasoningEffort> = [
   "none",
   "minimal",
   "low",
@@ -52,6 +53,17 @@ type ReasoningItem = {
   model: string
   effort: ReasoningEffort
 }
+
+type ModelAliasItem = {
+  id: string
+  alias: string
+  target: string
+  allowOriginal?: boolean
+}
+
+type ModelAliasRecord = Record<string, ModelAliasSpec>
+
+type ModelAliasRecordInput = Record<string, ModelAliasSpec | string>
 
 type ParseResult<T> = { record: T } | { error: string }
 
@@ -117,7 +129,7 @@ function createItemId(): string {
 
 function extraPromptItemsFromRecord(
   record: Record<string, string> | undefined
-): ExtraPromptItem[] {
+): Array<ExtraPromptItem> {
   if (!record) return []
   return Object.entries(record).map(([model, prompt]) => ({
     id: createItemId(),
@@ -128,7 +140,7 @@ function extraPromptItemsFromRecord(
 
 function reasoningItemsFromRecord(
   record: Record<string, ReasoningEffort> | undefined
-): ReasoningItem[] {
+): Array<ReasoningItem> {
   if (!record) return []
   return Object.entries(record).map(([model, effort]) => ({
     id: createItemId(),
@@ -137,7 +149,31 @@ function reasoningItemsFromRecord(
   }))
 }
 
-function extraPromptRecordFromItems(items: ExtraPromptItem[]): Record<string, string> {
+function aliasItemsFromRecord(
+  record: ModelAliasRecordInput | undefined
+): Array<ModelAliasItem> {
+  if (!record) return []
+  return Object.entries(record).map(([alias, spec]) => {
+    if (typeof spec === "string") {
+      return {
+        id: createItemId(),
+        alias,
+        target: spec,
+        allowOriginal: undefined,
+      }
+    }
+    return {
+      id: createItemId(),
+      alias,
+      target: spec.target,
+      allowOriginal: spec.allowOriginal,
+    }
+  })
+}
+
+function extraPromptRecordFromItems(
+  items: Array<ExtraPromptItem>
+): Record<string, string> {
   const record: Record<string, string> = {}
   for (const item of items) {
     const key = item.model.trim()
@@ -147,13 +183,41 @@ function extraPromptRecordFromItems(items: ExtraPromptItem[]): Record<string, st
   return record
 }
 
-function reasoningRecordFromItems(items: ReasoningItem[]): Record<string, ReasoningEffort> {
+function reasoningRecordFromItems(
+  items: Array<ReasoningItem>
+): Record<string, ReasoningEffort> {
   const record: Record<string, ReasoningEffort> = {}
   for (const item of items) {
     const key = item.model.trim()
     if (!key) continue
     record[key] = item.effort
   }
+  return record
+}
+
+const BLOCKED_ALIAS_KEYS = new Set(["__proto__", "constructor", "prototype"])
+
+function aliasRecordFromItems(items: Array<ModelAliasItem>): ModelAliasRecord {
+  const record: ModelAliasRecord = Object.create(null) as ModelAliasRecord
+  const seen = new Set<string>()
+
+  for (const item of items) {
+    const alias = item.alias.trim()
+    const target = item.target.trim()
+    if (!alias || !target) continue
+
+    const normalizedAlias = alias.toLowerCase()
+    if (BLOCKED_ALIAS_KEYS.has(normalizedAlias)) continue
+    if (normalizedAlias === target.toLowerCase()) continue
+    if (seen.has(normalizedAlias)) continue
+
+    seen.add(normalizedAlias)
+    record[alias] =
+      item.allowOriginal === undefined
+        ? { target }
+        : { target, allowOriginal: item.allowOriginal }
+  }
+
   return record
 }
 
@@ -212,9 +276,80 @@ function parseReasoningJson(
   }
 }
 
+function parseModelAliasesJson(
+  value: string,
+): ParseResult<ModelAliasRecord> {
+  if (!value.trim()) return { record: {} }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!isPlainObject(parsed)) {
+      return { error: "modelAliases JSON must be an object." }
+    }
+
+    const record: ModelAliasRecord = Object.create(null) as ModelAliasRecord
+    const seen = new Set<string>()
+
+    for (const [rawAlias, rawTarget] of Object.entries(parsed)) {
+      const alias = rawAlias.trim()
+      if (!alias) {
+        return { error: "modelAliases keys must be non-empty strings." }
+      }
+
+      const normalizedAlias = alias.toLowerCase()
+      if (BLOCKED_ALIAS_KEYS.has(normalizedAlias)) {
+        return { error: `modelAliases.${rawAlias} is not allowed.` }
+      }
+
+      let target: string | undefined
+      let allowOriginal: boolean | undefined
+
+      if (typeof rawTarget === "string") {
+        target = rawTarget.trim()
+      } else if (isPlainObject(rawTarget)) {
+        const rawTargetValue = rawTarget.target
+        if (typeof rawTargetValue !== "string") {
+          return { error: `modelAliases.${rawAlias}.target must be a string.` }
+        }
+        target = rawTargetValue.trim()
+
+        if ("allowOriginal" in rawTarget) {
+          if (typeof rawTarget.allowOriginal !== "boolean") {
+            return {
+              error: `modelAliases.${rawAlias}.allowOriginal must be a boolean.`,
+            }
+          }
+          allowOriginal = rawTarget.allowOriginal
+        }
+      } else {
+        return { error: `modelAliases.${rawAlias} must be a string or object.` }
+      }
+
+      if (!target) {
+        return { error: `modelAliases.${rawAlias} must be a non-empty string.` }
+      }
+
+      if (normalizedAlias === target.toLowerCase()) {
+        return { error: `modelAliases.${rawAlias} cannot map to itself.` }
+      }
+      if (seen.has(normalizedAlias)) {
+        return { error: `modelAliases.${rawAlias} conflicts with another alias.` }
+      }
+
+      seen.add(normalizedAlias)
+      record[alias] =
+        allowOriginal === undefined ? { target } : { target, allowOriginal }
+    }
+
+    return { record }
+  } catch {
+    return { error: "modelAliases JSON is not valid." }
+  }
+}
+
 type ExtraPromptEditor = {
   mode: JsonMode
-  items: ExtraPromptItem[]
+  items: Array<ExtraPromptItem>
   json: string
   jsonIssue: string | null
   onToggleMode: (next: boolean) => void
@@ -227,7 +362,7 @@ type ExtraPromptEditor = {
 
 type ReasoningEditor = {
   mode: JsonMode
-  items: ReasoningItem[]
+  items: Array<ReasoningItem>
   json: string
   jsonIssue: string | null
   onToggleMode: (next: boolean) => void
@@ -238,11 +373,24 @@ type ReasoningEditor = {
   setFromRecord: (record?: Record<string, ReasoningEffort>) => void
 }
 
+type ModelAliasEditor = {
+  mode: JsonMode
+  items: Array<ModelAliasItem>
+  json: string
+  jsonIssue: string | null
+  onToggleMode: (next: boolean) => void
+  onJsonChange: (value: string) => void
+  onAddItem: () => void
+  onRemoveItem: (id: string) => void
+  onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
+  setFromRecord: (record?: ModelAliasRecordInput) => void
+}
+
 function useExtraPromptEditor(
   onRecordChange: (record: Record<string, string>) => void,
 ): ExtraPromptEditor {
   const [mode, setMode] = useState<JsonMode>("form")
-  const [items, setItems] = useState<ExtraPromptItem[]>([])
+  const [items, setItems] = useState<Array<ExtraPromptItem>>([])
   const [json, setJson] = useState("")
   const [jsonError, setJsonError] = useState<string | null>(null)
 
@@ -258,7 +406,7 @@ function useExtraPromptEditor(
   }, [])
 
   const updateItems = useCallback(
-    (nextItems: ExtraPromptItem[]) => {
+    (nextItems: Array<ExtraPromptItem>) => {
       setItems(nextItems)
       onRecordChange(extraPromptRecordFromItems(nextItems))
     },
@@ -328,7 +476,7 @@ function useReasoningEditor(
   onRecordChange: (record: Record<string, ReasoningEffort>) => void,
 ): ReasoningEditor {
   const [mode, setMode] = useState<JsonMode>("form")
-  const [items, setItems] = useState<ReasoningItem[]>([])
+  const [items, setItems] = useState<Array<ReasoningItem>>([])
   const [json, setJson] = useState("")
   const [jsonError, setJsonError] = useState<string | null>(null)
 
@@ -344,7 +492,7 @@ function useReasoningEditor(
   }, [])
 
   const updateItems = useCallback(
-    (nextItems: ReasoningItem[]) => {
+    (nextItems: Array<ReasoningItem>) => {
       setItems(nextItems)
       onRecordChange(reasoningRecordFromItems(nextItems))
     },
@@ -410,12 +558,102 @@ function useReasoningEditor(
   }
 }
 
+function useModelAliasEditor(
+  onRecordChange: (record: ModelAliasRecord) => void,
+): ModelAliasEditor {
+  const [mode, setMode] = useState<JsonMode>("form")
+  const [items, setItems] = useState<Array<ModelAliasItem>>([])
+  const [json, setJson] = useState("")
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  const jsonIssue = useMemo(
+    () => (jsonError ? `modelAliases: ${jsonError}` : null),
+    [jsonError],
+  )
+
+  const setFromRecord = useCallback((record?: ModelAliasRecordInput) => {
+    const nextItems = aliasItemsFromRecord(record)
+    const normalizedRecord = aliasRecordFromItems(nextItems)
+    setItems(nextItems)
+    setJson(JSON.stringify(normalizedRecord, null, 2))
+    setJsonError(null)
+  }, [])
+
+  const updateItems = useCallback(
+    (nextItems: Array<ModelAliasItem>) => {
+      setItems(nextItems)
+      onRecordChange(aliasRecordFromItems(nextItems))
+    },
+    [onRecordChange],
+  )
+
+  const onJsonChange = useCallback(
+    (value: string) => {
+      updateJsonRecord({
+        value,
+        parse: parseModelAliasesJson,
+        setJson,
+        setError: setJsonError,
+        onRecord: (record) => updateItems(aliasItemsFromRecord(record)),
+      })
+    },
+    [updateItems],
+  )
+
+  const onToggleMode = useCallback(
+    (next: boolean) => {
+      toggleJsonMode({
+        next,
+        record: aliasRecordFromItems(items),
+        setJson,
+        setError: setJsonError,
+        setMode,
+      })
+    },
+    [items],
+  )
+
+  const onAddItem = useCallback(() => {
+    updateItems(
+      items.concat({ id: createItemId(), alias: "", target: "", allowOriginal: undefined }),
+    )
+  }, [items, updateItems])
+
+  const onRemoveItem = useCallback(
+    (id: string) => {
+      updateItems(items.filter((item) => item.id !== id))
+    },
+    [items, updateItems],
+  )
+
+  const onUpdateItem = useCallback(
+    (id: string, patch: Partial<ModelAliasItem>) => {
+      const next = items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      updateItems(next)
+    },
+    [items, updateItems],
+  )
+
+  return {
+    mode,
+    items,
+    json,
+    jsonIssue,
+    onToggleMode,
+    onJsonChange,
+    onAddItem,
+    onRemoveItem,
+    onUpdateItem,
+    setFromRecord,
+  }
+}
+
 type GeneralSettingsCardProps = {
   hasModels: boolean
   smallModelLabel: string
   smallModelValue: string
   smallModelInputValue: string
-  models: string[]
+  models: Array<string>
   apiKeyValue: string
   envOverrideNote: string
   onSmallModelSelect: (value: string) => void
@@ -533,8 +771,8 @@ type ReasoningEffortsCardProps = {
   mode: JsonMode
   json: string
   jsonIssue: string | null
-  items: ReasoningItem[]
-  models: string[]
+  items: Array<ReasoningItem>
+  models: Array<string>
   onToggleMode: (next: boolean) => void
   onJsonChange: (value: string) => void
   onAddItem: () => void
@@ -678,8 +916,8 @@ type ExtraPromptsCardProps = {
   mode: JsonMode
   json: string
   jsonIssue: string | null
-  items: ExtraPromptItem[]
-  models: string[]
+  items: Array<ExtraPromptItem>
+  models: Array<string>
   onToggleMode: (next: boolean) => void
   onJsonChange: (value: string) => void
   onAddItem: () => void
@@ -806,16 +1044,286 @@ function ExtraPromptsCard({
   )
 }
 
+type ModelAliasesCardProps = {
+  allowOriginalModelNamesForAliases: boolean
+  mode: JsonMode
+  json: string
+  jsonIssue: string | null
+  items: Array<ModelAliasItem>
+  models: Array<string>
+  onToggleMode: (next: boolean) => void
+  onJsonChange: (value: string) => void
+  onAddItem: () => void
+  onRemoveItem: (id: string) => void
+  onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
+}
+
+type ModelAliasesHeaderProps = {
+  allowOriginalModelNamesForAliases: boolean
+  mode: JsonMode
+  onToggleMode: (next: boolean) => void
+}
+
+type ModelAliasesJsonEditorProps = {
+  json: string
+  jsonIssue: string | null
+  onJsonChange: (value: string) => void
+}
+
+type ModelAliasItemCardProps = {
+  item: ModelAliasItem
+  models: Array<string>
+  emptyTargetValue: string
+  allowOriginalDefaultValue: string
+  hasModels: boolean
+  onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
+  onRemoveItem: (id: string) => void
+}
+
+type ModelAliasesListProps = {
+  items: Array<ModelAliasItem>
+  models: Array<string>
+  emptyTargetValue: string
+  allowOriginalDefaultValue: string
+  hasModels: boolean
+  onAddItem: () => void
+  onRemoveItem: (id: string) => void
+  onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
+}
+
+function ModelAliasesHeader({
+  allowOriginalModelNamesForAliases,
+  mode,
+  onToggleMode,
+}: ModelAliasesHeaderProps): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="text-muted-foreground text-xs">
+        Default behavior: {allowOriginalModelNamesForAliases ? "allow" : "block"} original model
+        IDs. Each alias can override this setting.
+      </div>
+      <div className="flex items-center gap-2">
+        <Switch checked={mode === "json"} onCheckedChange={onToggleMode} />
+        <Label className="text-muted-foreground text-xs">JSON mode</Label>
+      </div>
+    </div>
+  )
+}
+
+function ModelAliasesJsonEditor({
+  json,
+  jsonIssue,
+  onJsonChange,
+}: ModelAliasesJsonEditorProps): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      <Textarea
+        value={json}
+        onChange={(e) => onJsonChange(e.target.value)}
+        className="min-h-[160px] lg:min-h-[120px] max-h-[36vh] overflow-auto font-mono text-xs"
+        placeholder='{ "fast": { "target": "gpt-5-mini", "allowOriginal": true } }'
+      />
+      {jsonIssue ? (
+        <InlineAlert
+          variant="warning"
+          title="Invalid JSON"
+          description={jsonIssue}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function ModelAliasItemCard({
+  item,
+  models,
+  emptyTargetValue,
+  allowOriginalDefaultValue,
+  hasModels,
+  onUpdateItem,
+  onRemoveItem,
+}: ModelAliasItemCardProps): React.JSX.Element {
+  const targetValue = item.target || emptyTargetValue
+  const showCustomTarget = targetValue !== emptyTargetValue && !models.includes(targetValue)
+  const disableTargetSelect = !hasModels && !showCustomTarget
+  const allowOriginalValue =
+    item.allowOriginal === undefined
+      ? allowOriginalDefaultValue
+      : item.allowOriginal
+        ? "allow"
+        : "block"
+
+  return (
+    <div className="grid gap-2 rounded-lg border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="min-w-[180px]"
+          placeholder="Alias"
+          value={item.alias}
+          onChange={(e) => onUpdateItem(item.id, { alias: e.target.value })}
+        />
+        <Select
+          value={targetValue}
+          onValueChange={(value) =>
+            onUpdateItem(item.id, {
+              target: value === emptyTargetValue ? "" : value,
+            })
+          }
+          disabled={disableTargetSelect}
+        >
+          <SelectTrigger className="min-w-[220px]">
+            <SelectValue placeholder={hasModels ? "Select target model" : "No models available"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={emptyTargetValue}>(select)</SelectItem>
+            {showCustomTarget ? (
+              <SelectItem value={targetValue}>Custom: {targetValue}</SelectItem>
+            ) : null}
+            {models.map((model) => (
+              <SelectItem key={model} value={model}>
+                {model}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={allowOriginalValue}
+          onValueChange={(value) =>
+            onUpdateItem(item.id, {
+              allowOriginal:
+                value === allowOriginalDefaultValue
+                  ? undefined
+                  : value === "allow",
+            })
+          }
+        >
+          <SelectTrigger className="min-w-[200px]">
+            <SelectValue placeholder="Original model ID" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={allowOriginalDefaultValue}>Use default</SelectItem>
+            <SelectItem value="allow">Allow original model ID</SelectItem>
+            <SelectItem value="block">Block original model ID</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onRemoveItem(item.id)}
+        >
+          Remove
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ModelAliasesList({
+  items,
+  models,
+  emptyTargetValue,
+  allowOriginalDefaultValue,
+  hasModels,
+  onAddItem,
+  onRemoveItem,
+  onUpdateItem,
+}: ModelAliasesListProps): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      {items.length === 0 ? (
+        <div className="text-muted-foreground text-sm">No model aliases configured.</div>
+      ) : (
+        items.map((item) => (
+          <ModelAliasItemCard
+            key={item.id}
+            item={item}
+            models={models}
+            emptyTargetValue={emptyTargetValue}
+            allowOriginalDefaultValue={allowOriginalDefaultValue}
+            hasModels={hasModels}
+            onUpdateItem={onUpdateItem}
+            onRemoveItem={onRemoveItem}
+          />
+        ))
+      )}
+
+      <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
+        Add alias
+      </Button>
+    </div>
+  )
+}
+
+function ModelAliasesCard({
+  allowOriginalModelNamesForAliases,
+  mode,
+  json,
+  jsonIssue,
+  items,
+  models,
+  onToggleMode,
+  onJsonChange,
+  onAddItem,
+  onRemoveItem,
+  onUpdateItem,
+}: ModelAliasesCardProps): React.JSX.Element {
+  const emptyTargetValue = "__target__"
+  const allowOriginalDefaultValue = "__allow_original_default__"
+  const hasModels = models.length > 0
+
+  return (
+    <Card className="gap-4 py-4">
+      <CardHeader className="px-4">
+        <CardTitle>Model aliases</CardTitle>
+        <CardDescription className="hidden sm:block">
+          Map friendly alias names to upstream model IDs.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 px-4">
+        <ModelAliasesHeader
+          allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
+          mode={mode}
+          onToggleMode={onToggleMode}
+        />
+
+        {mode === "json" ? (
+          <ModelAliasesJsonEditor
+            json={json}
+            jsonIssue={jsonIssue}
+            onJsonChange={onJsonChange}
+          />
+        ) : (
+          <ModelAliasesList
+            items={items}
+            models={models}
+            emptyTargetValue={emptyTargetValue}
+            allowOriginalDefaultValue={allowOriginalDefaultValue}
+            hasModels={hasModels}
+            onAddItem={onAddItem}
+            onRemoveItem={onRemoveItem}
+            onUpdateItem={onUpdateItem}
+          />
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 type AdvancedSettingsCardProps = {
+  allowOriginalModelNamesForAliases: boolean
   useFunctionApplyPatch: boolean
   forceAgent: boolean
+  onToggleAllowOriginalModelNamesForAliases: (value: boolean) => void
   onToggleUseFunctionApplyPatch: (value: boolean) => void
   onToggleForceAgent: (value: boolean) => void
 }
 
 function AdvancedSettingsCard({
+  allowOriginalModelNamesForAliases,
   useFunctionApplyPatch,
   forceAgent,
+  onToggleAllowOriginalModelNamesForAliases,
   onToggleUseFunctionApplyPatch,
   onToggleForceAgent,
 }: AdvancedSettingsCardProps): React.JSX.Element {
@@ -828,6 +1336,19 @@ function AdvancedSettingsCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">Allow original model names</div>
+            <div className="text-muted-foreground text-xs">
+              Default behavior when aliases do not override original model IDs.
+            </div>
+          </div>
+          <Switch
+            checked={allowOriginalModelNamesForAliases}
+            onCheckedChange={onToggleAllowOriginalModelNamesForAliases}
+          />
+        </div>
+
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="text-sm font-medium">Use function apply_patch</div>
@@ -864,7 +1385,7 @@ type SettingsPageViewProps = {
   smallModelLabel: string
   smallModelValue: string
   smallModelInputValue: string
-  models: string[]
+  models: Array<string>
   apiKeyValue: string
   envOverrideNote: string
   onSmallModelSelect: (value: string) => void
@@ -875,7 +1396,7 @@ type SettingsPageViewProps = {
   reasoningMode: JsonMode
   reasoningJson: string
   reasoningJsonIssue: string | null
-  reasoningItems: ReasoningItem[]
+  reasoningItems: Array<ReasoningItem>
   onReasoningToggleMode: (next: boolean) => void
   onReasoningJsonChange: (value: string) => void
   onReasoningAddItem: () => void
@@ -884,14 +1405,25 @@ type SettingsPageViewProps = {
   extraMode: JsonMode
   extraJson: string
   extraJsonIssue: string | null
-  extraItems: ExtraPromptItem[]
+  extraItems: Array<ExtraPromptItem>
   onExtraToggleMode: (next: boolean) => void
   onExtraJsonChange: (value: string) => void
   onExtraAddItem: () => void
   onExtraRemoveItem: (id: string) => void
   onExtraUpdateItem: (id: string, value: Partial<ExtraPromptItem>) => void
+  aliasMode: JsonMode
+  aliasJson: string
+  aliasJsonIssue: string | null
+  aliasItems: Array<ModelAliasItem>
+  onAliasToggleMode: (next: boolean) => void
+  onAliasJsonChange: (value: string) => void
+  onAliasAddItem: () => void
+  onAliasRemoveItem: (id: string) => void
+  onAliasUpdateItem: (id: string, value: Partial<ModelAliasItem>) => void
+  allowOriginalModelNamesForAliases: boolean
   useFunctionApplyPatch: boolean
   forceAgent: boolean
+  onAllowOriginalModelNamesForAliasesToggle: (value: boolean) => void
   onUseFunctionApplyPatchToggle: (value: boolean) => void
   onForceAgentToggle: (value: boolean) => void
 }
@@ -902,7 +1434,7 @@ function useSettingsPageState(): SettingsPageViewProps {
   const [error, setError] = useState<string | null>(null)
   const [configPath, setConfigPath] = useState<string | null>(null)
 
-  const [models, setModels] = useState<string[]>([])
+  const [models, setModels] = useState<Array<string>>([])
   const [draft, setDraft] = useState<AdminConfig>({})
 
   const extraEditor = useExtraPromptEditor((record) =>
@@ -910,6 +1442,10 @@ function useSettingsPageState(): SettingsPageViewProps {
   )
   const reasoningEditor = useReasoningEditor((record) =>
     setDraft((prev) => ({ ...prev, modelReasoningEfforts: record })),
+  )
+
+  const aliasEditor = useModelAliasEditor((record) =>
+    setDraft((prev) => ({ ...prev, modelAliases: record })),
   )
 
   const {
@@ -938,15 +1474,32 @@ function useSettingsPageState(): SettingsPageViewProps {
     setFromRecord: setReasoningFromRecord,
   } = reasoningEditor
 
+  const {
+    mode: aliasMode,
+    items: aliasItems,
+    json: aliasJson,
+    jsonIssue: aliasJsonIssue,
+    onToggleMode: onAliasToggleMode,
+    onJsonChange: onAliasJsonChange,
+    onAddItem: onAliasAddItem,
+    onRemoveItem: onAliasRemoveItem,
+    onUpdateItem: onAliasUpdateItem,
+    setFromRecord: setAliasFromRecord,
+  } = aliasEditor
+
   const applyConfigResponse = useCallback(
     (config: AdminConfigResponse) => {
       const { _configPath, ...configData } = config
+      const aliasItems = aliasItemsFromRecord(configData.modelAliases)
+      const normalizedAliases = aliasRecordFromItems(aliasItems)
+
       setConfigPath(_configPath ?? null)
-      setDraft(configData)
+      setDraft({ ...configData, modelAliases: normalizedAliases })
       setExtraFromRecord(configData.extraPrompts)
       setReasoningFromRecord(configData.modelReasoningEfforts)
+      setAliasFromRecord(normalizedAliases)
     },
-    [setExtraFromRecord, setReasoningFromRecord],
+    [setExtraFromRecord, setReasoningFromRecord, setAliasFromRecord],
   )
 
   const load = useCallback(async () => {
@@ -1043,6 +1596,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleAllowOriginalModelNamesForAliasesToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, allowOriginalModelNamesForAliases: value }))
+    },
+    [setDraft],
+  )
+
   const handleUseFunctionApplyPatchToggle = useCallback(
     (value: boolean) => {
       setDraft((prev) => ({ ...prev, useFunctionApplyPatch: value }))
@@ -1064,6 +1624,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     && !loading
     && !(extraMode === "json" && extraJsonIssue)
     && !(reasoningMode === "json" && reasoningJsonIssue)
+    && !(aliasMode === "json" && aliasJsonIssue)
 
   const envOverrideNote =
     "Environment variable COPILOT_API_KEY overrides this value when set."
@@ -1073,6 +1634,8 @@ function useSettingsPageState(): SettingsPageViewProps {
   const apiKeyValue = draft.apiKey ?? ""
 
   const loadBalancingEnabled = draft.freeModelLoadBalancing ?? true
+  const allowOriginalModelNamesForAliases =
+    draft.allowOriginalModelNamesForAliases ?? false
   const useFunctionApplyPatch = draft.useFunctionApplyPatch ?? true
   const forceAgent = draft.forceAgent ?? false
 
@@ -1096,6 +1659,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     onApiKeyChange: handleApiKeyChange,
     loadBalancingEnabled,
     onLoadBalancingToggle: handleLoadBalancingToggle,
+    allowOriginalModelNamesForAliases,
     reasoningMode,
     reasoningJson,
     reasoningJsonIssue,
@@ -1114,8 +1678,19 @@ function useSettingsPageState(): SettingsPageViewProps {
     onExtraAddItem,
     onExtraRemoveItem,
     onExtraUpdateItem,
+    aliasMode,
+    aliasJson,
+    aliasJsonIssue,
+    aliasItems,
+    onAliasToggleMode,
+    onAliasJsonChange,
+    onAliasAddItem,
+    onAliasRemoveItem,
+    onAliasUpdateItem,
     useFunctionApplyPatch,
     forceAgent,
+    onAllowOriginalModelNamesForAliasesToggle:
+      handleAllowOriginalModelNamesForAliasesToggle,
     onUseFunctionApplyPatchToggle: handleUseFunctionApplyPatchToggle,
     onForceAgentToggle: handleForceAgentToggle,
   }
@@ -1159,8 +1734,19 @@ function SettingsPageView({
   onExtraAddItem,
   onExtraRemoveItem,
   onExtraUpdateItem,
+  aliasMode,
+  aliasJson,
+  aliasJsonIssue,
+  aliasItems,
+  onAliasToggleMode,
+  onAliasJsonChange,
+  onAliasAddItem,
+  onAliasRemoveItem,
+  onAliasUpdateItem,
+  allowOriginalModelNamesForAliases,
   useFunctionApplyPatch,
   forceAgent,
+  onAllowOriginalModelNamesForAliasesToggle,
   onUseFunctionApplyPatchToggle,
   onForceAgentToggle,
 }: SettingsPageViewProps): React.JSX.Element {
@@ -1251,6 +1837,20 @@ function SettingsPageView({
               onRemoveItem={onExtraRemoveItem}
               onUpdateItem={onExtraUpdateItem}
             />
+
+            <ModelAliasesCard
+              allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
+              mode={aliasMode}
+              json={aliasJson}
+              jsonIssue={aliasJsonIssue}
+              items={aliasItems}
+              models={models}
+              onToggleMode={onAliasToggleMode}
+              onJsonChange={onAliasJsonChange}
+              onAddItem={onAliasAddItem}
+              onRemoveItem={onAliasRemoveItem}
+              onUpdateItem={onAliasUpdateItem}
+            />
           </div>
         </div>
 
@@ -1258,8 +1858,12 @@ function SettingsPageView({
           <LoadBalancingCard enabled={loadBalancingEnabled} onToggle={onLoadBalancingToggle} />
 
           <AdvancedSettingsCard
+            allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
             useFunctionApplyPatch={useFunctionApplyPatch}
             forceAgent={forceAgent}
+            onToggleAllowOriginalModelNamesForAliases={
+              onAllowOriginalModelNamesForAliasesToggle
+            }
             onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
             onToggleForceAgent={onForceAgentToggle}
           />

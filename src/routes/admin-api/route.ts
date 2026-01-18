@@ -6,6 +6,7 @@ import { accountsManager } from "~/lib/accounts-manager"
 import { listAccountsFromRegistry } from "~/lib/accounts-registry"
 import {
   getConfig,
+  getModelAliases,
   isFreeModelLoadBalancingEnabled,
   mergeConfigWithDefaults,
   type AppConfig,
@@ -146,6 +147,8 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "freeModelLoadBalancing",
   "apiKey",
   "modelReasoningEfforts",
+  "modelAliases",
+  "allowOriginalModelNamesForAliases",
   "useFunctionApplyPatch",
   "forceAgent",
 ])
@@ -254,6 +257,99 @@ function parseReasoningRecord(
   return { value: record }
 }
 
+type ParsedModelAlias = {
+  alias: string
+  target: string
+  allowOriginal?: boolean
+}
+
+function parseModelAliasEntry(
+  rawAlias: string,
+  rawTarget: unknown,
+): ParseFieldResult<ParsedModelAlias> {
+  if (BLOCKED_KEYS.has(rawAlias)) {
+    return { error: `modelAliases.${rawAlias} is not allowed` }
+  }
+
+  const alias = rawAlias.trim().toLowerCase()
+  if (!alias) {
+    return { error: "modelAliases keys must be non-empty strings" }
+  }
+  if (BLOCKED_KEYS.has(alias)) {
+    return { error: `modelAliases.${alias} is not allowed` }
+  }
+
+  let target: string | undefined
+  let allowOriginal: boolean | undefined
+
+  if (typeof rawTarget === "string") {
+    target = rawTarget.trim()
+  } else if (isPlainObject(rawTarget)) {
+    const rawTargetValue = rawTarget.target
+    if (typeof rawTargetValue !== "string") {
+      return { error: `modelAliases.${rawAlias}.target must be a string` }
+    }
+    target = rawTargetValue.trim()
+
+    if ("allowOriginal" in rawTarget) {
+      if (typeof rawTarget.allowOriginal !== "boolean") {
+        return {
+          error: `modelAliases.${rawAlias}.allowOriginal must be a boolean`,
+        }
+      }
+      allowOriginal = rawTarget.allowOriginal
+    }
+  } else {
+    return { error: `modelAliases.${rawAlias} must be a string or object` }
+  }
+
+  if (!target) {
+    return { error: `modelAliases.${rawAlias} must be a non-empty string` }
+  }
+  if (alias === target.toLowerCase()) {
+    return { error: `modelAliases.${rawAlias} cannot map to itself` }
+  }
+
+  return { value: { alias, target, allowOriginal } }
+}
+
+function parseModelAliases(
+  value: unknown,
+): ParseFieldResult<
+  Record<string, { target: string; allowOriginal?: boolean }>
+> {
+  if (value === null || value === undefined) return { clear: true }
+  if (!isPlainObject(value)) {
+    return { error: "modelAliases must be an object" }
+  }
+
+  const record = Object.create(null) as Record<
+    string,
+    { target: string; allowOriginal?: boolean }
+  >
+
+  for (const [rawAlias, rawTarget] of Object.entries(value)) {
+    const parsed = parseModelAliasEntry(rawAlias, rawTarget)
+    if ("error" in parsed) return parsed
+    if ("clear" in parsed) continue
+
+    const { alias, target, allowOriginal } = parsed.value
+    const existing = Object.hasOwn(record, alias) ? record[alias] : undefined
+    if (
+      existing
+      && (existing.target !== target
+        || existing.allowOriginal !== allowOriginal)
+    ) {
+      return { error: `modelAliases.${rawAlias} conflicts with ${alias}` }
+    }
+
+    record[alias] =
+      allowOriginal === undefined ? { target } : { target, allowOriginal }
+  }
+
+  return { value: record }
+}
+
 function applyOptionalString(
   next: AppConfig,
   key: "smallModel" | "apiKey",
@@ -271,7 +367,11 @@ function applyOptionalString(
 
 function applyOptionalBoolean(
   next: AppConfig,
-  key: "freeModelLoadBalancing" | "useFunctionApplyPatch" | "forceAgent",
+  key:
+    | "freeModelLoadBalancing"
+    | "useFunctionApplyPatch"
+    | "forceAgent"
+    | "allowOriginalModelNamesForAliases",
   value: unknown,
 ): string | undefined {
   const parsed = parseOptionalBoolean(value, key)
@@ -312,6 +412,20 @@ function applyReasoningEfforts(
   return undefined
 }
 
+function applyModelAliases(
+  next: AppConfig,
+  value: unknown,
+): string | undefined {
+  const parsed = parseModelAliases(value)
+  if ("error" in parsed) return parsed.error
+  if ("clear" in parsed) {
+    delete next.modelAliases
+    return undefined
+  }
+  next.modelAliases = parsed.value
+  return undefined
+}
+
 function applyConfigPatch(
   base: AppConfig,
   input: Record<string, unknown>,
@@ -345,6 +459,18 @@ function applyConfigPatch(
       }
       case "modelReasoningEfforts": {
         error = applyReasoningEfforts(next, value)
+        break
+      }
+      case "modelAliases": {
+        error = applyModelAliases(next, value)
+        break
+      }
+      case "allowOriginalModelNamesForAliases": {
+        error = applyOptionalBoolean(
+          next,
+          "allowOriginalModelNamesForAliases",
+          value,
+        )
         break
       }
       case "useFunctionApplyPatch": {
@@ -472,7 +598,8 @@ adminApiRoutes.get("/models", (c) => {
         .filter(
           (id): id is string => typeof id === "string" && id.trim().length > 0,
         ) ?? []
-    const uniqueItems = Array.from(new Set(items)).sort()
+    const aliasItems = Object.keys(getModelAliases())
+    const uniqueItems = Array.from(new Set([...items, ...aliasItems])).sort()
     return c.json({ items: uniqueItems })
   } catch {
     return jsonError(c, 500, {
