@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
+import { getAliasTargetSet } from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -41,6 +42,7 @@ export async function handleCompletion(c: Context) {
   const request = buildRequestContext(c)
 
   const payload = await c.req.json<ChatCompletionsPayload>()
+  const clientModel = payload.model
   const streamRequested = Boolean(payload.stream)
 
   const initiator = getChatInitiator(payload.messages)
@@ -54,11 +56,26 @@ export async function handleCompletion(c: Context) {
   request.promptCacheKey = normalizedPromptCacheKey
   request.initiator = initiator
 
+  const blockedTargets = getAliasTargetSet()
+  if (blockedTargets.has(clientModel.toLowerCase())) {
+    recordSelectionFailure(store, {
+      request,
+      clientModel,
+      stream: streamRequested,
+      reason: "MODEL_NOT_SUPPORTED",
+    })
+
+    return selectionFailureResponse(c, {
+      clientModel,
+      reason: "MODEL_NOT_SUPPORTED",
+    })
+  }
+
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
   const selection = await accountsManager.selectAccountForRequest([
     {
-      modelId: payload.model,
+      modelId: clientModel,
       endpoint: CHAT_COMPLETIONS_ENDPOINT,
     },
   ])
@@ -66,27 +83,32 @@ export async function handleCompletion(c: Context) {
   if (!selection.ok) {
     recordSelectionFailure(store, {
       request,
-      clientModel: payload.model,
+      clientModel,
       stream: streamRequested,
       reason: selection.reason,
     })
 
     return selectionFailureResponse(c, {
-      clientModel: payload.model,
+      clientModel,
       reason: selection.reason,
     })
   }
 
   const { account, selectedModel } = selection
 
+  const upstreamPayload = { ...payload, model: selectedModel.id }
+
   const premiumRemainingBefore = account.premiumRemaining
   const premiumUnlimitedBefore = account.unlimited
 
-  await logTokenCountForRequest({ payload, selectedModel })
+  await logTokenCountForRequest({ payload: upstreamPayload, selectedModel })
 
   if (state.manualApprove) await awaitApproval()
 
-  const payloadWithMaxTokens = applyDefaultMaxTokens(payload, selectedModel)
+  const payloadWithMaxTokens = applyDefaultMaxTokens(
+    upstreamPayload,
+    selectedModel,
+  )
 
   const accountCtx = toAccountContext(account)
   const upstreamRequestId = randomUUID()
@@ -100,6 +122,7 @@ export async function handleCompletion(c: Context) {
       payload: payloadWithMaxTokens,
       selection,
       accountCtx,
+      clientModel,
       premiumRemainingBefore,
       premiumUnlimitedBefore,
     })
@@ -112,6 +135,7 @@ export async function handleCompletion(c: Context) {
     payload: payloadWithMaxTokens,
     selection,
     accountCtx,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   })
@@ -302,6 +326,7 @@ async function handleStreamingRequest(params: {
   payload: ChatCompletionsPayload
   selection: AccountSelectionOk
   accountCtx: Parameters<typeof createChatCompletions>[1]
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
 }): Promise<Response> {
@@ -312,6 +337,7 @@ async function handleStreamingRequest(params: {
     payload,
     selection,
     accountCtx,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   } = params
@@ -326,8 +352,8 @@ async function handleStreamingRequest(params: {
     return handleUpstreamCreateError({
       store,
       request,
-      payload,
       selection,
+      clientModel,
       premiumRemainingBefore,
       premiumUnlimitedBefore,
       error,
@@ -340,8 +366,8 @@ async function handleStreamingRequest(params: {
       c,
       store,
       request,
-      payload,
       selection,
+      clientModel,
       premiumRemainingBefore,
       premiumUnlimitedBefore,
       response,
@@ -356,8 +382,8 @@ async function handleStreamingRequest(params: {
       response,
       store,
       request,
-      payload,
       selection,
+      clientModel,
       premiumRemainingBefore,
       premiumUnlimitedBefore,
     }),
@@ -367,8 +393,8 @@ async function handleStreamingRequest(params: {
 async function handleUpstreamCreateError(params: {
   store: Store
   request: RequestContext
-  payload: ChatCompletionsPayload
   selection: AccountSelectionOk
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
   error: unknown
@@ -376,8 +402,8 @@ async function handleUpstreamCreateError(params: {
   const {
     store,
     request,
-    payload,
     selection,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
     error,
@@ -405,7 +431,7 @@ async function handleUpstreamCreateError(params: {
     accountId: account.id,
     accountType: account.accountType,
     costUnits,
-    clientModel: payload.model,
+    clientModel,
     upstreamModel: selectedModel.id,
     premiumRemainingBefore,
     premiumRemainingAfter,
@@ -428,8 +454,8 @@ async function handleNonStreamingUpstreamResponse(params: {
   c: Context
   store: Store
   request: RequestContext
-  payload: ChatCompletionsPayload
   selection: AccountSelectionOk
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
   response: ChatCompletionResponse
@@ -438,8 +464,8 @@ async function handleNonStreamingUpstreamResponse(params: {
     c,
     store,
     request,
-    payload,
     selection,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
     response,
@@ -480,7 +506,7 @@ async function handleNonStreamingUpstreamResponse(params: {
       accountId: account.id,
       accountType: account.accountType,
       costUnits,
-      clientModel: payload.model,
+      clientModel,
       upstreamModel: selectedModel.id,
       ...usage,
       premiumRemainingBefore,
@@ -504,8 +530,8 @@ async function streamChatCompletionsAndLog(params: {
   response: ChatCompletionsStream
   store: Store
   request: RequestContext
-  payload: ChatCompletionsPayload
   selection: AccountSelectionOk
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
 }): Promise<void> {
@@ -514,8 +540,8 @@ async function streamChatCompletionsAndLog(params: {
     response,
     store,
     request,
-    payload,
     selection,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   } = params
@@ -568,7 +594,7 @@ async function streamChatCompletionsAndLog(params: {
       accountId: account.id,
       accountType: account.accountType,
       costUnits,
-      clientModel: payload.model,
+      clientModel,
       upstreamModel: selectedModel.id,
       ...lastUsage,
       premiumRemainingBefore,
@@ -612,6 +638,7 @@ async function handleNonStreamingRequest(params: {
   payload: ChatCompletionsPayload
   selection: AccountSelectionOk
   accountCtx: Parameters<typeof createChatCompletions>[1]
+  clientModel: string
   premiumRemainingBefore: number | undefined
   premiumUnlimitedBefore: boolean | undefined
 }): Promise<Response> {
@@ -622,6 +649,7 @@ async function handleNonStreamingRequest(params: {
     payload,
     selection,
     accountCtx,
+    clientModel,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   } = params
@@ -688,7 +716,7 @@ async function handleNonStreamingRequest(params: {
       accountId: account.id,
       accountType: account.accountType,
       costUnits,
-      clientModel: payload.model,
+      clientModel,
       upstreamModel: selectedModel.id,
       ...usage,
       premiumRemainingBefore,

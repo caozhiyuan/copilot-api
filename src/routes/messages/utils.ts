@@ -1,3 +1,8 @@
+import type { Context } from "hono"
+
+import { getAliasTargetSet } from "~/lib/config"
+import { getRequestHistoryStore } from "~/lib/request-history"
+
 import type {
   AnthropicMessagesPayload,
   AnthropicResponse,
@@ -96,4 +101,128 @@ export const mergeToolResultForClaude = (
 
     msg.content = mergeToolResult(toolResults, textBlocks)
   }
+}
+
+type SelectionFailureReason = "MODEL_NOT_SUPPORTED" | "NO_QUOTA" | "NO_ACCOUNTS"
+
+type SelectionFailure = {
+  ok: false
+  reason: SelectionFailureReason
+}
+
+type SelectionFailureContext = {
+  c: Context
+  store: ReturnType<typeof getRequestHistoryStore>
+  requestId: string
+  startedAtMs: number
+  method: string
+  path: string
+  streamRequested: boolean
+  clientModel: string
+  clientIp?: string
+  clientIpSource?: string
+  userAgent?: string
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
+  selection: SelectionFailure
+}
+
+export const isWarmupProbeRequest = (
+  payload: AnthropicMessagesPayload,
+): boolean => {
+  const lastMsg = payload.messages.at(-1)
+  if (!lastMsg || lastMsg.role !== "user" || !Array.isArray(lastMsg.content)) {
+    return false
+  }
+
+  const lastBlock = lastMsg.content.at(-1)
+  if (!lastBlock || lastBlock.type !== "text") {
+    return false
+  }
+
+  const text = lastBlock.text.trim().toLowerCase()
+  return text === "warmup" && lastBlock.cache_control?.type === "ephemeral"
+}
+
+export const handleSelectionFailure = (
+  context: SelectionFailureContext,
+): Response => {
+  const {
+    c,
+    store,
+    requestId,
+    startedAtMs,
+    method,
+    path,
+    streamRequested,
+    clientModel,
+    clientIp,
+    clientIpSource,
+    userAgent,
+    userId,
+    safetyIdentifier,
+    promptCacheKey,
+    initiator,
+    selection,
+  } = context
+  const finishedAtMs = Date.now()
+
+  store.insert({
+    requestId,
+    startedAtMs,
+    finishedAtMs,
+    durationMs: finishedAtMs - startedAtMs,
+    method,
+    path,
+    stream: streamRequested,
+    clientModel,
+    clientIp,
+    clientIpSource,
+    userAgent,
+    userId,
+    safetyIdentifier,
+    promptCacheKey,
+    initiator,
+    httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
+    selectionFailureReason: selection.reason,
+  })
+
+  if (selection.reason === "MODEL_NOT_SUPPORTED") {
+    return c.json(
+      {
+        error: {
+          message: `Model "${clientModel}" is not available for any configured account.`,
+          type: "invalid_request_error",
+        },
+      },
+      400,
+    )
+  }
+
+  return c.json(
+    {
+      error: {
+        message:
+          "All accounts have exhausted their quota. Please wait for quota refresh or add additional accounts.",
+        type: "rate_limit_error",
+      },
+    },
+    429,
+  )
+}
+
+export const maybeBlockOriginalModelName = (
+  context: Omit<SelectionFailureContext, "selection">,
+): Response | null => {
+  const blockedTargets = getAliasTargetSet()
+  if (!blockedTargets.has(context.clientModel.toLowerCase())) {
+    return null
+  }
+
+  return handleSelectionFailure({
+    ...context,
+    selection: { ok: false, reason: "MODEL_NOT_SUPPORTED" },
+  })
 }

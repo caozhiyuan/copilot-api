@@ -80,6 +80,33 @@ export type AdminRequestDetailResponse = {
   item: AdminRequestItem | null
 }
 
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+
+export type ModelAliasSpec = {
+  target: string
+  allowOriginal?: boolean
+}
+
+export type AdminConfig = {
+  extraPrompts?: Record<string, string>
+  smallModel?: string
+  freeModelLoadBalancing?: boolean
+  apiKey?: string
+  modelReasoningEfforts?: Record<string, ReasoningEffort>
+  modelAliases?: Record<string, ModelAliasSpec | string>
+  allowOriginalModelNamesForAliases?: boolean
+  useFunctionApplyPatch?: boolean
+  forceAgent?: boolean
+}
+
+export type AdminConfigResponse = AdminConfig & {
+  _configPath?: string
+}
+
+export type AdminModelsResponse = {
+  items: string[]
+}
+
 export class AdminApiError extends Error {
   readonly status: number
   readonly responseText: string
@@ -92,31 +119,38 @@ export class AdminApiError extends Error {
   }
 }
 
-async function fetchAdminJson<T>(path: string): Promise<T> {
-  const token = readAdminToken()
-  const headers: Record<string, string> = {}
-  if (token) headers["x-admin-token"] = token
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
 
-  const res = await fetch(path, { headers })
+async function fetchAdminJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = readAdminToken()
+  const headers = new Headers(init?.headers ?? undefined)
+
+  if (token) {
+    headers.set("x-admin-token", token)
+  }
+
+  if (init?.body && !headers.has("content-type")) {
+    headers.set("content-type", "application/json")
+  }
+
+  const res = await fetch(path, { ...init, headers })
+
   if (!res.ok) {
     const txt = await res.text().catch(() => "")
     let message = txt
 
     try {
       const parsed = JSON.parse(txt) as unknown
-      if (
-        typeof parsed === "object" &&
-        parsed !== null &&
-        "error" in parsed &&
-        typeof (parsed as { error?: unknown }).error === "object" &&
-        (parsed as { error?: { message?: unknown } }).error !== null &&
-        typeof (parsed as { error?: { message?: unknown } }).error?.message ===
-          "string"
-      ) {
-        message = (parsed as { error: { message: string } }).error.message
+      if (isPlainObject(parsed) && "error" in parsed) {
+        const err = (parsed as { error?: unknown }).error
+        if (isPlainObject(err) && typeof (err as { message?: unknown }).message === "string") {
+          message = (err as { message: string }).message
+        }
       }
     } catch {
-      // ignore JSON parsing
+      // ignore JSON parsing errors and keep raw text
     }
 
     throw new AdminApiError(res.status, message)
@@ -175,4 +209,21 @@ export async function getAdminRequestDetail(
   return fetchAdminJson<AdminRequestDetailResponse>(
     `/api/admin/requests/${encodeURIComponent(requestId)}`
   )
+}
+
+export async function getAdminConfig(): Promise<AdminConfigResponse> {
+  return fetchAdminJson<AdminConfigResponse>("/api/admin/config")
+}
+
+export async function updateAdminConfig(
+  patch: Partial<AdminConfig>
+): Promise<AdminConfigResponse> {
+  return fetchAdminJson<AdminConfigResponse>("/api/admin/config", {
+    method: "POST",
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function getAdminModels(): Promise<AdminModelsResponse> {
+  return fetchAdminJson<AdminModelsResponse>("/api/admin/models")
 }

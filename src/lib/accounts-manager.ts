@@ -7,6 +7,7 @@ import type {
   AccountType,
 } from "~/lib/types/account"
 
+import { resolveModelAlias } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { getModels, type Model } from "~/services/copilot/get-models"
 import { getCopilotToken } from "~/services/github/get-copilot-token"
@@ -477,31 +478,10 @@ export class AccountsManager {
     return { ok: false, reason: "NO_QUOTA" }
   }
 
-  /**
-   * Select an available account for a specific request (model + endpoint).
-   * Uses reservation to avoid oversubscribing premium quota under concurrency.
-   */
-  // eslint-disable-next-line complexity
-  async selectAccountForRequest(
+  private async selectAccountForCandidates(
+    orderedAccounts: Array<AccountRuntime>,
     candidates: Array<AccountRequestCandidate>,
   ): Promise<SelectAccountForRequestResult> {
-    if (candidates.length === 0) {
-      throw new Error("selectAccountForRequest requires at least one candidate")
-    }
-
-    const orderedAccounts: Array<AccountRuntime> = []
-
-    if (this.temporaryAccount) {
-      orderedAccounts.push(this.temporaryAccount)
-    }
-
-    for (const id of this.accountOrder) {
-      const account = this.accounts.get(id)
-      if (account) {
-        orderedAccounts.push(account)
-      }
-    }
-
     if (orderedAccounts.length === 0) {
       return { ok: false, reason: "NO_ACCOUNTS" }
     }
@@ -579,6 +559,46 @@ export class AccountsManager {
     }
 
     return { ok: false, reason: "NO_QUOTA" }
+  }
+
+  /**
+   * Select an available account for a specific request (model + endpoint).
+   * Uses reservation to avoid oversubscribing premium quota under concurrency.
+   */
+  async selectAccountForRequest(
+    candidates: Array<AccountRequestCandidate>,
+  ): Promise<SelectAccountForRequestResult> {
+    if (candidates.length === 0) {
+      throw new Error("selectAccountForRequest requires at least one candidate")
+    }
+
+    const orderedAccounts = [
+      ...(this.temporaryAccount ? [this.temporaryAccount] : []),
+      ...this.accountOrder
+        .map((id) => this.accounts.get(id))
+        .filter((account): account is AccountRuntime => account !== undefined),
+    ]
+    const primary = await this.selectAccountForCandidates(
+      orderedAccounts,
+      candidates,
+    )
+    if (primary.ok || primary.reason !== "MODEL_NOT_SUPPORTED") {
+      return primary
+    }
+
+    const aliasCandidates = candidates.map((candidate) => {
+      const modelId = resolveModelAlias(candidate.modelId)
+      if (modelId === candidate.modelId) return candidate
+      return { ...candidate, modelId }
+    })
+    const aliasChanged = aliasCandidates.some(
+      (candidate, index) => candidate.modelId !== candidates[index].modelId,
+    )
+    if (!aliasChanged) {
+      return primary
+    }
+
+    return this.selectAccountForCandidates(orderedAccounts, aliasCandidates)
   }
 
   /**
