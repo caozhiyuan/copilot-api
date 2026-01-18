@@ -33,7 +33,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 
-const REASONING_EFFORTS: ReasoningEffort[] = [
+const REASONING_EFFORTS: Array<ReasoningEffort> = [
   "none",
   "minimal",
   "low",
@@ -129,7 +129,7 @@ function createItemId(): string {
 
 function extraPromptItemsFromRecord(
   record: Record<string, string> | undefined
-): ExtraPromptItem[] {
+): Array<ExtraPromptItem> {
   if (!record) return []
   return Object.entries(record).map(([model, prompt]) => ({
     id: createItemId(),
@@ -140,7 +140,7 @@ function extraPromptItemsFromRecord(
 
 function reasoningItemsFromRecord(
   record: Record<string, ReasoningEffort> | undefined
-): ReasoningItem[] {
+): Array<ReasoningItem> {
   if (!record) return []
   return Object.entries(record).map(([model, effort]) => ({
     id: createItemId(),
@@ -151,7 +151,7 @@ function reasoningItemsFromRecord(
 
 function aliasItemsFromRecord(
   record: ModelAliasRecordInput | undefined
-): ModelAliasItem[] {
+): Array<ModelAliasItem> {
   if (!record) return []
   return Object.entries(record).map(([alias, spec]) => {
     if (typeof spec === "string") {
@@ -171,7 +171,9 @@ function aliasItemsFromRecord(
   })
 }
 
-function extraPromptRecordFromItems(items: ExtraPromptItem[]): Record<string, string> {
+function extraPromptRecordFromItems(
+  items: Array<ExtraPromptItem>
+): Record<string, string> {
   const record: Record<string, string> = {}
   for (const item of items) {
     const key = item.model.trim()
@@ -181,7 +183,9 @@ function extraPromptRecordFromItems(items: ExtraPromptItem[]): Record<string, st
   return record
 }
 
-function reasoningRecordFromItems(items: ReasoningItem[]): Record<string, ReasoningEffort> {
+function reasoningRecordFromItems(
+  items: Array<ReasoningItem>
+): Record<string, ReasoningEffort> {
   const record: Record<string, ReasoningEffort> = {}
   for (const item of items) {
     const key = item.model.trim()
@@ -191,8 +195,10 @@ function reasoningRecordFromItems(items: ReasoningItem[]): Record<string, Reason
   return record
 }
 
-function aliasRecordFromItems(items: ModelAliasItem[]): ModelAliasRecord {
-  const record: ModelAliasRecord = {}
+const BLOCKED_ALIAS_KEYS = new Set(["__proto__", "constructor", "prototype"])
+
+function aliasRecordFromItems(items: Array<ModelAliasItem>): ModelAliasRecord {
+  const record: ModelAliasRecord = Object.create(null) as ModelAliasRecord
   const seen = new Set<string>()
 
   for (const item of items) {
@@ -201,6 +207,7 @@ function aliasRecordFromItems(items: ModelAliasItem[]): ModelAliasRecord {
     if (!alias || !target) continue
 
     const normalizedAlias = alias.toLowerCase()
+    if (BLOCKED_ALIAS_KEYS.has(normalizedAlias)) continue
     if (normalizedAlias === target.toLowerCase()) continue
     if (seen.has(normalizedAlias)) continue
 
@@ -280,13 +287,18 @@ function parseModelAliasesJson(
       return { error: "modelAliases JSON must be an object." }
     }
 
-    const record: ModelAliasRecord = {}
+    const record: ModelAliasRecord = Object.create(null) as ModelAliasRecord
     const seen = new Set<string>()
 
     for (const [rawAlias, rawTarget] of Object.entries(parsed)) {
       const alias = rawAlias.trim()
       if (!alias) {
         return { error: "modelAliases keys must be non-empty strings." }
+      }
+
+      const normalizedAlias = alias.toLowerCase()
+      if (BLOCKED_ALIAS_KEYS.has(normalizedAlias)) {
+        return { error: `modelAliases.${rawAlias} is not allowed.` }
       }
 
       let target: string | undefined
@@ -317,7 +329,6 @@ function parseModelAliasesJson(
         return { error: `modelAliases.${rawAlias} must be a non-empty string.` }
       }
 
-      const normalizedAlias = alias.toLowerCase()
       if (normalizedAlias === target.toLowerCase()) {
         return { error: `modelAliases.${rawAlias} cannot map to itself.` }
       }
@@ -338,7 +349,7 @@ function parseModelAliasesJson(
 
 type ExtraPromptEditor = {
   mode: JsonMode
-  items: ExtraPromptItem[]
+  items: Array<ExtraPromptItem>
   json: string
   jsonIssue: string | null
   onToggleMode: (next: boolean) => void
@@ -351,7 +362,7 @@ type ExtraPromptEditor = {
 
 type ReasoningEditor = {
   mode: JsonMode
-  items: ReasoningItem[]
+  items: Array<ReasoningItem>
   json: string
   jsonIssue: string | null
   onToggleMode: (next: boolean) => void
@@ -364,7 +375,7 @@ type ReasoningEditor = {
 
 type ModelAliasEditor = {
   mode: JsonMode
-  items: ModelAliasItem[]
+  items: Array<ModelAliasItem>
   json: string
   jsonIssue: string | null
   onToggleMode: (next: boolean) => void
@@ -379,7 +390,7 @@ function useExtraPromptEditor(
   onRecordChange: (record: Record<string, string>) => void,
 ): ExtraPromptEditor {
   const [mode, setMode] = useState<JsonMode>("form")
-  const [items, setItems] = useState<ExtraPromptItem[]>([])
+  const [items, setItems] = useState<Array<ExtraPromptItem>>([])
   const [json, setJson] = useState("")
   const [jsonError, setJsonError] = useState<string | null>(null)
 
@@ -395,7 +406,7 @@ function useExtraPromptEditor(
   }, [])
 
   const updateItems = useCallback(
-    (nextItems: ExtraPromptItem[]) => {
+    (nextItems: Array<ExtraPromptItem>) => {
       setItems(nextItems)
       onRecordChange(extraPromptRecordFromItems(nextItems))
     },
@@ -465,7 +476,7 @@ function useReasoningEditor(
   onRecordChange: (record: Record<string, ReasoningEffort>) => void,
 ): ReasoningEditor {
   const [mode, setMode] = useState<JsonMode>("form")
-  const [items, setItems] = useState<ReasoningItem[]>([])
+  const [items, setItems] = useState<Array<ReasoningItem>>([])
   const [json, setJson] = useState("")
   const [jsonError, setJsonError] = useState<string | null>(null)
 
@@ -481,7 +492,7 @@ function useReasoningEditor(
   }, [])
 
   const updateItems = useCallback(
-    (nextItems: ReasoningItem[]) => {
+    (nextItems: Array<ReasoningItem>) => {
       setItems(nextItems)
       onRecordChange(reasoningRecordFromItems(nextItems))
     },
@@ -551,7 +562,7 @@ function useModelAliasEditor(
   onRecordChange: (record: ModelAliasRecord) => void,
 ): ModelAliasEditor {
   const [mode, setMode] = useState<JsonMode>("form")
-  const [items, setItems] = useState<ModelAliasItem[]>([])
+  const [items, setItems] = useState<Array<ModelAliasItem>>([])
   const [json, setJson] = useState("")
   const [jsonError, setJsonError] = useState<string | null>(null)
 
@@ -569,7 +580,7 @@ function useModelAliasEditor(
   }, [])
 
   const updateItems = useCallback(
-    (nextItems: ModelAliasItem[]) => {
+    (nextItems: Array<ModelAliasItem>) => {
       setItems(nextItems)
       onRecordChange(aliasRecordFromItems(nextItems))
     },
@@ -642,7 +653,7 @@ type GeneralSettingsCardProps = {
   smallModelLabel: string
   smallModelValue: string
   smallModelInputValue: string
-  models: string[]
+  models: Array<string>
   apiKeyValue: string
   envOverrideNote: string
   onSmallModelSelect: (value: string) => void
@@ -760,8 +771,8 @@ type ReasoningEffortsCardProps = {
   mode: JsonMode
   json: string
   jsonIssue: string | null
-  items: ReasoningItem[]
-  models: string[]
+  items: Array<ReasoningItem>
+  models: Array<string>
   onToggleMode: (next: boolean) => void
   onJsonChange: (value: string) => void
   onAddItem: () => void
@@ -905,8 +916,8 @@ type ExtraPromptsCardProps = {
   mode: JsonMode
   json: string
   jsonIssue: string | null
-  items: ExtraPromptItem[]
-  models: string[]
+  items: Array<ExtraPromptItem>
+  models: Array<string>
   onToggleMode: (next: boolean) => void
   onJsonChange: (value: string) => void
   onAddItem: () => void
@@ -1038,13 +1049,210 @@ type ModelAliasesCardProps = {
   mode: JsonMode
   json: string
   jsonIssue: string | null
-  items: ModelAliasItem[]
-  models: string[]
+  items: Array<ModelAliasItem>
+  models: Array<string>
   onToggleMode: (next: boolean) => void
   onJsonChange: (value: string) => void
   onAddItem: () => void
   onRemoveItem: (id: string) => void
   onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
+}
+
+type ModelAliasesHeaderProps = {
+  allowOriginalModelNamesForAliases: boolean
+  mode: JsonMode
+  onToggleMode: (next: boolean) => void
+}
+
+type ModelAliasesJsonEditorProps = {
+  json: string
+  jsonIssue: string | null
+  onJsonChange: (value: string) => void
+}
+
+type ModelAliasItemCardProps = {
+  item: ModelAliasItem
+  models: Array<string>
+  emptyTargetValue: string
+  allowOriginalDefaultValue: string
+  hasModels: boolean
+  onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
+  onRemoveItem: (id: string) => void
+}
+
+type ModelAliasesListProps = {
+  items: Array<ModelAliasItem>
+  models: Array<string>
+  emptyTargetValue: string
+  allowOriginalDefaultValue: string
+  hasModels: boolean
+  onAddItem: () => void
+  onRemoveItem: (id: string) => void
+  onUpdateItem: (id: string, patch: Partial<ModelAliasItem>) => void
+}
+
+function ModelAliasesHeader({
+  allowOriginalModelNamesForAliases,
+  mode,
+  onToggleMode,
+}: ModelAliasesHeaderProps): React.JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="text-muted-foreground text-xs">
+        Default behavior: {allowOriginalModelNamesForAliases ? "allow" : "block"} original model
+        IDs. Each alias can override this setting.
+      </div>
+      <div className="flex items-center gap-2">
+        <Switch checked={mode === "json"} onCheckedChange={onToggleMode} />
+        <Label className="text-muted-foreground text-xs">JSON mode</Label>
+      </div>
+    </div>
+  )
+}
+
+function ModelAliasesJsonEditor({
+  json,
+  jsonIssue,
+  onJsonChange,
+}: ModelAliasesJsonEditorProps): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      <Textarea
+        value={json}
+        onChange={(e) => onJsonChange(e.target.value)}
+        className="min-h-[160px] lg:min-h-[120px] max-h-[36vh] overflow-auto font-mono text-xs"
+        placeholder='{ "fast": { "target": "gpt-5-mini", "allowOriginal": true } }'
+      />
+      {jsonIssue ? (
+        <InlineAlert
+          variant="warning"
+          title="Invalid JSON"
+          description={jsonIssue}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function ModelAliasItemCard({
+  item,
+  models,
+  emptyTargetValue,
+  allowOriginalDefaultValue,
+  hasModels,
+  onUpdateItem,
+  onRemoveItem,
+}: ModelAliasItemCardProps): React.JSX.Element {
+  const targetValue = item.target || emptyTargetValue
+  const showCustomTarget = targetValue !== emptyTargetValue && !models.includes(targetValue)
+  const disableTargetSelect = !hasModels && !showCustomTarget
+  const allowOriginalValue =
+    item.allowOriginal === undefined
+      ? allowOriginalDefaultValue
+      : item.allowOriginal
+        ? "allow"
+        : "block"
+
+  return (
+    <div className="grid gap-2 rounded-lg border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="min-w-[180px]"
+          placeholder="Alias"
+          value={item.alias}
+          onChange={(e) => onUpdateItem(item.id, { alias: e.target.value })}
+        />
+        <Select
+          value={targetValue}
+          onValueChange={(value) =>
+            onUpdateItem(item.id, {
+              target: value === emptyTargetValue ? "" : value,
+            })
+          }
+          disabled={disableTargetSelect}
+        >
+          <SelectTrigger className="min-w-[220px]">
+            <SelectValue placeholder={hasModels ? "Select target model" : "No models available"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={emptyTargetValue}>(select)</SelectItem>
+            {showCustomTarget ? (
+              <SelectItem value={targetValue}>Custom: {targetValue}</SelectItem>
+            ) : null}
+            {models.map((model) => (
+              <SelectItem key={model} value={model}>
+                {model}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={allowOriginalValue}
+          onValueChange={(value) =>
+            onUpdateItem(item.id, {
+              allowOriginal:
+                value === allowOriginalDefaultValue
+                  ? undefined
+                  : value === "allow",
+            })
+          }
+        >
+          <SelectTrigger className="min-w-[200px]">
+            <SelectValue placeholder="Original model ID" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={allowOriginalDefaultValue}>Use default</SelectItem>
+            <SelectItem value="allow">Allow original model ID</SelectItem>
+            <SelectItem value="block">Block original model ID</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onRemoveItem(item.id)}
+        >
+          Remove
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ModelAliasesList({
+  items,
+  models,
+  emptyTargetValue,
+  allowOriginalDefaultValue,
+  hasModels,
+  onAddItem,
+  onRemoveItem,
+  onUpdateItem,
+}: ModelAliasesListProps): React.JSX.Element {
+  return (
+    <div className="space-y-2">
+      {items.length === 0 ? (
+        <div className="text-muted-foreground text-sm">No model aliases configured.</div>
+      ) : (
+        items.map((item) => (
+          <ModelAliasItemCard
+            key={item.id}
+            item={item}
+            models={models}
+            emptyTargetValue={emptyTargetValue}
+            allowOriginalDefaultValue={allowOriginalDefaultValue}
+            hasModels={hasModels}
+            onUpdateItem={onUpdateItem}
+            onRemoveItem={onRemoveItem}
+          />
+        ))
+      )}
+
+      <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
+        Add alias
+      </Button>
+    </div>
+  )
 }
 
 function ModelAliasesCard({
@@ -1073,119 +1281,29 @@ function ModelAliasesCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-muted-foreground text-xs">
-            Default behavior: {allowOriginalModelNamesForAliases ? "allow" : "block"} original
-            model IDs. Each alias can override this setting.
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch checked={mode === "json"} onCheckedChange={onToggleMode} />
-            <Label className="text-muted-foreground text-xs">JSON mode</Label>
-          </div>
-        </div>
+        <ModelAliasesHeader
+          allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
+          mode={mode}
+          onToggleMode={onToggleMode}
+        />
 
         {mode === "json" ? (
-          <div className="space-y-2">
-            <Textarea
-              value={json}
-              onChange={(e) => onJsonChange(e.target.value)}
-              className="min-h-[160px] lg:min-h-[120px] max-h-[36vh] overflow-auto font-mono text-xs"
-              placeholder='{ "fast": { "target": "gpt-5-mini", "allowOriginal": true } }'
-            />
-            {jsonIssue ? (
-              <InlineAlert variant="warning" title="Invalid JSON" description={jsonIssue} />
-            ) : null}
-          </div>
+          <ModelAliasesJsonEditor
+            json={json}
+            jsonIssue={jsonIssue}
+            onJsonChange={onJsonChange}
+          />
         ) : (
-          <div className="space-y-2">
-            {items.length === 0 ? (
-              <div className="text-muted-foreground text-sm">No model aliases configured.</div>
-            ) : (
-              items.map((item) => {
-                const targetValue = item.target || emptyTargetValue
-                const showCustomTarget =
-                  targetValue !== emptyTargetValue && !models.includes(targetValue)
-                const disableTargetSelect = !hasModels && !showCustomTarget
-                const allowOriginalValue =
-                  item.allowOriginal === undefined
-                    ? allowOriginalDefaultValue
-                    : item.allowOriginal
-                      ? "allow"
-                      : "block"
-
-                return (
-                  <div key={item.id} className="grid gap-2 rounded-lg border p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        className="min-w-[180px]"
-                        placeholder="Alias"
-                        value={item.alias}
-                        onChange={(e) => onUpdateItem(item.id, { alias: e.target.value })}
-                      />
-                      <Select
-                        value={targetValue}
-                        onValueChange={(value) =>
-                          onUpdateItem(item.id, {
-                            target: value === emptyTargetValue ? "" : value,
-                          })
-                        }
-                        disabled={disableTargetSelect}
-                      >
-                        <SelectTrigger className="min-w-[220px]">
-                          <SelectValue
-                            placeholder={hasModels ? "Select target model" : "No models available"}
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={emptyTargetValue}>(select)</SelectItem>
-                          {showCustomTarget ? (
-                            <SelectItem value={targetValue}>Custom: {targetValue}</SelectItem>
-                          ) : null}
-                          {models.map((model) => (
-                            <SelectItem key={model} value={model}>
-                              {model}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={allowOriginalValue}
-                        onValueChange={(value) =>
-                          onUpdateItem(item.id, {
-                            allowOriginal:
-                              value === allowOriginalDefaultValue
-                                ? undefined
-                                : value === "allow",
-                          })
-                        }
-                      >
-                        <SelectTrigger className="min-w-[200px]">
-                          <SelectValue placeholder="Original model ID" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={allowOriginalDefaultValue}>Use default</SelectItem>
-                          <SelectItem value="allow">Allow original model ID</SelectItem>
-                          <SelectItem value="block">Block original model ID</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onRemoveItem(item.id)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-
-            <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
-              Add alias
-            </Button>
-          </div>
+          <ModelAliasesList
+            items={items}
+            models={models}
+            emptyTargetValue={emptyTargetValue}
+            allowOriginalDefaultValue={allowOriginalDefaultValue}
+            hasModels={hasModels}
+            onAddItem={onAddItem}
+            onRemoveItem={onRemoveItem}
+            onUpdateItem={onUpdateItem}
+          />
         )}
       </CardContent>
     </Card>
@@ -1267,7 +1385,7 @@ type SettingsPageViewProps = {
   smallModelLabel: string
   smallModelValue: string
   smallModelInputValue: string
-  models: string[]
+  models: Array<string>
   apiKeyValue: string
   envOverrideNote: string
   onSmallModelSelect: (value: string) => void
@@ -1278,7 +1396,7 @@ type SettingsPageViewProps = {
   reasoningMode: JsonMode
   reasoningJson: string
   reasoningJsonIssue: string | null
-  reasoningItems: ReasoningItem[]
+  reasoningItems: Array<ReasoningItem>
   onReasoningToggleMode: (next: boolean) => void
   onReasoningJsonChange: (value: string) => void
   onReasoningAddItem: () => void
@@ -1287,7 +1405,7 @@ type SettingsPageViewProps = {
   extraMode: JsonMode
   extraJson: string
   extraJsonIssue: string | null
-  extraItems: ExtraPromptItem[]
+  extraItems: Array<ExtraPromptItem>
   onExtraToggleMode: (next: boolean) => void
   onExtraJsonChange: (value: string) => void
   onExtraAddItem: () => void
@@ -1296,7 +1414,7 @@ type SettingsPageViewProps = {
   aliasMode: JsonMode
   aliasJson: string
   aliasJsonIssue: string | null
-  aliasItems: ModelAliasItem[]
+  aliasItems: Array<ModelAliasItem>
   onAliasToggleMode: (next: boolean) => void
   onAliasJsonChange: (value: string) => void
   onAliasAddItem: () => void
@@ -1316,7 +1434,7 @@ function useSettingsPageState(): SettingsPageViewProps {
   const [error, setError] = useState<string | null>(null)
   const [configPath, setConfigPath] = useState<string | null>(null)
 
-  const [models, setModels] = useState<string[]>([])
+  const [models, setModels] = useState<Array<string>>([])
   const [draft, setDraft] = useState<AdminConfig>({})
 
   const extraEditor = useExtraPromptEditor((record) =>

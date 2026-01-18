@@ -57,6 +57,8 @@ export const handleResponses = async (c: Context) => {
 
     return selectionFailureResponse(c, {
       reason: "MODEL_NOT_SUPPORTED",
+      message:
+        "This model is only available via an alias. Please use the alias model name.",
     })
   }
 
@@ -226,16 +228,18 @@ function selectionFailureResponse(
   c: Context,
   params: {
     reason: AccountSelectionErr["reason"]
+    message?: string
   },
 ) {
-  const { reason } = params
+  const { reason, message } = params
 
   if (reason === "MODEL_NOT_SUPPORTED") {
     return c.json(
       {
         error: {
           message:
-            "This model does not support the responses endpoint. Please choose a different model.",
+            message
+            ?? "This model does not support the responses endpoint. Please choose a different model.",
           type: "invalid_request_error",
         },
       },
