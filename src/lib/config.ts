@@ -12,6 +12,8 @@ export interface AppConfig {
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >
+  modelAliases?: Record<string, string>
+  allowOriginalModelNamesForAliases?: boolean
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean
 }
@@ -33,6 +35,7 @@ const defaultConfig: AppConfig = {
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
   },
+  allowOriginalModelNamesForAliases: false,
   useFunctionApplyPatch: true,
 }
 
@@ -178,14 +181,128 @@ export function getConfig(): AppConfig {
   return cachedConfig
 }
 
+type ModelAliasMap = Record<string, string>
+
+function normalizeAliasKey(value: string): string | null {
+  const trimmed = value.trim().toLowerCase()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizeAliasTarget(value: string): string | null {
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+export function getModelAliases(): ModelAliasMap {
+  const config = getConfig()
+  const raw = config.modelAliases ?? {}
+  const normalized: ModelAliasMap = {}
+
+  for (const [alias, target] of Object.entries(raw)) {
+    const normalizedAlias = normalizeAliasKey(alias)
+    const normalizedTarget = normalizeAliasTarget(target)
+    if (!normalizedAlias || !normalizedTarget) {
+      continue
+    }
+    if (!Object.hasOwn(normalized, normalizedAlias)) {
+      normalized[normalizedAlias] = normalizedTarget
+    }
+  }
+
+  return normalized
+}
+
+export function resolveModelAlias(modelId: string): string {
+  const normalized = normalizeAliasKey(modelId)
+  if (!normalized) return modelId
+  const aliases = getModelAliases()
+  return aliases[normalized] ?? modelId
+}
+
+export function isOriginalModelNameAllowedForAliases(): boolean {
+  const config = getConfig()
+  return config.allowOriginalModelNamesForAliases ?? false
+}
+
+export function getAliasTargetSet(): Set<string> {
+  const aliases = getModelAliases()
+  const targets = new Set<string>()
+
+  for (const target of Object.values(aliases)) {
+    targets.add(target.toLowerCase())
+  }
+
+  return targets
+}
+
+export function getPreferredAliasForTarget(modelId: string): string | null {
+  const aliases = getModelAliases()
+  const aliasKeys = getAliasKeysForTarget(modelId, aliases)
+  return aliasKeys[0] ?? null
+}
+
+function getAliasKeysForTarget(
+  target: string,
+  aliases: ModelAliasMap,
+): Array<string> {
+  const normalizedTarget = target.toLowerCase()
+  return Object.entries(aliases)
+    .filter(([, model]) => model.toLowerCase() === normalizedTarget)
+    .map(([alias]) => alias)
+    .sort()
+}
+
+function getAliasFallbackValue<T extends string>(
+  record: Record<string, T> | undefined,
+  modelId: string,
+  aliases: ModelAliasMap,
+): T | undefined {
+  if (!record) return undefined
+
+  const aliasKeys = getAliasKeysForTarget(modelId, aliases)
+  if (aliasKeys.length === 0) return undefined
+
+  const recordByAlias = new Map<string, T>()
+  for (const [key, value] of Object.entries(record)) {
+    const normalized = normalizeAliasKey(key)
+    if (normalized) {
+      recordByAlias.set(normalized, value)
+    }
+  }
+
+  for (const alias of aliasKeys) {
+    const value = recordByAlias.get(alias)
+    if (value !== undefined) {
+      return value
+    }
+  }
+
+  return undefined
+}
+
 export function getExtraPromptForModel(model: string): string {
   const config = getConfig()
-  return config.extraPrompts?.[model] ?? ""
+  const direct = config.extraPrompts?.[model]
+  if (direct !== undefined) return direct
+
+  const aliases = getModelAliases()
+  const fallback = getAliasFallbackValue(config.extraPrompts, model, aliases)
+  return fallback ?? ""
 }
 
 export function getSmallModel(): string {
   const config = getConfig()
-  return config.smallModel ?? "gpt-5-mini"
+  const model = config.smallModel ?? "gpt-5-mini"
+  if (isOriginalModelNameAllowedForAliases()) {
+    return model
+  }
+
+  const targets = getAliasTargetSet()
+  if (!targets.has(model.toLowerCase())) {
+    return model
+  }
+
+  return getPreferredAliasForTarget(model) ?? model
 }
 
 export function isFreeModelLoadBalancingEnabled(): boolean {
@@ -197,7 +314,16 @@ export function getReasoningEffortForModel(
   model: string,
 ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
   const config = getConfig()
-  return config.modelReasoningEfforts?.[model] ?? "high"
+  const direct = config.modelReasoningEfforts?.[model]
+  if (direct !== undefined) return direct
+
+  const aliases = getModelAliases()
+  const fallback = getAliasFallbackValue(
+    config.modelReasoningEfforts,
+    model,
+    aliases,
+  )
+  return fallback ?? "high"
 }
 
 export function isForceAgentEnabled(): boolean {

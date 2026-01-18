@@ -57,7 +57,12 @@ import {
   translateToOpenAI,
 } from "./non-stream-translation"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
-import { mergeToolResultForClaude } from "./utils"
+import {
+  handleSelectionFailure,
+  isWarmupProbeRequest,
+  maybeBlockOriginalModelName,
+  mergeToolResultForClaude,
+} from "./utils"
 
 const logger = createHandlerLogger("messages-handler")
 
@@ -67,26 +72,7 @@ const RESPONSES_ENDPOINT = "/responses"
 type AccountSelection = Awaited<
   ReturnType<(typeof accountsManager)["selectAccountForRequest"]>
 >
-
 type AccountSelectionOk = Extract<AccountSelection, { ok: true }>
-
-type AccountSelectionFailure = Extract<AccountSelection, { ok: false }>
-
-type SelectionFailureContext = {
-  c: Context
-  store: ReturnType<typeof getRequestHistoryStore>
-  requestId: string
-  startedAtMs: number
-  method: string
-  path: string
-  streamRequested: boolean
-  clientModel: string
-  clientIp?: string
-  clientIpSource?: string
-  userAgent?: string
-  selection: AccountSelectionFailure
-}
-
 type InstrumentationContext = {
   store: ReturnType<typeof getRequestHistoryStore>
   requestId: string
@@ -111,57 +97,44 @@ type InstrumentationContext = {
   premiumUnlimitedBefore?: boolean
 }
 
-const isWarmupProbeRequest = (payload: AnthropicMessagesPayload): boolean => {
-  const lastMsg = payload.messages.at(-1)
-  if (!lastMsg || lastMsg.role !== "user" || !Array.isArray(lastMsg.content)) {
-    return false
-  }
-
-  const lastBlock = lastMsg.content.at(-1)
-  if (!lastBlock || lastBlock.type !== "text") {
-    return false
-  }
-
-  const text = lastBlock.text.trim().toLowerCase()
-  return text === "warmup" && lastBlock.cache_control?.type === "ephemeral"
-}
-
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
-
   const store = getRequestHistoryStore()
-
   const requestId = randomUUID()
   const startedAtMs = Date.now()
-
   const method = c.req.raw.method
   const path = new URL(c.req.url, "http://local").pathname
-
   const { ip: clientIp, source: clientIpSource } = getClientIpInfo(c)
   const userAgent = c.req.header("user-agent") ?? undefined
-
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
-
-  // fix claude code 2.0.28+ warmup request consume premium request, forcing small model for warmup probe requests
-  // set "CLAUDE_CODE_SUBAGENT_MODEL": "you small model" also can avoid this
+  // Fix warmup probe: force small model for Claude Code warmup requests (CLAUDE_CODE_SUBAGENT_MODEL also works).
   const anthropicBeta = c.req.header("anthropic-beta")
   if (anthropicBeta && isWarmupProbeRequest(anthropicPayload)) {
     anthropicPayload.model = getSmallModel()
   }
-
+  const clientModel = anthropicPayload.model
   const streamRequested = Boolean(anthropicPayload.stream)
-
-  // Merge tool_result and text blocks into tool_result to avoid consuming premium requests
-  // (caused by skill invocations, edit hooks, plan or to do reminders)
-  // e.g. {"role":"user","content":[{"type":"tool_result","tool_use_id":"call_xxx","content":"Launching skill: xxx"},{"type":"text","text":"xxx"}]}
+  const blockedResponse = maybeBlockOriginalModelName({
+    c,
+    store,
+    requestId,
+    startedAtMs,
+    method,
+    path,
+    streamRequested,
+    clientModel,
+    clientIp,
+    clientIpSource,
+    userAgent,
+  })
+  if (blockedResponse) return blockedResponse
+  // Merge tool_result blocks to avoid premium usage from skill hooks.
   mergeToolResultForClaude(anthropicBeta, anthropicPayload)
-
   const openAIPayload = translateToOpenAI(anthropicPayload)
-
   const selection = await accountsManager.selectAccountForRequest([
     {
-      modelId: anthropicPayload.model,
+      modelId: clientModel,
       endpoint: RESPONSES_ENDPOINT,
     },
     {
@@ -169,7 +142,6 @@ export async function handleCompletion(c: Context) {
       endpoint: CHAT_COMPLETIONS_ENDPOINT,
     },
   ])
-
   if (!selection.ok) {
     return handleSelectionFailure({
       c,
@@ -179,47 +151,38 @@ export async function handleCompletion(c: Context) {
       method,
       path,
       streamRequested,
-      clientModel: anthropicPayload.model,
+      clientModel,
       clientIp,
       clientIpSource,
       userAgent,
       selection,
     })
   }
-
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
-
+  openAIPayload.model = selectedModel.id
   const premiumRemainingBefore = account.premiumRemaining
   const premiumUnlimitedBefore = account.unlimited
-
   if (state.manualApprove) {
     await awaitApproval()
   }
-
   const instr: InstrumentationContext = {
     store,
     requestId,
     startedAtMs,
-
     method,
     path,
-
     clientIp,
     clientIpSource,
     userAgent,
-
-    clientModel: anthropicPayload.model,
-
+    clientModel,
     account,
     reservation,
     upstreamEndpoint: endpoint,
     upstreamModel: selectedModel.id,
     costUnits,
-
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   }
-
   if (endpoint === RESPONSES_ENDPOINT) {
     return await handleWithResponsesApi({
       c,
@@ -237,64 +200,6 @@ export async function handleCompletion(c: Context) {
     instr,
   })
 }
-
-const handleSelectionFailure = (context: SelectionFailureContext): Response => {
-  const {
-    c,
-    store,
-    requestId,
-    startedAtMs,
-    method,
-    path,
-    streamRequested,
-    clientModel,
-    clientIp,
-    clientIpSource,
-    userAgent,
-    selection,
-  } = context
-  const finishedAtMs = Date.now()
-
-  store.insert({
-    requestId,
-    startedAtMs,
-    finishedAtMs,
-    durationMs: finishedAtMs - startedAtMs,
-    method,
-    path,
-    stream: streamRequested,
-    clientModel,
-    clientIp,
-    clientIpSource,
-    userAgent,
-    httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
-    selectionFailureReason: selection.reason,
-  })
-
-  if (selection.reason === "MODEL_NOT_SUPPORTED") {
-    return c.json(
-      {
-        error: {
-          message: `Model "${clientModel}" is not available for any configured account.`,
-          type: "invalid_request_error",
-        },
-      },
-      400,
-    )
-  }
-
-  return c.json(
-    {
-      error: {
-        message:
-          "All accounts have exhausted their quota. Please wait for quota refresh or add additional accounts.",
-        type: "rate_limit_error",
-      },
-    },
-    429,
-  )
-}
-
 const estimateInputTokens = async (
   payload: ChatCompletionsPayload,
   selectedModel: Model,
@@ -367,8 +272,10 @@ const handleWithResponsesApi = async (params: {
   instr: InstrumentationContext
 }): Promise<Response> => {
   const { c, anthropicPayload, openAIPayload, selectedModel, instr } = params
-  const responsesPayload =
-    translateAnthropicMessagesToResponsesPayload(anthropicPayload)
+  const responsesPayload = translateAnthropicMessagesToResponsesPayload(
+    anthropicPayload,
+    selectedModel.id,
+  )
   logger.debug(
     "Translated Responses payload:",
     JSON.stringify(responsesPayload),

@@ -2,6 +2,10 @@ import { Hono, type Context } from "hono"
 import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
+import {
+  getAliasTargetSet,
+  isOriginalModelNameAllowedForAliases,
+} from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import {
   computeDiff,
@@ -67,10 +71,23 @@ embeddingRoutes.post("/", async (c) => {
     }
 
     const payload = await c.req.json<EmbeddingRequest>()
+    const clientModel = payload.model
+
+    if (!isOriginalModelNameAllowedForAliases()) {
+      const aliasTargets = getAliasTargetSet()
+      if (aliasTargets.has(clientModel.toLowerCase())) {
+        recordSelectionFailure(store, {
+          ctx,
+          clientModel,
+          reason: "MODEL_NOT_SUPPORTED",
+        })
+        return selectionFailureResponse(c, clientModel, "MODEL_NOT_SUPPORTED")
+      }
+    }
 
     const selection = await accountsManager.selectAccountForRequest([
       {
-        modelId: payload.model,
+        modelId: clientModel,
         endpoint: EMBEDDINGS_ENDPOINT,
       },
     ])
@@ -78,17 +95,20 @@ embeddingRoutes.post("/", async (c) => {
     if (!selection.ok) {
       recordSelectionFailure(store, {
         ctx,
-        clientModel: payload.model,
+        clientModel,
         reason: selection.reason,
       })
-      return selectionFailureResponse(c, payload.model, selection.reason)
+      return selectionFailureResponse(c, clientModel, selection.reason)
     }
+
+    const upstreamPayload = { ...payload, model: selection.selectedModel.id }
 
     return await runEmbeddingsWithAccount({
       c,
       store,
       ctx,
-      payload,
+      payload: upstreamPayload,
+      clientModel,
       selection,
     })
   } catch (error) {
@@ -160,12 +180,14 @@ async function runEmbeddingsWithAccount({
   store,
   ctx,
   payload,
+  clientModel,
   selection,
 }: {
   c: Context
   store: ReturnType<typeof getRequestHistoryStore>
   ctx: RequestContext
   payload: EmbeddingRequest
+  clientModel: string
   selection: AccountSelectionOk
 }) {
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
@@ -225,7 +247,7 @@ async function runEmbeddingsWithAccount({
       accountId: account.id,
       accountType: account.accountType,
       costUnits,
-      clientModel: payload.model,
+      clientModel,
       upstreamModel: selectedModel.id,
       clientIp: ctx.clientIp,
       clientIpSource: ctx.clientIpSource,

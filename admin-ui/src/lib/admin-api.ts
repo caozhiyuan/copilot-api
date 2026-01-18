@@ -81,6 +81,8 @@ export type AdminConfig = {
   freeModelLoadBalancing?: boolean
   apiKey?: string
   modelReasoningEfforts?: Record<string, ReasoningEffort>
+  modelAliases?: Record<string, string>
+  allowOriginalModelNamesForAliases?: boolean
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean
 }
