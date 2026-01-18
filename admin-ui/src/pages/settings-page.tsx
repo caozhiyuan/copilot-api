@@ -1106,9 +1106,6 @@ function ModelAliasesCard({
                         Remove
                       </Button>
                     </div>
-                    <div className="text-muted-foreground text-xs">
-                      Requests can use either the alias or the original model name.
-                    </div>
                   </div>
                 )
               })
@@ -1498,7 +1495,6 @@ function useSettingsPageState(): SettingsPageViewProps {
     onAliasAddItem,
     onAliasRemoveItem,
     onAliasUpdateItem,
-    allowOriginalModelNamesForAliases,
     useFunctionApplyPatch,
     forceAgent,
     onAllowOriginalModelNamesForAliasesToggle:
