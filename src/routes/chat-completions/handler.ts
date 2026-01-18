@@ -21,6 +21,7 @@ import {
 import { state } from "~/lib/state"
 import { getTokenCount } from "~/lib/tokenizer"
 import { isNullish } from "~/lib/utils"
+import { parseUserId } from "~/routes/messages/responses-translation"
 import {
   createChatCompletions,
   getChatInitiator,
@@ -28,8 +29,6 @@ import {
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
-
-import { parseUserId } from "../messages/responses-translation"
 
 const logger = createHandlerLogger("chat-completions-handler")
 
@@ -47,10 +46,12 @@ export async function handleCompletion(c: Context) {
   const initiator = getChatInitiator(payload.messages)
   const userId = payload.user ?? undefined
   const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
+  const normalizedPromptCacheKey = promptCacheKey ?? undefined
 
   request.userId = userId
-  request.safetyIdentifier = safetyIdentifier
-  request.promptCacheKey = promptCacheKey
+  request.safetyIdentifier = normalizedSafetyIdentifier
+  request.promptCacheKey = normalizedPromptCacheKey
   request.initiator = initiator
 
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))

@@ -21,6 +21,7 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
+import { parseUserId } from "~/routes/messages/responses-translation"
 import {
   createResponses,
   type ResponsesPayload,
@@ -28,7 +29,6 @@ import {
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
 
-import { parseUserId } from "../messages/responses-translation"
 import { getResponsesRequestOptions } from "./utils"
 
 const logger = createHandlerLogger("responses-handler")
@@ -51,10 +51,12 @@ export const handleResponses = async (c: Context) => {
   const userId = (payload.metadata as { user_id?: string } | null | undefined)
     ?.user_id
   const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
+  const normalizedPromptCacheKey = promptCacheKey ?? undefined
 
   request.userId = userId
-  request.safetyIdentifier = safetyIdentifier
-  request.promptCacheKey = promptCacheKey
+  request.safetyIdentifier = normalizedSafetyIdentifier
+  request.promptCacheKey = normalizedPromptCacheKey
   request.initiator = initiator
 
   const selection = await accountsManager.selectAccountForRequest([
@@ -635,7 +637,7 @@ async function handleNonStreamingResponses(params: {
   try {
     const response = await createResponses(
       payload,
-      { vision, initiator },
+      { vision, initiator, upstreamRequestId: request.upstreamRequestId },
       accountCtx,
     )
     finishedAtMs = Date.now()

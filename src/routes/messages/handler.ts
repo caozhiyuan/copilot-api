@@ -174,6 +174,8 @@ export async function handleCompletion(c: Context) {
   const openAIPayload = translateToOpenAI(anthropicPayload)
   const userId = anthropicPayload.metadata?.user_id
   const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
+  const normalizedPromptCacheKey = promptCacheKey ?? undefined
   const fallbackInitiator = getChatInitiator(openAIPayload.messages)
 
   const selection = await accountsManager.selectAccountForRequest([
@@ -201,8 +203,8 @@ export async function handleCompletion(c: Context) {
       clientIpSource,
       userAgent,
       userId,
-      safetyIdentifier,
-      promptCacheKey,
+      safetyIdentifier: normalizedSafetyIdentifier,
+      promptCacheKey: normalizedPromptCacheKey,
       initiator: fallbackInitiator,
       selection,
     })
@@ -229,8 +231,8 @@ export async function handleCompletion(c: Context) {
     clientIpSource,
     userAgent,
     userId,
-    safetyIdentifier,
-    promptCacheKey,
+    safetyIdentifier: normalizedSafetyIdentifier,
+    promptCacheKey: normalizedPromptCacheKey,
 
     clientModel: anthropicPayload.model,
 
