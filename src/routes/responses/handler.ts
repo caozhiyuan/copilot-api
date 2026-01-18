@@ -638,12 +638,13 @@ async function handleNonStreamingResponses(params: {
     if (streamResponse) {
       return streamResponse
     }
-    usage = extractResponsesUsageFromResult(response)
+    const result = response as ResponsesResult
+    usage = extractResponsesUsageFromResult(result)
     logger.debug(
       "Forwarding native Responses result:",
-      JSON.stringify(response).slice(-400),
+      JSON.stringify(result).slice(-400),
     )
-    return c.json(response)
+    return c.json(result)
   } catch (error) {
     finishedAtMs = Date.now()
     const details = extractErrorDetails(error)

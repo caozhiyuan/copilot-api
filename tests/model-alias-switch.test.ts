@@ -12,7 +12,7 @@ import { getRequestHistoryStore } from "~/lib/request-history"
 import { maybeBlockOriginalModelName } from "~/routes/messages/utils"
 import { modelRoutes } from "~/routes/models/route"
 
-type ModelsResponse = { data: Array<Model> }
+type ModelsResponse = { data: Array<Model>; object: string }
 
 type TestConfig = {
   modelAliases: Record<string, string>
@@ -78,6 +78,7 @@ test("alias-only blocks original model names and hides them from /models", async
       accountsManager.getFirstAccountModels = () =>
         ({
           data: [buildModel("gpt-5-mini"), buildModel("gpt-4")],
+          object: "list",
         }) as ModelsResponse
 
       try {
