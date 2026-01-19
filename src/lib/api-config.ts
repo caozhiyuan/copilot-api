@@ -21,7 +21,9 @@ export const copilotBaseUrl = (account: AccountContext) =>
 export const copilotHeaders = (
   account: AccountContext,
   vision: boolean = false,
+  requestId?: string,
 ) => {
+  const resolvedRequestId = requestId ?? randomUUID()
   const headers: Record<string, string> = {
     Authorization: `Bearer ${account.copilotToken}`,
     "content-type": standardHeaders()["content-type"],
@@ -31,7 +33,7 @@ export const copilotHeaders = (
     "user-agent": USER_AGENT,
     "openai-intent": "conversation-agent",
     "x-github-api-version": API_VERSION,
-    "x-request-id": randomUUID(),
+    "x-request-id": resolvedRequestId,
     "x-vscode-user-agent-library-version": "electron-fetch",
   }
 

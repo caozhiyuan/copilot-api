@@ -25,19 +25,20 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
-import { getTokenCount } from "~/lib/tokenizer"
 import {
   buildErrorEvent,
   createResponsesStreamState,
   translateResponsesStreamEvent,
 } from "~/routes/messages/responses-stream-translation"
 import {
+  parseUserId,
   translateAnthropicMessagesToResponsesPayload,
   translateResponsesResultToAnthropic,
 } from "~/routes/messages/responses-translation"
 import { getResponsesRequestOptions } from "~/routes/responses/utils"
 import {
   createChatCompletions,
+  getChatInitiator,
   type ChatCompletionChunk,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
@@ -58,6 +59,7 @@ import {
 } from "./non-stream-translation"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
 import {
+  estimateInputTokens,
   handleSelectionFailure,
   isWarmupProbeRequest,
   maybeBlockOriginalModelName,
@@ -73,6 +75,7 @@ type AccountSelection = Awaited<
   ReturnType<(typeof accountsManager)["selectAccountForRequest"]>
 >
 type AccountSelectionOk = Extract<AccountSelection, { ok: true }>
+
 type InstrumentationContext = {
   store: ReturnType<typeof getRequestHistoryStore>
   requestId: string
@@ -84,6 +87,12 @@ type InstrumentationContext = {
   clientIp?: string
   clientIpSource?: string
   userAgent?: string
+
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
+  upstreamRequestId?: string
 
   clientModel: string
 
@@ -97,6 +106,7 @@ type InstrumentationContext = {
   premiumUnlimitedBefore?: boolean
 }
 
+// eslint-disable-next-line max-lines-per-function
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
   const store = getRequestHistoryStore()
@@ -115,6 +125,11 @@ export async function handleCompletion(c: Context) {
   }
   const clientModel = anthropicPayload.model
   const streamRequested = Boolean(anthropicPayload.stream)
+  const rawUserId = anthropicPayload.metadata?.user_id
+  const userId = typeof rawUserId === "string" ? rawUserId : undefined
+  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
+  const normalizedPromptCacheKey = promptCacheKey ?? undefined
   const blockedResponse = maybeBlockOriginalModelName({
     c,
     store,
@@ -127,11 +142,16 @@ export async function handleCompletion(c: Context) {
     clientIp,
     clientIpSource,
     userAgent,
+    userId,
+    safetyIdentifier: normalizedSafetyIdentifier,
+    promptCacheKey: normalizedPromptCacheKey,
   })
   if (blockedResponse) return blockedResponse
   // Merge tool_result blocks to avoid premium usage from skill hooks.
   mergeToolResultForClaude(anthropicBeta, anthropicPayload)
   const openAIPayload = translateToOpenAI(anthropicPayload)
+  const fallbackInitiator = getChatInitiator(openAIPayload.messages)
+
   const selection = await accountsManager.selectAccountForRequest([
     {
       modelId: clientModel,
@@ -155,6 +175,10 @@ export async function handleCompletion(c: Context) {
       clientIp,
       clientIpSource,
       userAgent,
+      userId,
+      safetyIdentifier: normalizedSafetyIdentifier,
+      promptCacheKey: normalizedPromptCacheKey,
+      initiator: fallbackInitiator,
       selection,
     })
   }
@@ -174,6 +198,9 @@ export async function handleCompletion(c: Context) {
     clientIp,
     clientIpSource,
     userAgent,
+    userId,
+    safetyIdentifier: normalizedSafetyIdentifier,
+    promptCacheKey: normalizedPromptCacheKey,
     clientModel,
     account,
     reservation,
@@ -200,18 +227,6 @@ export async function handleCompletion(c: Context) {
     instr,
   })
 }
-const estimateInputTokens = async (
-  payload: ChatCompletionsPayload,
-  selectedModel: Model,
-): Promise<number | undefined> => {
-  try {
-    const tokenCount = await getTokenCount(payload, selectedModel)
-    return tokenCount.input
-  } catch (error) {
-    logger.warn("Failed to estimate input tokens for message_start", error)
-    return undefined
-  }
-}
 
 const handleWithChatCompletions = async (params: {
   c: Context
@@ -226,11 +241,18 @@ const handleWithChatCompletions = async (params: {
   )
 
   const ctx = toAccountContext(instr.account)
+  const initiator = getChatInitiator(openAIPayload.messages)
+  const upstreamRequestId = randomUUID()
+
+  instr.initiator = initiator
+  instr.upstreamRequestId = upstreamRequestId
 
   let response: ChatCompletionsResult
 
   try {
-    response = await createChatCompletions(openAIPayload, ctx)
+    response = await createChatCompletions(openAIPayload, ctx, {
+      upstreamRequestId,
+    })
   } catch (error) {
     return await handleChatCompletionsCreateError({
       error,
@@ -252,7 +274,17 @@ const handleWithChatCompletions = async (params: {
   const estimatedInputTokens = await estimateInputTokens(
     openAIPayload,
     selectedModel,
+    logger,
   )
+
+  const historicalUsage =
+    instr.promptCacheKey && instr.safetyIdentifier ?
+      instr.store.getLastCompletedUsageBySession({
+        promptCacheKey: instr.promptCacheKey,
+        safetyIdentifier: instr.safetyIdentifier,
+        clientModel: instr.clientModel,
+      })
+    : null
 
   return streamSSE(c, (stream) =>
     streamChatCompletionsAndLog({
@@ -260,6 +292,7 @@ const handleWithChatCompletions = async (params: {
       response,
       instr,
       estimatedInputTokens,
+      historicalUsage: historicalUsage ?? undefined,
     }),
   )
 }
@@ -283,6 +316,10 @@ const handleWithResponsesApi = async (params: {
 
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
   const ctx = toAccountContext(instr.account)
+  const upstreamRequestId = randomUUID()
+
+  instr.initiator = initiator
+  instr.upstreamRequestId = upstreamRequestId
 
   let response: Awaited<ReturnType<typeof createResponses>>
 
@@ -292,6 +329,7 @@ const handleWithResponsesApi = async (params: {
       {
         vision,
         initiator,
+        upstreamRequestId,
       },
       ctx,
     )
@@ -309,7 +347,17 @@ const handleWithResponsesApi = async (params: {
     const estimatedInputTokens = await estimateInputTokens(
       openAIPayload,
       selectedModel,
+      logger,
     )
+
+    const historicalUsage =
+      instr.promptCacheKey && instr.safetyIdentifier ?
+        instr.store.getLastCompletedUsageBySession({
+          promptCacheKey: instr.promptCacheKey,
+          safetyIdentifier: instr.safetyIdentifier,
+          clientModel: instr.clientModel,
+        })
+      : null
 
     return streamSSE(c, (stream) =>
       streamResponsesAndLog({
@@ -317,6 +365,7 @@ const handleWithResponsesApi = async (params: {
         response,
         instr,
         estimatedInputTokens,
+        historicalUsage: historicalUsage ?? undefined,
       }),
     )
   }
@@ -388,6 +437,11 @@ function insertRequestLog(
     clientIp,
     clientIpSource,
     userAgent,
+    userId: instr.userId,
+    safetyIdentifier: instr.safetyIdentifier,
+    promptCacheKey: instr.promptCacheKey,
+    initiator: instr.initiator,
+    upstreamRequestId: instr.upstreamRequestId,
     clientModel,
     upstreamEndpoint,
     accountId: account.id,
@@ -526,8 +580,10 @@ async function streamChatCompletionsAndLog(params: {
   response: ChatCompletionsStream
   instr: InstrumentationContext
   estimatedInputTokens?: number
+  historicalUsage?: NormalizedUsage
 }): Promise<void> {
-  const { stream, response, instr, estimatedInputTokens } = params
+  const { stream, response, instr, estimatedInputTokens, historicalUsage } =
+    params
 
   let ttfbMs: number | undefined
   let lastUsage: NormalizedUsage = {}
@@ -543,6 +599,9 @@ async function streamChatCompletionsAndLog(params: {
     toolCalls: {},
     thinkingBlockOpen: false,
     estimatedInputTokens,
+    historicalInputTokens: historicalUsage?.tokensInput,
+    historicalOutputTokens: historicalUsage?.tokensOutput,
+    historicalCachedInputTokens: historicalUsage?.tokensCachedInput,
   }
 
   try {
@@ -749,8 +808,10 @@ async function streamResponsesAndLog(params: {
   response: AsyncIterable<unknown>
   instr: InstrumentationContext
   estimatedInputTokens?: number
+  historicalUsage?: NormalizedUsage
 }): Promise<void> {
-  const { stream, response, instr, estimatedInputTokens } = params
+  const { stream, response, instr, estimatedInputTokens, historicalUsage } =
+    params
 
   let ttfbMs: number | undefined
   let lastUsage: NormalizedUsage = {}
@@ -761,6 +822,9 @@ async function streamResponsesAndLog(params: {
 
   const streamState = createResponsesStreamState()
   streamState.estimatedInputTokens = estimatedInputTokens
+  streamState.historicalInputTokens = historicalUsage?.tokensInput
+  streamState.historicalOutputTokens = historicalUsage?.tokensOutput
+  streamState.historicalCachedInputTokens = historicalUsage?.tokensCachedInput
 
   try {
     for await (const chunk of response) {

@@ -59,6 +59,13 @@ export type AdminRequestItem = {
   client_ip?: string
   user_agent?: string
 
+  // Session correlation
+  user_id?: string
+  safety_identifier?: string
+  prompt_cache_key?: string
+  initiator?: string
+  upstream_request_id?: string
+
   // Optional error info (depends on store)
   error?: unknown
 }

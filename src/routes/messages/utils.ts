@@ -1,7 +1,12 @@
+import type { ConsolaInstance } from "consola"
 import type { Context } from "hono"
+
+import type { ChatCompletionsPayload } from "~/services/copilot/create-chat-completions"
+import type { Model } from "~/services/copilot/get-models"
 
 import { getAliasTargetSet } from "~/lib/config"
 import { getRequestHistoryStore } from "~/lib/request-history"
+import { getTokenCount } from "~/lib/tokenizer"
 
 import type {
   AnthropicMessagesPayload,
@@ -103,6 +108,20 @@ export const mergeToolResultForClaude = (
   }
 }
 
+export const estimateInputTokens = async (
+  payload: ChatCompletionsPayload,
+  selectedModel: Model,
+  logger: Pick<ConsolaInstance, "warn">,
+): Promise<number | undefined> => {
+  try {
+    const tokenCount = await getTokenCount(payload, selectedModel)
+    return tokenCount.input
+  } catch (error) {
+    logger.warn("Failed to estimate input tokens for message_start", error)
+    return undefined
+  }
+}
+
 type SelectionFailureReason = "MODEL_NOT_SUPPORTED" | "NO_QUOTA" | "NO_ACCOUNTS"
 
 type SelectionFailure = {
@@ -122,6 +141,10 @@ type SelectionFailureContext = {
   clientIp?: string
   clientIpSource?: string
   userAgent?: string
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
   selection: SelectionFailure
 }
 
@@ -157,6 +180,10 @@ export const handleSelectionFailure = (
     clientIp,
     clientIpSource,
     userAgent,
+    userId,
+    safetyIdentifier,
+    promptCacheKey,
+    initiator,
     selection,
   } = context
   const finishedAtMs = Date.now()
@@ -173,6 +200,10 @@ export const handleSelectionFailure = (
     clientIp,
     clientIpSource,
     userAgent,
+    userId,
+    safetyIdentifier,
+    promptCacheKey,
+    initiator,
     httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
     selectionFailureReason: selection.reason,
   })

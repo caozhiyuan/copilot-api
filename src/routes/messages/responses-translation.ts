@@ -595,7 +595,7 @@ const isResponseOutputRefusal = (
   && "type" in block
   && (block as { type?: unknown }).type === "refusal"
 
-const parseUserId = (
+export const parseUserId = (
   userId: string | undefined,
 ): { safetyIdentifier: string | null; promptCacheKey: string | null } => {
   if (!userId || typeof userId !== "string") {

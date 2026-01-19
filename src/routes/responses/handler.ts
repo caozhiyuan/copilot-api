@@ -21,6 +21,7 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
+import { parseUserId } from "~/routes/messages/responses-translation"
 import {
   createResponses,
   type ResponsesPayload,
@@ -46,6 +47,18 @@ export const handleResponses = async (c: Context) => {
   logger.debug("Responses request payload:", JSON.stringify(payload))
 
   const streamRequested = Boolean(payload.stream)
+
+  const { initiator: initialInitiator } = getResponsesRequestOptions(payload)
+  const userId = (payload.metadata as { user_id?: string } | null | undefined)
+    ?.user_id
+  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
+  const normalizedPromptCacheKey = promptCacheKey ?? undefined
+
+  request.userId = userId
+  request.safetyIdentifier = normalizedSafetyIdentifier
+  request.promptCacheKey = normalizedPromptCacheKey
+  request.initiator = initialInitiator
 
   const blockedTargets = getAliasTargetSet()
   if (blockedTargets.has(clientModel.toLowerCase())) {
@@ -92,10 +105,12 @@ export const handleResponses = async (c: Context) => {
   const premiumUnlimitedBefore = account.unlimited
 
   const { vision, initiator } = getResponsesRequestOptions(upstreamPayload)
-
+  request.initiator = initiator
   if (state.manualApprove) await awaitApproval()
 
   const accountCtx = toAccountContext(account)
+  const upstreamRequestId = randomUUID()
+  request.upstreamRequestId = upstreamRequestId
 
   if (streamRequested) {
     return handleStreamingResponses({
@@ -146,6 +161,12 @@ type RequestContext = {
   clientIp?: string
   clientIpSource?: string
   userAgent?: string
+
+  userId?: string
+  safetyIdentifier?: string
+  promptCacheKey?: string
+  initiator?: "agent" | "user"
+  upstreamRequestId?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -197,6 +218,11 @@ function insertRequestLog(
     clientIp: request.clientIp,
     clientIpSource: request.clientIpSource,
     userAgent: request.userAgent,
+    userId: request.userId,
+    safetyIdentifier: request.safetyIdentifier,
+    promptCacheKey: request.promptCacheKey,
+    initiator: request.initiator,
+    upstreamRequestId: request.upstreamRequestId,
     ...record,
   })
 }
@@ -319,7 +345,15 @@ async function handleStreamingResponses(params: {
   let response: Awaited<ReturnType<typeof createResponses>>
 
   try {
-    response = await createResponses(payload, { vision, initiator }, accountCtx)
+    response = await createResponses(
+      payload,
+      {
+        vision,
+        initiator,
+        upstreamRequestId: request.upstreamRequestId,
+      },
+      accountCtx,
+    )
   } catch (error) {
     return handleUpstreamCreateError({
       store,
@@ -631,7 +665,7 @@ async function handleNonStreamingResponses(params: {
   try {
     const response = await createResponses(
       payload,
-      { vision, initiator },
+      { vision, initiator, upstreamRequestId: request.upstreamRequestId },
       accountCtx,
     )
     finishedAtMs = Date.now()
