@@ -125,7 +125,8 @@ export async function handleCompletion(c: Context) {
   }
   const clientModel = anthropicPayload.model
   const streamRequested = Boolean(anthropicPayload.stream)
-  const userId = anthropicPayload.metadata?.user_id
+  const rawUserId = anthropicPayload.metadata?.user_id
+  const userId = typeof rawUserId === "string" ? rawUserId : undefined
   const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
   const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
   const normalizedPromptCacheKey = promptCacheKey ?? undefined
