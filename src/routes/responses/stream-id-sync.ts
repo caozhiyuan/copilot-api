@@ -13,33 +13,18 @@
  * via @ai-sdk/openai provider requires the Responses API endpoint.
  */
 
+import type {
+  ResponseOutputItemAddedEvent,
+  ResponseOutputItemDoneEvent,
+  ResponseStreamEvent,
+} from "~/services/copilot/create-responses"
+
 interface StreamIdTracker {
   outputItems: Map<number, string>
-  contentParts: Map<string, string>
-  messageItems: Map<number, string>
-}
-
-interface StreamEventData {
-  item?: {
-    id?: string
-    type?: string
-    summary?: Array<unknown>
-  }
-  output_index?: number
-  content_index?: number
-  item_id?: string
-  response?: {
-    output?: Array<{
-      type?: string
-      summary?: Array<unknown>
-    }>
-  }
 }
 
 export const createStreamIdTracker = (): StreamIdTracker => ({
   outputItems: new Map(),
-  contentParts: new Map(),
-  messageItems: new Map(),
 })
 
 export const fixStreamIds = (
@@ -48,146 +33,64 @@ export const fixStreamIds = (
   tracker: StreamIdTracker,
 ): string => {
   if (!data) return data
-
-  try {
-    const parsed = JSON.parse(data) as StreamEventData
-
-    switch (event) {
-      case "response.output_item.added": {
-        return handleOutputItemAdded(parsed, tracker)
-      }
-      case "response.output_item.done": {
-        return handleOutputItemDone(parsed, tracker)
-      }
-      case "response.content_part.added": {
-        return handleContentPartAdded(parsed, tracker)
-      }
-      case "response.content_part.done": {
-        return handleContentPartDone(parsed, tracker)
-      }
-      case "response.output_text.delta":
-      case "response.output_text.done": {
-        return handleOutputText(parsed, tracker)
-      }
-      case "response.completed":
-      case "response.incomplete": {
-        return handleResponseCompleted(parsed)
-      }
-      default: {
-        return data
-      }
+  const parsed = JSON.parse(data) as ResponseStreamEvent
+  switch (event) {
+    case "response.output_item.added": {
+      return handleOutputItemAdded(
+        parsed as ResponseOutputItemAddedEvent,
+        tracker,
+      )
     }
-  } catch {
-    return data
+    case "response.output_item.done": {
+      return handleOutputItemDone(
+        parsed as ResponseOutputItemDoneEvent,
+        tracker,
+      )
+    }
+    default: {
+      return handleItemId(parsed, tracker)
+    }
   }
 }
 
 const handleOutputItemAdded = (
-  parsed: StreamEventData,
+  parsed: ResponseOutputItemAddedEvent,
   tracker: StreamIdTracker,
 ): string => {
-  if (!parsed.item?.id) return JSON.stringify(parsed)
+  if (!parsed.item.id) {
+    let randomSuffix = ""
+    while (randomSuffix.length < 16) {
+      randomSuffix += Math.random().toString(36).slice(2)
+    }
+    parsed.item.id = `oi_${parsed.output_index}_${randomSuffix.slice(0, 16)}`
+  }
 
-  const outputIndex = parsed.output_index ?? 0
+  const outputIndex = parsed.output_index
   tracker.outputItems.set(outputIndex, parsed.item.id)
-
-  if (parsed.item.type === "message") {
-    tracker.messageItems.set(outputIndex, parsed.item.id)
-  }
-  if (
-    parsed.item.type === "reasoning"
-    && Array.isArray(parsed.item.summary)
-    && parsed.item.summary.length === 0
-  ) {
-    delete parsed.item.summary
-  }
   return JSON.stringify(parsed)
 }
 
 const handleOutputItemDone = (
-  parsed: StreamEventData,
+  parsed: ResponseOutputItemDoneEvent,
   tracker: StreamIdTracker,
 ): string => {
-  if (!parsed.item) return JSON.stringify(parsed)
-
-  const outputIndex = parsed.output_index ?? 0
+  const outputIndex = parsed.output_index
   const originalId = tracker.outputItems.get(outputIndex)
   if (originalId) {
     parsed.item.id = originalId
   }
-  if (
-    parsed.item.type === "reasoning"
-    && Array.isArray(parsed.item.summary)
-    && parsed.item.summary.length === 0
-  ) {
-    delete parsed.item.summary
-  }
   return JSON.stringify(parsed)
 }
 
-const handleContentPartAdded = (
-  parsed: StreamEventData,
+const handleItemId = (
+  parsed: ResponseStreamEvent & { output_index?: number; item_id?: string },
   tracker: StreamIdTracker,
 ): string => {
-  const outputIndex = parsed.output_index ?? 0
-  const contentIndex = parsed.content_index ?? 0
-  const key = `${outputIndex}:${contentIndex}`
-
-  if (parsed.item_id) {
-    tracker.contentParts.set(key, parsed.item_id)
-  }
-
-  const messageId = tracker.messageItems.get(outputIndex)
-  if (messageId) {
-    parsed.item_id = messageId
-  }
-  return JSON.stringify(parsed)
-}
-
-const handleContentPartDone = (
-  parsed: StreamEventData,
-  tracker: StreamIdTracker,
-): string => {
-  const outputIndex = parsed.output_index ?? 0
-  const contentIndex = parsed.content_index ?? 0
-  const key = `${outputIndex}:${contentIndex}`
-
-  const messageId = tracker.messageItems.get(outputIndex)
-  if (messageId) {
-    parsed.item_id = messageId
-  } else {
-    const originalItemId = tracker.contentParts.get(key)
-    if (originalItemId) {
-      parsed.item_id = originalItemId
-    }
-  }
-
-  tracker.contentParts.delete(key)
-  return JSON.stringify(parsed)
-}
-
-const handleOutputText = (
-  parsed: StreamEventData,
-  tracker: StreamIdTracker,
-): string => {
-  const outputIndex = parsed.output_index ?? 0
-  const messageId = tracker.messageItems.get(outputIndex)
-  if (messageId) {
-    parsed.item_id = messageId
-  }
-  return JSON.stringify(parsed)
-}
-
-const handleResponseCompleted = (parsed: StreamEventData): string => {
-  if (!parsed.response?.output) return JSON.stringify(parsed)
-
-  for (const item of parsed.response.output) {
-    if (
-      item.type === "reasoning"
-      && Array.isArray(item.summary)
-      && item.summary.length === 0
-    ) {
-      delete item.summary
+  const outputIndex = parsed.output_index
+  if (outputIndex !== undefined) {
+    const itemId = tracker.outputItems.get(outputIndex)
+    if (itemId) {
+      parsed.item_id = itemId
     }
   }
   return JSON.stringify(parsed)
