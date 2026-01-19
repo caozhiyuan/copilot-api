@@ -245,6 +245,7 @@ export type RequestLogQuery = {
 export type SessionUsageKey = {
   promptCacheKey: string
   safetyIdentifier: string
+  clientModel: string
 }
 
 export type RequestLogQueryResult = {
@@ -335,6 +336,7 @@ export class RequestHistoryStore {
       FROM request_log
       WHERE prompt_cache_key = ?
         AND safety_identifier = ?
+        AND client_model = ?
         AND finished_at_ms IS NOT NULL
         AND tokens_input IS NOT NULL
       ORDER BY finished_at_ms DESC
@@ -412,7 +414,11 @@ export class RequestHistoryStore {
   getLastCompletedUsageBySession(
     session: SessionUsageKey,
   ): NormalizedUsage | null {
-    if (!session.promptCacheKey || !session.safetyIdentifier) {
+    if (
+      !session.promptCacheKey
+      || !session.safetyIdentifier
+      || !session.clientModel
+    ) {
       return null
     }
 
@@ -420,6 +426,7 @@ export class RequestHistoryStore {
       const row = this.getLastCompletedUsageBySessionStmt.get(
         session.promptCacheKey,
         session.safetyIdentifier,
+        session.clientModel,
       ) as
         | {
             tokens_input: number | null

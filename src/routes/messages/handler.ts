@@ -25,7 +25,6 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
-import { getTokenCount } from "~/lib/tokenizer"
 import {
   buildErrorEvent,
   createResponsesStreamState,
@@ -60,6 +59,7 @@ import {
 } from "./non-stream-translation"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
 import {
+  estimateInputTokens,
   handleSelectionFailure,
   isWarmupProbeRequest,
   maybeBlockOriginalModelName,
@@ -227,18 +227,6 @@ export async function handleCompletion(c: Context) {
     instr,
   })
 }
-const estimateInputTokens = async (
-  payload: ChatCompletionsPayload,
-  selectedModel: Model,
-): Promise<number | undefined> => {
-  try {
-    const tokenCount = await getTokenCount(payload, selectedModel)
-    return tokenCount.input
-  } catch (error) {
-    logger.warn("Failed to estimate input tokens for message_start", error)
-    return undefined
-  }
-}
 
 const handleWithChatCompletions = async (params: {
   c: Context
@@ -286,6 +274,7 @@ const handleWithChatCompletions = async (params: {
   const estimatedInputTokens = await estimateInputTokens(
     openAIPayload,
     selectedModel,
+    logger,
   )
 
   const historicalUsage =
@@ -293,6 +282,7 @@ const handleWithChatCompletions = async (params: {
       instr.store.getLastCompletedUsageBySession({
         promptCacheKey: instr.promptCacheKey,
         safetyIdentifier: instr.safetyIdentifier,
+        clientModel: instr.clientModel,
       })
     : null
 
@@ -357,6 +347,7 @@ const handleWithResponsesApi = async (params: {
     const estimatedInputTokens = await estimateInputTokens(
       openAIPayload,
       selectedModel,
+      logger,
     )
 
     const historicalUsage =
@@ -364,6 +355,7 @@ const handleWithResponsesApi = async (params: {
         instr.store.getLastCompletedUsageBySession({
           promptCacheKey: instr.promptCacheKey,
           safetyIdentifier: instr.safetyIdentifier,
+          clientModel: instr.clientModel,
         })
       : null
 

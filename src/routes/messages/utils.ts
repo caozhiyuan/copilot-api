@@ -1,7 +1,12 @@
+import type { ConsolaInstance } from "consola"
 import type { Context } from "hono"
+
+import type { ChatCompletionsPayload } from "~/services/copilot/create-chat-completions"
+import type { Model } from "~/services/copilot/get-models"
 
 import { getAliasTargetSet } from "~/lib/config"
 import { getRequestHistoryStore } from "~/lib/request-history"
+import { getTokenCount } from "~/lib/tokenizer"
 
 import type {
   AnthropicMessagesPayload,
@@ -100,6 +105,20 @@ export const mergeToolResultForClaude = (
     if (!valid || toolResults.length === 0 || textBlocks.length === 0) continue
 
     msg.content = mergeToolResult(toolResults, textBlocks)
+  }
+}
+
+export const estimateInputTokens = async (
+  payload: ChatCompletionsPayload,
+  selectedModel: Model,
+  logger: Pick<ConsolaInstance, "warn">,
+): Promise<number | undefined> => {
+  try {
+    const tokenCount = await getTokenCount(payload, selectedModel)
+    return tokenCount.input
+  } catch (error) {
+    logger.warn("Failed to estimate input tokens for message_start", error)
+    return undefined
   }
 }
 

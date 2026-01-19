@@ -87,7 +87,7 @@ function migrateAdminDb(db: Database): void {
   } | null
   const current = row?.user_version ?? 0
 
-  if (current >= 3) {
+  if (current >= 4) {
     return
   }
 
@@ -178,6 +178,23 @@ function migrateAdminDb(db: Database): void {
           AND tokens_input IS NOT NULL;
 
       PRAGMA user_version = 3;
+    `)
+  }
+
+  if (current < 4) {
+    // v4: index for session lookup by client model
+    db.run(`
+      CREATE INDEX IF NOT EXISTS idx_request_log_session_finished_by_client_model
+        ON request_log(
+          prompt_cache_key,
+          safety_identifier,
+          client_model,
+          finished_at_ms DESC
+        )
+        WHERE finished_at_ms IS NOT NULL
+          AND tokens_input IS NOT NULL;
+
+      PRAGMA user_version = 4;
     `)
   }
 }
