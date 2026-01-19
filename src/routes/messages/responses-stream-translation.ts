@@ -63,6 +63,8 @@ export interface ResponsesStreamState {
   blockHasDelta: Set<number>
   functionCallStateByOutputIndex: Map<number, FunctionCallStreamState>
   estimatedInputTokens?: number
+  historicalInputTokens?: number
+  historicalCachedInputTokens?: number
 }
 
 type FunctionCallStreamState = {
@@ -487,7 +489,9 @@ const messageStart = (
   const inputTokens =
     upstreamInputTokens !== undefined ?
       upstreamInputTokens - (inputCachedTokens ?? 0)
-    : (state.estimatedInputTokens ?? 0)
+    : (state.historicalInputTokens ?? state.estimatedInputTokens ?? 0)
+  const cacheReadTokens =
+    inputCachedTokens ?? state.historicalCachedInputTokens ?? 0
   return [
     {
       type: "message_start",
@@ -502,7 +506,7 @@ const messageStart = (
         usage: {
           input_tokens: inputTokens,
           output_tokens: 0,
-          cache_read_input_tokens: inputCachedTokens ?? 0,
+          cache_read_input_tokens: cacheReadTokens,
         },
       },
     },

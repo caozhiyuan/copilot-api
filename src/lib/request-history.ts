@@ -242,6 +242,11 @@ export type RequestLogQuery = {
   toMs?: number
 }
 
+export type SessionUsageKey = {
+  promptCacheKey: string
+  safetyIdentifier: string
+}
+
 export type RequestLogQueryResult = {
   items: Array<RequestLogRow>
   nextCursorId?: number
@@ -262,6 +267,9 @@ export class RequestHistoryStore {
   private readonly insertStmt: ReturnType<Database["query"]>
 
   private readonly getByRequestIdStmt: ReturnType<Database["query"]>
+  private readonly getLastCompletedUsageBySessionStmt: ReturnType<
+    Database["query"]
+  >
 
   constructor(db: Database) {
     this.db = db
@@ -317,6 +325,21 @@ export class RequestHistoryStore {
     this.getByRequestIdStmt = db.query(
       "SELECT * FROM request_log WHERE request_id = ? LIMIT 1;",
     )
+
+    this.getLastCompletedUsageBySessionStmt = db.query(`
+      SELECT
+        tokens_input,
+        tokens_output,
+        tokens_total,
+        tokens_cached_input
+      FROM request_log
+      WHERE prompt_cache_key = ?
+        AND safety_identifier = ?
+        AND finished_at_ms IS NOT NULL
+        AND tokens_input IS NOT NULL
+      ORDER BY finished_at_ms DESC
+      LIMIT 1;
+    `)
   }
 
   insert(record: RequestLogInsert): void {
@@ -382,6 +405,50 @@ export class RequestHistoryStore {
       return row ?? null
     } catch (error) {
       consola.debug("Failed to fetch request log by request_id", error)
+      return null
+    }
+  }
+
+  getLastCompletedUsageBySession(
+    session: SessionUsageKey,
+  ): NormalizedUsage | null {
+    if (!session.promptCacheKey || !session.safetyIdentifier) {
+      return null
+    }
+
+    try {
+      const row = this.getLastCompletedUsageBySessionStmt.get(
+        session.promptCacheKey,
+        session.safetyIdentifier,
+      ) as
+        | {
+            tokens_input: number | null
+            tokens_output: number | null
+            tokens_total: number | null
+            tokens_cached_input: number | null
+          }
+        | null
+        | undefined
+
+      if (!row || row.tokens_input === null) {
+        return null
+      }
+
+      const tokensOutput =
+        row.tokens_output === null ? undefined : row.tokens_output
+      const tokensTotal =
+        row.tokens_total === null ? undefined : row.tokens_total
+      const tokensCachedInput =
+        row.tokens_cached_input === null ? undefined : row.tokens_cached_input
+
+      return {
+        tokensInput: row.tokens_input,
+        tokensOutput,
+        tokensTotal,
+        tokensCachedInput,
+      }
+    } catch (error) {
+      consola.debug("Failed to fetch last completed usage by session", error)
       return null
     }
   }
@@ -551,6 +618,9 @@ export class RequestHistoryStore {
 export type RequestHistoryStoreApi = {
   insert(record: RequestLogInsert): void
   getByRequestId(requestId: string): RequestLogRow | null
+  getLastCompletedUsageBySession(
+    session: SessionUsageKey,
+  ): NormalizedUsage | null
   query(params: RequestLogQuery): RequestLogQueryResult
   getAccountStatsSince(
     sinceMs: number,
@@ -591,6 +661,7 @@ function warnStoreInitFailure(error: unknown): void {
 const disabledStore: RequestHistoryStoreApi = {
   insert: () => {},
   getByRequestId: () => null,
+  getLastCompletedUsageBySession: () => null,
   query: () => ({ items: [], hasMore: false }),
   getAccountStatsSince: () => ({}),
   cleanupRetention: () => {},

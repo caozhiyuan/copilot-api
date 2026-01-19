@@ -263,6 +263,42 @@ describe("OpenAI to Anthropic Streaming Response Translation", () => {
     }
   })
 
+  test("should use historical usage when upstream usage is missing", () => {
+    const chunk: ChatCompletionChunk = {
+      id: "cmpl-historical",
+      object: "chat.completion.chunk",
+      created: 1677652288,
+      model: "gpt-4o-2024-05-13",
+      choices: [
+        {
+          index: 0,
+          delta: { role: "assistant" },
+          finish_reason: null,
+          logprobs: null,
+        },
+      ],
+    }
+
+    const streamState: AnthropicStreamState = {
+      messageStartSent: false,
+      contentBlockIndex: 0,
+      contentBlockOpen: false,
+      toolCalls: {},
+      thinkingBlockOpen: false,
+      historicalInputTokens: 42,
+      historicalCachedInputTokens: 7,
+    }
+
+    const events = translateChunkToAnthropicEvents(chunk, streamState)
+    const messageStart = events.find((event) => event.type === "message_start")
+
+    expect(messageStart).toBeDefined()
+    if (messageStart?.type === "message_start") {
+      expect(messageStart.message.usage.input_tokens).toBe(42)
+      expect(messageStart.message.usage.cache_read_input_tokens).toBe(7)
+    }
+  })
+
   test("should translate a stream with tool calls", () => {
     const openAIStream: Array<ChatCompletionChunk> = [
       {

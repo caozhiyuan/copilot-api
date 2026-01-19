@@ -287,12 +287,21 @@ const handleWithChatCompletions = async (params: {
     selectedModel,
   )
 
+  const historicalUsage =
+    instr.promptCacheKey && instr.safetyIdentifier ?
+      instr.store.getLastCompletedUsageBySession({
+        promptCacheKey: instr.promptCacheKey,
+        safetyIdentifier: instr.safetyIdentifier,
+      })
+    : null
+
   return streamSSE(c, (stream) =>
     streamChatCompletionsAndLog({
       stream,
       response,
       instr,
       estimatedInputTokens,
+      historicalUsage: historicalUsage ?? undefined,
     }),
   )
 }
@@ -349,12 +358,21 @@ const handleWithResponsesApi = async (params: {
       selectedModel,
     )
 
+    const historicalUsage =
+      instr.promptCacheKey && instr.safetyIdentifier ?
+        instr.store.getLastCompletedUsageBySession({
+          promptCacheKey: instr.promptCacheKey,
+          safetyIdentifier: instr.safetyIdentifier,
+        })
+      : null
+
     return streamSSE(c, (stream) =>
       streamResponsesAndLog({
         stream,
         response,
         instr,
         estimatedInputTokens,
+        historicalUsage: historicalUsage ?? undefined,
       }),
     )
   }
@@ -569,8 +587,10 @@ async function streamChatCompletionsAndLog(params: {
   response: ChatCompletionsStream
   instr: InstrumentationContext
   estimatedInputTokens?: number
+  historicalUsage?: NormalizedUsage
 }): Promise<void> {
-  const { stream, response, instr, estimatedInputTokens } = params
+  const { stream, response, instr, estimatedInputTokens, historicalUsage } =
+    params
 
   let ttfbMs: number | undefined
   let lastUsage: NormalizedUsage = {}
@@ -586,6 +606,8 @@ async function streamChatCompletionsAndLog(params: {
     toolCalls: {},
     thinkingBlockOpen: false,
     estimatedInputTokens,
+    historicalInputTokens: historicalUsage?.tokensInput,
+    historicalCachedInputTokens: historicalUsage?.tokensCachedInput,
   }
 
   try {
@@ -792,8 +814,10 @@ async function streamResponsesAndLog(params: {
   response: AsyncIterable<unknown>
   instr: InstrumentationContext
   estimatedInputTokens?: number
+  historicalUsage?: NormalizedUsage
 }): Promise<void> {
-  const { stream, response, instr, estimatedInputTokens } = params
+  const { stream, response, instr, estimatedInputTokens, historicalUsage } =
+    params
 
   let ttfbMs: number | undefined
   let lastUsage: NormalizedUsage = {}
@@ -804,6 +828,8 @@ async function streamResponsesAndLog(params: {
 
   const streamState = createResponsesStreamState()
   streamState.estimatedInputTokens = estimatedInputTokens
+  streamState.historicalInputTokens = historicalUsage?.tokensInput
+  streamState.historicalCachedInputTokens = historicalUsage?.tokensCachedInput
 
   try {
     for await (const chunk of response) {

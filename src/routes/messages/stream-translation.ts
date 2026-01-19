@@ -250,7 +250,11 @@ function handleMessageStart(
     const inputTokens =
       upstreamPromptTokens !== undefined ?
         upstreamPromptTokens - (cachedTokens ?? 0)
-      : (state.estimatedInputTokens ?? 0)
+      : (state.historicalInputTokens ?? state.estimatedInputTokens ?? 0)
+    const cacheReadTokens =
+      cachedTokens !== undefined ? cachedTokens : (
+        state.historicalCachedInputTokens
+      )
 
     events.push({
       type: "message_start",
@@ -265,8 +269,8 @@ function handleMessageStart(
         usage: {
           input_tokens: inputTokens,
           output_tokens: 0, // Will be updated in message_delta when finished
-          ...(cachedTokens !== undefined && {
-            cache_read_input_tokens: cachedTokens,
+          ...(cacheReadTokens !== undefined && {
+            cache_read_input_tokens: cacheReadTokens,
           }),
         },
       },
