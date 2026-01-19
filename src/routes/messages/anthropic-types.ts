@@ -203,6 +203,7 @@ export interface AnthropicStreamState {
   thinkingBlockOpen: boolean
   estimatedInputTokens?: number
   historicalInputTokens?: number
+  historicalOutputTokens?: number
   historicalCachedInputTokens?: number
   toolCalls: {
     [openAIToolIndex: number]: {

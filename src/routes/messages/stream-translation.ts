@@ -247,12 +247,18 @@ function handleMessageStart(
   if (!state.messageStartSent) {
     const cachedTokens = chunk.usage?.prompt_tokens_details?.cached_tokens
     const upstreamPromptTokens = chunk.usage?.prompt_tokens
+    const historicalInputTokens = state.historicalInputTokens
+    const historicalOutputTokens = state.historicalOutputTokens ?? 0
+    const historicalTotalTokens =
+      historicalInputTokens !== undefined ?
+        historicalInputTokens + historicalOutputTokens
+      : undefined
     const inputTokens =
       upstreamPromptTokens !== undefined ?
         upstreamPromptTokens - (cachedTokens ?? 0)
-      : (state.historicalInputTokens ?? state.estimatedInputTokens ?? 0)
+      : (historicalTotalTokens ?? state.estimatedInputTokens ?? 0)
     const cacheReadTokens =
-      cachedTokens !== undefined ? cachedTokens : (
+      upstreamPromptTokens !== undefined ? cachedTokens : (
         state.historicalCachedInputTokens
       )
 

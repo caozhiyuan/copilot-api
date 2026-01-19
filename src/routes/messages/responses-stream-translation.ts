@@ -64,6 +64,7 @@ export interface ResponsesStreamState {
   functionCallStateByOutputIndex: Map<number, FunctionCallStreamState>
   estimatedInputTokens?: number
   historicalInputTokens?: number
+  historicalOutputTokens?: number
   historicalCachedInputTokens?: number
 }
 
@@ -486,12 +487,20 @@ const messageStart = (
   state.messageStartSent = true
   const inputCachedTokens = response.usage?.input_tokens_details?.cached_tokens
   const upstreamInputTokens = response.usage?.input_tokens
+  const historicalInputTokens = state.historicalInputTokens
+  const historicalOutputTokens = state.historicalOutputTokens ?? 0
+  const historicalTotalTokens =
+    historicalInputTokens !== undefined ?
+      historicalInputTokens + historicalOutputTokens
+    : undefined
   const inputTokens =
     upstreamInputTokens !== undefined ?
       upstreamInputTokens - (inputCachedTokens ?? 0)
-    : (state.historicalInputTokens ?? state.estimatedInputTokens ?? 0)
+    : (historicalTotalTokens ?? state.estimatedInputTokens ?? 0)
   const cacheReadTokens =
-    inputCachedTokens ?? state.historicalCachedInputTokens ?? 0
+    upstreamInputTokens !== undefined ?
+      (inputCachedTokens ?? 0)
+    : (state.historicalCachedInputTokens ?? 0)
   return [
     {
       type: "message_start",

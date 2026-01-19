@@ -600,6 +600,7 @@ async function streamChatCompletionsAndLog(params: {
     thinkingBlockOpen: false,
     estimatedInputTokens,
     historicalInputTokens: historicalUsage?.tokensInput,
+    historicalOutputTokens: historicalUsage?.tokensOutput,
     historicalCachedInputTokens: historicalUsage?.tokensCachedInput,
   }
 
@@ -822,6 +823,7 @@ async function streamResponsesAndLog(params: {
   const streamState = createResponsesStreamState()
   streamState.estimatedInputTokens = estimatedInputTokens
   streamState.historicalInputTokens = historicalUsage?.tokensInput
+  streamState.historicalOutputTokens = historicalUsage?.tokensOutput
   streamState.historicalCachedInputTokens = historicalUsage?.tokensCachedInput
 
   try {
