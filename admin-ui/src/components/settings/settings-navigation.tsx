@@ -1,6 +1,6 @@
+import type { SettingsSection } from "@/hooks/use-active-section"
 import { AnimatedGradientText } from "@/components/ui/animated-gradient-text"
 import { cn } from "@/lib/utils"
-import type { SettingsSection } from "@/hooks/use-active-section"
 
 export type SettingsNavigationProps = {
   sections: Array<SettingsSection>

@@ -63,7 +63,7 @@ export function useActiveSection({
             (a, b) => a.boundingClientRect.top - b.boundingClientRect.top
           )
           const topEntry = visibleEntries[0]
-          const id = topEntry.target.getAttribute("data-section-id")
+          const id = (topEntry.target as HTMLElement).dataset.sectionId
           if (id) {
             setActiveSection(id)
           }
@@ -75,9 +75,9 @@ export function useActiveSection({
     observerRef.current = observer
 
     // Observe all currently registered sections
-    sectionRefs.current.forEach((element) => {
+    for (const element of sectionRefs.current.values()) {
       observer.observe(element)
-    })
+    }
 
     return () => {
       observer.disconnect()

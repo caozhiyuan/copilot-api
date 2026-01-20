@@ -1,4 +1,6 @@
-import { forwardRef, type ReactNode } from "react"
+import type { ReactNode } from "react"
+import { forwardRef } from "react"
+
 import { BorderBeam } from "@/components/ui/border-beam"
 import { MagicCard } from "@/components/ui/magic-card"
 import { cn } from "@/lib/utils"
