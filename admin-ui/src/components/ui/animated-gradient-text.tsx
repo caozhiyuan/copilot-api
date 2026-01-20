@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef } from "react"
 
+import { useMotionPreference } from "@/lib/motion-preference"
 import { cn } from "@/lib/utils"
 
 export interface AnimatedGradientTextProps extends ComponentPropsWithoutRef<"span"> {
@@ -16,6 +17,9 @@ export function AnimatedGradientText({
   colorTo = "#9c40ff",
   ...props
 }: AnimatedGradientTextProps) {
+  const { effective } = useMotionPreference()
+  const shouldAnimate = effective !== "off"
+
   return (
     <span
       style={
@@ -26,7 +30,8 @@ export function AnimatedGradientText({
         } as React.CSSProperties
       }
       className={cn(
-        `animate-gradient inline bg-gradient-to-r from-[var(--color-from)] via-[var(--color-to)] to-[var(--color-from)] bg-[length:var(--bg-size)_100%] bg-clip-text text-transparent`,
+        "inline bg-gradient-to-r from-[var(--color-from)] via-[var(--color-to)] to-[var(--color-from)] bg-[length:var(--bg-size)_100%] bg-clip-text text-transparent",
+        shouldAnimate && "animate-gradient",
         className
       )}
       {...props}

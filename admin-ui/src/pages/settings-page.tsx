@@ -13,16 +13,14 @@ import {
 } from "@/lib/admin-api"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+  FloatingSaveButton,
+  SettingsNavigation,
+  SettingsSectionCard,
+} from "@/components/settings"
+import { useActiveSection, type SettingsSection } from "@/hooks/use-active-section"
 import { InlineAlert } from "@/components/ui/inline-alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RainbowButton } from "@/components/ui/rainbow-button"
 import {
   Select,
   SelectContent,
@@ -32,6 +30,22 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+
+const SETTINGS_SECTIONS: Array<SettingsSection> = [
+  { id: "general", label: "General" },
+  { id: "load-balancing", label: "Load Balancing" },
+  { id: "reasoning", label: "Reasoning" },
+  { id: "aliases", label: "Aliases" },
+  { id: "prompts", label: "Prompts" },
+  { id: "advanced", label: "Advanced" },
+]
 
 const REASONING_EFFORTS: Array<ReasoningEffort> = [
   "none",
@@ -1750,8 +1764,13 @@ function SettingsPageView({
   onUseFunctionApplyPatchToggle,
   onForceAgentToggle,
 }: SettingsPageViewProps): React.JSX.Element {
+  const { activeSection, registerSection, scrollToSection } = useActiveSection({
+    sectionIds: SETTINGS_SECTIONS.map((s) => s.id),
+  })
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      {/* Page Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">
           <div className="text-lg font-semibold">Settings</div>
@@ -1771,9 +1790,6 @@ function SettingsPageView({
             >
               {loading ? "Reloading..." : "Reload"}
             </Button>
-            <RainbowButton type="button" size="sm" onClick={onSave} disabled={!canSave}>
-              {saving ? "Saving..." : "Save"}
-            </RainbowButton>
           </div>
           {configPath ? (
             <div className="text-muted-foreground text-xs leading-tight hidden sm:block">
@@ -1796,22 +1812,54 @@ function SettingsPageView({
         />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 auto-rows-min">
-        <div className="space-y-4 lg:col-span-8">
-          <GeneralSettingsCard
-            hasModels={hasModels}
-            smallModelLabel={smallModelLabel}
-            smallModelValue={smallModelValue}
-            smallModelInputValue={smallModelInputValue}
-            models={models}
-            apiKeyValue={apiKeyValue}
-            envOverrideNote={envOverrideNote}
-            onSmallModelSelect={onSmallModelSelect}
-            onSmallModelInput={onSmallModelInput}
-            onApiKeyChange={onApiKeyChange}
+      {/* Main Layout: Sidebar Navigation + Content */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Sidebar Navigation (desktop only) */}
+        <aside className="hidden lg:block lg:col-span-2">
+          <SettingsNavigation
+            sections={SETTINGS_SECTIONS}
+            activeSection={activeSection}
+            onSectionClick={scrollToSection}
           />
+        </aside>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Content Area */}
+        <main className="space-y-6 lg:col-span-10">
+          {/* General Settings */}
+          <SettingsSectionCard
+            id="general"
+            isActive={activeSection === "general"}
+            ref={(el) => registerSection("general", el)}
+          >
+            <GeneralSettingsCard
+              hasModels={hasModels}
+              smallModelLabel={smallModelLabel}
+              smallModelValue={smallModelValue}
+              smallModelInputValue={smallModelInputValue}
+              models={models}
+              apiKeyValue={apiKeyValue}
+              envOverrideNote={envOverrideNote}
+              onSmallModelSelect={onSmallModelSelect}
+              onSmallModelInput={onSmallModelInput}
+              onApiKeyChange={onApiKeyChange}
+            />
+          </SettingsSectionCard>
+
+          {/* Load Balancing */}
+          <SettingsSectionCard
+            id="load-balancing"
+            isActive={activeSection === "load-balancing"}
+            ref={(el) => registerSection("load-balancing", el)}
+          >
+            <LoadBalancingCard enabled={loadBalancingEnabled} onToggle={onLoadBalancingToggle} />
+          </SettingsSectionCard>
+
+          {/* Reasoning Efforts */}
+          <SettingsSectionCard
+            id="reasoning"
+            isActive={activeSection === "reasoning"}
+            ref={(el) => registerSection("reasoning", el)}
+          >
             <ReasoningEffortsCard
               mode={reasoningMode}
               json={reasoningJson}
@@ -1824,20 +1872,14 @@ function SettingsPageView({
               onRemoveItem={onReasoningRemoveItem}
               onUpdateItem={onReasoningUpdateItem}
             />
+          </SettingsSectionCard>
 
-            <ExtraPromptsCard
-              mode={extraMode}
-              json={extraJson}
-              jsonIssue={extraJsonIssue}
-              items={extraItems}
-              models={models}
-              onToggleMode={onExtraToggleMode}
-              onJsonChange={onExtraJsonChange}
-              onAddItem={onExtraAddItem}
-              onRemoveItem={onExtraRemoveItem}
-              onUpdateItem={onExtraUpdateItem}
-            />
-
+          {/* Model Aliases */}
+          <SettingsSectionCard
+            id="aliases"
+            isActive={activeSection === "aliases"}
+            ref={(el) => registerSection("aliases", el)}
+          >
             <ModelAliasesCard
               allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
               mode={aliasMode}
@@ -1851,25 +1893,54 @@ function SettingsPageView({
               onRemoveItem={onAliasRemoveItem}
               onUpdateItem={onAliasUpdateItem}
             />
-          </div>
-        </div>
+          </SettingsSectionCard>
 
-        <aside className="space-y-4 self-start lg:col-span-4 lg:sticky lg:top-6">
-          <LoadBalancingCard enabled={loadBalancingEnabled} onToggle={onLoadBalancingToggle} />
+          {/* Extra Prompts */}
+          <SettingsSectionCard
+            id="prompts"
+            isActive={activeSection === "prompts"}
+            ref={(el) => registerSection("prompts", el)}
+          >
+            <ExtraPromptsCard
+              mode={extraMode}
+              json={extraJson}
+              jsonIssue={extraJsonIssue}
+              items={extraItems}
+              models={models}
+              onToggleMode={onExtraToggleMode}
+              onJsonChange={onExtraJsonChange}
+              onAddItem={onExtraAddItem}
+              onRemoveItem={onExtraRemoveItem}
+              onUpdateItem={onExtraUpdateItem}
+            />
+          </SettingsSectionCard>
 
-          <AdvancedSettingsCard
-            allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
-            useFunctionApplyPatch={useFunctionApplyPatch}
-            forceAgent={forceAgent}
-            onToggleAllowOriginalModelNamesForAliases={
-              onAllowOriginalModelNamesForAliasesToggle
-            }
-            onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
-            onToggleForceAgent={onForceAgentToggle}
-          />
-
-        </aside>
+          {/* Advanced Settings */}
+          <SettingsSectionCard
+            id="advanced"
+            isActive={activeSection === "advanced"}
+            ref={(el) => registerSection("advanced", el)}
+          >
+            <AdvancedSettingsCard
+              allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
+              useFunctionApplyPatch={useFunctionApplyPatch}
+              forceAgent={forceAgent}
+              onToggleAllowOriginalModelNamesForAliases={
+                onAllowOriginalModelNamesForAliasesToggle
+              }
+              onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
+              onToggleForceAgent={onForceAgentToggle}
+            />
+          </SettingsSectionCard>
+        </main>
       </div>
+
+      {/* Floating Save Button */}
+      <FloatingSaveButton
+        saving={saving}
+        canSave={canSave}
+        onSave={onSave}
+      />
     </div>
   )
 }
