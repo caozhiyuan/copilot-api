@@ -25,6 +25,7 @@ export function SettingsNavigation({
         "sticky top-6 space-y-1 rounded-lg border bg-card p-2",
         className
       )}
+      aria-label="Settings sections"
     >
       <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
         Settings
@@ -42,6 +43,8 @@ export function SettingsNavigation({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               isActive && "bg-accent/50"
             )}
+            aria-current={isActive ? "page" : undefined}
+            aria-controls={section.id}
           >
             {isActive ? (
               <AnimatedGradientText

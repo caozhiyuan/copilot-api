@@ -19,6 +19,7 @@ export const SettingsSectionCard = forwardRef<HTMLDivElement, SettingsSectionCar
     return (
       <div
         ref={ref}
+        id={id}
         data-section-id={id}
         className={cn("relative scroll-mt-6", className)}
       >
