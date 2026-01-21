@@ -79,11 +79,8 @@ const mergeToolResult = (
 }
 
 export const mergeToolResultForClaude = (
-  anthropicBeta: string | undefined,
   anthropicPayload: AnthropicMessagesPayload,
 ): void => {
-  if (!anthropicBeta) return
-
   for (const msg of anthropicPayload.messages) {
     if (msg.role !== "user" || !Array.isArray(msg.content)) continue
 

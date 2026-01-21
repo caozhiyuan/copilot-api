@@ -147,8 +147,11 @@ export async function handleCompletion(c: Context) {
     promptCacheKey: normalizedPromptCacheKey,
   })
   if (blockedResponse) return blockedResponse
-  // Merge tool_result blocks to avoid premium usage from skill hooks.
-  mergeToolResultForClaude(anthropicBeta, anthropicPayload)
+  // Merge tool_result and text blocks into tool_result to avoid consuming premium requests
+  // (caused by skill invocations, edit hooks, plan or to do reminders)
+  // e.g. {"role":"user","content":[{"type":"tool_result","content":"Launching skill: xxx"},{"type":"text","text":"xxx"}]}
+  // not only for claude, but also for opencode
+  mergeToolResultForClaude(anthropicPayload)
   const openAIPayload = translateToOpenAI(anthropicPayload)
   const fallbackInitiator = getChatInitiator(openAIPayload.messages)
 
