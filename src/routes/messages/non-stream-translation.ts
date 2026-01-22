@@ -26,8 +26,10 @@ import {
 } from "./anthropic-types"
 import { mapOpenAIStopReasonToAnthropic } from "./utils"
 
-// Payload translation
+// Compatible with opencode, it will filter out blocks where the thinking text is empty, so we need add a default thinking text
+export const THINKING_TEXT = "Thinking..."
 
+// Payload translation
 export function translateToOpenAI(
   payload: AnthropicMessagesPayload,
 ): ChatCompletionsPayload {
@@ -219,24 +221,21 @@ function handleAssistantMessage(
     thinkingBlocks = thinkingBlocks.filter(
       (b) =>
         b.thinking
-        && b.thinking.length > 0
+        && b.thinking !== THINKING_TEXT
         && b.signature
-        && b.signature.length > 0
         // gpt signature has @ in it, so filter those out for claude models
         && !b.signature.includes("@"),
     )
   }
 
   const thinkingContents = thinkingBlocks
-    .filter((b) => b.thinking && b.thinking.length > 0)
+    .filter((b) => b.thinking && b.thinking !== THINKING_TEXT)
     .map((b) => b.thinking)
 
   const allThinkingContent =
     thinkingContents.length > 0 ? thinkingContents.join("\n\n") : undefined
 
-  const signature = thinkingBlocks.find(
-    (b) => b.signature && b.signature.length > 0,
-  )?.signature
+  const signature = thinkingBlocks.find((b) => b.signature)?.signature
 
   return toolUseBlocks.length > 0 ?
       [
@@ -436,7 +435,7 @@ function getAnthropicThinkBlocks(
     return [
       {
         type: "thinking",
-        thinking: "",
+        thinking: THINKING_TEXT, // Compatible with opencode, it will filter out blocks where the thinking text is empty, so we add a default thinking text here
         signature: reasoningOpaque,
       },
     ]

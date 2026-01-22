@@ -17,7 +17,10 @@ import {
 } from "~/services/copilot/create-responses"
 
 import { type AnthropicStreamEventData } from "./anthropic-types"
-import { translateResponsesResultToAnthropic } from "./responses-translation"
+import {
+  THINKING_TEXT,
+  translateResponsesResultToAnthropic,
+} from "./responses-translation"
 
 const MAX_CONSECUTIVE_FUNCTION_CALL_WHITESPACE = 20
 
@@ -202,6 +205,18 @@ const handleOutputItemDone = (
   const blockIndex = openThinkingBlockIfNeeded(state, outputIndex, events)
   const signature = (item.encrypted_content ?? "") + "@" + item.id
   if (signature) {
+    // Compatible with opencode, it will filter out blocks where the thinking text is empty, so we add a default thinking text here
+    if (!item.summary || item.summary.length === 0) {
+      events.push({
+        type: "content_block_delta",
+        index: blockIndex,
+        delta: {
+          type: "thinking_delta",
+          thinking: THINKING_TEXT,
+        },
+      })
+    }
+
     events.push({
       type: "content_block_delta",
       index: blockIndex,

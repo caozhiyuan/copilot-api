@@ -45,6 +45,8 @@ import {
 
 const MESSAGE_TYPE = "message"
 
+export const THINKING_TEXT = "Thinking..."
+
 export const translateAnthropicMessagesToResponsesPayload = (
   payload: AnthropicMessagesPayload,
   modelOverride?: string,
@@ -252,15 +254,11 @@ const createReasoningContent = (
   const array = block.signature.split("@")
   const signature = array[0]
   const id = array[1]
+  const thinking = block.thinking === THINKING_TEXT ? "" : block.thinking
   return {
     id,
     type: "reasoning",
-    summary: [
-      {
-        type: "summary_text",
-        text: block.thinking,
-      },
-    ],
+    summary: thinking ? [{ type: "summary_text", text: thinking }] : [],
     encrypted_content: signature,
   }
 }
@@ -470,6 +468,11 @@ const extractReasoningText = (item: ResponseOutputReasoning): string => {
         continue
       }
     }
+  }
+
+  // Compatible with opencode, it will filter out blocks where the thinking text is empty, so we add a default thinking text here
+  if (!item.summary || item.summary.length === 0) {
+    return THINKING_TEXT
   }
 
   collectFromBlocks(item.summary)
