@@ -11,6 +11,24 @@ import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
 
+export const getMessagesInitiator = (
+  payload: AnthropicMessagesPayload,
+): "agent" | "user" => {
+  const lastMessage = payload.messages.at(-1)
+  if (!lastMessage || lastMessage.role !== "user") {
+    return "agent"
+  }
+
+  if (!Array.isArray(lastMessage.content)) {
+    return "user"
+  }
+
+  const hasNonToolResult = lastMessage.content.some(
+    (block) => block.type !== "tool_result",
+  )
+  return hasNonToolResult ? "user" : "agent"
+}
+
 export type MessagesStream = ReturnType<typeof events>
 export type CreateMessagesReturn = AnthropicResponse | MessagesStream
 
@@ -31,18 +49,11 @@ export const createMessages = async (
       && message.content.some((block) => block.type === "image"),
   )
 
-  let isInitiateRequest = false
-  const lastMessage = payload.messages.at(-1)
-  if (lastMessage?.role === "user") {
-    isInitiateRequest =
-      Array.isArray(lastMessage.content) ?
-        lastMessage.content.some((block) => block.type !== "tool_result")
-      : true
-  }
+  const initiator = getMessagesInitiator(payload)
 
   const headers: Record<string, string> = {
     ...copilotHeaders(ctx, enableVision, options?.upstreamRequestId),
-    "X-Initiator": isInitiateRequest ? "user" : "agent",
+    "X-Initiator": initiator,
   }
 
   if (options?.anthropicBetaHeader) {

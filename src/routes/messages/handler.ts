@@ -45,7 +45,10 @@ import {
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
-import { createMessages } from "~/services/copilot/create-messages"
+import {
+  createMessages,
+  getMessagesInitiator,
+} from "~/services/copilot/create-messages"
 import {
   createResponses,
   type ResponsesResult,
@@ -936,24 +939,6 @@ async function streamResponsesAndLog(params: {
   }
 }
 
-function getMessagesInitiator(
-  payload: AnthropicMessagesPayload,
-): "agent" | "user" {
-  const lastMessage = payload.messages.at(-1)
-  if (!lastMessage || lastMessage.role !== "user") {
-    return "agent"
-  }
-
-  if (!Array.isArray(lastMessage.content)) {
-    return "user"
-  }
-
-  const hasNonToolResult = lastMessage.content.some(
-    (block) => block.type !== "tool_result",
-  )
-  return hasNonToolResult ? "user" : "agent"
-}
-
 async function handleMessagesCreateError(params: {
   error: unknown
   instr: InstrumentationContext
@@ -1081,7 +1066,11 @@ async function streamMessagesAndLog(params: {
         ttfbMs = Date.now() - instr.startedAtMs
       }
 
-      const eventName = (rawEvent as { event?: string }).event
+      const eventNameRaw = (rawEvent as { event?: string }).event
+      const eventName =
+        typeof eventNameRaw === "string" && eventNameRaw.length > 0 ?
+          eventNameRaw
+        : "message"
       const data = (rawEvent as { data?: string }).data ?? ""
       logger.debug("Messages raw stream event:", data)
 
