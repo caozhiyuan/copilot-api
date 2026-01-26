@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
@@ -22,6 +23,7 @@ import {
   getClientIpInfo,
   getRequestHistoryStore,
   normalizeChatCompletionsUsage,
+  normalizeMessagesUsage,
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
@@ -43,6 +45,7 @@ import {
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
+import { createMessages } from "~/services/copilot/create-messages"
 import {
   createResponses,
   type ResponsesResult,
@@ -51,6 +54,8 @@ import {
 
 import {
   type AnthropicMessagesPayload,
+  type AnthropicResponse,
+  type AnthropicStreamEventData,
   type AnthropicStreamState,
 } from "./anthropic-types"
 import {
@@ -70,6 +75,7 @@ const logger = createHandlerLogger("messages-handler")
 
 const CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
 const RESPONSES_ENDPOINT = "/responses"
+const MESSAGES_ENDPOINT = "/v1/messages"
 
 type AccountSelection = Awaited<
   ReturnType<(typeof accountsManager)["selectAccountForRequest"]>
@@ -158,6 +164,10 @@ export async function handleCompletion(c: Context) {
   const selection = await accountsManager.selectAccountForRequest([
     {
       modelId: clientModel,
+      endpoint: MESSAGES_ENDPOINT,
+    },
+    {
+      modelId: clientModel,
       endpoint: RESPONSES_ENDPOINT,
     },
     {
@@ -212,6 +222,14 @@ export async function handleCompletion(c: Context) {
     costUnits,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
+  }
+  if (endpoint === MESSAGES_ENDPOINT) {
+    return await handleWithMessagesApi({
+      c,
+      anthropicPayload,
+      anthropicBetaHeader: anthropicBeta ?? undefined,
+      instr,
+    })
   }
   if (endpoint === RESPONSES_ENDPOINT) {
     return await handleWithResponsesApi({
@@ -392,6 +410,8 @@ type ChatCompletionsStream = Exclude<
   ChatCompletionsResult,
   ChatCompletionResponse
 >
+
+type MessagesResult = Awaited<ReturnType<typeof createMessages>>
 
 function insertRequestLog(
   instr: InstrumentationContext,
@@ -914,6 +934,250 @@ async function streamResponsesAndLog(params: {
       errorMessage,
     })
   }
+}
+
+function getMessagesInitiator(
+  payload: AnthropicMessagesPayload,
+): "agent" | "user" {
+  const lastMessage = payload.messages.at(-1)
+  if (!lastMessage || lastMessage.role !== "user") {
+    return "agent"
+  }
+
+  if (!Array.isArray(lastMessage.content)) {
+    return "user"
+  }
+
+  const hasNonToolResult = lastMessage.content.some(
+    (block) => block.type !== "tool_result",
+  )
+  return hasNonToolResult ? "user" : "agent"
+}
+
+async function handleMessagesCreateError(params: {
+  error: unknown
+  instr: InstrumentationContext
+  stream: boolean
+}): Promise<never> {
+  const { error, instr, stream } = params
+
+  const finishedAtMs = Date.now()
+  const details = extractErrorDetails(error)
+
+  if (details.unauthorized) {
+    accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
+  }
+
+  const { premiumRemainingAfter, premiumUnlimitedAfter, premiumRemainingDiff } =
+    await finalizeQuotaAndGetPremiumSnapshot(instr)
+
+  insertRequestLog(instr, {
+    finishedAtMs,
+    durationMs: finishedAtMs - instr.startedAtMs,
+    stream,
+    premiumRemainingAfter,
+    premiumUnlimitedAfter,
+    premiumRemainingDiff,
+    httpStatus: details.httpStatus,
+    errorName: details.errorName,
+    errorStatus: details.errorStatus,
+    errorMessage: details.errorMessage,
+  })
+
+  throw error
+}
+
+async function handleMessagesNonStreaming(params: {
+  c: Context
+  response: AnthropicResponse
+  instr: InstrumentationContext
+}): Promise<Response> {
+  const { c, response, instr } = params
+
+  let httpStatus = 200
+  const usage = normalizeMessagesUsage(response.usage)
+
+  let errorName: string | undefined
+  let errorStatus: number | undefined
+  let errorMessage: string | undefined
+
+  const finishedAtMs = Date.now()
+
+  try {
+    logger.debug(
+      "Non-streaming Messages result:",
+      JSON.stringify(response).slice(-400),
+    )
+    return c.json(response)
+  } catch (error) {
+    const details = extractErrorDetails(error)
+
+    httpStatus = details.httpStatus
+    errorName = details.errorName
+    errorStatus = details.errorStatus
+    errorMessage = details.errorMessage
+
+    if (details.unauthorized) {
+      accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
+    }
+
+    throw error
+  } finally {
+    const {
+      premiumRemainingAfter,
+      premiumUnlimitedAfter,
+      premiumRemainingDiff,
+    } = await finalizeQuotaAndGetPremiumSnapshot(instr)
+
+    insertRequestLog(instr, {
+      finishedAtMs,
+      durationMs: finishedAtMs - instr.startedAtMs,
+      stream: false,
+      ...usage,
+      premiumRemainingAfter,
+      premiumUnlimitedAfter,
+      premiumRemainingDiff,
+      httpStatus,
+      errorName,
+      errorStatus,
+      errorMessage,
+    })
+  }
+}
+
+const parseMessagesStreamUsage = (data: string): NormalizedUsage | null => {
+  if (!data) return null
+
+  try {
+    const parsed = JSON.parse(data) as AnthropicStreamEventData
+    if (parsed.type !== "message_delta" || !parsed.usage) {
+      return null
+    }
+
+    return normalizeMessagesUsage(parsed.usage)
+  } catch (error) {
+    logger.warn("Failed to parse messages stream event", error)
+    return null
+  }
+}
+
+async function streamMessagesAndLog(params: {
+  stream: StreamSseStream
+  response: AsyncIterable<unknown>
+  instr: InstrumentationContext
+}): Promise<void> {
+  const { stream, response, instr } = params
+
+  let ttfbMs: number | undefined
+  let lastUsage: NormalizedUsage = {}
+
+  let errorName: string | undefined
+  let errorStatus: number | undefined
+  let errorMessage: string | undefined
+
+  try {
+    for await (const rawEvent of response) {
+      if (ttfbMs === undefined) {
+        ttfbMs = Date.now() - instr.startedAtMs
+      }
+
+      const eventName = (rawEvent as { event?: string }).event
+      const data = (rawEvent as { data?: string }).data ?? ""
+      logger.debug("Messages raw stream event:", data)
+
+      const usage = parseMessagesStreamUsage(data)
+      if (usage) {
+        lastUsage = usage
+      }
+
+      await stream.writeSSE({
+        event: eventName,
+        data,
+      })
+    }
+  } catch (error) {
+    const details = extractErrorDetails(error)
+
+    errorName = details.errorName
+    errorStatus = details.errorStatus
+    errorMessage = details.errorMessage
+
+    logger.warn("Streaming error:", error)
+
+    if (details.unauthorized) {
+      accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
+    }
+  } finally {
+    const finishedAtMs = Date.now()
+
+    const {
+      premiumRemainingAfter,
+      premiumUnlimitedAfter,
+      premiumRemainingDiff,
+    } = await finalizeQuotaAndGetPremiumSnapshot(instr)
+
+    insertRequestLog(instr, {
+      finishedAtMs,
+      durationMs: finishedAtMs - instr.startedAtMs,
+      ttfbMs,
+      stream: true,
+      ...lastUsage,
+      premiumRemainingAfter,
+      premiumUnlimitedAfter,
+      premiumRemainingDiff,
+      httpStatus: errorStatus ?? (errorName ? 500 : 200),
+      errorName,
+      errorStatus,
+      errorMessage,
+    })
+  }
+}
+
+const handleWithMessagesApi = async (params: {
+  c: Context
+  anthropicPayload: AnthropicMessagesPayload
+  anthropicBetaHeader?: string
+  instr: InstrumentationContext
+}): Promise<Response> => {
+  const { c, anthropicPayload, anthropicBetaHeader, instr } = params
+  const ctx = toAccountContext(instr.account)
+  const upstreamRequestId = randomUUID()
+  const initiator = getMessagesInitiator(anthropicPayload)
+
+  instr.initiator = initiator
+  instr.upstreamRequestId = upstreamRequestId
+
+  let response: MessagesResult
+
+  try {
+    response = await createMessages(anthropicPayload, ctx, {
+      anthropicBetaHeader,
+      upstreamRequestId,
+    })
+  } catch (error) {
+    return await handleMessagesCreateError({
+      error,
+      instr,
+      stream: Boolean(anthropicPayload.stream),
+    })
+  }
+
+  if (isAsyncIterable(response)) {
+    logger.debug("Streaming response from Copilot (Messages API)")
+    return streamSSE(c, (stream) =>
+      streamMessagesAndLog({
+        stream,
+        response,
+        instr,
+      }),
+    )
+  }
+
+  return handleMessagesNonStreaming({
+    c,
+    response,
+    instr,
+  })
 }
 
 const isNonStreaming = (

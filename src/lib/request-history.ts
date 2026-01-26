@@ -118,6 +118,38 @@ export function normalizeResponsesUsage(
   }
 }
 
+type AnthropicUsage = {
+  input_tokens?: number
+  output_tokens?: number
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
+  service_tier?: "standard" | "priority" | "batch"
+}
+
+export function normalizeMessagesUsage(
+  usage?: AnthropicUsage | null,
+): NormalizedUsage {
+  if (!usage) return {}
+
+  const cached = usage.cache_read_input_tokens ?? 0
+  const input = usage.input_tokens
+  const output = usage.output_tokens
+  const hasInput = typeof input === "number"
+  const hasOutput = typeof output === "number"
+  const tokensInput = hasInput ? Math.max(0, input - cached) : undefined
+  const tokensOutput = hasOutput ? output : undefined
+  const tokensTotal =
+    hasInput || hasOutput ? (input ?? 0) + (output ?? 0) : undefined
+
+  return {
+    tokensCachedInput: cached,
+    tokensInput,
+    tokensOutput,
+    tokensTotal,
+    usageJson: JSON.stringify(usage),
+  }
+}
+
 export function normalizeEmbeddingsUsage(
   usage?: EmbeddingResponse["usage"],
 ): NormalizedUsage {
