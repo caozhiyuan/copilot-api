@@ -151,6 +151,7 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "allowOriginalModelNamesForAliases",
   "useFunctionApplyPatch",
   "forceAgent",
+  "compactUseSmallModel",
 ])
 
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
@@ -371,6 +372,7 @@ function applyOptionalBoolean(
     | "freeModelLoadBalancing"
     | "useFunctionApplyPatch"
     | "forceAgent"
+    | "compactUseSmallModel"
     | "allowOriginalModelNamesForAliases",
   value: unknown,
 ): string | undefined {
@@ -479,6 +481,10 @@ function applyConfigPatch(
       }
       case "forceAgent": {
         error = applyOptionalBoolean(next, "forceAgent", value)
+        break
+      }
+      case "compactUseSmallModel": {
+        error = applyOptionalBoolean(next, "compactUseSmallModel", value)
         break
       }
       default: {

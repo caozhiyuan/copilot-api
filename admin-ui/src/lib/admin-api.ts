@@ -97,6 +97,7 @@ export type AdminConfig = {
   allowOriginalModelNamesForAliases?: boolean
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean
+  compactUseSmallModel?: boolean
 }
 
 export type AdminConfigResponse = AdminConfig & {
