@@ -1328,18 +1328,22 @@ type AdvancedSettingsCardProps = {
   allowOriginalModelNamesForAliases: boolean
   useFunctionApplyPatch: boolean
   forceAgent: boolean
+  compactUseSmallModel: boolean
   onToggleAllowOriginalModelNamesForAliases: (value: boolean) => void
   onToggleUseFunctionApplyPatch: (value: boolean) => void
   onToggleForceAgent: (value: boolean) => void
+  onToggleCompactUseSmallModel: (value: boolean) => void
 }
 
 function AdvancedSettingsCard({
   allowOriginalModelNamesForAliases,
   useFunctionApplyPatch,
   forceAgent,
+  compactUseSmallModel,
   onToggleAllowOriginalModelNamesForAliases,
   onToggleUseFunctionApplyPatch,
   onToggleForceAgent,
+  onToggleCompactUseSmallModel,
 }: AdvancedSettingsCardProps): React.JSX.Element {
   return (
     <Card className="gap-4 py-4">
@@ -1381,6 +1385,19 @@ function AdvancedSettingsCard({
             </div>
           </div>
           <Switch checked={forceAgent} onCheckedChange={onToggleForceAgent} />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">Compact uses small model</div>
+            <div className="text-muted-foreground text-xs">
+              When enabled, compact requests use the configured smallModel; otherwise they use the requested model.
+            </div>
+          </div>
+          <Switch
+            checked={compactUseSmallModel}
+            onCheckedChange={onToggleCompactUseSmallModel}
+          />
         </div>
       </CardContent>
     </Card>
@@ -1437,9 +1454,11 @@ type SettingsPageViewProps = {
   allowOriginalModelNamesForAliases: boolean
   useFunctionApplyPatch: boolean
   forceAgent: boolean
+  compactUseSmallModel: boolean
   onAllowOriginalModelNamesForAliasesToggle: (value: boolean) => void
   onUseFunctionApplyPatchToggle: (value: boolean) => void
   onForceAgentToggle: (value: boolean) => void
+  onCompactUseSmallModelToggle: (value: boolean) => void
 }
 
 function useSettingsPageState(): SettingsPageViewProps {
@@ -1631,6 +1650,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleCompactUseSmallModelToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, compactUseSmallModel: value }))
+    },
+    [setDraft],
+  )
+
   const hasModels = models.length > 0
   const smallModelValue = draft.smallModel ? draft.smallModel : "__default__"
   const canSave =
@@ -1652,6 +1678,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     draft.allowOriginalModelNamesForAliases ?? false
   const useFunctionApplyPatch = draft.useFunctionApplyPatch ?? true
   const forceAgent = draft.forceAgent ?? false
+  const compactUseSmallModel = draft.compactUseSmallModel ?? true
 
   return {
     loading,
@@ -1703,10 +1730,12 @@ function useSettingsPageState(): SettingsPageViewProps {
     onAliasUpdateItem,
     useFunctionApplyPatch,
     forceAgent,
+    compactUseSmallModel,
     onAllowOriginalModelNamesForAliasesToggle:
       handleAllowOriginalModelNamesForAliasesToggle,
     onUseFunctionApplyPatchToggle: handleUseFunctionApplyPatchToggle,
     onForceAgentToggle: handleForceAgentToggle,
+    onCompactUseSmallModelToggle: handleCompactUseSmallModelToggle,
   }
 }
 
@@ -1760,9 +1789,11 @@ function SettingsPageView({
   allowOriginalModelNamesForAliases,
   useFunctionApplyPatch,
   forceAgent,
+  compactUseSmallModel,
   onAllowOriginalModelNamesForAliasesToggle,
   onUseFunctionApplyPatchToggle,
   onForceAgentToggle,
+  onCompactUseSmallModelToggle,
 }: SettingsPageViewProps): React.JSX.Element {
   const { activeSection, registerSection, scrollToSection } = useActiveSection({
     sectionIds: SETTINGS_SECTIONS.map((s) => s.id),
@@ -1925,11 +1956,13 @@ function SettingsPageView({
               allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
               useFunctionApplyPatch={useFunctionApplyPatch}
               forceAgent={forceAgent}
+              compactUseSmallModel={compactUseSmallModel}
               onToggleAllowOriginalModelNamesForAliases={
                 onAllowOriginalModelNamesForAliasesToggle
               }
               onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
               onToggleForceAgent={onForceAgentToggle}
+              onToggleCompactUseSmallModel={onCompactUseSmallModelToggle}
             />
           </SettingsSectionCard>
         </main>

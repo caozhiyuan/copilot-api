@@ -9,7 +9,7 @@ import type { Model } from "~/services/copilot/get-models"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
-import { getSmallModel } from "~/lib/config"
+import { getSmallModel, shouldCompactUseSmallModel } from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -80,6 +80,9 @@ const CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
 const RESPONSES_ENDPOINT = "/responses"
 const MESSAGES_ENDPOINT = "/v1/messages"
 
+const compactSystemPromptStart =
+  "You are a helpful AI assistant tasked with summarizing conversations"
+
 type AccountSelection = Awaited<
   ReturnType<(typeof accountsManager)["selectAccountForRequest"]>
 >
@@ -127,11 +130,27 @@ export async function handleCompletion(c: Context) {
   const userAgent = c.req.header("user-agent") ?? undefined
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
-  // Fix warmup probe: force small model for Claude Code warmup requests (CLAUDE_CODE_SUBAGENT_MODEL also works).
   const anthropicBeta = c.req.header("anthropic-beta")
+  const isCompact = isCompactRequest(anthropicPayload)
+
+  // Fix warmup probe: force small model for Claude Code warmup requests (CLAUDE_CODE_SUBAGENT_MODEL also works).
   if (anthropicBeta && isWarmupProbeRequest(anthropicPayload)) {
     anthropicPayload.model = getSmallModel()
   }
+
+  if (isCompact) {
+    logger.debug("Is compact request:", isCompact)
+    if (shouldCompactUseSmallModel()) {
+      anthropicPayload.model = getSmallModel()
+    }
+  } else {
+    // Merge tool_result and text blocks into tool_result to avoid consuming premium requests
+    // (caused by skill invocations, edit hooks, plan or to do reminders)
+    // e.g. {"role":"user","content":[{"type":"tool_result","content":"Launching skill: xxx"},{"type":"text","text":"xxx"}]}
+    // not only for claude, but also for opencode
+    mergeToolResultForClaude(anthropicPayload)
+  }
+
   const clientModel = anthropicPayload.model
   const streamRequested = Boolean(anthropicPayload.stream)
   const rawUserId = anthropicPayload.metadata?.user_id
@@ -156,11 +175,7 @@ export async function handleCompletion(c: Context) {
     promptCacheKey: normalizedPromptCacheKey,
   })
   if (blockedResponse) return blockedResponse
-  // Merge tool_result and text blocks into tool_result to avoid consuming premium requests
-  // (caused by skill invocations, edit hooks, plan or to do reminders)
-  // e.g. {"role":"user","content":[{"type":"tool_result","content":"Launching skill: xxx"},{"type":"text","text":"xxx"}]}
-  // not only for claude, but also for opencode
-  mergeToolResultForClaude(anthropicPayload)
+
   const openAIPayload = translateToOpenAI(anthropicPayload)
   const fallbackInitiator = getChatInitiator(openAIPayload.messages)
 
@@ -1129,6 +1144,23 @@ const handleWithMessagesApi = async (params: {
   instr: InstrumentationContext
 }): Promise<Response> => {
   const { c, anthropicPayload, anthropicBetaHeader, instr } = params
+
+  // Pre-request processing: filter thinking blocks for Claude models so only
+  // valid thinking blocks are sent to the Copilot Messages API.
+  for (const msg of anthropicPayload.messages) {
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      msg.content = msg.content.filter((block) => {
+        if (block.type !== "thinking") return true
+        return (
+          block.thinking
+          && block.thinking !== "Thinking..."
+          && block.signature
+          && !block.signature.includes("@")
+        )
+      })
+    }
+  }
+
   const ctx = toAccountContext(instr.account)
   const upstreamRequestId = randomUUID()
   const initiator = getMessagesInitiator(anthropicPayload)
@@ -1176,3 +1208,19 @@ const isNonStreaming = (
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
+
+const isCompactRequest = (
+  anthropicPayload: AnthropicMessagesPayload,
+): boolean => {
+  const system = anthropicPayload.system
+  if (typeof system === "string") {
+    return system.startsWith(compactSystemPromptStart)
+  }
+  if (!Array.isArray(system)) return false
+
+  return system.some(
+    (msg) =>
+      typeof msg.text === "string"
+      && msg.text.startsWith(compactSystemPromptStart),
+  )
+}

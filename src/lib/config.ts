@@ -16,6 +16,7 @@ export interface AppConfig {
   allowOriginalModelNamesForAliases?: boolean
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean
+  compactUseSmallModel?: boolean
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -37,6 +38,7 @@ const defaultConfig: AppConfig = {
   },
   allowOriginalModelNamesForAliases: false,
   useFunctionApplyPatch: true,
+  compactUseSmallModel: true,
 }
 
 let cachedConfig: AppConfig | null = null
@@ -395,4 +397,9 @@ export function getReasoningEffortForModel(
 export function isForceAgentEnabled(): boolean {
   const config = getConfig()
   return config.forceAgent ?? false
+}
+
+export function shouldCompactUseSmallModel(): boolean {
+  const config = getConfig()
+  return config.compactUseSmallModel ?? true
 }
