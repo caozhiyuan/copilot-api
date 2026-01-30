@@ -46,6 +46,9 @@ export const handleResponses = async (c: Context) => {
   const clientModel = payload.model
   logger.debug("Responses request payload:", JSON.stringify(payload))
 
+  // Remove web_search tool as it's not supported by GitHub Copilot
+  removeWebSearchTool(payload)
+
   const streamRequested = Boolean(payload.stream)
 
   const { initiator: initialInitiator } = getResponsesRequestOptions(payload)
@@ -786,4 +789,12 @@ const useFunctionApplyPatch = (payload: ResponsesPayload): void => {
       }
     }
   }
+}
+
+const removeWebSearchTool = (payload: ResponsesPayload): void => {
+  if (!Array.isArray(payload.tools) || payload.tools.length === 0) return
+
+  payload.tools = payload.tools.filter((t) => {
+    return t.type !== "web_search"
+  })
 }
