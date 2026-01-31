@@ -152,19 +152,19 @@ The Docker image includes:
 You can run the project directly using npx:
 
 ```sh
-npx copilot-api@latest start
+npx @nick3/copilot-api@latest start
 ```
 
 With options:
 
 ```sh
-npx copilot-api@latest start --port 8080
+npx @nick3/copilot-api@latest start --port 8080
 ```
 
 For authentication only:
 
 ```sh
-npx copilot-api@latest auth
+npx @nick3/copilot-api@latest auth
 ```
 
 ## Command Structure
@@ -363,62 +363,62 @@ Using with npx:
 
 ```sh
 # Basic usage with start command
-npx copilot-api@latest start
+npx @nick3/copilot-api@latest start
 
 # Run on custom port with verbose logging
-npx copilot-api@latest start --port 8080 --verbose
+npx @nick3/copilot-api@latest start --port 8080 --verbose
 
 # Use with a business plan GitHub account
-npx copilot-api@latest start --account-type business
+npx @nick3/copilot-api@latest start --account-type business
 
 # Use with an enterprise plan GitHub account
-npx copilot-api@latest start --account-type enterprise
+npx @nick3/copilot-api@latest start --account-type enterprise
 
 # Enable manual approval for each request
-npx copilot-api@latest start --manual
+npx @nick3/copilot-api@latest start --manual
 
 # Set rate limit to 30 seconds between requests
-npx copilot-api@latest start --rate-limit 30
+npx @nick3/copilot-api@latest start --rate-limit 30
 
 # Wait instead of error when rate limit is hit
-npx copilot-api@latest start --rate-limit 30 --wait
+npx @nick3/copilot-api@latest start --rate-limit 30 --wait
 
 # Provide GitHub token directly
-npx copilot-api@latest start --github-token ghp_YOUR_TOKEN_HERE
+npx @nick3/copilot-api@latest start --github-token ghp_YOUR_TOKEN_HERE
 
 # Run only the auth flow
-npx copilot-api@latest auth
+npx @nick3/copilot-api@latest auth
 
 # Run auth flow with verbose logging
-npx copilot-api@latest auth --verbose
+npx @nick3/copilot-api@latest auth --verbose
 
 # Add multiple accounts (each account is added in order)
-npx copilot-api@latest auth add
-npx copilot-api@latest auth add  # add second account
+npx @nick3/copilot-api@latest auth add
+npx @nick3/copilot-api@latest auth add  # add second account
 
 # List all registered accounts
-npx copilot-api@latest auth ls
+npx @nick3/copilot-api@latest auth ls
 
 # List accounts with quota information
-npx copilot-api@latest auth ls -q
+npx @nick3/copilot-api@latest auth ls -q
 
 # Remove an account by index (1-based)
-npx copilot-api@latest auth rm 2
+npx @nick3/copilot-api@latest auth rm 2
 
 # Remove an account by ID (GitHub username)
-npx copilot-api@latest auth rm octocat
+npx @nick3/copilot-api@latest auth rm octocat
 
 # Show your Copilot usage/quota in the terminal (no server needed)
-npx copilot-api@latest check-usage
+npx @nick3/copilot-api@latest check-usage
 
 # Display debug information for troubleshooting
-npx copilot-api@latest debug
+npx @nick3/copilot-api@latest debug
 
 # Display debug information in JSON format
-npx copilot-api@latest debug --json
+npx @nick3/copilot-api@latest debug --json
 
 # Initialize proxy from environment variables (HTTP_PROXY, HTTPS_PROXY, etc.)
-npx copilot-api@latest start --proxy-env
+npx @nick3/copilot-api@latest start --proxy-env
 ```
 
 ### Admin API examples
@@ -428,7 +428,7 @@ npx copilot-api@latest start --proxy-env
 curl "http://localhost:4141/api/admin/meta"
 
 # Enable remote admin UI/API access (server-side)
-# ADMIN_TOKEN=your_admin_token_here npx copilot-api@latest start
+# ADMIN_TOKEN=your_admin_token_here npx @nick3/copilot-api@latest start
 
 # Remote access (token required)
 curl -H "x-admin-token: your_admin_token_here" "http://localhost:4141/api/admin/accounts?include_stats=1"
@@ -448,7 +448,7 @@ After starting the server, a URL to the Copilot Usage Dashboard will be displaye
 
 1.  Start the server. For example, using npx:
     ```sh
-    npx copilot-api@latest start
+    npx @nick3/copilot-api@latest start
     ```
 2.  The server will output a URL to the usage viewer. Copy and paste this URL into your browser. It will look something like this:
     `https://ericc-ch.github.io/copilot-api?endpoint=http://localhost:4141/usage`
@@ -471,7 +471,7 @@ The proxy includes a built-in admin UI served from your running instance. It let
 
 1. Start the server. For example, using npx:
     ```sh
-    npx copilot-api@latest start
+    npx @nick3/copilot-api@latest start
     ```
 2. Open the UI in your browser:
     - `http://localhost:4141/admin` (replace the port if you changed it)
@@ -519,7 +519,7 @@ There are two ways to configure Claude Code to use this proxy:
 To get started, run the `start` command with the `--claude-code` flag:
 
 ```sh
-npx copilot-api@latest start --claude-code
+npx @nick3/copilot-api@latest start --claude-code
 ```
 
 You will be prompted to select a primary model and a "small, fast" model for background tasks. After selecting the models, a command will be copied to your clipboard. This command sets the necessary environment variables for Claude Code to use the proxy.

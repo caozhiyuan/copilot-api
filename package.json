@@ -1,5 +1,5 @@
 {
-  "name": "copilot-api",
+  "name": "@nick3/copilot-api",
   "version": "1.0.3",
   "description": "Turn GitHub Copilot into OpenAI/Anthropic API compatible server. Usable with Claude Code Or Codex Or Opencode!",
   "keywords": [
@@ -69,5 +69,8 @@
     "simple-git-hooks": "^2.13.1",
     "tsdown": "^0.15.6",
     "typescript": "^5.9.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
