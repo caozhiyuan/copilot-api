@@ -31,7 +31,7 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 
 ## Features
 
-- **OpenAI & Anthropic Compatibility**: Exposes GitHub Copilot as an OpenAI-compatible (`/v1/chat/completions`, `/v1/models`, `/v1/embeddings`) and Anthropic-compatible (`/v1/messages`) API.
+- **OpenAI & Anthropic Compatibility**: Exposes GitHub Copilot as an OpenAI-compatible (`/v1/responses`, `/v1/chat/completions`, `/v1/models`, `/v1/embeddings`) and Anthropic-compatible (`/v1/messages`) API.
 - **Claude Code Integration**: Easily configure and launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) to use Copilot as its backend with a simple command-line flag (`--claude-code`).
 - **Usage Dashboard**: A web-based dashboard to monitor your Copilot API usage, view quotas, and see detailed statistics.
 - **Admin UI**: Modern admin console (`/admin`) to inspect account runtime status and request history, with rich filtering and a request-detail JSON viewer (search/copy/download). Includes theme (system/light/dark) and motion (magic/subtle/off) toggles.
@@ -256,7 +256,8 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     },
     "allowOriginalModelNamesForAliases": false,
     "useFunctionApplyPatch": true,
-    "forceAgent": false
+    "forceAgent": false,
+    "compactUseSmallModel": true
   }
   ```
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts.
@@ -266,8 +267,9 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 - **modelAliases:** Map of `alias -> { target, allowOriginal? }` (legacy string values are still accepted). Alias keys are normalized (trim + lowercase) and must be non-empty; aliases cannot map to themselves (case-insensitive), and conflicting normalized aliases are rejected. `allowOriginal` overrides the global default per alias. If multiple aliases map to the same target, original names are allowed when any alias sets `allowOriginal: true` (allow-wins). Admin UI/API rejects blocked keys (`__proto__`, `constructor`, `prototype`). Aliases can be used in downstream requests.
 - **allowOriginalModelNamesForAliases:** Global default for aliases that omit `allowOriginal`. When `false` (default), targets are blocked unless an alias explicitly allows them; when `true`, targets are allowed unless all aliases explicitly block them.
-- **useFunctionApplyPatch:** When `true` (default), `POST /v1/responses` converts a `tools` entry with `{ "type": "custom", "name": "apply_patch" }` into a `function` tool for upstream compatibility. Set to `false` to leave custom tools untouched.
+- **useFunctionApplyPatch:** When `true` (default), `POST /v1/responses` converts a `tools` entry with `{ "type": "custom", "name": "apply_patch" }` into an OpenAI-style `function` tool (with a parameter schema) for upstream compatibility. Set to `false` to leave custom tools untouched.
 - **forceAgent:** When `true`, `POST /v1/responses` treats a request as agent-initiated if **any** input item has `role: "assistant"`. When `false` (default), only the **last** input item is checked.
+- **compactUseSmallModel:** When `true`, detected "compact" requests (e.g., from Claude Code or opencode compact mode) will automatically use the configured `smallModel` to avoid consuming premium usage for short/background tasks. Defaults to `true`.
 
 Edit this file to customize prompts or swap in your own fast model. If you edit it manually, restart the server (or call `GET /api/admin/config`) so the cached config is refreshed. Changes made through the Admin UI/API are validated, written to disk, and applied immediately; unknown keys are rejected.
 
@@ -539,12 +541,15 @@ Here is an example `.claude/settings.json` file:
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:4141",
     "ANTHROPIC_AUTH_TOKEN": "dummy",
-    "ANTHROPIC_MODEL": "gpt-4.1",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-4.1",
-    "ANTHROPIC_SMALL_FAST_MODEL": "gpt-4.1",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-4.1",
+    "ANTHROPIC_MODEL": "gpt-5.2",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.2",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5-mini",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "gpt-5-mini",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "BASH_MAX_TIMEOUT_MS": "600000",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false"
   },
   "permissions": {
     "deny": [
