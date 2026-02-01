@@ -32,7 +32,7 @@
     "lint:admin": "bun run --cwd admin-ui lint",
     "lint:all": "eslint --cache . --ignore-pattern admin-ui",
     "prepack": "bun run build",
-    "prepare": "simple-git-hooks",
+    "prepare": "[ -n \"$CI\" ] || simple-git-hooks",
     "release": "bumpp && bun publish --access public",
     "start": "NODE_ENV=production bun run ./src/main.ts",
     "typecheck": "tsc",
