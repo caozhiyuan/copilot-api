@@ -71,7 +71,7 @@ jobs:
           echo "Version OK: ${pkg_version}"
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --ignore-scripts
 
       - name: Install admin-ui dependencies
         run: bun install --cwd admin-ui
@@ -90,4 +90,4 @@ jobs:
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: bun publish --access public
+        run: bun publish --access public --no-verify
