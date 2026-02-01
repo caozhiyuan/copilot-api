@@ -1,0 +1,93 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to publish (e.g., v1.0.3 or refs/tags/v1.0.3)"
+        required: true
+        default: "v1.0.3"
+
+concurrency:
+  group: publish-npm-${{ inputs.ref || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Resolve tag name
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ref="${{ inputs.ref }}"
+          if [[ -z "${ref}" ]]; then
+            ref="${GITHUB_REF}"
+          fi
+
+          ref="${ref#refs/tags/}"
+
+          if [[ "${ref}" != v* ]]; then
+            echo "Expected a tag starting with 'v', got: ${ref}" >&2
+            exit 1
+          fi
+
+          echo "name=${ref}" >> "$GITHUB_OUTPUT"
+          echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify package.json version matches tag
+        shell: bash
+        env:
+          TAG_VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          pkg_version="$(bun -e "import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync('package.json','utf8')).version)")"
+
+          if [[ "${pkg_version}" != "${TAG_VERSION}" ]]; then
+            echo "package.json version (${pkg_version}) does not match tag version (${TAG_VERSION})" >&2
+            exit 1
+          fi
+
+          echo "Version OK: ${pkg_version}"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install admin-ui dependencies
+        run: bun install --cwd admin-ui
+
+      - name: Build
+        run: bun run build
+
+      - name: Configure npm auth
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun publish --access public
