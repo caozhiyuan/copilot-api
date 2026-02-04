@@ -98,6 +98,7 @@ export type AdminConfig = {
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean
   compactUseSmallModel?: boolean
+  messageStartInputTokensFallback?: boolean
 }
 
 export type AdminConfigResponse = AdminConfig & {

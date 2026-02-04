@@ -1329,10 +1329,12 @@ type AdvancedSettingsCardProps = {
   useFunctionApplyPatch: boolean
   forceAgent: boolean
   compactUseSmallModel: boolean
+  messageStartInputTokensFallback: boolean
   onToggleAllowOriginalModelNamesForAliases: (value: boolean) => void
   onToggleUseFunctionApplyPatch: (value: boolean) => void
   onToggleForceAgent: (value: boolean) => void
   onToggleCompactUseSmallModel: (value: boolean) => void
+  onToggleMessageStartInputTokensFallback: (value: boolean) => void
 }
 
 function AdvancedSettingsCard({
@@ -1340,10 +1342,12 @@ function AdvancedSettingsCard({
   useFunctionApplyPatch,
   forceAgent,
   compactUseSmallModel,
+  messageStartInputTokensFallback,
   onToggleAllowOriginalModelNamesForAliases,
   onToggleUseFunctionApplyPatch,
   onToggleForceAgent,
   onToggleCompactUseSmallModel,
+  onToggleMessageStartInputTokensFallback,
 }: AdvancedSettingsCardProps): React.JSX.Element {
   return (
     <Card className="gap-4 py-4">
@@ -1397,6 +1401,19 @@ function AdvancedSettingsCard({
           <Switch
             checked={compactUseSmallModel}
             onCheckedChange={onToggleCompactUseSmallModel}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">message_start input_tokens fallback</div>
+            <div className="text-muted-foreground text-xs">
+              When enabled, estimates input token usage for message_start; disable to always report 0.
+            </div>
+          </div>
+          <Switch
+            checked={messageStartInputTokensFallback}
+            onCheckedChange={onToggleMessageStartInputTokensFallback}
           />
         </div>
       </CardContent>
@@ -1455,10 +1472,12 @@ type SettingsPageViewProps = {
   useFunctionApplyPatch: boolean
   forceAgent: boolean
   compactUseSmallModel: boolean
+  messageStartInputTokensFallback: boolean
   onAllowOriginalModelNamesForAliasesToggle: (value: boolean) => void
   onUseFunctionApplyPatchToggle: (value: boolean) => void
   onForceAgentToggle: (value: boolean) => void
   onCompactUseSmallModelToggle: (value: boolean) => void
+  onMessageStartInputTokensFallbackToggle: (value: boolean) => void
 }
 
 function useSettingsPageState(): SettingsPageViewProps {
@@ -1657,6 +1676,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleMessageStartInputTokensFallbackToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, messageStartInputTokensFallback: value }))
+    },
+    [setDraft],
+  )
+
   const hasModels = models.length > 0
   const smallModelValue = draft.smallModel ? draft.smallModel : "__default__"
   const canSave =
@@ -1679,6 +1705,8 @@ function useSettingsPageState(): SettingsPageViewProps {
   const useFunctionApplyPatch = draft.useFunctionApplyPatch ?? true
   const forceAgent = draft.forceAgent ?? false
   const compactUseSmallModel = draft.compactUseSmallModel ?? true
+  const messageStartInputTokensFallback =
+    draft.messageStartInputTokensFallback ?? true
 
   return {
     loading,
@@ -1731,11 +1759,14 @@ function useSettingsPageState(): SettingsPageViewProps {
     useFunctionApplyPatch,
     forceAgent,
     compactUseSmallModel,
+    messageStartInputTokensFallback,
     onAllowOriginalModelNamesForAliasesToggle:
       handleAllowOriginalModelNamesForAliasesToggle,
     onUseFunctionApplyPatchToggle: handleUseFunctionApplyPatchToggle,
     onForceAgentToggle: handleForceAgentToggle,
     onCompactUseSmallModelToggle: handleCompactUseSmallModelToggle,
+    onMessageStartInputTokensFallbackToggle:
+      handleMessageStartInputTokensFallbackToggle,
   }
 }
 
@@ -1790,10 +1821,12 @@ function SettingsPageView({
   useFunctionApplyPatch,
   forceAgent,
   compactUseSmallModel,
+  messageStartInputTokensFallback,
   onAllowOriginalModelNamesForAliasesToggle,
   onUseFunctionApplyPatchToggle,
   onForceAgentToggle,
   onCompactUseSmallModelToggle,
+  onMessageStartInputTokensFallbackToggle,
 }: SettingsPageViewProps): React.JSX.Element {
   const { activeSection, registerSection, scrollToSection } = useActiveSection({
     sectionIds: SETTINGS_SECTIONS.map((s) => s.id),
@@ -1957,12 +1990,16 @@ function SettingsPageView({
               useFunctionApplyPatch={useFunctionApplyPatch}
               forceAgent={forceAgent}
               compactUseSmallModel={compactUseSmallModel}
+              messageStartInputTokensFallback={messageStartInputTokensFallback}
               onToggleAllowOriginalModelNamesForAliases={
                 onAllowOriginalModelNamesForAliasesToggle
               }
               onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
               onToggleForceAgent={onForceAgentToggle}
               onToggleCompactUseSmallModel={onCompactUseSmallModelToggle}
+              onToggleMessageStartInputTokensFallback={
+                onMessageStartInputTokensFallbackToggle
+              }
             />
           </SettingsSectionCard>
         </main>
