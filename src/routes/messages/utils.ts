@@ -159,7 +159,23 @@ export const isWarmupProbeRequest = (
   }
 
   const text = lastBlock.text.trim().toLowerCase()
-  return text === "warmup" && lastBlock.cache_control?.type === "ephemeral"
+  const isEphemeral = lastBlock.cache_control?.type === "ephemeral"
+  if (!isEphemeral) return false
+
+  if (text === "warmup") return true
+
+  if (text === "hello") {
+    const preludeBlocks = lastMsg.content.slice(0, -1)
+    if (preludeBlocks.length === 0) return false
+
+    return preludeBlocks.every(
+      (block) =>
+        block.type === "text"
+        && block.text.trimStart().toLowerCase().startsWith("<system-reminder"),
+    )
+  }
+
+  return false
 }
 
 export const handleSelectionFailure = (
