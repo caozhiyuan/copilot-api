@@ -17,6 +17,7 @@ export interface AppConfig {
   useFunctionApplyPatch?: boolean
   forceAgent?: boolean
   compactUseSmallModel?: boolean
+  messageStartInputTokensFallback?: boolean
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -39,6 +40,7 @@ const defaultConfig: AppConfig = {
   allowOriginalModelNamesForAliases: false,
   useFunctionApplyPatch: true,
   compactUseSmallModel: true,
+  messageStartInputTokensFallback: true,
 }
 
 let cachedConfig: AppConfig | null = null
@@ -376,6 +378,11 @@ export function getSmallModel(): string {
 export function isFreeModelLoadBalancingEnabled(): boolean {
   const config = getConfig()
   return config.freeModelLoadBalancing ?? true
+}
+
+export function isMessageStartInputTokensFallbackEnabled(): boolean {
+  const config = getConfig()
+  return config.messageStartInputTokensFallback ?? true
 }
 
 export function getReasoningEffortForModel(
