@@ -1706,7 +1706,7 @@ function useSettingsPageState(): SettingsPageViewProps {
   const forceAgent = draft.forceAgent ?? false
   const compactUseSmallModel = draft.compactUseSmallModel ?? true
   const messageStartInputTokensFallback =
-    draft.messageStartInputTokensFallback ?? true
+    draft.messageStartInputTokensFallback ?? false
 
   return {
     loading,

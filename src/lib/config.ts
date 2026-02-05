@@ -40,7 +40,7 @@ const defaultConfig: AppConfig = {
   allowOriginalModelNamesForAliases: false,
   useFunctionApplyPatch: true,
   compactUseSmallModel: true,
-  messageStartInputTokensFallback: true,
+  messageStartInputTokensFallback: false,
 }
 
 let cachedConfig: AppConfig | null = null
@@ -382,7 +382,7 @@ export function isFreeModelLoadBalancingEnabled(): boolean {
 
 export function isMessageStartInputTokensFallbackEnabled(): boolean {
   const config = getConfig()
-  return config.messageStartInputTokensFallback ?? true
+  return config.messageStartInputTokensFallback ?? false
 }
 
 export function getReasoningEffortForModel(
