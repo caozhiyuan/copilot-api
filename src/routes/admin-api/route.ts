@@ -152,6 +152,7 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "useFunctionApplyPatch",
   "forceAgent",
   "compactUseSmallModel",
+  "messageStartInputTokensFallback",
 ])
 
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
@@ -373,6 +374,7 @@ function applyOptionalBoolean(
     | "useFunctionApplyPatch"
     | "forceAgent"
     | "compactUseSmallModel"
+    | "messageStartInputTokensFallback"
     | "allowOriginalModelNamesForAliases",
   value: unknown,
 ): string | undefined {
@@ -485,6 +487,14 @@ function applyConfigPatch(
       }
       case "compactUseSmallModel": {
         error = applyOptionalBoolean(next, "compactUseSmallModel", value)
+        break
+      }
+      case "messageStartInputTokensFallback": {
+        error = applyOptionalBoolean(
+          next,
+          "messageStartInputTokensFallback",
+          value,
+        )
         break
       }
       default: {

@@ -9,7 +9,11 @@ import type { Model } from "~/services/copilot/get-models"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
-import { getSmallModel, shouldCompactUseSmallModel } from "~/lib/config"
+import {
+  getSmallModel,
+  isMessageStartInputTokensFallbackEnabled,
+  shouldCompactUseSmallModel,
+} from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -310,14 +314,15 @@ const handleWithChatCompletions = async (params: {
 
   logger.debug("Streaming response from Copilot")
 
-  const estimatedInputTokens = await estimateInputTokens(
-    openAIPayload,
-    selectedModel,
-    logger,
-  )
+  const fallbackEnabled = isMessageStartInputTokensFallbackEnabled()
+
+  const estimatedInputTokens =
+    fallbackEnabled ?
+      await estimateInputTokens(openAIPayload, selectedModel, logger)
+    : undefined
 
   const historicalUsage =
-    instr.promptCacheKey && instr.safetyIdentifier ?
+    fallbackEnabled && instr.promptCacheKey && instr.safetyIdentifier ?
       instr.store.getLastCompletedUsageBySession({
         promptCacheKey: instr.promptCacheKey,
         safetyIdentifier: instr.safetyIdentifier,
@@ -383,14 +388,15 @@ const handleWithResponsesApi = async (params: {
   if (responsesPayload.stream && isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Responses API)")
 
-    const estimatedInputTokens = await estimateInputTokens(
-      openAIPayload,
-      selectedModel,
-      logger,
-    )
+    const fallbackEnabled = isMessageStartInputTokensFallbackEnabled()
+
+    const estimatedInputTokens =
+      fallbackEnabled ?
+        await estimateInputTokens(openAIPayload, selectedModel, logger)
+      : undefined
 
     const historicalUsage =
-      instr.promptCacheKey && instr.safetyIdentifier ?
+      fallbackEnabled && instr.promptCacheKey && instr.safetyIdentifier ?
         instr.store.getLastCompletedUsageBySession({
           promptCacheKey: instr.promptCacheKey,
           safetyIdentifier: instr.safetyIdentifier,
