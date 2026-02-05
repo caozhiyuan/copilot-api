@@ -42,7 +42,6 @@ import {
 
 const SETTINGS_SECTION_IDS = [
   "general",
-  "load-balancing",
   "reasoning",
   "aliases",
   "prompts",
@@ -754,37 +753,6 @@ function GeneralSettingsCard({
   )
 }
 
-type LoadBalancingCardProps = {
-  enabled: boolean
-  onToggle: (value: boolean) => void
-}
-
-function LoadBalancingCard({ enabled, onToggle }: LoadBalancingCardProps): React.JSX.Element {
-  const { t } = useTranslation()
-
-  return (
-    <Card className="gap-4 py-4">
-      <CardHeader className="px-4">
-        <CardTitle>{t("settingsPage.loadBalancing.title")}</CardTitle>
-        <CardDescription className="hidden sm:block">
-          {t("settingsPage.loadBalancing.description")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3 px-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">{t("settingsPage.loadBalancing.freeModelLabel")}</div>
-            <div className="text-muted-foreground text-xs">
-              {t("settingsPage.loadBalancing.freeModelHint")}
-            </div>
-          </div>
-          <Switch checked={enabled} onCheckedChange={onToggle} />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 type ReasoningEffortsCardProps = {
   mode: JsonMode
   json: string
@@ -1367,25 +1335,33 @@ function ModelAliasesCard({
 }
 
 type AdvancedSettingsCardProps = {
+  loadBalancingEnabled: boolean
   allowOriginalModelNamesForAliases: boolean
   useFunctionApplyPatch: boolean
   forceAgent: boolean
   compactUseSmallModel: boolean
+  messageStartInputTokensFallback: boolean
+  onToggleLoadBalancing: (value: boolean) => void
   onToggleAllowOriginalModelNamesForAliases: (value: boolean) => void
   onToggleUseFunctionApplyPatch: (value: boolean) => void
   onToggleForceAgent: (value: boolean) => void
   onToggleCompactUseSmallModel: (value: boolean) => void
+  onToggleMessageStartInputTokensFallback: (value: boolean) => void
 }
 
 function AdvancedSettingsCard({
+  loadBalancingEnabled,
   allowOriginalModelNamesForAliases,
   useFunctionApplyPatch,
   forceAgent,
   compactUseSmallModel,
+  messageStartInputTokensFallback,
+  onToggleLoadBalancing,
   onToggleAllowOriginalModelNamesForAliases,
   onToggleUseFunctionApplyPatch,
   onToggleForceAgent,
   onToggleCompactUseSmallModel,
+  onToggleMessageStartInputTokensFallback,
 }: AdvancedSettingsCardProps): React.JSX.Element {
   const { t } = useTranslation()
 
@@ -1400,7 +1376,24 @@ function AdvancedSettingsCard({
       <CardContent className="space-y-3 px-4">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">{t("settingsPage.advanced.allowOriginalModelNamesLabel")}</div>
+            <div className="text-sm font-medium">
+              {t("settingsPage.loadBalancing.freeModelLabel")}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {t("settingsPage.loadBalancing.freeModelHint")}
+            </div>
+          </div>
+          <Switch
+            checked={loadBalancingEnabled}
+            onCheckedChange={onToggleLoadBalancing}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.allowOriginalModelNamesLabel")}
+            </div>
             <div className="text-muted-foreground text-xs">
               {t("settingsPage.advanced.allowOriginalModelNamesHint")}
             </div>
@@ -1413,17 +1406,24 @@ function AdvancedSettingsCard({
 
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">{t("settingsPage.advanced.useFunctionApplyPatchLabel")}</div>
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.useFunctionApplyPatchLabel")}
+            </div>
             <div className="text-muted-foreground text-xs">
               {t("settingsPage.advanced.useFunctionApplyPatchHint")}
             </div>
           </div>
-          <Switch checked={useFunctionApplyPatch} onCheckedChange={onToggleUseFunctionApplyPatch} />
+          <Switch
+            checked={useFunctionApplyPatch}
+            onCheckedChange={onToggleUseFunctionApplyPatch}
+          />
         </div>
 
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">{t("settingsPage.advanced.forceAgentLabel")}</div>
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.forceAgentLabel")}
+            </div>
             <div className="text-muted-foreground text-xs">
               {t("settingsPage.advanced.forceAgentHint")}
             </div>
@@ -1441,6 +1441,21 @@ function AdvancedSettingsCard({
           <Switch
             checked={compactUseSmallModel}
             onCheckedChange={onToggleCompactUseSmallModel}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.messageStartInputTokensFallbackLabel")}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {t("settingsPage.advanced.messageStartInputTokensFallbackHint")}
+            </div>
+          </div>
+          <Switch
+            checked={messageStartInputTokensFallback}
+            onCheckedChange={onToggleMessageStartInputTokensFallback}
           />
         </div>
       </CardContent>
@@ -1499,10 +1514,12 @@ type SettingsPageViewProps = {
   useFunctionApplyPatch: boolean
   forceAgent: boolean
   compactUseSmallModel: boolean
+  messageStartInputTokensFallback: boolean
   onAllowOriginalModelNamesForAliasesToggle: (value: boolean) => void
   onUseFunctionApplyPatchToggle: (value: boolean) => void
   onForceAgentToggle: (value: boolean) => void
   onCompactUseSmallModelToggle: (value: boolean) => void
+  onMessageStartInputTokensFallbackToggle: (value: boolean) => void
 }
 
 function useSettingsPageState(): SettingsPageViewProps {
@@ -1703,6 +1720,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleMessageStartInputTokensFallbackToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, messageStartInputTokensFallback: value }))
+    },
+    [setDraft],
+  )
+
   const hasModels = models.length > 0
   const smallModelValue = draft.smallModel ? draft.smallModel : "__default__"
   const canSave =
@@ -1728,6 +1752,8 @@ function useSettingsPageState(): SettingsPageViewProps {
   const useFunctionApplyPatch = draft.useFunctionApplyPatch ?? true
   const forceAgent = draft.forceAgent ?? false
   const compactUseSmallModel = draft.compactUseSmallModel ?? true
+  const messageStartInputTokensFallback =
+    draft.messageStartInputTokensFallback ?? false
 
   return {
     loading,
@@ -1780,11 +1806,14 @@ function useSettingsPageState(): SettingsPageViewProps {
     useFunctionApplyPatch,
     forceAgent,
     compactUseSmallModel,
+    messageStartInputTokensFallback,
     onAllowOriginalModelNamesForAliasesToggle:
       handleAllowOriginalModelNamesForAliasesToggle,
     onUseFunctionApplyPatchToggle: handleUseFunctionApplyPatchToggle,
     onForceAgentToggle: handleForceAgentToggle,
     onCompactUseSmallModelToggle: handleCompactUseSmallModelToggle,
+    onMessageStartInputTokensFallbackToggle:
+      handleMessageStartInputTokensFallbackToggle,
   }
 }
 
@@ -1839,17 +1868,18 @@ function SettingsPageView({
   useFunctionApplyPatch,
   forceAgent,
   compactUseSmallModel,
+  messageStartInputTokensFallback,
   onAllowOriginalModelNamesForAliasesToggle,
   onUseFunctionApplyPatchToggle,
   onForceAgentToggle,
   onCompactUseSmallModelToggle,
+  onMessageStartInputTokensFallbackToggle,
 }: SettingsPageViewProps): React.JSX.Element {
   const { t } = useTranslation()
 
   const sections = useMemo<Array<SettingsSection>>(() => {
     return [
       { id: "general", label: t("settingsPage.sections.general") },
-      { id: "load-balancing", label: t("settingsPage.sections.loadBalancing") },
       { id: "reasoning", label: t("settingsPage.sections.reasoning") },
       { id: "aliases", label: t("settingsPage.sections.aliases") },
       { id: "prompts", label: t("settingsPage.sections.prompts") },
@@ -1936,14 +1966,6 @@ function SettingsPageView({
             />
           </SettingsSectionCard>
 
-          {/* Load Balancing */}
-          <SettingsSectionCard
-            id="load-balancing"
-            isActive={activeSection === "load-balancing"}
-            ref={(el) => registerSection("load-balancing", el)}
-          >
-            <LoadBalancingCard enabled={loadBalancingEnabled} onToggle={onLoadBalancingToggle} />
-          </SettingsSectionCard>
 
           {/* Reasoning Efforts */}
           <SettingsSectionCard
@@ -2013,16 +2035,22 @@ function SettingsPageView({
             ref={(el) => registerSection("advanced", el)}
           >
             <AdvancedSettingsCard
+              loadBalancingEnabled={loadBalancingEnabled}
               allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
               useFunctionApplyPatch={useFunctionApplyPatch}
               forceAgent={forceAgent}
               compactUseSmallModel={compactUseSmallModel}
+              messageStartInputTokensFallback={messageStartInputTokensFallback}
+              onToggleLoadBalancing={onLoadBalancingToggle}
               onToggleAllowOriginalModelNamesForAliases={
                 onAllowOriginalModelNamesForAliasesToggle
               }
               onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
               onToggleForceAgent={onForceAgentToggle}
               onToggleCompactUseSmallModel={onCompactUseSmallModelToggle}
+              onToggleMessageStartInputTokensFallback={
+                onMessageStartInputTokensFallbackToggle
+              }
             />
           </SettingsSectionCard>
         </main>

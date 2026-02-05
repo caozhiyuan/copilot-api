@@ -298,7 +298,9 @@
       "forceAgentLabel": "强制 agent 请求头",
       "forceAgentHint": "即使客户端未提供提示，也强制启用 agent 路由逻辑。",
       "compactUseSmallModelLabel": "compact 使用小模型",
-      "compactUseSmallModelHint": "启用后，compact 请求使用配置的小模型；否则使用请求的模型。"
+      "compactUseSmallModelHint": "启用后，compact 请求使用配置的小模型；否则使用请求的模型。",
+      "messageStartInputTokensFallbackLabel": "在流开始时估算输入 tokens",
+      "messageStartInputTokensFallbackHint": "启用后，当上游 usage 不可用时，会估算 message_start 的 input tokens。"
     }
   },
   "notFound": {

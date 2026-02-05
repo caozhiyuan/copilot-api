@@ -56,8 +56,15 @@ export const createMessages = async (
     "X-Initiator": initiator,
   }
 
-  if (options?.anthropicBetaHeader) {
-    headers["anthropic-beta"] = options.anthropicBetaHeader
+  // align with vscode copilot extension anthropic-beta
+  const filteredBeta = options?.anthropicBetaHeader
+    ?.split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "claude-code-20250219")
+    .join(",")
+
+  if (filteredBeta) {
+    headers["anthropic-beta"] = filteredBeta
   } else if (payload.thinking?.budget_tokens) {
     headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
   }

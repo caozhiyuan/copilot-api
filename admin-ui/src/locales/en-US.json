@@ -298,7 +298,9 @@
       "forceAgentLabel": "Force agent header",
       "forceAgentHint": "Forces agent routing logic even when clients omit hints.",
       "compactUseSmallModelLabel": "Compact uses small model",
-      "compactUseSmallModelHint": "When enabled, compact requests use the configured smallModel; otherwise they use the requested model."
+      "compactUseSmallModelHint": "When enabled, compact requests use the configured smallModel; otherwise they use the requested model.",
+      "messageStartInputTokensFallbackLabel": "Estimate input tokens at stream start",
+      "messageStartInputTokensFallbackHint": "When enabled, estimates message_start input tokens when upstream usage is unavailable."
     }
   },
   "notFound": {
