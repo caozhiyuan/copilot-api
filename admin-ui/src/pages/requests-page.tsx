@@ -118,10 +118,10 @@ function validateTimeRange(
   const from = parseMs(fromMs)
   const to = parseMs(toMs)
 
-  if (fromMs.trim() && from == null) return "requestsPage.validation.fromMsMustBeNumber"
-  if (toMs.trim() && to == null) return "requestsPage.validation.toMsMustBeNumber"
+  if (fromMs.trim() && from === null) return "requestsPage.validation.fromMsMustBeNumber"
+  if (toMs.trim() && to === null) return "requestsPage.validation.toMsMustBeNumber"
 
-  if (from != null && to != null && from > to) {
+  if (from !== null && to !== null && from > to) {
     return "requestsPage.validation.fromMsMustBeLteToMs"
   }
 
@@ -314,6 +314,11 @@ export function RequestsPage(): React.JSX.Element {
 
   const colSpan = requestsTableColVisibility.length
   const hasQuery = searchParams.toString().length > 0
+
+  let loadMoreLabel = t("common.noMore")
+  if (hasMore) {
+    loadMoreLabel = loading ? t("common.loading") : t("common.loadMore")
+  }
 
   return (
     <div className="space-y-4">
@@ -689,11 +694,7 @@ export function RequestsPage(): React.JSX.Element {
                 disabled={loading || !hasMore}
                 size="sm"
               >
-                {loading && hasMore
-                  ? t("common.loading")
-                  : hasMore
-                    ? t("common.loadMore")
-                    : t("common.noMore")}
+                {loadMoreLabel}
               </RainbowButton>
             </div>
           </CardContent>

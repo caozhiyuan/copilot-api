@@ -20,14 +20,14 @@ export function SettingsNavigation({
   activeSection,
   onSectionClick,
   className,
-}: SettingsNavigationProps) {
+}: SettingsNavigationProps): React.JSX.Element {
   const { t } = useTranslation()
 
   return (
     <nav
       className={cn(
         "sticky top-6 space-y-1 rounded-lg border bg-card p-2",
-        className
+        className,
       )}
       aria-label={t("settingsPage.navigation.ariaLabel")}
     >
@@ -45,7 +45,7 @@ export function SettingsNavigation({
               "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
               "hover:bg-accent hover:text-accent-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              isActive && "bg-accent/50"
+              isActive && "bg-accent/50",
             )}
             aria-current={isActive ? "page" : undefined}
             aria-controls={section.id}

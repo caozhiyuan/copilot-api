@@ -37,7 +37,9 @@ export function FloatingSaveButton({
         disabled={!canSave}
         className="shadow-2xl"
       >
-        {saving ? t("settingsPage.saveButton.saving") : t("settingsPage.saveButton.saveChanges")}
+        {saving
+          ? t("settingsPage.saveButton.saving")
+          : t("settingsPage.saveButton.saveChanges")}
       </RainbowButton>
     </div>
   )

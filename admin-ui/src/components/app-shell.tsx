@@ -11,11 +11,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { cn } from "@/lib/utils"
-import { TokenDialog } from "@/components/token-dialog"
+import { LocaleToggle } from "@/components/locale-toggle"
 import { MotionToggle } from "@/components/motion-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { LocaleToggle } from "@/components/locale-toggle"
+import { TokenDialog } from "@/components/token-dialog"
+import { cn } from "@/lib/utils"
 
 function NavItem({
   to,

@@ -4,7 +4,7 @@ import { i18n, LOCALE_STORAGE_KEY, type SupportedLocale, readLocalePreference } 
 
 function writeLocalePreference(value: SupportedLocale): void {
   try {
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, value)
+    globalThis.localStorage.setItem(LOCALE_STORAGE_KEY, value)
   } catch {
     // ignore
   }

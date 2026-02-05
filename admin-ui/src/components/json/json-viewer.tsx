@@ -1,7 +1,8 @@
 import * as React from "react"
+
 import type { TFunction } from "i18next"
-import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { fmtLocalDateTime } from "@/lib/format"
@@ -327,6 +328,12 @@ export function JsonViewer({
     setCollapsedPaths(new Set())
   }
 
+  function getStatusText(): string {
+    if (baseExpandDepth === 0) return t("jsonViewer.statusCollapsed")
+    if (baseExpandDepth >= 99) return t("jsonViewer.statusExpanded")
+    return t("jsonViewer.statusDepth", { depth: baseExpandDepth })
+  }
+
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex flex-wrap items-center gap-2">
@@ -337,11 +344,7 @@ export function JsonViewer({
           {t("jsonViewer.collapseAll")}
         </Button>
         <span className="text-muted-foreground ml-auto text-xs">
-          {baseExpandDepth === 0
-            ? t("jsonViewer.statusCollapsed")
-            : baseExpandDepth >= 99
-              ? t("jsonViewer.statusExpanded")
-              : t("jsonViewer.statusDepth", { depth: baseExpandDepth })}
+          {getStatusText()}
         </span>
       </div>
 

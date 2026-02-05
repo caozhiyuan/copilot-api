@@ -22,7 +22,11 @@ export function ThemeToggle(): React.JSX.Element {
 
   return (
     <Select value={theme ?? "system"} onValueChange={setTheme}>
-      <SelectTrigger size="sm" className="w-[8.5rem]" aria-label={t("theme.label")}>
+      <SelectTrigger
+        size="sm"
+        className="w-[8.5rem]"
+        aria-label={t("theme.label")}
+      >
         <ThemeIcon theme={theme} />
         <SelectValue />
       </SelectTrigger>

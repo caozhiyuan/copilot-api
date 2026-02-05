@@ -1,8 +1,8 @@
 import { ArrowLeftIcon, DownloadIcon } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
-import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 import {
   AdminApiError,

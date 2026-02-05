@@ -11,7 +11,10 @@ import { AdminTokenProvider } from "@/lib/admin-token"
 import { LocalePreferenceProvider } from "@/lib/locale-preference"
 import { MotionPreferenceProvider } from "@/lib/motion-preference"
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.querySelector("#root")
+if (!rootElement) throw new Error("Root element not found")
+
+createRoot(rootElement).render(
   <StrictMode>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <LocalePreferenceProvider>

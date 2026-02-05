@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { KeyRoundIcon } from "lucide-react"
-import { toast } from "sonner"
 import { Trans, useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 import { getAdminMeta, type AdminMeta, AdminApiError } from "@/lib/admin-api"
 import { useAdminToken } from "@/lib/admin-token"
