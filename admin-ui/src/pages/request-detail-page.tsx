@@ -173,10 +173,10 @@ export function RequestDetailPage(): React.JSX.Element {
             <CardTitle className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm">{item.request_id}</span>
               <StatusBadge status={item.http_status} />
-              {item.duration_ms != null ? (
+              {typeof item.duration_ms === "number" ? (
                 <Badge variant="outline">{t("requestDetailPage.badges.durMs")}: {fmtNum(item.duration_ms)}</Badge>
               ) : null}
-              {item.ttfb_ms != null ? (
+              {typeof item.ttfb_ms === "number" ? (
                 <Badge variant="outline">{t("requestDetailPage.badges.ttfbMs")}: {fmtNum(item.ttfb_ms)}</Badge>
               ) : null}
             </CardTitle>
