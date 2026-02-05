@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, DownloadIcon } from "lucide-react"
 import { useEffect, useState } from "react"
-import { Link, useLocation, useParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { Link, useLocation, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import {
@@ -136,7 +136,9 @@ export function RequestDetailPage(): React.JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle>{t("requestDetailPage.title")}</CardTitle>
-          <CardDescription>{t("requestDetailPage.notFoundDescription")}</CardDescription>
+          <CardDescription>
+            {t("requestDetailPage.notFoundDescription")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <InlineAlert
@@ -174,10 +176,16 @@ export function RequestDetailPage(): React.JSX.Element {
               <span className="font-mono text-sm">{item.request_id}</span>
               <StatusBadge status={item.http_status} />
               {typeof item.duration_ms === "number" ? (
-                <Badge variant="outline">{t("requestDetailPage.badges.durMs")}: {fmtNum(item.duration_ms)}</Badge>
+                <Badge variant="outline">
+                  {t("requestDetailPage.badges.durMs")}:{" "}
+                  {fmtNum(item.duration_ms)}
+                </Badge>
               ) : null}
               {typeof item.ttfb_ms === "number" ? (
-                <Badge variant="outline">{t("requestDetailPage.badges.ttfbMs")}: {fmtNum(item.ttfb_ms)}</Badge>
+                <Badge variant="outline">
+                  {t("requestDetailPage.badges.ttfbMs")}:{" "}
+                  {fmtNum(item.ttfb_ms)}
+                </Badge>
               ) : null}
             </CardTitle>
             <CardDescription className="font-mono text-xs">
@@ -303,10 +311,18 @@ export function RequestDetailPage(): React.JSX.Element {
                     {t("requestDetailPage.fields.tokens")}
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {t("requestDetailPage.tokens.in")}={item.tokens_input ?? ""}{" "}
-                    {t("requestDetailPage.tokens.out")}={item.tokens_output ?? ""}{" "}
-                    {t("requestDetailPage.tokens.total")}={item.tokens_total ?? ""}{" "}
-                    {t("requestDetailPage.tokens.cached")}={item.tokens_cached_input ?? ""}
+                    <span>
+                      {t("requestDetailPage.tokens.in")}={item.tokens_input ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.tokens.out")}={item.tokens_output ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.tokens.total")}={item.tokens_total ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.tokens.cached")}={item.tokens_cached_input ?? ""}
+                    </span>
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -314,9 +330,16 @@ export function RequestDetailPage(): React.JSX.Element {
                     {t("requestDetailPage.fields.quota")}
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {t("requestDetailPage.quota.before")}={item.premium_remaining_before ?? ""}{" "}
-                    {t("requestDetailPage.quota.after")}={item.premium_remaining_after ?? ""}{" "}
-                    {t("requestDetailPage.quota.diff")}={item.premium_remaining_diff ?? ""} ({quota})
+                    <span>
+                      {t("requestDetailPage.quota.before")}={item.premium_remaining_before ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.quota.after")}={item.premium_remaining_after ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.quota.diff")}={item.premium_remaining_diff ?? ""}{" "}
+                      ({quota})
+                    </span>
                   </TableCell>
                 </TableRow>
               </TableBody>
@@ -327,7 +350,9 @@ export function RequestDetailPage(): React.JSX.Element {
         <Card>
           <CardHeader>
             <CardTitle>{t("requestDetailPage.rawTitle")}</CardTitle>
-            <CardDescription>{t("requestDetailPage.rawDescription")}</CardDescription>
+            <CardDescription>
+              {t("requestDetailPage.rawDescription")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -338,7 +363,12 @@ export function RequestDetailPage(): React.JSX.Element {
                 className="h-8 sm:max-w-xs"
               />
               <div className="flex items-center gap-2 sm:ml-auto">
-                <Button type="button" variant="outline" size="sm" onClick={downloadRaw}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={downloadRaw}
+                >
                   <DownloadIcon className="size-4" />
                   {t("common.download")}
                 </Button>
