@@ -1,4 +1,5 @@
 import { BanIcon, SparklesIcon, WavesIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import {
   type MotionPreference,
@@ -19,6 +20,7 @@ function MotionIcon({ value }: { value: MotionPreference }): React.JSX.Element {
 }
 
 export function MotionToggle(): React.JSX.Element {
+  const { t } = useTranslation()
   const { preference, reducedMotion, setPreference } = useMotionPreference()
   const value: MotionPreference = reducedMotion ? "off" : preference
 
@@ -31,16 +33,16 @@ export function MotionToggle(): React.JSX.Element {
       <SelectTrigger
         size="sm"
         className="w-[8.5rem]"
-        aria-label="Motion"
-        title={reducedMotion ? "Reduced motion is enabled in system settings" : undefined}
+        aria-label={t("motion.label")}
+        title={reducedMotion ? t("motion.reducedMotionEnabled") : undefined}
       >
         <MotionIcon value={value} />
         <SelectValue />
       </SelectTrigger>
       <SelectContent align="end">
-        <SelectItem value="magic">Magic</SelectItem>
-        <SelectItem value="subtle">Subtle</SelectItem>
-        <SelectItem value="off">Off</SelectItem>
+        <SelectItem value="magic">{t("motion.magic")}</SelectItem>
+        <SelectItem value="subtle">{t("motion.subtle")}</SelectItem>
+        <SelectItem value="off">{t("motion.off")}</SelectItem>
       </SelectContent>
     </Select>
   )

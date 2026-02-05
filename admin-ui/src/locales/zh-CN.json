@@ -1,0 +1,308 @@
+{
+  "app": {
+    "title": "Copilot API 管理后台",
+    "language": "语言"
+  },
+  "locale": {
+    "enUS": "English",
+    "zhCN": "简体中文"
+  },
+  "nav": {
+    "accounts": "账号",
+    "requests": "请求",
+    "settings": "设置",
+    "openNavigation": "打开导航"
+  },
+  "theme": {
+    "label": "主题",
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色"
+  },
+  "motion": {
+    "label": "动效",
+    "magic": "炫酷",
+    "subtle": "柔和",
+    "off": "关闭",
+    "reducedMotionEnabled": "系统设置已启用减少动态效果"
+  },
+  "common": {
+    "set": "已设置",
+    "unset": "未设置",
+    "test": "测试",
+    "testing": "测试中…",
+    "clear": "清除",
+    "save": "保存",
+    "refresh": "刷新",
+    "refreshing": "刷新中…",
+    "retry": "重试",
+    "errors": "错误",
+    "tokens": "Tokens",
+    "failed": "失败",
+    "errorRate": "错误率",
+    "tokensPerRequest": "Tokens/请求",
+    "avgDurationMs": "平均耗时（ms）",
+    "lastRequest": "最近请求",
+    "account": "账号",
+    "status": "状态",
+    "avgMs": "平均 ms",
+    "clearFilter": "清除筛选",
+    "statusFailed": "失败",
+    "statusOk": "正常",
+    "used": "已用",
+    "remaining": "剩余",
+    "unlimited": "无限",
+    "apply": "应用",
+    "any": "(任意)",
+    "yes": "是",
+    "no": "否",
+    "from": "从",
+    "to": "到",
+    "time": "时间",
+    "path": "路径",
+    "endpoint": "端点",
+    "model": "模型",
+    "cost": "成本",
+    "quota": "额度",
+    "durationAbbrev": "耗时",
+    "loading": "加载中…",
+    "loadMore": "加载更多",
+    "noMore": "没有更多",
+    "clearFilters": "清除筛选",
+    "back": "返回",
+    "download": "下载",
+    "copyJson": "复制 JSON"
+  },
+  "tokenDialog": {
+    "trigger": "Token",
+    "title": "管理 Token",
+    "description": "调用 <3>/api/admin/*</3> 时会使用 <1>x-admin-token</1> 请求头。存储在 <5>sessionStorage</5> 中。",
+    "inputPlaceholder": "输入 Token",
+    "remoteNote": "如果服务端不在 localhost 运行，你必须在服务端设置 <1>ADMIN_TOKEN</1> 才能启用远程访问。",
+    "connected": "已连接：DB v{{version}} · {{path}}",
+    "toast": {
+      "adminApiOk": "Admin API 访问正常",
+      "adminApiFailed": "Admin API 访问失败",
+      "tokenSavedForSession": "Token 已在本会话保存",
+      "tokenCleared": "Token 已清除"
+    }
+  },
+  "accountsPage": {
+    "loadFailedTitle": "加载账号失败",
+    "statsWindowLabel": "统计窗口",
+    "window": {
+      "last24h": "最近 24 小时",
+      "last7d": "最近 7 天"
+    },
+    "dbInfo": "DB v{{version}} · {{path}}",
+    "tableDescription": "点击账号可筛选请求。",
+    "filterAccountPlaceholder": "筛选账号",
+    "premiumReq": "Premium 请求",
+    "empty": {
+      "noAccountsTitle": "无账号",
+      "noMatchesTitle": "无匹配结果",
+      "noAccountsDescription": "未找到账号。",
+      "noMatchesDescription": "没有账号匹配当前筛选条件。"
+    },
+    "premiumQuotaUsedAria": "Premium 交互额度使用量"
+  },
+  "requestsPage": {
+    "loadFailedTitle": "加载请求失败",
+    "description": "筛选并查看最近的请求。",
+    "tabs": {
+      "quick": "快速",
+      "advanced": "高级"
+    },
+    "filters": {
+      "timeRange": "时间范围",
+      "hasError": "有错误",
+      "upstreamModel": "上游模型",
+      "clientModel": "客户端模型"
+    },
+    "timeRange": {
+      "last15m": "最近 15 分钟",
+      "last1h": "最近 1 小时",
+      "last6h": "最近 6 小时",
+      "last24h": "最近 24 小时",
+      "last7d": "最近 7 天",
+      "custom": "自定义…"
+    },
+    "validation": {
+      "title": "时间范围无效",
+      "fromMsMustBeNumber": "from_ms 必须是数字（毫秒）",
+      "toMsMustBeNumber": "to_ms 必须是数字（毫秒）",
+      "fromMsMustBeLteToMs": "from_ms 必须 <= to_ms"
+    },
+    "empty": {
+      "noRequestsTitle": "无请求",
+      "noResultsForFilters": "当前筛选条件下没有结果。",
+      "noRequestsFound": "未找到请求。"
+    }
+  },
+  "requestDetailPage": {
+    "loadFailedTitle": "加载请求详情失败",
+    "title": "请求",
+    "notFoundTitle": "请求不存在",
+    "notFoundDescription": "请求不存在。",
+    "summaryTitle": "摘要",
+    "rawTitle": "原始数据",
+    "rawDescription": "完整记录（JSON）。",
+    "searchPlaceholder": "搜索键/值",
+    "toast": {
+      "copiedJson": "已复制 JSON",
+      "copyFailed": "复制失败",
+      "downloadedJson": "已下载 JSON",
+      "downloadFailed": "下载失败"
+    },
+    "fields": {
+      "time": "时间",
+      "path": "路径",
+      "endpoint": "端点",
+      "account": "账号",
+      "userId": "user_id",
+      "safetyIdentifier": "safety_identifier",
+      "promptCacheKey": "prompt_cache_key",
+      "initiator": "initiator",
+      "upstreamRequestId": "upstream_request_id",
+      "model": "模型",
+      "client": "客户端",
+      "tokens": "tokens",
+      "quota": "额度"
+    },
+    "badges": {
+      "durMs": "dur_ms",
+      "ttfbMs": "ttfb_ms"
+    },
+    "tokens": {
+      "in": "输入",
+      "out": "输出",
+      "total": "总计",
+      "cached": "缓存"
+    },
+    "quota": {
+      "before": "之前",
+      "after": "之后",
+      "diff": "变化"
+    }
+  },
+  "jsonViewer": {
+    "expand": "展开",
+    "collapse": "折叠",
+    "root": "(根)",
+    "more": "… 还有 {{count}} 项",
+    "arrayLabel": "数组({{count}})",
+    "objectLabel": "对象({{count}})",
+    "expandAll": "全部展开",
+    "collapseAll": "全部折叠",
+    "statusCollapsed": "已折叠",
+    "statusExpanded": "已展开",
+    "statusDepth": "层级<{{depth}}"
+  },
+  "settingsPage": {
+    "subtitle": "管理服务端配置和功能开关。",
+    "configPath": "配置路径：{{path}}",
+    "note": "更改在保存后生效。",
+    "errorTitle": "加载设置失败",
+    "envOverrideNote": "已被环境变量 {{env}} 覆盖。",
+    "sections": {
+      "general": "通用",
+      "loadBalancing": "负载均衡",
+      "reasoning": "推理",
+      "aliases": "别名",
+      "prompts": "提示词",
+      "advanced": "高级"
+    },
+    "navigation": {
+      "ariaLabel": "设置分区"
+    },
+    "saveButton": {
+      "saving": "保存中…",
+      "saveChanges": "保存更改"
+    },
+    "toast": {
+      "loadModelsFailed": "加载模型失败",
+      "loadConfigFailed": "加载配置失败",
+      "configSaved": "配置已保存",
+      "saveConfigFailed": "保存配置失败"
+    },
+    "common": {
+      "defaultOption": "(默认)",
+      "customModel": "自定义：{{value}}",
+      "remove": "移除",
+      "allow": "允许",
+      "block": "阻止",
+      "jsonMode": "JSON 模式",
+      "invalidJsonTitle": "无效的 JSON",
+      "selectModelPlaceholder": "选择模型",
+      "noModelsAvailable": "没有可用模型"
+    },
+    "general": {
+      "title": "通用",
+      "description": "基础配置。",
+      "smallModel": "小模型",
+      "smallModelManual": "小模型（手动）",
+      "smallModelPlaceholder": "选择小模型",
+      "smallModelInputPlaceholder": "gpt-5-mini",
+      "smallModelHint": "控制路由时接收轻量/免费请求的模型。",
+      "apiKeyLabel": "API 密钥",
+      "apiKeyPlaceholder": "sk-...",
+      "leaveEmptyHint": "留空以清除配置值。"
+    },
+    "loadBalancing": {
+      "title": "负载均衡",
+      "description": "切换免费账号负载均衡。",
+      "freeModelLabel": "免费流量负载均衡",
+      "freeModelHint": "启用后，会将免费流量分配到可用账号。"
+    },
+    "reasoning": {
+      "title": "推理强度",
+      "description": "覆盖模型的推理强度等级。",
+      "hint": "定义每个模型的推理强度（可选）。",
+      "jsonPlaceholder": "{ \\\"gpt-5-mini\\\": \\\"low\\\" }",
+      "emptyState": "没有推理覆盖。请在下方添加模型。",
+      "itemHint": "覆盖该模型的推理强度。",
+      "addButton": "添加模型覆盖"
+    },
+    "prompts": {
+      "title": "额外提示词",
+      "description": "为每个模型注入额外的 system prompt。",
+      "hint": "为指定模型添加或编辑注入的 prompt 片段。",
+      "jsonPlaceholder": "{ \\\"gpt-5-mini\\\": \\\"...\\\" }",
+      "emptyState": "未配置额外提示词。",
+      "promptPlaceholder": "System prompt 片段…",
+      "itemHint": "在模型执行前追加 prompt 内容。",
+      "addButton": "添加提示词"
+    },
+    "aliases": {
+      "title": "模型别名",
+      "description": "将友好别名映射到上游模型 ID。",
+      "defaultBehaviorHint": "默认行为：{{behavior}} 原始模型 ID。每个别名可覆盖此设置。",
+      "jsonPlaceholder": "{ \\\"fast\\\": { \\\"target\\\": \\\"gpt-5-mini\\\", \\\"allowOriginal\\\": true } }",
+      "aliasPlaceholder": "别名",
+      "selectTargetPlaceholder": "选择目标模型",
+      "selectOption": "(选择)",
+      "originalModelPlaceholder": "原始模型 ID",
+      "useDefault": "使用默认值",
+      "allowOriginal": "允许原始模型 ID",
+      "blockOriginal": "阻止原始模型 ID",
+      "emptyState": "未配置模型别名。",
+      "addButton": "添加别名"
+    },
+    "advanced": {
+      "title": "高级",
+      "description": "功能开关与实验选项。",
+      "allowOriginalModelNamesLabel": "允许原始模型名",
+      "allowOriginalModelNamesHint": "当别名未覆盖时的默认行为。",
+      "useFunctionApplyPatchLabel": "启用 function apply_patch",
+      "useFunctionApplyPatchHint": "在响应路由中启用函数级补丁。",
+      "forceAgentLabel": "强制 agent 请求头",
+      "forceAgentHint": "即使客户端未提供提示，也强制启用 agent 路由逻辑。",
+      "compactUseSmallModelLabel": "compact 使用小模型",
+      "compactUseSmallModelHint": "启用后，compact 请求使用配置的小模型；否则使用请求的模型。"
+    }
+  },
+  "notFound": {
+    "title": "未找到页面",
+    "description": "你访问的页面不存在。"
+  }
+}

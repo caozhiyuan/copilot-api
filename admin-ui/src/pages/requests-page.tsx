@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 import {
   AdminApiError,
@@ -8,6 +9,7 @@ import {
   queryAdminRequests,
 } from "@/lib/admin-api"
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { i18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -104,14 +106,24 @@ function parseMs(value: string): number | null {
   return int
 }
 
-function validateTimeRange(fromMs: string, toMs: string): string | null {
+type TimeRangeValidationErrorKey =
+  | "requestsPage.validation.fromMsMustBeNumber"
+  | "requestsPage.validation.toMsMustBeNumber"
+  | "requestsPage.validation.fromMsMustBeLteToMs"
+
+function validateTimeRange(
+  fromMs: string,
+  toMs: string
+): TimeRangeValidationErrorKey | null {
   const from = parseMs(fromMs)
   const to = parseMs(toMs)
 
-  if (fromMs.trim() && from == null) return "from_ms must be a number (milliseconds)"
-  if (toMs.trim() && to == null) return "to_ms must be a number (milliseconds)"
+  if (fromMs.trim() && from == null) return "requestsPage.validation.fromMsMustBeNumber"
+  if (toMs.trim() && to == null) return "requestsPage.validation.toMsMustBeNumber"
 
-  if (from != null && to != null && from > to) return "from_ms must be <= to_ms"
+  if (from != null && to != null && from > to) {
+    return "requestsPage.validation.fromMsMustBeLteToMs"
+  }
 
   return null
 }
@@ -189,6 +201,7 @@ function TableSkeleton({ rows }: { rows: number }): React.JSX.Element {
 }
 
 export function RequestsPage(): React.JSX.Element {
+  const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [filters, setFilters] = useState<Filters>(() =>
@@ -219,8 +232,9 @@ export function RequestsPage(): React.JSX.Element {
   }, [activeFilters])
 
   const validationError = useMemo(() => {
-    return validateTimeRange(filters.from_ms, filters.to_ms)
-  }, [filters.from_ms, filters.to_ms])
+    const key = validateTimeRange(filters.from_ms, filters.to_ms)
+    return key ? t(key) : null
+  }, [filters.from_ms, filters.to_ms, t])
 
   const load = useCallback(
     async ({
@@ -246,7 +260,7 @@ export function RequestsPage(): React.JSX.Element {
       } catch (err) {
         const msg = err instanceof AdminApiError ? err.message : String(err)
         setError(msg)
-        toast.error("Failed to load requests", { description: msg })
+        toast.error(i18n.t("requestsPage.loadFailedTitle"), { description: msg })
 
         if (reset) setItems([])
         setHasMore(false)
@@ -305,10 +319,8 @@ export function RequestsPage(): React.JSX.Element {
     <div className="space-y-4">
       <Card className="gap-4 py-4">
         <CardHeader className="px-4">
-          <CardTitle>Requests</CardTitle>
-          <CardDescription className="hidden sm:block">
-            Filter and inspect recent requests.
-          </CardDescription>
+          <CardTitle>{t("nav.requests")}</CardTitle>
+          <CardDescription className="hidden sm:block">{t("requestsPage.description")}</CardDescription>
           <CardAction className="flex items-center gap-2">
             <Button
               type="button"
@@ -317,25 +329,25 @@ export function RequestsPage(): React.JSX.Element {
               onClick={clearAll}
               disabled={!hasQuery || loading}
             >
-              Clear
+              {t("common.clear")}
             </Button>
             <RainbowButton onClick={apply} disabled={!canApply} size="sm">
-              Apply
+              {t("common.apply")}
             </RainbowButton>
           </CardAction>
         </CardHeader>
         <CardContent className="space-y-3 px-4">
           <Tabs defaultValue="quick" className="gap-1.5">
             <TabsList className="h-8 p-[2px]">
-              <TabsTrigger value="quick">Quick</TabsTrigger>
-              <TabsTrigger value="advanced">Advanced</TabsTrigger>
+              <TabsTrigger value="quick">{t("requestsPage.tabs.quick")}</TabsTrigger>
+              <TabsTrigger value="advanced">{t("requestsPage.tabs.advanced")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="quick">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                 <div className="grid gap-1.5">
                   <Label htmlFor="account_id" className="text-muted-foreground lg:text-xs">
-                    Account
+                    {t("common.account")}
                   </Label>
                   <Input
                     id="account_id"
@@ -349,26 +361,26 @@ export function RequestsPage(): React.JSX.Element {
                 </div>
 
                 <div className="grid gap-1.5">
-                  <Label className="text-muted-foreground lg:text-xs">Time range</Label>
+                  <Label className="text-muted-foreground lg:text-xs">{t("requestsPage.filters.timeRange")}</Label>
                   <Select value={timeRange} onValueChange={(v) => onTimeRangeChange(v as TimeRange)}>
                     <SelectTrigger size="sm" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__any__">(any)</SelectItem>
-                      <SelectItem value="15m">Last 15m</SelectItem>
-                      <SelectItem value="1h">Last 1h</SelectItem>
-                      <SelectItem value="6h">Last 6h</SelectItem>
-                      <SelectItem value="24h">Last 24h</SelectItem>
-                      <SelectItem value="7d">Last 7d</SelectItem>
-                      <SelectItem value="custom">Custom...</SelectItem>
+                      <SelectItem value="__any__">{t("common.any")}</SelectItem>
+                      <SelectItem value="15m">{t("requestsPage.timeRange.last15m")}</SelectItem>
+                      <SelectItem value="1h">{t("requestsPage.timeRange.last1h")}</SelectItem>
+                      <SelectItem value="6h">{t("requestsPage.timeRange.last6h")}</SelectItem>
+                      <SelectItem value="24h">{t("requestsPage.timeRange.last24h")}</SelectItem>
+                      <SelectItem value="7d">{t("requestsPage.timeRange.last7d")}</SelectItem>
+                      <SelectItem value="custom">{t("requestsPage.timeRange.custom")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="grid gap-1.5">
                   <Label htmlFor="status" className="text-muted-foreground lg:text-xs">
-                    Status
+                    {t("common.status")}
                   </Label>
                   <Input
                     id="status"
@@ -382,7 +394,7 @@ export function RequestsPage(): React.JSX.Element {
                 </div>
 
                 <div className="grid gap-1.5">
-                  <Label className="text-muted-foreground lg:text-xs">Has error</Label>
+                  <Label className="text-muted-foreground lg:text-xs">{t("requestsPage.filters.hasError")}</Label>
                   <Select
                     value={filters.has_error || "__any__"}
                     onValueChange={(v) =>
@@ -396,9 +408,9 @@ export function RequestsPage(): React.JSX.Element {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__any__">(any)</SelectItem>
-                      <SelectItem value="1">yes</SelectItem>
-                      <SelectItem value="0">no</SelectItem>
+                      <SelectItem value="__any__">{t("common.any")}</SelectItem>
+                      <SelectItem value="1">{t("common.yes")}</SelectItem>
+                      <SelectItem value="0">{t("common.no")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -407,7 +419,7 @@ export function RequestsPage(): React.JSX.Element {
                   <>
                     <div className="grid gap-1.5">
                       <Label htmlFor="from_dt" className="text-muted-foreground lg:text-xs">
-                        From
+                        {t("common.from")}
                       </Label>
                       <Input
                         id="from_dt"
@@ -425,7 +437,7 @@ export function RequestsPage(): React.JSX.Element {
                     </div>
                     <div className="grid gap-1.5">
                       <Label htmlFor="to_dt" className="text-muted-foreground lg:text-xs">
-                        To
+                        {t("common.to")}
                       </Label>
                       <Input
                         id="to_dt"
@@ -450,7 +462,7 @@ export function RequestsPage(): React.JSX.Element {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 <div className="grid gap-1.5">
                   <Label htmlFor="upstream_model" className="text-muted-foreground lg:text-xs">
-                    Upstream model
+                    {t("requestsPage.filters.upstreamModel")}
                   </Label>
                   <Input
                     id="upstream_model"
@@ -465,7 +477,7 @@ export function RequestsPage(): React.JSX.Element {
 
                 <div className="grid gap-1.5">
                   <Label htmlFor="client_model" className="text-muted-foreground lg:text-xs">
-                    Client model
+                    {t("requestsPage.filters.clientModel")}
                   </Label>
                   <Input
                     id="client_model"
@@ -483,7 +495,7 @@ export function RequestsPage(): React.JSX.Element {
                     htmlFor="upstream_endpoint"
                     className="text-muted-foreground lg:text-xs"
                   >
-                    Endpoint
+                    {t("common.endpoint")}
                   </Label>
                   <Input
                     id="upstream_endpoint"
@@ -501,7 +513,7 @@ export function RequestsPage(): React.JSX.Element {
 
                 <div className="grid gap-1.5">
                   <Label htmlFor="path" className="text-muted-foreground lg:text-xs">
-                    Path
+                    {t("common.path")}
                   </Label>
                   <Input
                     id="path"
@@ -521,7 +533,7 @@ export function RequestsPage(): React.JSX.Element {
           {validationError ? (
             <InlineAlert
               variant="warning"
-              title="Invalid time range"
+              title={t("requestsPage.validation.title")}
               description={validationError}
             />
           ) : null}
@@ -537,9 +549,9 @@ export function RequestsPage(): React.JSX.Element {
             {error && items.length > 0 ? (
               <InlineAlert
                 variant="error"
-                title="Failed to load requests"
+                title={t("requestsPage.loadFailedTitle")}
                 description={error}
-                actionLabel="Retry"
+                actionLabel={t("common.retry")}
                 onAction={() => void load({ reset: true, cursor: null })}
               />
             ) : null}
@@ -547,16 +559,30 @@ export function RequestsPage(): React.JSX.Element {
             <Table className="[&_th]:h-9 [&_td]:py-1.5">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Path</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[2])}>Endpoint</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[3])}>Account</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[4])}>Model</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[5])}>Tokens</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[6])}>Cost</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[7])}>Quota</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[8])}>Dur</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>{t("common.time")}</TableHead>
+                  <TableHead>{t("common.path")}</TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[2])}>
+                    {t("common.endpoint")}
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[3])}>
+                    {t("common.account")}
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[4])}>
+                    {t("common.model")}
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[5])}>
+                    {t("common.tokens")}
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[6])}>
+                    {t("common.cost")}
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[7])}>
+                    {t("common.quota")}
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[8])}>
+                    {t("common.durationAbbrev")}
+                  </TableHead>
+                  <TableHead>{t("common.status")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -565,9 +591,9 @@ export function RequestsPage(): React.JSX.Element {
                     <TableCell colSpan={colSpan}>
                       <InlineAlert
                         variant="error"
-                        title="Failed to load requests"
+                        title={t("requestsPage.loadFailedTitle")}
                         description={error}
-                        actionLabel="Retry"
+                        actionLabel={t("common.retry")}
                         onAction={() => void load({ reset: true, cursor: null })}
                       />
                     </TableCell>
@@ -579,13 +605,13 @@ export function RequestsPage(): React.JSX.Element {
                     <TableCell colSpan={colSpan}>
                       <InlineAlert
                         variant="info"
-                        title="No requests"
+                        title={t("requestsPage.empty.noRequestsTitle")}
                         description={
                           hasQuery
-                            ? "No results for the current filters."
-                            : "No requests found."
+                            ? t("requestsPage.empty.noResultsForFilters")
+                            : t("requestsPage.empty.noRequestsFound")
                         }
-                        actionLabel={hasQuery ? "Clear filters" : undefined}
+                        actionLabel={hasQuery ? t("common.clearFilters") : undefined}
                         onAction={hasQuery ? clearAll : undefined}
                       />
                     </TableCell>
@@ -663,7 +689,11 @@ export function RequestsPage(): React.JSX.Element {
                 disabled={loading || !hasMore}
                 size="sm"
               >
-                {loading && hasMore ? "Loading..." : hasMore ? "Load more" : "No more"}
+                {loading && hasMore
+                  ? t("common.loading")
+                  : hasMore
+                    ? t("common.loadMore")
+                    : t("common.noMore")}
               </RainbowButton>
             </div>
           </CardContent>

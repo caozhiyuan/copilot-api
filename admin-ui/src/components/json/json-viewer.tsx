@@ -1,5 +1,7 @@
 import * as React from "react"
+import type { TFunction } from "i18next"
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { fmtLocalDateTime } from "@/lib/format"
@@ -110,12 +112,14 @@ function NodeRow({
   valuePreview,
   expanded,
   toggle,
+  t,
 }: {
   depth: number
   name?: React.ReactNode
   valuePreview: React.ReactNode
   expanded: boolean
   toggle?: () => void
+  t: TFunction
 }): React.JSX.Element {
   return (
     <div
@@ -127,7 +131,7 @@ function NodeRow({
           type="button"
           onClick={toggle}
           className="text-muted-foreground hover:text-foreground mt-0.5"
-          aria-label={expanded ? "Collapse" : "Expand"}
+          aria-label={expanded ? t("jsonViewer.collapse") : t("jsonViewer.expand")}
         >
           {expanded ? (
             <ChevronDownIcon className="size-4" />
@@ -145,7 +149,7 @@ function NodeRow({
           <span className="text-muted-foreground">:</span>
         </>
       ) : (
-        <span className="text-muted-foreground">(root)</span>
+        <span className="text-muted-foreground">{t("jsonViewer.root")}</span>
       )}
 
       <span className="min-w-0 break-words">{valuePreview}</span>
@@ -163,6 +167,7 @@ function JsonNode({
   expandedPaths,
   collapsedPaths,
   onToggle,
+  t,
 }: {
   value: unknown
   name?: string
@@ -173,6 +178,7 @@ function JsonNode({
   expandedPaths: Set<string>
   collapsedPaths: Set<string>
   onToggle: (path: string, nextExpanded: boolean) => void
+  t: TFunction
 }): React.JSX.Element {
   const isObj = isRecord(value)
   const isArr = Array.isArray(value)
@@ -194,12 +200,15 @@ function JsonNode({
         name={name ? highlight(name, search) : undefined}
         valuePreview={formatPrimitive(value, search, name)}
         expanded={false}
+        t={t}
       />
     )
   }
 
   const count = isArr ? value.length : Object.keys(value).length
-  const label = isArr ? `Array(${count})` : `Object(${count})`
+  const label = isArr
+    ? t("jsonViewer.arrayLabel", { count })
+    : t("jsonViewer.objectLabel", { count })
 
   return (
     <div className="space-y-1">
@@ -209,6 +218,7 @@ function JsonNode({
         valuePreview={<span className="text-muted-foreground">{label}</span>}
         expanded={expanded}
         toggle={() => onToggle(path, !expanded)}
+        t={t}
       />
 
       {expanded ? (
@@ -228,6 +238,7 @@ function JsonNode({
                     expandedPaths={expandedPaths}
                     collapsedPaths={collapsedPaths}
                     onToggle={onToggle}
+                    t={t}
                   />
                 ))
             : Object.entries(value)
@@ -244,6 +255,7 @@ function JsonNode({
                     expandedPaths={expandedPaths}
                     collapsedPaths={collapsedPaths}
                     onToggle={onToggle}
+                    t={t}
                   />
                 ))}
 
@@ -252,10 +264,11 @@ function JsonNode({
               depth={depth + 1}
               valuePreview={
                 <span className="text-muted-foreground">
-                  … {count - MAX_ITEMS_PER_NODE} more
+                  {t("jsonViewer.more", { count: count - MAX_ITEMS_PER_NODE })}
                 </span>
               }
               expanded={false}
+              t={t}
             />
           ) : null}
         </div>
@@ -273,6 +286,7 @@ export function JsonViewer({
   const [baseExpandDepth, setBaseExpandDepth] = React.useState(defaultExpandedDepth)
   const [expandedPaths, setExpandedPaths] = React.useState<Set<string>>(() => new Set())
   const [collapsedPaths, setCollapsedPaths] = React.useState<Set<string>>(() => new Set())
+  const { t } = useTranslation()
 
   function toggle(path: string, nextExpanded: boolean): void {
     if (nextExpanded) {
@@ -317,17 +331,17 @@ export function JsonViewer({
     <div className={cn("space-y-3", className)}>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={expandAll}>
-          Expand all
+          {t("jsonViewer.expandAll")}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={collapseAll}>
-          Collapse all
+          {t("jsonViewer.collapseAll")}
         </Button>
         <span className="text-muted-foreground ml-auto text-xs">
           {baseExpandDepth === 0
-            ? "collapsed"
+            ? t("jsonViewer.statusCollapsed")
             : baseExpandDepth >= 99
-              ? "expanded"
-              : `depth<${baseExpandDepth}`}
+              ? t("jsonViewer.statusExpanded")
+              : t("jsonViewer.statusDepth", { depth: baseExpandDepth })}
         </span>
       </div>
 
@@ -341,6 +355,7 @@ export function JsonViewer({
           expandedPaths={expandedPaths}
           collapsedPaths={collapsedPaths}
           onToggle={toggle}
+          t={t}
         />
       </div>
     </div>

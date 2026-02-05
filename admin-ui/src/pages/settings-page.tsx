@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 import {
   AdminApiError,
@@ -11,6 +12,7 @@ import {
   getAdminModels,
   updateAdminConfig,
 } from "@/lib/admin-api"
+import { i18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import {
   FloatingSaveButton,
@@ -38,14 +40,14 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 
-const SETTINGS_SECTIONS: Array<SettingsSection> = [
-  { id: "general", label: "General" },
-  { id: "load-balancing", label: "Load Balancing" },
-  { id: "reasoning", label: "Reasoning" },
-  { id: "aliases", label: "Aliases" },
-  { id: "prompts", label: "Prompts" },
-  { id: "advanced", label: "Advanced" },
-]
+const SETTINGS_SECTION_IDS = [
+  "general",
+  "load-balancing",
+  "reasoning",
+  "aliases",
+  "prompts",
+  "advanced",
+] as const
 
 const REASONING_EFFORTS: Array<ReasoningEffort> = [
   "none",
@@ -687,6 +689,8 @@ function GeneralSettingsCard({
   onSmallModelInput,
   onApiKeyChange,
 }: GeneralSettingsCardProps): React.JSX.Element {
+  const { t } = useTranslation()
+
   const showCustomModel =
     hasModels
     && smallModelValue !== "__default__"
@@ -695,10 +699,8 @@ function GeneralSettingsCard({
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <CardTitle>General</CardTitle>
-        <CardDescription className="hidden sm:block">
-          Default model routing and API key storage.
-        </CardDescription>
+        <CardTitle>{t("settingsPage.general.title")}</CardTitle>
+        <CardDescription className="hidden sm:block">{t("settingsPage.general.description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 px-4">
         <div className="grid gap-2">
@@ -706,13 +708,13 @@ function GeneralSettingsCard({
           {hasModels ? (
             <Select value={smallModelValue} onValueChange={onSmallModelSelect}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select small model" />
+                <SelectValue placeholder={t("settingsPage.general.smallModelPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__default__">(default)</SelectItem>
+                <SelectItem value="__default__">{t("settingsPage.common.defaultOption")}</SelectItem>
                 {showCustomModel ? (
                   <SelectItem value={smallModelValue}>
-                    Custom: {smallModelValue}
+                    {t("settingsPage.common.customModel", { value: smallModelValue })}
                   </SelectItem>
                 ) : null}
                 {models.map((model) => (
@@ -724,27 +726,27 @@ function GeneralSettingsCard({
             </Select>
           ) : (
             <Input
-              placeholder="gpt-5-mini"
+              placeholder={t("settingsPage.general.smallModelInputPlaceholder")}
               value={smallModelInputValue}
               onChange={(e) => onSmallModelInput(e.target.value)}
             />
           )}
           <div className="text-muted-foreground text-xs">
-            Controls which model receives lightweight/free requests when routing.
+            {t("settingsPage.general.smallModelHint")}
           </div>
         </div>
 
         <div className="grid gap-2">
-          <Label className="text-muted-foreground text-xs">API key</Label>
+          <Label className="text-muted-foreground text-xs">{t("settingsPage.general.apiKeyLabel")}</Label>
           <Input
             type="password"
             autoComplete="new-password"
-            placeholder="sk-..."
+            placeholder={t("settingsPage.general.apiKeyPlaceholder")}
             value={apiKeyValue}
             onChange={(e) => onApiKeyChange(e.target.value)}
           />
           <div className="text-muted-foreground text-xs">
-            {envOverrideNote} Leave empty to clear config value.
+            {envOverrideNote} {t("settingsPage.general.leaveEmptyHint")}
           </div>
         </div>
       </CardContent>
@@ -758,20 +760,22 @@ type LoadBalancingCardProps = {
 }
 
 function LoadBalancingCard({ enabled, onToggle }: LoadBalancingCardProps): React.JSX.Element {
+  const { t } = useTranslation()
+
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <CardTitle>Load balancing</CardTitle>
+        <CardTitle>{t("settingsPage.loadBalancing.title")}</CardTitle>
         <CardDescription className="hidden sm:block">
-          Toggle free account load balancing.
+          {t("settingsPage.loadBalancing.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Free model load balancing</div>
+            <div className="text-sm font-medium">{t("settingsPage.loadBalancing.freeModelLabel")}</div>
             <div className="text-muted-foreground text-xs">
-              When enabled, distributes free traffic across available accounts.
+              {t("settingsPage.loadBalancing.freeModelHint")}
             </div>
           </div>
           <Switch checked={enabled} onCheckedChange={onToggle} />
@@ -808,23 +812,24 @@ function ReasoningEffortsCard({
 }: ReasoningEffortsCardProps): React.JSX.Element {
   const defaultModelValue = "__default__"
   const hasModels = models.length > 0
+  const { t } = useTranslation()
 
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <CardTitle>Reasoning efforts</CardTitle>
+        <CardTitle>{t("settingsPage.reasoning.title")}</CardTitle>
         <CardDescription className="hidden sm:block">
-          Override model reasoning effort levels.
+          {t("settingsPage.reasoning.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
         <div className="flex items-center justify-between gap-3">
           <div className="text-muted-foreground text-xs">
-            Define per-model reasoning effort (optional).
+            {t("settingsPage.reasoning.hint")}
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={mode === "json"} onCheckedChange={onToggleMode} />
-            <Label className="text-muted-foreground text-xs">JSON mode</Label>
+            <Label className="text-muted-foreground text-xs">{t("settingsPage.common.jsonMode")}</Label>
           </div>
         </div>
 
@@ -834,17 +839,17 @@ function ReasoningEffortsCard({
               value={json}
               onChange={(e) => onJsonChange(e.target.value)}
               className="min-h-[160px] lg:min-h-[120px] max-h-[36vh] overflow-auto font-mono text-xs"
-              placeholder='{ "gpt-5-mini": "low" }'
+              placeholder={t("settingsPage.reasoning.jsonPlaceholder")}
             />
             {jsonIssue ? (
-              <InlineAlert variant="warning" title="Invalid JSON" description={jsonIssue} />
+              <InlineAlert variant="warning" title={t("settingsPage.common.invalidJsonTitle")} description={jsonIssue} />
             ) : null}
           </div>
         ) : (
           <div className="space-y-2">
             {items.length === 0 ? (
               <div className="text-muted-foreground text-sm">
-                No reasoning overrides. Add a model below.
+                {t("settingsPage.reasoning.emptyState")}
               </div>
             ) : (
               items.map((item) => {
@@ -867,13 +872,21 @@ function ReasoningEffortsCard({
                       >
                         <SelectTrigger className="min-w-[220px]">
                           <SelectValue
-                            placeholder={hasModels ? "Select model" : "No models available"}
+                            placeholder={
+                              hasModels
+                                ? t("settingsPage.common.selectModelPlaceholder")
+                                : t("settingsPage.common.noModelsAvailable")
+                            }
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={defaultModelValue}>(default)</SelectItem>
+                          <SelectItem value={defaultModelValue}>
+                            {t("settingsPage.common.defaultOption")}
+                          </SelectItem>
                           {showCustomModel ? (
-                            <SelectItem value={modelValue}>Custom: {modelValue}</SelectItem>
+                            <SelectItem value={modelValue}>
+                              {t("settingsPage.common.customModel", { value: modelValue })}
+                            </SelectItem>
                           ) : null}
                           {models.map((model) => (
                             <SelectItem key={model} value={model}>
@@ -905,11 +918,11 @@ function ReasoningEffortsCard({
                         size="sm"
                         onClick={() => onRemoveItem(item.id)}
                       >
-                        Remove
+                        {t("settingsPage.common.remove")}
                       </Button>
                     </div>
                     <div className="text-muted-foreground text-xs">
-                      Overrides reasoning effort for this model.
+                      {t("settingsPage.reasoning.itemHint")}
                     </div>
                   </div>
                 )
@@ -917,7 +930,7 @@ function ReasoningEffortsCard({
             )}
 
             <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
-              Add model override
+              {t("settingsPage.reasoning.addButton")}
             </Button>
           </div>
         )}
@@ -953,23 +966,24 @@ function ExtraPromptsCard({
 }: ExtraPromptsCardProps): React.JSX.Element {
   const defaultModelValue = "__default__"
   const hasModels = models.length > 0
+  const { t } = useTranslation()
 
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <CardTitle>Extra prompts</CardTitle>
+        <CardTitle>{t("settingsPage.prompts.title")}</CardTitle>
         <CardDescription className="hidden sm:block">
-          Inject extra system prompts per model.
+          {t("settingsPage.prompts.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
         <div className="flex items-center justify-between gap-3">
           <div className="text-muted-foreground text-xs">
-            Add or edit prompt snippets injected for specific models.
+            {t("settingsPage.prompts.hint")}
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={mode === "json"} onCheckedChange={onToggleMode} />
-            <Label className="text-muted-foreground text-xs">JSON mode</Label>
+            <Label className="text-muted-foreground text-xs">{t("settingsPage.common.jsonMode")}</Label>
           </div>
         </div>
 
@@ -979,16 +993,16 @@ function ExtraPromptsCard({
               value={json}
               onChange={(e) => onJsonChange(e.target.value)}
               className="min-h-[200px] lg:min-h-[140px] max-h-[40vh] overflow-auto font-mono text-xs"
-              placeholder='{ "gpt-5-mini": "..." }'
+              placeholder={t("settingsPage.prompts.jsonPlaceholder")}
             />
             {jsonIssue ? (
-              <InlineAlert variant="warning" title="Invalid JSON" description={jsonIssue} />
+              <InlineAlert variant="warning" title={t("settingsPage.common.invalidJsonTitle")} description={jsonIssue} />
             ) : null}
           </div>
         ) : (
           <div className="space-y-2">
             {items.length === 0 ? (
-              <div className="text-muted-foreground text-sm">No extra prompts configured.</div>
+              <div className="text-muted-foreground text-sm">{t("settingsPage.prompts.emptyState")}</div>
             ) : (
               items.map((item) => {
                 const modelValue = item.model || defaultModelValue
@@ -1010,13 +1024,21 @@ function ExtraPromptsCard({
                       >
                         <SelectTrigger className="min-w-[220px]">
                           <SelectValue
-                            placeholder={hasModels ? "Select model" : "No models available"}
+                            placeholder={
+                              hasModels
+                                ? t("settingsPage.common.selectModelPlaceholder")
+                                : t("settingsPage.common.noModelsAvailable")
+                            }
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={defaultModelValue}>(default)</SelectItem>
+                          <SelectItem value={defaultModelValue}>
+                            {t("settingsPage.common.defaultOption")}
+                          </SelectItem>
                           {showCustomModel ? (
-                            <SelectItem value={modelValue}>Custom: {modelValue}</SelectItem>
+                            <SelectItem value={modelValue}>
+                              {t("settingsPage.common.customModel", { value: modelValue })}
+                            </SelectItem>
                           ) : null}
                           {models.map((model) => (
                             <SelectItem key={model} value={model}>
@@ -1031,17 +1053,17 @@ function ExtraPromptsCard({
                         size="sm"
                         onClick={() => onRemoveItem(item.id)}
                       >
-                        Remove
+                        {t("settingsPage.common.remove")}
                       </Button>
                     </div>
                     <Textarea
                       value={item.prompt}
                       onChange={(e) => onUpdateItem(item.id, { prompt: e.target.value })}
                       className="min-h-[120px] lg:min-h-[96px] max-h-[30vh] overflow-auto font-mono text-xs"
-                      placeholder="System prompt snippet..."
+                      placeholder={t("settingsPage.prompts.promptPlaceholder")}
                     />
                     <div className="text-muted-foreground text-xs">
-                      Adds prompt content before model execution.
+                      {t("settingsPage.prompts.itemHint")}
                     </div>
                   </div>
                 )
@@ -1049,7 +1071,7 @@ function ExtraPromptsCard({
             )}
 
             <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
-              Add prompt
+              {t("settingsPage.prompts.addButton")}
             </Button>
           </div>
         )}
@@ -1110,15 +1132,20 @@ function ModelAliasesHeader({
   mode,
   onToggleMode,
 }: ModelAliasesHeaderProps): React.JSX.Element {
+  const { t } = useTranslation()
+
+  const defaultBehavior = allowOriginalModelNamesForAliases
+    ? t("settingsPage.common.allow")
+    : t("settingsPage.common.block")
+
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="text-muted-foreground text-xs">
-        Default behavior: {allowOriginalModelNamesForAliases ? "allow" : "block"} original model
-        IDs. Each alias can override this setting.
+        {t("settingsPage.aliases.defaultBehaviorHint", { behavior: defaultBehavior })}
       </div>
       <div className="flex items-center gap-2">
         <Switch checked={mode === "json"} onCheckedChange={onToggleMode} />
-        <Label className="text-muted-foreground text-xs">JSON mode</Label>
+        <Label className="text-muted-foreground text-xs">{t("settingsPage.common.jsonMode")}</Label>
       </div>
     </div>
   )
@@ -1129,18 +1156,20 @@ function ModelAliasesJsonEditor({
   jsonIssue,
   onJsonChange,
 }: ModelAliasesJsonEditorProps): React.JSX.Element {
+  const { t } = useTranslation()
+
   return (
     <div className="space-y-2">
       <Textarea
         value={json}
         onChange={(e) => onJsonChange(e.target.value)}
         className="min-h-[160px] lg:min-h-[120px] max-h-[36vh] overflow-auto font-mono text-xs"
-        placeholder='{ "fast": { "target": "gpt-5-mini", "allowOriginal": true } }'
+        placeholder={t("settingsPage.aliases.jsonPlaceholder")}
       />
       {jsonIssue ? (
         <InlineAlert
           variant="warning"
-          title="Invalid JSON"
+          title={t("settingsPage.common.invalidJsonTitle")}
           description={jsonIssue}
         />
       ) : null}
@@ -1157,6 +1186,8 @@ function ModelAliasItemCard({
   onUpdateItem,
   onRemoveItem,
 }: ModelAliasItemCardProps): React.JSX.Element {
+  const { t } = useTranslation()
+
   const targetValue = item.target || emptyTargetValue
   const showCustomTarget = targetValue !== emptyTargetValue && !models.includes(targetValue)
   const disableTargetSelect = !hasModels && !showCustomTarget
@@ -1172,7 +1203,7 @@ function ModelAliasItemCard({
       <div className="flex flex-wrap items-center gap-2">
         <Input
           className="min-w-[180px]"
-          placeholder="Alias"
+          placeholder={t("settingsPage.aliases.aliasPlaceholder")}
           value={item.alias}
           onChange={(e) => onUpdateItem(item.id, { alias: e.target.value })}
         />
@@ -1186,12 +1217,20 @@ function ModelAliasItemCard({
           disabled={disableTargetSelect}
         >
           <SelectTrigger className="min-w-[220px]">
-            <SelectValue placeholder={hasModels ? "Select target model" : "No models available"} />
+            <SelectValue
+              placeholder={
+                hasModels
+                  ? t("settingsPage.aliases.selectTargetPlaceholder")
+                  : t("settingsPage.common.noModelsAvailable")
+              }
+            />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={emptyTargetValue}>(select)</SelectItem>
+            <SelectItem value={emptyTargetValue}>{t("settingsPage.aliases.selectOption")}</SelectItem>
             {showCustomTarget ? (
-              <SelectItem value={targetValue}>Custom: {targetValue}</SelectItem>
+              <SelectItem value={targetValue}>
+                {t("settingsPage.common.customModel", { value: targetValue })}
+              </SelectItem>
             ) : null}
             {models.map((model) => (
               <SelectItem key={model} value={model}>
@@ -1212,12 +1251,12 @@ function ModelAliasItemCard({
           }
         >
           <SelectTrigger className="min-w-[200px]">
-            <SelectValue placeholder="Original model ID" />
+            <SelectValue placeholder={t("settingsPage.aliases.originalModelPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={allowOriginalDefaultValue}>Use default</SelectItem>
-            <SelectItem value="allow">Allow original model ID</SelectItem>
-            <SelectItem value="block">Block original model ID</SelectItem>
+            <SelectItem value={allowOriginalDefaultValue}>{t("settingsPage.aliases.useDefault")}</SelectItem>
+            <SelectItem value="allow">{t("settingsPage.aliases.allowOriginal")}</SelectItem>
+            <SelectItem value="block">{t("settingsPage.aliases.blockOriginal")}</SelectItem>
           </SelectContent>
         </Select>
         <Button
@@ -1226,7 +1265,7 @@ function ModelAliasItemCard({
           size="sm"
           onClick={() => onRemoveItem(item.id)}
         >
-          Remove
+          {t("settingsPage.common.remove")}
         </Button>
       </div>
     </div>
@@ -1243,10 +1282,12 @@ function ModelAliasesList({
   onRemoveItem,
   onUpdateItem,
 }: ModelAliasesListProps): React.JSX.Element {
+  const { t } = useTranslation()
+
   return (
     <div className="space-y-2">
       {items.length === 0 ? (
-        <div className="text-muted-foreground text-sm">No model aliases configured.</div>
+        <div className="text-muted-foreground text-sm">{t("settingsPage.aliases.emptyState")}</div>
       ) : (
         items.map((item) => (
           <ModelAliasItemCard
@@ -1263,7 +1304,7 @@ function ModelAliasesList({
       )}
 
       <Button type="button" variant="outline" size="sm" onClick={onAddItem}>
-        Add alias
+        {t("settingsPage.aliases.addButton")}
       </Button>
     </div>
   )
@@ -1285,13 +1326,14 @@ function ModelAliasesCard({
   const emptyTargetValue = "__target__"
   const allowOriginalDefaultValue = "__allow_original_default__"
   const hasModels = models.length > 0
+  const { t } = useTranslation()
 
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <CardTitle>Model aliases</CardTitle>
+        <CardTitle>{t("settingsPage.aliases.title")}</CardTitle>
         <CardDescription className="hidden sm:block">
-          Map friendly alias names to upstream model IDs.
+          {t("settingsPage.aliases.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
@@ -1345,20 +1387,22 @@ function AdvancedSettingsCard({
   onToggleForceAgent,
   onToggleCompactUseSmallModel,
 }: AdvancedSettingsCardProps): React.JSX.Element {
+  const { t } = useTranslation()
+
   return (
     <Card className="gap-4 py-4">
       <CardHeader className="px-4">
-        <CardTitle>Advanced</CardTitle>
+        <CardTitle>{t("settingsPage.advanced.title")}</CardTitle>
         <CardDescription className="hidden sm:block">
-          Feature flags and experimental toggles.
+          {t("settingsPage.advanced.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Allow original model names</div>
+            <div className="text-sm font-medium">{t("settingsPage.advanced.allowOriginalModelNamesLabel")}</div>
             <div className="text-muted-foreground text-xs">
-              Default behavior when aliases do not override original model IDs.
+              {t("settingsPage.advanced.allowOriginalModelNamesHint")}
             </div>
           </div>
           <Switch
@@ -1369,9 +1413,9 @@ function AdvancedSettingsCard({
 
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Use function apply_patch</div>
+            <div className="text-sm font-medium">{t("settingsPage.advanced.useFunctionApplyPatchLabel")}</div>
             <div className="text-muted-foreground text-xs">
-              Enables function-level patches in responses routing.
+              {t("settingsPage.advanced.useFunctionApplyPatchHint")}
             </div>
           </div>
           <Switch checked={useFunctionApplyPatch} onCheckedChange={onToggleUseFunctionApplyPatch} />
@@ -1379,9 +1423,9 @@ function AdvancedSettingsCard({
 
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Force agent header</div>
+            <div className="text-sm font-medium">{t("settingsPage.advanced.forceAgentLabel")}</div>
             <div className="text-muted-foreground text-xs">
-              Forces agent routing logic even when clients omit hints.
+              {t("settingsPage.advanced.forceAgentHint")}
             </div>
           </div>
           <Switch checked={forceAgent} onCheckedChange={onToggleForceAgent} />
@@ -1389,9 +1433,9 @@ function AdvancedSettingsCard({
 
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="text-sm font-medium">Compact uses small model</div>
+            <div className="text-sm font-medium">{t("settingsPage.advanced.compactUseSmallModelLabel")}</div>
             <div className="text-muted-foreground text-xs">
-              When enabled, compact requests use the configured smallModel; otherwise they use the requested model.
+              {t("settingsPage.advanced.compactUseSmallModelHint")}
             </div>
           </div>
           <Switch
@@ -1462,6 +1506,8 @@ type SettingsPageViewProps = {
 }
 
 function useSettingsPageState(): SettingsPageViewProps {
+  const { t } = useTranslation()
+
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1555,7 +1601,7 @@ function useSettingsPageState(): SettingsPageViewProps {
         setModels(modelsRes.value.items ?? [])
       } else {
         setModels([])
-        toast.error("Failed to load models", {
+        toast.error(i18n.t("settingsPage.toast.loadModelsFailed"), {
           description:
             modelsRes.reason instanceof Error ? modelsRes.reason.message : String(modelsRes.reason),
         })
@@ -1563,7 +1609,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     } catch (err) {
       const msg = err instanceof AdminApiError ? err.message : String(err)
       setError(msg)
-      toast.error("Failed to load config", { description: msg })
+      toast.error(i18n.t("settingsPage.toast.loadConfigFailed"), { description: msg })
     } finally {
       setLoading(false)
     }
@@ -1580,11 +1626,11 @@ function useSettingsPageState(): SettingsPageViewProps {
     try {
       const updated = await updateAdminConfig(draft)
       applyConfigResponse(updated)
-      toast.success("Config saved")
+      toast.success(i18n.t("settingsPage.toast.configSaved"))
     } catch (err) {
       const msg = err instanceof AdminApiError ? err.message : String(err)
       setError(msg)
-      toast.error("Failed to save config", { description: msg })
+      toast.error(i18n.t("settingsPage.toast.saveConfigFailed"), { description: msg })
     } finally {
       setSaving(false)
     }
@@ -1666,10 +1712,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     && !(reasoningMode === "json" && reasoningJsonIssue)
     && !(aliasMode === "json" && aliasJsonIssue)
 
-  const envOverrideNote =
-    "Environment variable COPILOT_API_KEY overrides this value when set."
+  const envOverrideNote = t("settingsPage.envOverrideNote", {
+    env: "COPILOT_API_KEY",
+  })
 
-  const smallModelLabel = hasModels ? "Small model" : "Small model (manual)"
+  const smallModelLabel = hasModels
+    ? t("settingsPage.general.smallModel")
+    : t("settingsPage.general.smallModelManual")
   const smallModelInputValue = draft.smallModel ?? ""
   const apiKeyValue = draft.apiKey ?? ""
 
@@ -1795,8 +1844,21 @@ function SettingsPageView({
   onForceAgentToggle,
   onCompactUseSmallModelToggle,
 }: SettingsPageViewProps): React.JSX.Element {
+  const { t } = useTranslation()
+
+  const sections = useMemo<Array<SettingsSection>>(() => {
+    return [
+      { id: "general", label: t("settingsPage.sections.general") },
+      { id: "load-balancing", label: t("settingsPage.sections.loadBalancing") },
+      { id: "reasoning", label: t("settingsPage.sections.reasoning") },
+      { id: "aliases", label: t("settingsPage.sections.aliases") },
+      { id: "prompts", label: t("settingsPage.sections.prompts") },
+      { id: "advanced", label: t("settingsPage.sections.advanced") },
+    ]
+  }, [t])
+
   const { activeSection, registerSection, scrollToSection } = useActiveSection({
-    sectionIds: SETTINGS_SECTIONS.map((s) => s.id),
+    sectionIds: [...SETTINGS_SECTION_IDS],
   })
 
   return (
@@ -1804,10 +1866,8 @@ function SettingsPageView({
       {/* Page Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0">
-          <div className="text-lg font-semibold">Settings</div>
-          <div className="text-muted-foreground text-sm">
-            Manage config.json and apply updates instantly.
-          </div>
+          <div className="text-lg font-semibold">{t("nav.settings")}</div>
+          <div className="text-muted-foreground text-sm">{t("settingsPage.subtitle")}</div>
         </div>
 
         <div className="ml-auto flex flex-col items-end gap-1 text-right">
@@ -1819,16 +1879,16 @@ function SettingsPageView({
               onClick={onReload}
               disabled={loading || saving}
             >
-              {loading ? "Reloading..." : "Reload"}
+              {loading ? t("common.refreshing") : t("common.refresh")}
             </Button>
           </div>
           {configPath ? (
             <div className="text-muted-foreground text-xs leading-tight hidden sm:block">
-              Config path: {configPath}
+              {t("settingsPage.configPath", { path: configPath })}
             </div>
           ) : null}
           <div className="text-muted-foreground text-xs leading-tight hidden sm:block">
-            Changes apply to config.json immediately. Environment variables take precedence.
+            {t("settingsPage.note")}
           </div>
         </div>
       </div>
@@ -1836,9 +1896,9 @@ function SettingsPageView({
       {error ? (
         <InlineAlert
           variant="error"
-          title="Settings error"
+          title={t("settingsPage.errorTitle")}
           description={error}
-          actionLabel="Retry"
+          actionLabel={t("common.retry")}
           onAction={onReload}
         />
       ) : null}
@@ -1848,7 +1908,7 @@ function SettingsPageView({
         {/* Sidebar Navigation (desktop only) */}
         <aside className="hidden lg:block lg:col-span-2">
           <SettingsNavigation
-            sections={SETTINGS_SECTIONS}
+            sections={sections}
             activeSection={activeSection}
             onSectionClick={scrollToSection}
           />

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { KeyRoundIcon } from "lucide-react"
 import { toast } from "sonner"
+import { Trans, useTranslation } from "react-i18next"
 
 import { getAdminMeta, type AdminMeta, AdminApiError } from "@/lib/admin-api"
 import { useAdminToken } from "@/lib/admin-token"
@@ -20,15 +21,14 @@ import { Label } from "@/components/ui/label"
 import { RainbowButton } from "@/components/ui/rainbow-button"
 
 export function TokenDialog(): React.JSX.Element {
+  const { t } = useTranslation()
   const { token, setToken, clearToken } = useAdminToken()
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(token)
   const [testing, setTesting] = useState(false)
   const [meta, setMeta] = useState<AdminMeta | null>(null)
 
-  const tokenStatus = useMemo(() => {
-    return token ? "set" : "unset"
-  }, [token])
+  const tokenStatus = token ? t("common.set") : t("common.unset")
 
   useEffect(() => {
     if (open) setDraft(token)
@@ -40,10 +40,10 @@ export function TokenDialog(): React.JSX.Element {
     try {
       const m = await getAdminMeta()
       setMeta(m)
-      toast.success("Admin API access OK")
+      toast.success(t("tokenDialog.toast.adminApiOk"))
     } catch (err) {
       const msg = err instanceof AdminApiError ? err.message : String(err)
-      toast.error("Admin API access failed", { description: msg })
+      toast.error(t("tokenDialog.toast.adminApiFailed"), { description: msg })
     } finally {
       setTesting(false)
     }
@@ -51,13 +51,17 @@ export function TokenDialog(): React.JSX.Element {
 
   function save(): void {
     setToken(draft)
-    toast.success(draft.trim() ? "Token saved for this session" : "Token cleared")
+    toast.success(
+      draft.trim()
+        ? t("tokenDialog.toast.tokenSavedForSession")
+        : t("tokenDialog.toast.tokenCleared")
+    )
   }
 
   function clear(): void {
     clearToken()
     setDraft("")
-    toast.success("Token cleared")
+    toast.success(t("tokenDialog.toast.tokenCleared"))
   }
 
   return (
@@ -65,7 +69,7 @@ export function TokenDialog(): React.JSX.Element {
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2">
           <KeyRoundIcon className="size-4" />
-          Token
+          {t("tokenDialog.trigger")}
           <Badge
             variant={token ? "secondary" : "outline"}
             className="ml-1 hidden sm:inline-flex"
@@ -77,10 +81,11 @@ export function TokenDialog(): React.JSX.Element {
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Admin token</DialogTitle>
+          <DialogTitle>{t("tokenDialog.title")}</DialogTitle>
           <DialogDescription>
-            Used as <code>x-admin-token</code> when calling <code>/api/admin/*</code>. Stored
-            in <code>sessionStorage</code>.
+            <Trans i18nKey="tokenDialog.description">
+              Used as <code>x-admin-token</code> when calling <code>/api/admin/*</code>. Stored in <code>sessionStorage</code>.
+            </Trans>
           </DialogDescription>
         </DialogHeader>
 
@@ -89,31 +94,35 @@ export function TokenDialog(): React.JSX.Element {
           <Input
             id="admin-token"
             type="password"
-            placeholder="Enter token"
+            placeholder={t("tokenDialog.inputPlaceholder")}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             autoComplete="off"
           />
           <p className="text-muted-foreground text-xs">
-            If the server is not running on localhost, you must set <code>ADMIN_TOKEN</code>
-            on the server to enable remote access.
+            <Trans i18nKey="tokenDialog.remoteNote">
+              If the server is not running on localhost, you must set <code>ADMIN_TOKEN</code> on the server to enable remote access.
+            </Trans>
           </p>
           {meta?.dbPath && (
             <p className="text-muted-foreground text-xs">
-              Connected: DB v{meta.userVersion ?? "?"} · {meta.dbPath}
+              {t("tokenDialog.connected", {
+                version: meta.userVersion ?? "?",
+                path: meta.dbPath,
+              })}
             </p>
           )}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="secondary" onClick={testToken} disabled={testing}>
-            {testing ? "Testing..." : "Test"}
+            {testing ? t("common.testing") : t("common.test")}
           </Button>
           <Button variant="outline" onClick={clear} disabled={!token && !draft.trim()}>
-            Clear
+            {t("common.clear")}
           </Button>
           <RainbowButton onClick={save} className="h-9 px-4">
-            Save
+            {t("common.save")}
           </RainbowButton>
         </DialogFooter>
       </DialogContent>

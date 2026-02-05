@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next"
+
 import type { SettingsSection } from "@/hooks/use-active-section"
 import { AnimatedGradientText } from "@/components/ui/animated-gradient-text"
 import { cn } from "@/lib/utils"
@@ -19,16 +21,18 @@ export function SettingsNavigation({
   onSectionClick,
   className,
 }: SettingsNavigationProps) {
+  const { t } = useTranslation()
+
   return (
     <nav
       className={cn(
         "sticky top-6 space-y-1 rounded-lg border bg-card p-2",
         className
       )}
-      aria-label="Settings sections"
+      aria-label={t("settingsPage.navigation.ariaLabel")}
     >
       <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-        Settings
+        {t("nav.settings")}
       </div>
       {sections.map((section) => {
         const isActive = activeSection === section.id
