@@ -129,7 +129,11 @@ function SortableTableHead({
   className?: string
 }): React.JSX.Element {
   const isActive = sortKey === columnKey
-  const ariaSort = isActive ? (sortDir === "asc" ? "ascending" : "descending") : "none"
+
+  let ariaSort: "ascending" | "descending" | "none" = "none"
+  if (isActive) {
+    ariaSort = sortDir === "asc" ? "ascending" : "descending"
+  }
 
   return (
     <TableHead aria-sort={ariaSort} className={className}>
@@ -458,9 +462,8 @@ export function ModelsPage(): React.JSX.Element {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading && models.length === 0 ? (
-                <ModelsTableSkeleton rows={10} />
-              ) : models.length === 0 ? (
+              {loading && models.length === 0 && <ModelsTableSkeleton rows={10} />}
+              {!loading && models.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={modelsTableColVisibility.length}>
                     <InlineAlert
@@ -470,7 +473,8 @@ export function ModelsPage(): React.JSX.Element {
                     />
                   </TableCell>
                 </TableRow>
-              ) : (
+              )}
+              {models.length > 0 &&
                 sortedModels.map((model) => (
                   <TableRow key={model.id}>
                     <TableCell>
@@ -506,8 +510,7 @@ export function ModelsPage(): React.JSX.Element {
                       <MultiplierCell billing={model.billing} />
                     </TableCell>
                   </TableRow>
-                ))
-              )}
+                ))}
             </TableBody>
           </Table>
         </CardContent>
