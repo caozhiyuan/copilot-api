@@ -7,6 +7,7 @@ import { listAccountsFromRegistry } from "~/lib/accounts-registry"
 import {
   getConfig,
   getModelAliases,
+  getModelAliasesInfo,
   isFreeModelLoadBalancingEnabled,
   mergeConfigWithDefaults,
   type AppConfig,
@@ -620,6 +621,175 @@ adminApiRoutes.get("/models", (c) => {
   } catch {
     return jsonError(c, 500, {
       message: "Failed to load models.",
+      type: "internal_error",
+    })
+  }
+})
+
+type AdminModelDetailsItem = {
+  id: string
+  name: string
+  preview: boolean
+  billing?: {
+    is_premium?: boolean
+    multiplier?: number
+  }
+  supported_endpoints?: Array<string>
+  capabilities: {
+    limits: {
+      max_context_window_tokens?: number
+      max_prompt_tokens?: number
+      max_output_tokens?: number
+    }
+    supports: {
+      tool_calls?: boolean
+      parallel_tool_calls?: boolean
+      structured_outputs?: boolean
+      streaming?: boolean
+      vision?: boolean
+    }
+  }
+  aliases: Array<string>
+}
+
+function parseNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function parseOptionalFiniteNumber(value: unknown): number | undefined {
+  if (typeof value !== "number") return undefined
+  return Number.isFinite(value) ? value : undefined
+}
+
+function toBooleanOrUndefined(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined
+}
+
+function parseStringArray(value: unknown): Array<string> | undefined {
+  if (!Array.isArray(value)) return undefined
+
+  const out = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+
+  return out.length > 0 ? out : undefined
+}
+
+function parseBilling(value: unknown): AdminModelDetailsItem["billing"] {
+  if (!isPlainObject(value)) return undefined
+
+  const multiplier = parseOptionalFiniteNumber(value.multiplier)
+  const is_premium = toBooleanOrUndefined(value.is_premium)
+
+  if (multiplier === undefined && is_premium === undefined) return undefined
+  return { multiplier, is_premium }
+}
+
+function parseCapabilities(
+  value: unknown,
+): AdminModelDetailsItem["capabilities"] {
+  if (!isPlainObject(value)) {
+    return {
+      limits: {},
+      supports: {},
+    }
+  }
+
+  const limitsRaw = isPlainObject(value.limits) ? value.limits : undefined
+  const supportsRaw = isPlainObject(value.supports) ? value.supports : undefined
+
+  return {
+    limits: {
+      max_context_window_tokens: parseOptionalFiniteNumber(
+        limitsRaw?.max_context_window_tokens,
+      ),
+      max_prompt_tokens: parseOptionalFiniteNumber(
+        limitsRaw?.max_prompt_tokens,
+      ),
+      max_output_tokens: parseOptionalFiniteNumber(
+        limitsRaw?.max_output_tokens,
+      ),
+    },
+    supports: {
+      tool_calls: toBooleanOrUndefined(supportsRaw?.tool_calls),
+      parallel_tool_calls: toBooleanOrUndefined(
+        supportsRaw?.parallel_tool_calls,
+      ),
+      structured_outputs: toBooleanOrUndefined(supportsRaw?.structured_outputs),
+      streaming: toBooleanOrUndefined(supportsRaw?.streaming),
+      vision: toBooleanOrUndefined(supportsRaw?.vision),
+    },
+  }
+}
+
+function parseAdminModelDetailsItem(
+  raw: unknown,
+  aliasesByTarget: Map<string, Array<string>>,
+): AdminModelDetailsItem | null {
+  if (!isPlainObject(raw)) return null
+
+  const id = parseNonEmptyString(raw.id)
+  if (!id) return null
+
+  const name = parseNonEmptyString(raw.name) ?? id
+  const preview = toBooleanOrUndefined(raw.preview) ?? false
+
+  return {
+    id,
+    name,
+    preview,
+    billing: parseBilling(raw.billing),
+    supported_endpoints: parseStringArray(raw.supported_endpoints),
+    capabilities: parseCapabilities(raw.capabilities),
+    aliases: aliasesByTarget.get(id.toLowerCase()) ?? [],
+  }
+}
+
+adminApiRoutes.get("/models/details", (c) => {
+  try {
+    const accountModels = accountsManager.getFirstAccountModels()
+    const aliasInfo = getModelAliasesInfo()
+
+    const aliasesByTarget = new Map<string, Array<string>>()
+    for (const [alias, spec] of Object.entries(aliasInfo)) {
+      const targetKey = spec.target.toLowerCase()
+      const current = aliasesByTarget.get(targetKey)
+      if (current) {
+        current.push(alias)
+      } else {
+        aliasesByTarget.set(targetKey, [alias])
+      }
+    }
+
+    for (const aliases of aliasesByTarget.values()) {
+      aliases.sort()
+    }
+
+    const rawModels: Array<unknown> = []
+    if (Array.isArray(accountModels?.data)) {
+      rawModels.push(...(accountModels.data as Array<unknown>))
+    }
+
+    const itemsById = new Map<string, AdminModelDetailsItem>()
+    for (const raw of rawModels) {
+      const item = parseAdminModelDetailsItem(raw, aliasesByTarget)
+      if (!item) continue
+      if (itemsById.has(item.id)) continue
+      itemsById.set(item.id, item)
+    }
+
+    const items = Array.from(itemsById.values()).sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )
+
+    return c.json({ items })
+  } catch (error) {
+    console.error("Failed to load model details.", error)
+    return jsonError(c, 500, {
+      message: "Failed to load model details.",
       type: "internal_error",
     })
   }

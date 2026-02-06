@@ -42,6 +42,7 @@ function NavItem({
 const NAV_ITEMS = [
   { to: "/accounts", labelKey: "nav.accounts" },
   { to: "/requests", labelKey: "nav.requests" },
+  { to: "/models", labelKey: "nav.models" },
   { to: "/settings", labelKey: "nav.settings" },
 ] as const
 

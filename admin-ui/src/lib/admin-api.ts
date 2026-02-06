@@ -111,6 +111,36 @@ export type AdminModelsResponse = {
   items: string[]
 }
 
+export type AdminModelDetailsItem = {
+  id: string
+  name: string
+  preview: boolean
+  billing?: {
+    is_premium?: boolean
+    multiplier?: number
+  }
+  supported_endpoints?: Array<string>
+  capabilities: {
+    limits: {
+      max_context_window_tokens?: number
+      max_prompt_tokens?: number
+      max_output_tokens?: number
+    }
+    supports: {
+      tool_calls?: boolean
+      parallel_tool_calls?: boolean
+      structured_outputs?: boolean
+      streaming?: boolean
+      vision?: boolean
+    }
+  }
+  aliases: Array<string>
+}
+
+export type AdminModelsDetailsResponse = {
+  items: Array<AdminModelDetailsItem>
+}
+
 export class AdminApiError extends Error {
   readonly status: number
   readonly responseText: string
@@ -240,4 +270,8 @@ export async function updateAdminConfig(
 
 export async function getAdminModels(): Promise<AdminModelsResponse> {
   return fetchAdminJson<AdminModelsResponse>("/api/admin/models")
+}
+
+export async function getAdminModelDetails(): Promise<AdminModelsDetailsResponse> {
+  return fetchAdminJson<AdminModelsDetailsResponse>("/api/admin/models/details")
 }
