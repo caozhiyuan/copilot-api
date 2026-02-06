@@ -83,7 +83,7 @@
     "toast": {
       "adminApiOk": "Admin API 访问正常",
       "adminApiFailed": "Admin API 访问失败",
-      "tokenSavedForSession": "Token 已保存",
+      "tokenSaved": "Token 已保存",
       "tokenCleared": "Token 已清除"
     }
   },

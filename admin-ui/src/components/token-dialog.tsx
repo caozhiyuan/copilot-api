@@ -70,9 +70,7 @@ export function TokenDialog(): React.JSX.Element {
   function save(): void {
     setToken(draft)
     toast.success(
-      draft.trim()
-        ? t("tokenDialog.toast.tokenSavedForSession")
-        : t("tokenDialog.toast.tokenCleared")
+      draft.trim() ? t("tokenDialog.toast.tokenSaved") : t("tokenDialog.toast.tokenCleared")
     )
   }
 
