@@ -663,7 +663,7 @@ function parseOptionalFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(value) ? value : undefined
 }
 
-function parseOptionalBoolean(value: unknown): boolean | undefined {
+function toBooleanOrUndefined(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined
 }
 
@@ -682,7 +682,7 @@ function parseBilling(value: unknown): AdminModelDetailsItem["billing"] {
   if (!isPlainObject(value)) return undefined
 
   const multiplier = parseOptionalFiniteNumber(value.multiplier)
-  const is_premium = parseOptionalBoolean(value.is_premium)
+  const is_premium = toBooleanOrUndefined(value.is_premium)
 
   if (multiplier === undefined && is_premium === undefined) return undefined
   return { multiplier, is_premium }
@@ -714,13 +714,13 @@ function parseCapabilities(
       ),
     },
     supports: {
-      tool_calls: parseOptionalBoolean(supportsRaw?.tool_calls),
-      parallel_tool_calls: parseOptionalBoolean(
+      tool_calls: toBooleanOrUndefined(supportsRaw?.tool_calls),
+      parallel_tool_calls: toBooleanOrUndefined(
         supportsRaw?.parallel_tool_calls,
       ),
-      structured_outputs: parseOptionalBoolean(supportsRaw?.structured_outputs),
-      streaming: parseOptionalBoolean(supportsRaw?.streaming),
-      vision: parseOptionalBoolean(supportsRaw?.vision),
+      structured_outputs: toBooleanOrUndefined(supportsRaw?.structured_outputs),
+      streaming: toBooleanOrUndefined(supportsRaw?.streaming),
+      vision: toBooleanOrUndefined(supportsRaw?.vision),
     },
   }
 }
@@ -735,7 +735,7 @@ function parseAdminModelDetailsItem(
   if (!id) return null
 
   const name = parseNonEmptyString(raw.name) ?? id
-  const preview = parseOptionalBoolean(raw.preview) ?? false
+  const preview = toBooleanOrUndefined(raw.preview) ?? false
 
   return {
     id,
