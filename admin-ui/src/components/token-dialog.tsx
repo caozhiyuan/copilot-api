@@ -3,7 +3,12 @@ import { KeyRoundIcon } from "lucide-react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
-import { getAdminMeta, type AdminMeta, AdminApiError } from "@/lib/admin-api"
+import {
+  ADMIN_TOKEN_REQUIRED_EVENT,
+  AdminApiError,
+  getAdminMeta,
+  type AdminMeta,
+} from "@/lib/admin-api"
 import { useAdminToken } from "@/lib/admin-token"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -31,6 +36,19 @@ export function TokenDialog(): React.JSX.Element {
   const tokenStatus = token ? t("common.set") : t("common.unset")
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+
+    function handleTokenRequired(): void {
+      setOpen(true)
+    }
+
+    window.addEventListener(ADMIN_TOKEN_REQUIRED_EVENT, handleTokenRequired)
+    return () => {
+      window.removeEventListener(ADMIN_TOKEN_REQUIRED_EVENT, handleTokenRequired)
+    }
+  }, [])
+
+  useEffect(() => {
     if (open) setDraft(token)
   }, [open, token])
 
@@ -38,7 +56,7 @@ export function TokenDialog(): React.JSX.Element {
     setTesting(true)
     setMeta(null)
     try {
-      const m = await getAdminMeta()
+      const m = await getAdminMeta(draft)
       setMeta(m)
       toast.success(t("tokenDialog.toast.adminApiOk"))
     } catch (err) {
@@ -52,9 +70,7 @@ export function TokenDialog(): React.JSX.Element {
   function save(): void {
     setToken(draft)
     toast.success(
-      draft.trim()
-        ? t("tokenDialog.toast.tokenSavedForSession")
-        : t("tokenDialog.toast.tokenCleared")
+      draft.trim() ? t("tokenDialog.toast.tokenSaved") : t("tokenDialog.toast.tokenCleared")
     )
   }
 
@@ -84,7 +100,7 @@ export function TokenDialog(): React.JSX.Element {
           <DialogTitle>{t("tokenDialog.title")}</DialogTitle>
           <DialogDescription>
             <Trans i18nKey="tokenDialog.description">
-              Used as <code>x-admin-token</code> when calling <code>/api/admin/*</code>. Stored in <code>sessionStorage</code>.
+              Used as <code>x-admin-token</code> when calling <code>/api/admin/*</code>. Stored in <code>localStorage</code>.
             </Trans>
           </DialogDescription>
         </DialogHeader>

@@ -76,14 +76,14 @@
   "tokenDialog": {
     "trigger": "Token",
     "title": "Admin token",
-    "description": "Used as <1>x-admin-token</1> when calling <3>/api/admin/*</3>. Stored in <5>sessionStorage</5>.",
+    "description": "Used as <1>x-admin-token</1> when calling <3>/api/admin/*</3>. Stored in <5>localStorage</5>.",
     "inputPlaceholder": "Enter token",
     "remoteNote": "If the server is not running on localhost, you must set <1>ADMIN_TOKEN</1> on the server to enable remote access.",
     "connected": "Connected: DB v{{version}} · {{path}}",
     "toast": {
       "adminApiOk": "Admin API access OK",
       "adminApiFailed": "Admin API access failed",
-      "tokenSavedForSession": "Token saved for this session",
+      "tokenSaved": "Token saved",
       "tokenCleared": "Token cleared"
     }
   },

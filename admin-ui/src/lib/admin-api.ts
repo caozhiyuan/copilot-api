@@ -1,5 +1,7 @@
 import { readAdminToken } from "@/lib/admin-token"
 
+export const ADMIN_TOKEN_REQUIRED_EVENT = "admin-ui:admin-token-required"
+
 export type AdminMeta = {
   userVersion?: number
   dbPath?: string
@@ -125,8 +127,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-async function fetchAdminJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = readAdminToken()
+async function fetchAdminJson<T>(
+  path: string,
+  init?: RequestInit,
+  overrideToken?: string,
+): Promise<T> {
+  const token = overrideToken?.trim() ?? readAdminToken()
   const headers = new Headers(init?.headers ?? undefined)
 
   if (token) {
@@ -155,14 +161,20 @@ async function fetchAdminJson<T>(path: string, init?: RequestInit): Promise<T> {
       // ignore JSON parsing errors and keep raw text
     }
 
+    if (res.status === 401 || res.status === 403) {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(ADMIN_TOKEN_REQUIRED_EVENT))
+      }
+    }
+
     throw new AdminApiError(res.status, message)
   }
 
   return (await res.json()) as T
 }
 
-export async function getAdminMeta(): Promise<AdminMeta> {
-  return fetchAdminJson<AdminMeta>("/api/admin/meta")
+export async function getAdminMeta(overrideToken?: string): Promise<AdminMeta> {
+  return fetchAdminJson<AdminMeta>("/api/admin/meta", undefined, overrideToken)
 }
 
 export async function getAdminAccounts(params: {
