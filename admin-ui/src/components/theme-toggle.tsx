@@ -1,5 +1,6 @@
 import { LaptopIcon, MoonIcon, SunIcon } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useTranslation } from "react-i18next"
 
 import {
   Select,
@@ -16,18 +17,23 @@ function ThemeIcon({ theme }: { theme: string | undefined }): React.JSX.Element 
 }
 
 export function ThemeToggle(): React.JSX.Element {
+  const { t } = useTranslation()
   const { theme, setTheme } = useTheme()
 
   return (
     <Select value={theme ?? "system"} onValueChange={setTheme}>
-      <SelectTrigger size="sm" className="w-[8.5rem]" aria-label="Theme">
+      <SelectTrigger
+        size="sm"
+        className="w-[8.5rem]"
+        aria-label={t("theme.label")}
+      >
         <ThemeIcon theme={theme} />
         <SelectValue />
       </SelectTrigger>
       <SelectContent align="end">
-        <SelectItem value="system">System</SelectItem>
-        <SelectItem value="light">Light</SelectItem>
-        <SelectItem value="dark">Dark</SelectItem>
+        <SelectItem value="system">{t("theme.system")}</SelectItem>
+        <SelectItem value="light">{t("theme.light")}</SelectItem>
+        <SelectItem value="dark">{t("theme.dark")}</SelectItem>
       </SelectContent>
     </Select>
   )

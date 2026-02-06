@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom"
 import { MenuIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 import { AnimatedGradientText } from "@/components/ui/animated-gradient-text"
 import { Button } from "@/components/ui/button"
@@ -10,10 +11,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { cn } from "@/lib/utils"
-import { TokenDialog } from "@/components/token-dialog"
+import { LocaleToggle } from "@/components/locale-toggle"
 import { MotionToggle } from "@/components/motion-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { TokenDialog } from "@/components/token-dialog"
+import { cn } from "@/lib/utils"
 
 function NavItem({
   to,
@@ -38,22 +40,26 @@ function NavItem({
 }
 
 const NAV_ITEMS = [
-  { to: "/accounts", label: "Accounts" },
-  { to: "/requests", label: "Requests" },
-  { to: "/settings", label: "Settings" },
+  { to: "/accounts", labelKey: "nav.accounts" },
+  { to: "/requests", labelKey: "nav.requests" },
+  { to: "/settings", labelKey: "nav.settings" },
 ] as const
 
 function NavList(): React.JSX.Element {
+  const { t } = useTranslation()
+
   return (
     <>
       {NAV_ITEMS.map((item) => (
-        <NavItem key={item.to} to={item.to} label={item.label} />
+        <NavItem key={item.to} to={item.to} label={t(item.labelKey)} />
       ))}
     </>
   )
 }
 
 export function AppShell(): React.JSX.Element {
+  const { t } = useTranslation()
+
   return (
     <div className="min-h-svh bg-background text-foreground">
       <header className="bg-background/70 sticky top-0 z-50 border-b backdrop-blur">
@@ -61,7 +67,7 @@ export function AppShell(): React.JSX.Element {
           <div className="md:hidden">
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="Open navigation">
+                <Button variant="outline" size="icon" aria-label={t("nav.openNavigation")}>
                   <MenuIcon className="size-4" />
                 </Button>
               </SheetTrigger>
@@ -69,7 +75,7 @@ export function AppShell(): React.JSX.Element {
                 <SheetHeader>
                   <SheetTitle>
                     <AnimatedGradientText className="text-base font-semibold">
-                      Copilot API Admin
+                      {t("app.title")}
                     </AnimatedGradientText>
                   </SheetTitle>
                 </SheetHeader>
@@ -82,7 +88,7 @@ export function AppShell(): React.JSX.Element {
 
           <div className="min-w-0">
             <AnimatedGradientText className="text-base font-semibold">
-              Copilot API Admin
+              {t("app.title")}
             </AnimatedGradientText>
           </div>
 
@@ -91,6 +97,7 @@ export function AppShell(): React.JSX.Element {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
+            <LocaleToggle />
             <MotionToggle />
             <ThemeToggle />
             <TokenDialog />

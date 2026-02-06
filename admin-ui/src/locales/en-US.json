@@ -1,0 +1,310 @@
+{
+  "app": {
+    "title": "Copilot API Admin",
+    "language": "Language"
+  },
+  "locale": {
+    "enUS": "English",
+    "zhCN": "简体中文"
+  },
+  "nav": {
+    "accounts": "Accounts",
+    "requests": "Requests",
+    "settings": "Settings",
+    "openNavigation": "Open navigation"
+  },
+  "theme": {
+    "label": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "motion": {
+    "label": "Motion",
+    "magic": "Magic",
+    "subtle": "Subtle",
+    "off": "Off",
+    "reducedMotionEnabled": "Reduced motion is enabled in system settings"
+  },
+  "common": {
+    "set": "set",
+    "unset": "unset",
+    "test": "Test",
+    "testing": "Testing...",
+    "clear": "Clear",
+    "save": "Save",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing...",
+    "retry": "Retry",
+    "errors": "Errors",
+    "tokens": "Tokens",
+    "failed": "Failed",
+    "errorRate": "Error rate",
+    "tokensPerRequest": "Tokens / req",
+    "avgDurationMs": "Avg duration (ms)",
+    "lastRequest": "Last req",
+    "account": "Account",
+    "status": "Status",
+    "avgMs": "Avg ms",
+    "clearFilter": "Clear filter",
+    "statusFailed": "failed",
+    "statusOk": "ok",
+    "used": "Used",
+    "remaining": "Remaining",
+    "unlimited": "unlimited",
+    "apply": "Apply",
+    "any": "(any)",
+    "yes": "yes",
+    "no": "no",
+    "from": "From",
+    "to": "To",
+    "time": "Time",
+    "path": "Path",
+    "endpoint": "Endpoint",
+    "model": "Model",
+    "cost": "Cost",
+    "quota": "Quota",
+    "durationAbbrev": "Dur",
+    "loading": "Loading...",
+    "loadMore": "Load more",
+    "noMore": "No more",
+    "clearFilters": "Clear filters",
+    "back": "Back",
+    "download": "Download",
+    "copyJson": "Copy JSON"
+  },
+  "tokenDialog": {
+    "trigger": "Token",
+    "title": "Admin token",
+    "description": "Used as <1>x-admin-token</1> when calling <3>/api/admin/*</3>. Stored in <5>sessionStorage</5>.",
+    "inputPlaceholder": "Enter token",
+    "remoteNote": "If the server is not running on localhost, you must set <1>ADMIN_TOKEN</1> on the server to enable remote access.",
+    "connected": "Connected: DB v{{version}} · {{path}}",
+    "toast": {
+      "adminApiOk": "Admin API access OK",
+      "adminApiFailed": "Admin API access failed",
+      "tokenSavedForSession": "Token saved for this session",
+      "tokenCleared": "Token cleared"
+    }
+  },
+  "accountsPage": {
+    "loadFailedTitle": "Failed to load accounts",
+    "statsWindowLabel": "Stats window",
+    "window": {
+      "last24h": "Last 24h",
+      "last7d": "Last 7d"
+    },
+    "dbInfo": "DB v{{version}} · {{path}}",
+    "tableDescription": "Click an account to filter requests.",
+    "filterAccountPlaceholder": "Filter account",
+    "premiumReq": "Premium req",
+    "empty": {
+      "noAccountsTitle": "No accounts",
+      "noMatchesTitle": "No matches",
+      "noAccountsDescription": "No accounts found.",
+      "noMatchesDescription": "No accounts match the current filter."
+    },
+    "premiumQuotaUsedAria": "Premium interactions quota used"
+  },
+  "requestsPage": {
+    "loadFailedTitle": "Failed to load requests",
+    "description": "Filter and inspect recent requests.",
+    "tabs": {
+      "quick": "Quick",
+      "advanced": "Advanced"
+    },
+    "filters": {
+      "timeRange": "Time range",
+      "hasError": "Has error",
+      "upstreamModel": "Upstream model",
+      "clientModel": "Client model"
+    },
+    "timeRange": {
+      "last15m": "Last 15m",
+      "last1h": "Last 1h",
+      "last6h": "Last 6h",
+      "last24h": "Last 24h",
+      "last7d": "Last 7d",
+      "custom": "Custom..."
+    },
+    "validation": {
+      "title": "Invalid time range",
+      "fromMsMustBeNumber": "from_ms must be a number (milliseconds)",
+      "toMsMustBeNumber": "to_ms must be a number (milliseconds)",
+      "fromMsMustBeLteToMs": "from_ms must be <= to_ms"
+    },
+    "empty": {
+      "noRequestsTitle": "No requests",
+      "noResultsForFilters": "No results for the current filters.",
+      "noRequestsFound": "No requests found."
+    }
+  },
+  "requestDetailPage": {
+    "loadFailedTitle": "Failed to load request",
+    "title": "Request",
+    "notFoundTitle": "Request not found",
+    "notFoundDescription": "Request not found.",
+    "summaryTitle": "Summary",
+    "rawTitle": "Raw",
+    "rawDescription": "Full record as JSON.",
+    "searchPlaceholder": "Search key/value",
+    "toast": {
+      "copiedJson": "Copied JSON",
+      "copyFailed": "Copy failed",
+      "downloadedJson": "Downloaded JSON",
+      "downloadFailed": "Download failed"
+    },
+    "fields": {
+      "time": "time",
+      "path": "path",
+      "endpoint": "endpoint",
+      "account": "account",
+      "userId": "user_id",
+      "safetyIdentifier": "safety_identifier",
+      "promptCacheKey": "prompt_cache_key",
+      "initiator": "initiator",
+      "upstreamRequestId": "upstream_request_id",
+      "model": "model",
+      "client": "client",
+      "tokens": "tokens",
+      "quota": "quota"
+    },
+    "badges": {
+      "durMs": "dur_ms",
+      "ttfbMs": "ttfb_ms"
+    },
+    "tokens": {
+      "in": "in",
+      "out": "out",
+      "total": "total",
+      "cached": "cached"
+    },
+    "quota": {
+      "before": "before",
+      "after": "after",
+      "diff": "diff"
+    }
+  },
+  "jsonViewer": {
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "root": "(root)",
+    "more": "… {{count}} more",
+    "arrayLabel": "Array({{count}})",
+    "objectLabel": "Object({{count}})",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "statusCollapsed": "collapsed",
+    "statusExpanded": "expanded",
+    "statusDepth": "depth<{{depth}}"
+  },
+  "settingsPage": {
+    "subtitle": "Manage server configuration and feature flags.",
+    "configPath": "Config path: {{path}}",
+    "note": "Changes take effect after saving.",
+    "errorTitle": "Failed to load settings",
+    "envOverrideNote": "Overridden by env {{env}}.",
+    "sections": {
+      "general": "General",
+      "loadBalancing": "Load balancing",
+      "reasoning": "Reasoning",
+      "aliases": "Aliases",
+      "prompts": "Prompts",
+      "advanced": "Advanced"
+    },
+    "navigation": {
+      "ariaLabel": "Settings sections"
+    },
+    "saveButton": {
+      "saving": "Saving...",
+      "saveChanges": "Save changes"
+    },
+    "toast": {
+      "loadModelsFailed": "Failed to load models",
+      "loadConfigFailed": "Failed to load config",
+      "configSaved": "Config saved",
+      "saveConfigFailed": "Failed to save config"
+    },
+    "common": {
+      "defaultOption": "(default)",
+      "customModel": "Custom: {{value}}",
+      "remove": "Remove",
+      "allow": "allow",
+      "block": "block",
+      "jsonMode": "JSON mode",
+      "invalidJsonTitle": "Invalid JSON",
+      "selectModelPlaceholder": "Select model",
+      "noModelsAvailable": "No models available"
+    },
+    "general": {
+      "title": "General",
+      "description": "Basic configuration.",
+      "smallModel": "Small model",
+      "smallModelManual": "Small model (manual)",
+      "smallModelPlaceholder": "Select small model",
+      "smallModelInputPlaceholder": "gpt-5-mini",
+      "smallModelHint": "Controls which model receives lightweight/free requests when routing.",
+      "apiKeyLabel": "API key",
+      "apiKeyPlaceholder": "sk-...",
+      "leaveEmptyHint": "Leave empty to clear config value."
+    },
+    "loadBalancing": {
+      "title": "Load balancing",
+      "description": "Toggle free account load balancing.",
+      "freeModelLabel": "Free model request load balancing",
+      "freeModelHint": "When enabled, downstream requests for free models are distributed across multiple upstream accounts."
+    },
+    "reasoning": {
+      "title": "Reasoning efforts",
+      "description": "Override model reasoning effort levels.",
+      "hint": "Define per-model reasoning effort (optional).",
+      "jsonPlaceholder": "{ \"gpt-5-mini\": \"low\" }",
+      "emptyState": "No reasoning overrides. Add a model below.",
+      "itemHint": "Overrides reasoning effort for this model.",
+      "addButton": "Add model override"
+    },
+    "prompts": {
+      "title": "Extra prompts",
+      "description": "Inject extra system prompts per model.",
+      "hint": "Add or edit prompt snippets injected for specific models.",
+      "jsonPlaceholder": "{ \"gpt-5-mini\": \"...\" }",
+      "emptyState": "No extra prompts configured.",
+      "promptPlaceholder": "System prompt snippet...",
+      "itemHint": "Adds prompt content before model execution.",
+      "addButton": "Add prompt"
+    },
+    "aliases": {
+      "title": "Model aliases",
+      "description": "Map friendly alias names to upstream model IDs.",
+      "defaultBehaviorHint": "Default behavior: {{behavior}} original model IDs. Each alias can override this setting.",
+      "jsonPlaceholder": "{ \"fast\": { \"target\": \"gpt-5-mini\", \"allowOriginal\": true } }",
+      "aliasPlaceholder": "Alias",
+      "selectTargetPlaceholder": "Select target model",
+      "selectOption": "(select)",
+      "originalModelPlaceholder": "Original model ID",
+      "useDefault": "Use default",
+      "allowOriginal": "Allow original model ID",
+      "blockOriginal": "Block original model ID",
+      "emptyState": "No model aliases configured.",
+      "addButton": "Add alias"
+    },
+    "advanced": {
+      "title": "Advanced",
+      "description": "Feature flags and experimental toggles.",
+      "allowOriginalModelNamesLabel": "Allow original model names",
+      "allowOriginalModelNamesHint": "Default behavior when aliases do not override original model IDs.",
+      "useFunctionApplyPatchLabel": "Use function apply_patch",
+      "useFunctionApplyPatchHint": "Enables function-level patches in responses routing.",
+      "forceAgentLabel": "Force agent header",
+      "forceAgentHint": "Affects Copilot Premium request consumption counting: when off, every agent conversation request counts as 1 (same as the VS Code extension); when on, multiple requests in the same session count only once per model.",
+      "compactUseSmallModelLabel": "Compact uses small model",
+      "compactUseSmallModelHint": "When enabled, compact requests use the configured smallModel; otherwise they use the requested model.",
+      "messageStartInputTokensFallbackLabel": "Estimate input tokens at stream start",
+      "messageStartInputTokensFallbackHint": "When enabled, estimates message_start input tokens when upstream usage is unavailable."
+    }
+  },
+  "notFound": {
+    "title": "Not found",
+    "description": "The page you are looking for does not exist."
+  }
+}

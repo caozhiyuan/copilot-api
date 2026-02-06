@@ -1,5 +1,6 @@
 import { ArrowLeftIcon, DownloadIcon } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -9,6 +10,7 @@ import {
   getAdminRequestDetail,
 } from "@/lib/admin-api"
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { i18n } from "@/lib/i18n"
 import { JsonViewer } from "@/components/json/json-viewer"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -40,6 +42,7 @@ function StatusBadge({ status }: { status: number }): React.JSX.Element {
 }
 
 export function RequestDetailPage(): React.JSX.Element {
+  const { t } = useTranslation()
   const { requestId = "" } = useParams()
   const location = useLocation()
 
@@ -61,7 +64,7 @@ export function RequestDetailPage(): React.JSX.Element {
         setItem(data.item)
       } catch (err) {
         const msg = err instanceof AdminApiError ? err.message : String(err)
-        toast.error("Failed to load request", { description: msg })
+        toast.error(i18n.t("requestDetailPage.loadFailedTitle"), { description: msg })
         if (cancelled) return
         setItem(null)
       } finally {
@@ -82,9 +85,9 @@ export function RequestDetailPage(): React.JSX.Element {
     try {
       const raw = JSON.stringify(item, null, 2)
       await navigator.clipboard.writeText(raw)
-      toast.success("Copied JSON")
+      toast.success(t("requestDetailPage.toast.copiedJson"))
     } catch (err) {
-      toast.error("Copy failed", { description: String(err) })
+      toast.error(t("requestDetailPage.toast.copyFailed"), { description: String(err) })
     }
   }
 
@@ -102,9 +105,9 @@ export function RequestDetailPage(): React.JSX.Element {
       a.click()
 
       URL.revokeObjectURL(url)
-      toast.success("Downloaded JSON")
+      toast.success(t("requestDetailPage.toast.downloadedJson"))
     } catch (err) {
-      toast.error("Download failed", { description: String(err) })
+      toast.error(t("requestDetailPage.toast.downloadFailed"), { description: String(err) })
     }
   }
 
@@ -112,7 +115,7 @@ export function RequestDetailPage(): React.JSX.Element {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Request</CardTitle>
+          <CardTitle>{t("requestDetailPage.title")}</CardTitle>
           <CardDescription>
             <Skeleton className="h-4 w-40" />
           </CardDescription>
@@ -132,13 +135,15 @@ export function RequestDetailPage(): React.JSX.Element {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Request</CardTitle>
-          <CardDescription>Request not found.</CardDescription>
+          <CardTitle>{t("requestDetailPage.title")}</CardTitle>
+          <CardDescription>
+            {t("requestDetailPage.notFoundDescription")}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <InlineAlert
             variant="warning"
-            title="Request not found"
+            title={t("requestDetailPage.notFoundTitle")}
             description={`request_id: ${requestId}`}
           />
         </CardContent>
@@ -158,7 +163,7 @@ export function RequestDetailPage(): React.JSX.Element {
         <Button variant="ghost" size="sm" asChild>
           <Link to={backTo}>
             <ArrowLeftIcon className="size-4" />
-            Back
+            {t("common.back")}
           </Link>
         </Button>
       </div>
@@ -170,11 +175,17 @@ export function RequestDetailPage(): React.JSX.Element {
             <CardTitle className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm">{item.request_id}</span>
               <StatusBadge status={item.http_status} />
-              {item.duration_ms != null ? (
-                <Badge variant="outline">dur_ms: {fmtNum(item.duration_ms)}</Badge>
+              {typeof item.duration_ms === "number" ? (
+                <Badge variant="outline">
+                  {t("requestDetailPage.badges.durMs")}:{" "}
+                  {fmtNum(item.duration_ms)}
+                </Badge>
               ) : null}
-              {item.ttfb_ms != null ? (
-                <Badge variant="outline">ttfb_ms: {fmtNum(item.ttfb_ms)}</Badge>
+              {typeof item.ttfb_ms === "number" ? (
+                <Badge variant="outline">
+                  {t("requestDetailPage.badges.ttfbMs")}:{" "}
+                  {fmtNum(item.ttfb_ms)}
+                </Badge>
               ) : null}
             </CardTitle>
             <CardDescription className="font-mono text-xs">
@@ -187,19 +198,23 @@ export function RequestDetailPage(): React.JSX.Element {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1fr_2fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Summary</CardTitle>
+            <CardTitle>{t("requestDetailPage.summaryTitle")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableBody>
                 <TableRow>
-                  <TableCell className="w-36 text-muted-foreground">time</TableCell>
+                  <TableCell className="w-36 text-muted-foreground">
+                    {t("requestDetailPage.fields.time")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs">
                     {fmtLocalDateTime(item.started_at_ms)}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">path</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.path")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     <Link
                       to={`/requests?path=${encodeURIComponent(item.path)}`}
@@ -210,13 +225,17 @@ export function RequestDetailPage(): React.JSX.Element {
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">endpoint</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.endpoint")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.upstream_endpoint || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">account</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.account")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.account_id ? (
                       <Link
@@ -231,66 +250,96 @@ export function RequestDetailPage(): React.JSX.Element {
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">user_id</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.userId")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.user_id || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">
-                    safety_identifier
+                    {t("requestDetailPage.fields.safetyIdentifier")}
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.safety_identifier || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">prompt_cache_key</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.promptCacheKey")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.prompt_cache_key || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">initiator</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.initiator")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.initiator || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">
-                    upstream_request_id
+                    {t("requestDetailPage.fields.upstreamRequestId")}
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.upstream_request_id || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">model</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.model")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs">
                     {item.upstream_model || ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">client</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.client")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.client_ip || ""}
                     {item.user_agent ? ` (${item.user_agent})` : ""}
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">tokens</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.tokens")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    in={item.tokens_input ?? ""} out={item.tokens_output ?? ""} total={
-                      item.tokens_total ?? ""
-                    } cached={item.tokens_cached_input ?? ""}
+                    <span>
+                      {t("requestDetailPage.tokens.in")}={item.tokens_input ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.tokens.out")}={item.tokens_output ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.tokens.total")}={item.tokens_total ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.tokens.cached")}={item.tokens_cached_input ?? ""}
+                    </span>
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-muted-foreground">quota</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.quota")}
+                  </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    before={item.premium_remaining_before ?? ""} after={
-                      item.premium_remaining_after ?? ""
-                    } diff={item.premium_remaining_diff ?? ""} ({quota})
+                    <span>
+                      {t("requestDetailPage.quota.before")}={item.premium_remaining_before ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.quota.after")}={item.premium_remaining_after ?? ""}
+                    </span>{" "}
+                    <span>
+                      {t("requestDetailPage.quota.diff")}={item.premium_remaining_diff ?? ""}{" "}
+                      ({quota})
+                    </span>
                   </TableCell>
                 </TableRow>
               </TableBody>
@@ -300,24 +349,31 @@ export function RequestDetailPage(): React.JSX.Element {
 
         <Card>
           <CardHeader>
-            <CardTitle>Raw</CardTitle>
-            <CardDescription>Full record as JSON.</CardDescription>
+            <CardTitle>{t("requestDetailPage.rawTitle")}</CardTitle>
+            <CardDescription>
+              {t("requestDetailPage.rawDescription")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
-                placeholder="Search key/value"
+                placeholder={t("requestDetailPage.searchPlaceholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="h-8 sm:max-w-xs"
               />
               <div className="flex items-center gap-2 sm:ml-auto">
-                <Button type="button" variant="outline" size="sm" onClick={downloadRaw}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={downloadRaw}
+                >
                   <DownloadIcon className="size-4" />
-                  Download
+                  {t("common.download")}
                 </Button>
                 <RainbowButton onClick={() => void copyRaw()} size="sm">
-                  Copy JSON
+                  {t("common.copyJson")}
                 </RainbowButton>
               </div>
             </div>

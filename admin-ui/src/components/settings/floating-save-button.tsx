@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next"
+
 import { RainbowButton } from "@/components/ui/rainbow-button"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +20,8 @@ export function FloatingSaveButton({
   onSave,
   className,
 }: FloatingSaveButtonProps) {
+  const { t } = useTranslation()
+
   return (
     <div
       className={cn(
@@ -33,7 +37,9 @@ export function FloatingSaveButton({
         disabled={!canSave}
         className="shadow-2xl"
       >
-        {saving ? "Saving..." : "Save Changes"}
+        {saving
+          ? t("settingsPage.saveButton.saving")
+          : t("settingsPage.saveButton.saveChanges")}
       </RainbowButton>
     </div>
   )

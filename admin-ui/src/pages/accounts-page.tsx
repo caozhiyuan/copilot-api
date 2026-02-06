@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -9,6 +10,7 @@ import {
   getAdminMeta,
 } from "@/lib/admin-api"
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { i18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion"
 import { Badge } from "@/components/ui/badge"
@@ -129,6 +131,8 @@ function AccountsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
 }
 
 export function AccountsPage(): React.JSX.Element {
+  const { t } = useTranslation()
+
   const [windowPreset, setWindowPreset] = useState<WindowPreset>("86400000")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -158,7 +162,7 @@ export function AccountsPage(): React.JSX.Element {
     } catch (err) {
       const msg = err instanceof AdminApiError ? err.message : String(err)
       setError(msg)
-      toast.error("Failed to load accounts", { description: msg })
+      toast.error(i18n.t("accountsPage.loadFailedTitle"), { description: msg })
     } finally {
       setLoading(false)
     }
@@ -232,33 +236,38 @@ export function AccountsPage(): React.JSX.Element {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-sm">Stats window</span>
+          <span className="text-muted-foreground text-sm">{t("accountsPage.statsWindowLabel")}</span>
           <Select value={windowPreset} onValueChange={(v) => setWindowPreset(v as WindowPreset)}>
             <SelectTrigger size="sm" className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="86400000">Last 24h</SelectItem>
-              <SelectItem value="604800000">Last 7d</SelectItem>
+              <SelectItem value="86400000">{t("accountsPage.window.last24h")}</SelectItem>
+              <SelectItem value="604800000">{t("accountsPage.window.last7d")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <RainbowButton onClick={refresh} disabled={loading} size="sm">
-          {loading ? "Refreshing..." : "Refresh"}
+          {loading ? t("common.refreshing") : t("common.refresh")}
         </RainbowButton>
 
         <div className="text-muted-foreground ml-auto text-sm">
-          {meta?.dbPath ? `DB v${meta.userVersion ?? "?"} · ${meta.dbPath}` : null}
+          {meta?.dbPath
+            ? t("accountsPage.dbInfo", {
+                version: meta.userVersion ?? "?",
+                path: meta.dbPath,
+              })
+            : null}
         </div>
       </div>
 
       {error ? (
         <InlineAlert
           variant="error"
-          title="Failed to load accounts"
+          title={t("accountsPage.loadFailedTitle")}
           description={error}
-          actionLabel="Retry"
+          actionLabel={t("common.retry")}
           onAction={() => void refresh()}
         />
       ) : null}
@@ -266,7 +275,7 @@ export function AccountsPage(): React.JSX.Element {
       <BentoGrid className="auto-rows-min grid-cols-1 gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Accounts</div>
+            <div className="text-muted-foreground text-xs">{t("nav.accounts")}</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.totalAccounts} />
             </div>
@@ -275,7 +284,7 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Failed</div>
+            <div className="text-muted-foreground text-xs">{t("common.failed")}</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.failedAccounts} />
             </div>
@@ -284,7 +293,7 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Requests</div>
+            <div className="text-muted-foreground text-xs">{t("nav.requests")}</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.totalRequests} />
             </div>
@@ -293,7 +302,7 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Errors</div>
+            <div className="text-muted-foreground text-xs">{t("common.errors")}</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.totalErrors} />
             </div>
@@ -302,7 +311,7 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Error rate</div>
+            <div className="text-muted-foreground text-xs">{t("common.errorRate")}</div>
             <div className="mt-1 flex items-baseline gap-1 text-2xl font-semibold">
               <KpiValue value={kpis.errorRatePct} decimalPlaces={1} />
               <span className="text-muted-foreground text-sm">%</span>
@@ -312,7 +321,7 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Tokens / req</div>
+            <div className="text-muted-foreground text-xs">{t("common.tokensPerRequest")}</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.tokensPerRequest} decimalPlaces={1} />
             </div>
@@ -321,7 +330,7 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Tokens</div>
+            <div className="text-muted-foreground text-xs">{t("common.tokens")}</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.totalTokens} />
             </div>
@@ -330,7 +339,7 @@ export function AccountsPage(): React.JSX.Element {
 
         <MagicCard className="rounded-xl">
           <div className="p-4">
-            <div className="text-muted-foreground text-xs">Avg duration (ms)</div>
+            <div className="text-muted-foreground text-xs">{t("common.avgDurationMs")}</div>
             <div className="mt-1 text-2xl font-semibold">
               <KpiValue value={kpis.avgDurationMs} />
             </div>
@@ -340,15 +349,13 @@ export function AccountsPage(): React.JSX.Element {
 
       <Card className="gap-4 py-4">
         <CardHeader className="px-4">
-          <CardTitle>Accounts</CardTitle>
-          <CardDescription className="hidden sm:block">
-            Click an account to filter requests.
-          </CardDescription>
+          <CardTitle>{t("nav.accounts")}</CardTitle>
+          <CardDescription className="hidden sm:block">{t("accountsPage.tableDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 px-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <Input
-              placeholder="Filter account"
+              placeholder={t("accountsPage.filterAccountPlaceholder")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="h-8 sm:max-w-xs"
@@ -360,11 +367,11 @@ export function AccountsPage(): React.JSX.Element {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent align="end">
-                  <SelectItem value="requests">Requests</SelectItem>
-                  <SelectItem value="errors">Errors</SelectItem>
-                  <SelectItem value="tokens">Tokens</SelectItem>
-                  <SelectItem value="last_req">Last req</SelectItem>
-                  <SelectItem value="account">Account</SelectItem>
+                  <SelectItem value="requests">{t("nav.requests")}</SelectItem>
+                  <SelectItem value="errors">{t("common.errors")}</SelectItem>
+                  <SelectItem value="tokens">{t("common.tokens")}</SelectItem>
+                  <SelectItem value="last_req">{t("common.lastRequest")}</SelectItem>
+                  <SelectItem value="account">{t("common.account")}</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -377,14 +384,22 @@ export function AccountsPage(): React.JSX.Element {
           <Table className="[&_th]:h-9 [&_td]:py-1.5">
             <TableHeader>
               <TableRow>
-                <TableHead>Account</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className={cn(accountsTableColVisibility[2])}>Premium req</TableHead>
-                <TableHead>Requests</TableHead>
-                <TableHead>Errors</TableHead>
-                <TableHead className={cn(accountsTableColVisibility[5])}>Tokens</TableHead>
-                <TableHead className={cn(accountsTableColVisibility[6])}>Avg ms</TableHead>
-                <TableHead className={cn(accountsTableColVisibility[7])}>Last req</TableHead>
+                <TableHead>{t("common.account")}</TableHead>
+                <TableHead>{t("common.status")}</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[2])}>
+                  {t("accountsPage.premiumReq")}
+                </TableHead>
+                <TableHead>{t("nav.requests")}</TableHead>
+                <TableHead>{t("common.errors")}</TableHead>
+                <TableHead className={cn(accountsTableColVisibility[5])}>
+                  {t("common.tokens")}
+                </TableHead>
+                <TableHead className={cn(accountsTableColVisibility[6])}>
+                  {t("common.avgMs")}
+                </TableHead>
+                <TableHead className={cn(accountsTableColVisibility[7])}>
+                  {t("common.lastRequest")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -395,13 +410,17 @@ export function AccountsPage(): React.JSX.Element {
                   <TableCell colSpan={accountsTableColVisibility.length}>
                     <InlineAlert
                       variant="info"
-                      title={accounts.length === 0 ? "No accounts" : "No matches"}
+                      title={
+                        accounts.length === 0
+                          ? t("accountsPage.empty.noAccountsTitle")
+                          : t("accountsPage.empty.noMatchesTitle")
+                      }
                       description={
                         accounts.length === 0
-                          ? "No accounts found."
-                          : "No accounts match the current filter."
+                          ? t("accountsPage.empty.noAccountsDescription")
+                          : t("accountsPage.empty.noMatchesDescription")
                       }
-                      actionLabel={query.trim() ? "Clear filter" : undefined}
+                      actionLabel={query.trim() ? t("common.clearFilter") : undefined}
                       onAction={query.trim() ? () => setQuery("") : undefined}
                     />
                   </TableCell>
@@ -410,9 +429,9 @@ export function AccountsPage(): React.JSX.Element {
                 visibleAccounts.map((a) => {
                   const failed = a.runtime?.failed
                   const statusBadge = failed ? (
-                    <Badge variant="destructive">failed</Badge>
+                    <Badge variant="destructive">{t("common.statusFailed")}</Badge>
                   ) : (
-                    <Badge variant="secondary">ok</Badge>
+                    <Badge variant="secondary">{t("common.statusOk")}</Badge>
                   )
 
                   const total = a.runtime?.entitlement
@@ -433,18 +452,18 @@ export function AccountsPage(): React.JSX.Element {
                       : undefined
 
                   const remainingCell = a.runtime?.unlimited ? (
-                    <Badge variant="secondary">unlimited</Badge>
+                    <Badge variant="secondary">{t("common.unlimited")}</Badge>
                   ) : (
                     <div className="flex flex-col gap-1">
                       <div className="flex items-baseline justify-between gap-2 text-xs whitespace-nowrap">
                         <div className="flex items-baseline gap-1">
-                          <span className="text-muted-foreground">Used</span>
+                          <span className="text-muted-foreground">{t("common.used")}</span>
                           <span className="tabular-nums font-medium">
                             {fmtNumOrDash(usedQuota)}
                           </span>
                         </div>
                         <div className="flex items-baseline gap-1">
-                          <span className="text-muted-foreground">Remaining</span>
+                          <span className="text-muted-foreground">{t("common.remaining")}</span>
                           <span className="tabular-nums font-medium">
                             {fmtNumOrDash(remainingQuota)}
                           </span>
@@ -454,7 +473,7 @@ export function AccountsPage(): React.JSX.Element {
                         <Progress
                           value={percentUsed}
                           className="h-1.5"
-                          aria-label="Premium interactions quota used"
+                          aria-label={t("accountsPage.premiumQuotaUsedAria")}
                         />
                       ) : null}
                     </div>
