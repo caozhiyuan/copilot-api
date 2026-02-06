@@ -10,6 +10,7 @@
   "nav": {
     "accounts": "账号",
     "requests": "请求",
+    "models": "模型",
     "settings": "设置",
     "openNavigation": "打开导航"
   },
@@ -137,6 +138,39 @@
       "noRequestsTitle": "无请求",
       "noResultsForFilters": "当前筛选条件下没有结果。",
       "noRequestsFound": "未找到请求。"
+    }
+  },
+  "modelsPage": {
+    "title": "模型",
+    "description": "查看当前可用模型及其元数据。",
+    "totalCount": "共 {{count}} 个模型",
+    "loadFailedTitle": "加载模型失败",
+    "toast": {
+      "loadFailed": "加载模型失败"
+    },
+    "columns": {
+      "name": "名称",
+      "endpoints": "端点",
+      "originalId": "原始 ID",
+      "aliases": "别名",
+      "context": "上下文大小",
+      "features": "功能",
+      "multiplier": "乘数"
+    },
+    "badges": {
+      "preview": "预览",
+      "premium": "高级"
+    },
+    "features": {
+      "tools": "工具",
+      "vision": "视觉",
+      "structuredOutputs": "结构化",
+      "streaming": "流式",
+      "parallelTools": "并行工具"
+    },
+    "empty": {
+      "title": "无模型",
+      "description": "未找到模型。"
     }
   },
   "requestDetailPage": {

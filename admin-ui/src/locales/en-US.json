@@ -10,6 +10,7 @@
   "nav": {
     "accounts": "Accounts",
     "requests": "Requests",
+    "models": "Models",
     "settings": "Settings",
     "openNavigation": "Open navigation"
   },
@@ -137,6 +138,39 @@
       "noRequestsTitle": "No requests",
       "noResultsForFilters": "No results for the current filters.",
       "noRequestsFound": "No requests found."
+    }
+  },
+  "modelsPage": {
+    "title": "Models",
+    "description": "View available models and their metadata.",
+    "totalCount": "{{count}} models",
+    "loadFailedTitle": "Failed to load models",
+    "toast": {
+      "loadFailed": "Failed to load models"
+    },
+    "columns": {
+      "name": "Name",
+      "endpoints": "Endpoints",
+      "originalId": "Original ID",
+      "aliases": "Aliases",
+      "context": "Context",
+      "features": "Features",
+      "multiplier": "Multiplier"
+    },
+    "badges": {
+      "preview": "preview",
+      "premium": "premium"
+    },
+    "features": {
+      "tools": "tools",
+      "vision": "vision",
+      "structuredOutputs": "structured",
+      "streaming": "streaming",
+      "parallelTools": "parallel tools"
+    },
+    "empty": {
+      "title": "No models",
+      "description": "No models found."
     }
   },
   "requestDetailPage": {

@@ -7,6 +7,7 @@ import { listAccountsFromRegistry } from "~/lib/accounts-registry"
 import {
   getConfig,
   getModelAliases,
+  getModelAliasesInfo,
   isFreeModelLoadBalancingEnabled,
   mergeConfigWithDefaults,
   type AppConfig,
@@ -620,6 +621,98 @@ adminApiRoutes.get("/models", (c) => {
   } catch {
     return jsonError(c, 500, {
       message: "Failed to load models.",
+      type: "internal_error",
+    })
+  }
+})
+
+type AdminModelDetailsItem = {
+  id: string
+  name: string
+  preview: boolean
+  billing?: {
+    is_premium?: boolean
+    multiplier?: number
+  }
+  supported_endpoints?: Array<string>
+  capabilities: {
+    limits: {
+      max_context_window_tokens?: number
+      max_output_tokens?: number
+    }
+    supports: {
+      tool_calls?: boolean
+      parallel_tool_calls?: boolean
+      structured_outputs?: boolean
+      streaming?: boolean
+      vision?: boolean
+    }
+  }
+  aliases: Array<string>
+}
+
+type AdminModelsDetailsResponse = {
+  items: Array<AdminModelDetailsItem>
+}
+
+adminApiRoutes.get("/models/details", (c) => {
+  try {
+    const accountModels = accountsManager.getFirstAccountModels()
+    const aliasInfo = getModelAliasesInfo()
+
+    const aliasesByTarget = new Map<string, Array<string>>()
+    for (const [alias, spec] of Object.entries(aliasInfo)) {
+      const targetKey = spec.target.toLowerCase()
+      const current = aliasesByTarget.get(targetKey)
+      if (current) {
+        current.push(alias)
+      } else {
+        aliasesByTarget.set(targetKey, [alias])
+      }
+    }
+
+    for (const arr of aliasesByTarget.values()) {
+      arr.sort()
+    }
+
+    const items: AdminModelsDetailsResponse["items"] =
+      accountModels?.data
+        .filter(
+          (model) => typeof model.id === "string" && model.id.trim().length > 0,
+        )
+        .map((model) => {
+          const aliases = aliasesByTarget.get(model.id.toLowerCase()) ?? []
+          return {
+            id: model.id,
+            name: model.name,
+            preview: model.preview,
+            billing: model.billing,
+            supported_endpoints: model.supported_endpoints,
+            capabilities: {
+              limits: {
+                max_context_window_tokens:
+                  model.capabilities.limits.max_context_window_tokens,
+                max_output_tokens: model.capabilities.limits.max_output_tokens,
+              },
+              supports: {
+                tool_calls: model.capabilities.supports.tool_calls,
+                parallel_tool_calls:
+                  model.capabilities.supports.parallel_tool_calls,
+                structured_outputs:
+                  model.capabilities.supports.structured_outputs,
+                streaming: model.capabilities.supports.streaming,
+                vision: model.capabilities.supports.vision,
+              },
+            },
+            aliases,
+          } satisfies AdminModelDetailsItem
+        })
+        .sort((a, b) => a.id.localeCompare(b.id)) ?? []
+
+    return c.json({ items })
+  } catch {
+    return jsonError(c, 500, {
+      message: "Failed to load model details.",
       type: "internal_error",
     })
   }
