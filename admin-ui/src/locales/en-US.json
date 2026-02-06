@@ -251,8 +251,8 @@
     "loadBalancing": {
       "title": "Load balancing",
       "description": "Toggle free account load balancing.",
-      "freeModelLabel": "Free model load balancing",
-      "freeModelHint": "When enabled, distributes free traffic across available accounts."
+      "freeModelLabel": "Free model request load balancing",
+      "freeModelHint": "When enabled, downstream requests for free models are distributed across multiple upstream accounts."
     },
     "reasoning": {
       "title": "Reasoning efforts",
@@ -296,7 +296,7 @@
       "useFunctionApplyPatchLabel": "Use function apply_patch",
       "useFunctionApplyPatchHint": "Enables function-level patches in responses routing.",
       "forceAgentLabel": "Force agent header",
-      "forceAgentHint": "Forces agent routing logic even when clients omit hints.",
+      "forceAgentHint": "Affects Copilot Premium request consumption counting: when off, every agent conversation request counts as 1 (same as the VS Code extension); when on, multiple requests in the same session count only once per model.",
       "compactUseSmallModelLabel": "Compact uses small model",
       "compactUseSmallModelHint": "When enabled, compact requests use the configured smallModel; otherwise they use the requested model.",
       "messageStartInputTokensFallbackLabel": "Estimate input tokens at stream start",
