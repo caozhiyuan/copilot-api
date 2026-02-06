@@ -291,7 +291,7 @@ function MultiplierCell({
 export function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation()
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [models, setModels] = useState<AdminModelDetailsItem[]>([])
 
