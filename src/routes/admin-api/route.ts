@@ -651,8 +651,97 @@ type AdminModelDetailsItem = {
   aliases: Array<string>
 }
 
-type AdminModelsDetailsResponse = {
-  items: Array<AdminModelDetailsItem>
+function parseNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function parseOptionalFiniteNumber(value: unknown): number | undefined {
+  if (typeof value !== "number") return undefined
+  return Number.isFinite(value) ? value : undefined
+}
+
+function parseOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined
+}
+
+function parseStringArray(value: unknown): Array<string> | undefined {
+  if (!Array.isArray(value)) return undefined
+
+  const out = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+
+  return out.length > 0 ? out : undefined
+}
+
+function parseBilling(value: unknown): AdminModelDetailsItem["billing"] {
+  if (!isPlainObject(value)) return undefined
+
+  const multiplier = parseOptionalFiniteNumber(value.multiplier)
+  const is_premium = parseOptionalBoolean(value.is_premium)
+
+  if (multiplier === undefined && is_premium === undefined) return undefined
+  return { multiplier, is_premium }
+}
+
+function parseCapabilities(
+  value: unknown,
+): AdminModelDetailsItem["capabilities"] {
+  if (!isPlainObject(value)) {
+    return {
+      limits: {},
+      supports: {},
+    }
+  }
+
+  const limitsRaw = isPlainObject(value.limits) ? value.limits : undefined
+  const supportsRaw = isPlainObject(value.supports) ? value.supports : undefined
+
+  return {
+    limits: {
+      max_context_window_tokens: parseOptionalFiniteNumber(
+        limitsRaw?.max_context_window_tokens,
+      ),
+      max_output_tokens: parseOptionalFiniteNumber(
+        limitsRaw?.max_output_tokens,
+      ),
+    },
+    supports: {
+      tool_calls: parseOptionalBoolean(supportsRaw?.tool_calls),
+      parallel_tool_calls: parseOptionalBoolean(
+        supportsRaw?.parallel_tool_calls,
+      ),
+      structured_outputs: parseOptionalBoolean(supportsRaw?.structured_outputs),
+      streaming: parseOptionalBoolean(supportsRaw?.streaming),
+      vision: parseOptionalBoolean(supportsRaw?.vision),
+    },
+  }
+}
+
+function parseAdminModelDetailsItem(
+  raw: unknown,
+  aliasesByTarget: Map<string, Array<string>>,
+): AdminModelDetailsItem | null {
+  if (!isPlainObject(raw)) return null
+
+  const id = parseNonEmptyString(raw.id)
+  if (!id) return null
+
+  const name = parseNonEmptyString(raw.name) ?? id
+  const preview = parseOptionalBoolean(raw.preview) ?? false
+
+  return {
+    id,
+    name,
+    preview,
+    billing: parseBilling(raw.billing),
+    supported_endpoints: parseStringArray(raw.supported_endpoints),
+    capabilities: parseCapabilities(raw.capabilities),
+    aliases: aliasesByTarget.get(id.toLowerCase()) ?? [],
+  }
 }
 
 adminApiRoutes.get("/models/details", (c) => {
@@ -671,46 +760,23 @@ adminApiRoutes.get("/models/details", (c) => {
       }
     }
 
-    for (const arr of aliasesByTarget.values()) {
-      arr.sort()
+    for (const aliases of aliasesByTarget.values()) {
+      aliases.sort()
     }
 
-    const items: AdminModelsDetailsResponse["items"] =
-      accountModels?.data
-        .filter(
-          (model) => typeof model.id === "string" && model.id.trim().length > 0,
-        )
-        .map((model) => {
-          const aliases = aliasesByTarget.get(model.id.toLowerCase()) ?? []
-          return {
-            id: model.id,
-            name: model.name,
-            preview: model.preview,
-            billing: model.billing,
-            supported_endpoints: model.supported_endpoints,
-            capabilities: {
-              limits: {
-                max_context_window_tokens:
-                  model.capabilities.limits.max_context_window_tokens,
-                max_output_tokens: model.capabilities.limits.max_output_tokens,
-              },
-              supports: {
-                tool_calls: model.capabilities.supports.tool_calls,
-                parallel_tool_calls:
-                  model.capabilities.supports.parallel_tool_calls,
-                structured_outputs:
-                  model.capabilities.supports.structured_outputs,
-                streaming: model.capabilities.supports.streaming,
-                vision: model.capabilities.supports.vision,
-              },
-            },
-            aliases,
-          } satisfies AdminModelDetailsItem
-        })
-        .sort((a, b) => a.id.localeCompare(b.id)) ?? []
+    const rawModels: Array<unknown> = []
+    if (Array.isArray(accountModels?.data)) {
+      rawModels.push(...(accountModels.data as Array<unknown>))
+    }
+
+    const items = rawModels
+      .map((raw) => parseAdminModelDetailsItem(raw, aliasesByTarget))
+      .filter((item): item is AdminModelDetailsItem => item !== null)
+      .sort((a, b) => a.id.localeCompare(b.id))
 
     return c.json({ items })
-  } catch {
+  } catch (error) {
+    console.error("Failed to load model details.", error)
     return jsonError(c, 500, {
       message: "Failed to load model details.",
       type: "internal_error",
