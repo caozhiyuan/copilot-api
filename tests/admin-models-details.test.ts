@@ -81,13 +81,16 @@ const withConfig = async (config: TestConfig, run: () => Promise<void>) => {
   }
 }
 
-const withMockedModels = async (run: () => Promise<void>) => {
+const withMockedModels = async (
+  models: Array<Model>,
+  run: () => Promise<void>,
+) => {
   const originalGetFirstAccountModels =
     accountsManager.getFirstAccountModels.bind(accountsManager)
 
   accountsManager.getFirstAccountModels = () =>
     ({
-      data: [buildModel("gpt-5-mini"), buildModel("gpt-4")],
+      data: models,
       object: "list",
     }) as ModelsResponse
 
@@ -109,50 +112,81 @@ test("GET /api/admin/models/details returns model details with aliases", async (
       smallModel: "gpt-5-mini",
     },
     async () => {
-      await withMockedModels(async () => {
-        const { server } = await import("../src/server")
-        const res = await server.fetch(
-          new Request("http://localhost/api/admin/models/details"),
-        )
+      await withMockedModels(
+        [buildModel("gpt-5-mini"), buildModel("gpt-4")],
+        async () => {
+          const { server } = await import("../src/server")
+          const res = await server.fetch(
+            new Request("http://localhost/api/admin/models/details"),
+          )
 
-        expect(res.status).toBe(200)
+          expect(res.status).toBe(200)
 
-        const body = (await res.json()) as {
-          items: Array<{
-            id: string
-            name: string
-            aliases: Array<string>
-            supported_endpoints?: Array<string>
-            billing?: { multiplier?: number }
-            capabilities: {
-              limits: {
-                max_context_window_tokens?: number
-                max_prompt_tokens?: number
-                max_output_tokens?: number
+          const body = (await res.json()) as {
+            items: Array<{
+              id: string
+              name: string
+              aliases: Array<string>
+              supported_endpoints?: Array<string>
+              billing?: { multiplier?: number }
+              capabilities: {
+                limits: {
+                  max_context_window_tokens?: number
+                  max_prompt_tokens?: number
+                  max_output_tokens?: number
+                }
+                supports: { tool_calls?: boolean }
               }
-              supports: { tool_calls?: boolean }
-            }
-          }>
-        }
+            }>
+          }
 
-        // Stable ordering by id.
-        expect(body.items.map((m) => m.id)).toEqual(["gpt-4", "gpt-5-mini"])
+          // Stable ordering by id.
+          expect(body.items.map((m) => m.id)).toEqual(["gpt-4", "gpt-5-mini"])
 
-        const mini = body.items.find((m) => m.id === "gpt-5-mini")
-        expect(mini).toBeTruthy()
-        expect(mini?.aliases).toEqual(["fast"])
-        expect(mini?.supported_endpoints).toEqual([
-          "/responses",
-          "/chat/completions",
-        ])
-        expect(mini?.billing?.multiplier).toBe(1)
-        expect(mini?.capabilities.limits.max_context_window_tokens).toBe(
-          128_000,
-        )
-        expect(mini?.capabilities.limits.max_prompt_tokens).toBe(96_000)
-        expect(mini?.capabilities.limits.max_output_tokens).toBe(32_000)
-        expect(mini?.capabilities.supports.tool_calls).toBe(true)
-      })
+          const mini = body.items.find((m) => m.id === "gpt-5-mini")
+          expect(mini).toBeTruthy()
+          expect(mini?.aliases).toEqual(["fast"])
+          expect(mini?.supported_endpoints).toEqual([
+            "/responses",
+            "/chat/completions",
+          ])
+          expect(mini?.billing?.multiplier).toBe(1)
+          expect(mini?.capabilities.limits.max_context_window_tokens).toBe(
+            128_000,
+          )
+          expect(mini?.capabilities.limits.max_prompt_tokens).toBe(96_000)
+          expect(mini?.capabilities.limits.max_output_tokens).toBe(32_000)
+          expect(mini?.capabilities.supports.tool_calls).toBe(true)
+        },
+      )
+    },
+  )
+})
+
+test("GET /api/admin/models/details de-duplicates duplicate ids", async () => {
+  await withConfig(
+    {
+      modelAliases: {},
+      allowOriginalModelNamesForAliases: true,
+      smallModel: "gpt-5-mini",
+    },
+    async () => {
+      await withMockedModels(
+        [buildModel("gpt-4"), buildModel("gpt-4"), buildModel("gpt-5-mini")],
+        async () => {
+          const { server } = await import("../src/server")
+          const res = await server.fetch(
+            new Request("http://localhost/api/admin/models/details"),
+          )
+
+          expect(res.status).toBe(200)
+
+          const body = (await res.json()) as { items: Array<{ id: string }> }
+
+          expect(body.items).toHaveLength(2)
+          expect(body.items.map((m) => m.id)).toEqual(["gpt-4", "gpt-5-mini"])
+        },
+      )
     },
   )
 })

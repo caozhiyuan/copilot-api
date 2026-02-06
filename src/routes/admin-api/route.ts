@@ -773,10 +773,17 @@ adminApiRoutes.get("/models/details", (c) => {
       rawModels.push(...(accountModels.data as Array<unknown>))
     }
 
-    const items = rawModels
-      .map((raw) => parseAdminModelDetailsItem(raw, aliasesByTarget))
-      .filter((item): item is AdminModelDetailsItem => item !== null)
-      .sort((a, b) => a.id.localeCompare(b.id))
+    const itemsById = new Map<string, AdminModelDetailsItem>()
+    for (const raw of rawModels) {
+      const item = parseAdminModelDetailsItem(raw, aliasesByTarget)
+      if (!item) continue
+      if (itemsById.has(item.id)) continue
+      itemsById.set(item.id, item)
+    }
+
+    const items = Array.from(itemsById.values()).sort((a, b) =>
+      a.id.localeCompare(b.id),
+    )
 
     return c.json({ items })
   } catch (error) {

@@ -40,6 +40,8 @@ type SortKey =
   | "features"
   | "multiplier"
 
+type SortState = { key: SortKey | null; dir: SortDir }
+
 function fmtTokensCompact(n?: number): string {
   if (n == null) return ""
   if (!Number.isFinite(n) || n <= 0) return ""
@@ -295,18 +297,19 @@ export function ModelsPage(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [models, setModels] = useState<AdminModelDetailsItem[]>([])
 
-  const [sortKey, setSortKey] = useState<SortKey | null>(null)
-  const [sortDir, setSortDir] = useState<SortDir>("asc")
+  const [sortState, setSortState] = useState<SortState>({
+    key: null,
+    dir: "asc",
+  })
+  const { key: sortKey, dir: sortDir } = sortState
 
   const onSort = useCallback((key: SortKey) => {
-    setSortKey((prevKey) => {
-      if (prevKey === key) {
-        setSortDir((prevDir) => (prevDir === "asc" ? "desc" : "asc"))
-        return prevKey
+    setSortState((prev) => {
+      if (prev.key === key) {
+        return { key: prev.key, dir: prev.dir === "asc" ? "desc" : "asc" }
       }
 
-      setSortDir("asc")
-      return key
+      return { key, dir: "asc" }
     })
   }, [])
 
@@ -359,7 +362,7 @@ export function ModelsPage(): React.JSX.Element {
       }
 
       if (cmp !== 0) return cmp
-      return compareMaybeString(a.id, b.id, sortDir)
+      return a.id.localeCompare(b.id)
     })
   }, [models, sortDir, sortKey])
 
