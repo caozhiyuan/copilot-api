@@ -4,7 +4,19 @@ const ADMIN_TOKEN_STORAGE_KEY = "adminToken"
 
 export function readAdminToken(): string {
   if (typeof window === "undefined") return ""
-  return window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""
+
+  const local = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""
+  if (local) return local
+
+  // One-time migration from legacy sessionStorage.
+  const legacy = window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || ""
+  if (legacy) {
+    window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, legacy)
+    window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY)
+    return legacy
+  }
+
+  return ""
 }
 
 export function writeAdminToken(token: string): void {
@@ -12,10 +24,13 @@ export function writeAdminToken(token: string): void {
 
   const trimmed = token.trim()
   if (trimmed) {
-    window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, trimmed)
+    window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, trimmed)
   } else {
-    window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY)
+    window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY)
   }
+
+  // Cleanup legacy storage.
+  window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY)
 }
 
 type AdminTokenContextValue = {
