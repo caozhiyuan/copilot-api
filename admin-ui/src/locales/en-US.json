@@ -149,14 +149,15 @@
       "loadFailed": "Failed to load models"
     },
     "columns": {
-      "name": "Name",
+      "name": "Model",
       "endpoints": "Endpoints",
-      "originalId": "Original ID",
+      "originalId": "Model ID",
       "aliases": "Aliases",
       "context": "Context",
       "features": "Features",
       "multiplier": "Multiplier"
     },
+    "contextTooltip": "↓ Max input tokens: {{input}} | ↑ Max output tokens: {{output}}",
     "badges": {
       "preview": "preview",
       "premium": "premium"

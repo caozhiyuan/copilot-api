@@ -149,14 +149,15 @@
       "loadFailed": "加载模型失败"
     },
     "columns": {
-      "name": "名称",
+      "name": "模型",
       "endpoints": "端点",
-      "originalId": "原始 ID",
+      "originalId": "模型ID",
       "aliases": "别名",
       "context": "上下文大小",
       "features": "功能",
       "multiplier": "乘数"
     },
+    "contextTooltip": "↓ 最大输入令牌数：{{input}} | ↑ 最大输出令牌数：{{output}}",
     "badges": {
       "preview": "预览",
       "premium": "高级"

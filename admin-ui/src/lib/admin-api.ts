@@ -123,6 +123,7 @@ export type AdminModelDetailsItem = {
   capabilities: {
     limits: {
       max_context_window_tokens?: number
+      max_prompt_tokens?: number
       max_output_tokens?: number
     }
     supports: {

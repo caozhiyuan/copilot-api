@@ -33,6 +33,7 @@ const buildModel = (id: string, overrides?: Partial<Model>): Model => ({
     family: "test",
     limits: {
       max_context_window_tokens: 128_000,
+      max_prompt_tokens: 96_000,
       max_output_tokens: 32_000,
     },
     object: "capabilities",
@@ -126,6 +127,7 @@ test("GET /api/admin/models/details returns model details with aliases", async (
             capabilities: {
               limits: {
                 max_context_window_tokens?: number
+                max_prompt_tokens?: number
                 max_output_tokens?: number
               }
               supports: { tool_calls?: boolean }
@@ -147,6 +149,8 @@ test("GET /api/admin/models/details returns model details with aliases", async (
         expect(mini?.capabilities.limits.max_context_window_tokens).toBe(
           128_000,
         )
+        expect(mini?.capabilities.limits.max_prompt_tokens).toBe(96_000)
+        expect(mini?.capabilities.limits.max_output_tokens).toBe(32_000)
         expect(mini?.capabilities.supports.tool_calls).toBe(true)
       })
     },

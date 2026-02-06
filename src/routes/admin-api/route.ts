@@ -638,6 +638,7 @@ type AdminModelDetailsItem = {
   capabilities: {
     limits: {
       max_context_window_tokens?: number
+      max_prompt_tokens?: number
       max_output_tokens?: number
     }
     supports: {
@@ -704,6 +705,9 @@ function parseCapabilities(
     limits: {
       max_context_window_tokens: parseOptionalFiniteNumber(
         limitsRaw?.max_context_window_tokens,
+      ),
+      max_prompt_tokens: parseOptionalFiniteNumber(
+        limitsRaw?.max_prompt_tokens,
       ),
       max_output_tokens: parseOptionalFiniteNumber(
         limitsRaw?.max_output_tokens,
