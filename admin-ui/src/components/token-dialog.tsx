@@ -79,6 +79,7 @@ export function TokenDialog(): React.JSX.Element {
     }
     setSaving(true)
     setSaveError(null)
+    setMeta(null)
     try {
       const m = await getAdminMeta(trimmed)
       setMeta(m)
@@ -177,7 +178,7 @@ export function TokenDialog(): React.JSX.Element {
             className="h-9 px-4"
             disabled={testing || saving}
           >
-            {t("common.save")}
+            {saving ? t("common.saving") : t("common.save")}
           </RainbowButton>
         </DialogFooter>
       </DialogContent>
