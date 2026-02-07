@@ -1336,12 +1336,15 @@ function ModelAliasesCard({
 
 type AdvancedSettingsCardProps = {
   loadBalancingEnabled: boolean
+  modelRefreshIntervalInput: string
+  modelRefreshIntervalIssue: string | null
   allowOriginalModelNamesForAliases: boolean
   useFunctionApplyPatch: boolean
   forceAgent: boolean
   compactUseSmallModel: boolean
   messageStartInputTokensFallback: boolean
   onToggleLoadBalancing: (value: boolean) => void
+  onModelRefreshIntervalChange: (value: string) => void
   onToggleAllowOriginalModelNamesForAliases: (value: boolean) => void
   onToggleUseFunctionApplyPatch: (value: boolean) => void
   onToggleForceAgent: (value: boolean) => void
@@ -1351,12 +1354,15 @@ type AdvancedSettingsCardProps = {
 
 function AdvancedSettingsCard({
   loadBalancingEnabled,
+  modelRefreshIntervalInput,
+  modelRefreshIntervalIssue,
   allowOriginalModelNamesForAliases,
   useFunctionApplyPatch,
   forceAgent,
   compactUseSmallModel,
   messageStartInputTokensFallback,
   onToggleLoadBalancing,
+  onModelRefreshIntervalChange,
   onToggleAllowOriginalModelNamesForAliases,
   onToggleUseFunctionApplyPatch,
   onToggleForceAgent,
@@ -1387,6 +1393,27 @@ function AdvancedSettingsCard({
             checked={loadBalancingEnabled}
             onCheckedChange={onToggleLoadBalancing}
           />
+        </div>
+
+        <div className="grid gap-2">
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.modelRefreshIntervalLabel")}
+          </Label>
+          <Input
+            type="number"
+            min="0"
+            step="0.5"
+            value={modelRefreshIntervalInput}
+            onChange={(e) => onModelRefreshIntervalChange(e.target.value)}
+          />
+          <div className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.modelRefreshIntervalHint")}
+          </div>
+          {modelRefreshIntervalIssue ? (
+            <div className="text-destructive text-xs">
+              {modelRefreshIntervalIssue}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-4">
@@ -1483,6 +1510,9 @@ type SettingsPageViewProps = {
   onApiKeyChange: (value: string) => void
   loadBalancingEnabled: boolean
   onLoadBalancingToggle: (value: boolean) => void
+  modelRefreshIntervalInput: string
+  modelRefreshIntervalIssue: string | null
+  onModelRefreshIntervalChange: (value: string) => void
   reasoningMode: JsonMode
   reasoningJson: string
   reasoningJsonIssue: string | null
@@ -1532,6 +1562,11 @@ function useSettingsPageState(): SettingsPageViewProps {
 
   const [models, setModels] = useState<Array<string>>([])
   const [draft, setDraft] = useState<AdminConfig>({})
+  const [modelRefreshIntervalInput, setModelRefreshIntervalInput] =
+    useState<string>("")
+  const [modelRefreshIntervalIssue, setModelRefreshIntervalIssue] = useState<
+    string | null
+  >(null)
 
   const extraEditor = useExtraPromptEditor((record) =>
     setDraft((prev) => ({ ...prev, extraPrompts: record })),
@@ -1588,14 +1623,25 @@ function useSettingsPageState(): SettingsPageViewProps {
       const { _configPath, ...configData } = config
       const aliasItems = aliasItemsFromRecord(configData.modelAliases)
       const normalizedAliases = aliasRecordFromItems(aliasItems)
+      const intervalValue = configData.modelRefreshIntervalHours
 
       setConfigPath(_configPath ?? null)
       setDraft({ ...configData, modelAliases: normalizedAliases })
       setExtraFromRecord(configData.extraPrompts)
       setReasoningFromRecord(configData.modelReasoningEfforts)
       setAliasFromRecord(normalizedAliases)
+      setModelRefreshIntervalInput(
+        typeof intervalValue === "number" ? String(intervalValue) : "",
+      )
+      setModelRefreshIntervalIssue(null)
     },
-    [setExtraFromRecord, setReasoningFromRecord, setAliasFromRecord],
+    [
+      setExtraFromRecord,
+      setReasoningFromRecord,
+      setAliasFromRecord,
+      setModelRefreshIntervalInput,
+      setModelRefreshIntervalIssue,
+    ],
   )
 
   const load = useCallback(async () => {
@@ -1692,6 +1738,37 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleModelRefreshIntervalChange = useCallback(
+    (value: string) => {
+      setModelRefreshIntervalInput(value)
+
+      const trimmed = value.trim()
+      if (!trimmed) {
+        setModelRefreshIntervalIssue(null)
+        setDraft((prev) => ({
+          ...prev,
+          modelRefreshIntervalHours: undefined,
+        }))
+        return
+      }
+
+      const parsed = Number(trimmed)
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        setModelRefreshIntervalIssue(
+          t("settingsPage.advanced.modelRefreshIntervalError"),
+        )
+        return
+      }
+
+      setModelRefreshIntervalIssue(null)
+      setDraft((prev) => ({
+        ...prev,
+        modelRefreshIntervalHours: parsed,
+      }))
+    },
+    [setDraft, setModelRefreshIntervalInput, setModelRefreshIntervalIssue, t],
+  )
+
   const handleAllowOriginalModelNamesForAliasesToggle = useCallback(
     (value: boolean) => {
       setDraft((prev) => ({ ...prev, allowOriginalModelNamesForAliases: value }))
@@ -1735,6 +1812,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     && !(extraMode === "json" && extraJsonIssue)
     && !(reasoningMode === "json" && reasoningJsonIssue)
     && !(aliasMode === "json" && aliasJsonIssue)
+    && !modelRefreshIntervalIssue
 
   const envOverrideNote = t("settingsPage.envOverrideNote", {
     env: "COPILOT_API_KEY",
@@ -1775,6 +1853,9 @@ function useSettingsPageState(): SettingsPageViewProps {
     onApiKeyChange: handleApiKeyChange,
     loadBalancingEnabled,
     onLoadBalancingToggle: handleLoadBalancingToggle,
+    modelRefreshIntervalInput,
+    modelRefreshIntervalIssue,
+    onModelRefreshIntervalChange: handleModelRefreshIntervalChange,
     allowOriginalModelNamesForAliases,
     reasoningMode,
     reasoningJson,
@@ -1837,6 +1918,9 @@ function SettingsPageView({
   onApiKeyChange,
   loadBalancingEnabled,
   onLoadBalancingToggle,
+  modelRefreshIntervalInput,
+  modelRefreshIntervalIssue,
+  onModelRefreshIntervalChange,
   reasoningMode,
   reasoningJson,
   reasoningJsonIssue,
@@ -2036,12 +2120,15 @@ function SettingsPageView({
           >
             <AdvancedSettingsCard
               loadBalancingEnabled={loadBalancingEnabled}
+              modelRefreshIntervalInput={modelRefreshIntervalInput}
+              modelRefreshIntervalIssue={modelRefreshIntervalIssue}
               allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
               useFunctionApplyPatch={useFunctionApplyPatch}
               forceAgent={forceAgent}
               compactUseSmallModel={compactUseSmallModel}
               messageStartInputTokensFallback={messageStartInputTokensFallback}
               onToggleLoadBalancing={onLoadBalancingToggle}
+              onModelRefreshIntervalChange={onModelRefreshIntervalChange}
               onToggleAllowOriginalModelNamesForAliases={
                 onAllowOriginalModelNamesForAliasesToggle
               }

@@ -18,6 +18,7 @@ export interface AppConfig {
   forceAgent?: boolean
   compactUseSmallModel?: boolean
   messageStartInputTokensFallback?: boolean
+  modelRefreshIntervalHours?: number
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -41,9 +42,19 @@ const defaultConfig: AppConfig = {
   useFunctionApplyPatch: true,
   compactUseSmallModel: true,
   messageStartInputTokensFallback: false,
+  modelRefreshIntervalHours: 24,
 }
 
 let cachedConfig: AppConfig | null = null
+
+function normalizeModelRefreshIntervalHours(
+  value: unknown,
+): number | undefined {
+  if (typeof value !== "number") return undefined
+  if (!Number.isFinite(value)) return undefined
+  if (value < 0) return undefined
+  return value
+}
 
 function ensureConfigFile(): void {
   try {
@@ -133,6 +144,27 @@ function mergeDefaultFreeModelLoadBalancing(config: AppConfig): {
   }
 }
 
+function mergeDefaultModelRefreshInterval(config: AppConfig): {
+  mergedConfig: AppConfig
+  changed: boolean
+} {
+  const normalized = normalizeModelRefreshIntervalHours(
+    config.modelRefreshIntervalHours,
+  )
+
+  if (normalized !== undefined) {
+    return { mergedConfig: config, changed: false }
+  }
+
+  return {
+    mergedConfig: {
+      ...config,
+      modelRefreshIntervalHours: defaultConfig.modelRefreshIntervalHours ?? 24,
+    },
+    changed: true,
+  }
+}
+
 type ConfigMergeResult = {
   mergedConfig: AppConfig
   changed: boolean
@@ -162,6 +194,7 @@ export function mergeConfigWithDefaults(): AppConfig {
   const { mergedConfig, changed } = applyConfigMerges(config, [
     mergeDefaultExtraPrompts,
     mergeDefaultFreeModelLoadBalancing,
+    mergeDefaultModelRefreshInterval,
   ])
 
   if (changed) {
@@ -378,6 +411,20 @@ export function getSmallModel(): string {
 export function isFreeModelLoadBalancingEnabled(): boolean {
   const config = getConfig()
   return config.freeModelLoadBalancing ?? true
+}
+
+export function getModelRefreshIntervalHours(): number {
+  const config = getConfig()
+  const normalized = normalizeModelRefreshIntervalHours(
+    config.modelRefreshIntervalHours,
+  )
+  return normalized ?? defaultConfig.modelRefreshIntervalHours ?? 24
+}
+
+export function getModelRefreshIntervalMs(): number {
+  const hours = getModelRefreshIntervalHours()
+  if (!Number.isFinite(hours) || hours <= 0) return 0
+  return hours * 60 * 60 * 1000
 }
 
 export function isMessageStartInputTokensFallbackEnabled(): boolean {
