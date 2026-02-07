@@ -1,6 +1,6 @@
 {
   "name": "@nick3/copilot-api",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "description": "Turn GitHub Copilot into OpenAI/Anthropic API compatible server. Usable with Claude Code Or Codex Or Opencode!",
   "keywords": [
     "proxy",
@@ -61,6 +61,7 @@
     "@echristian/eslint-config": "^0.0.54",
     "@types/bun": "^1.2.23",
     "@types/proxy-from-env": "^1.0.4",
+    "baseline-browser-mapping": "^2.9.19",
     "bumpp": "^10.2.3",
     "eslint": "^9.37.0",
     "knip": "^5.64.1",

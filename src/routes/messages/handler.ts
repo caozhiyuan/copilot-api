@@ -10,6 +10,7 @@ import type { Model } from "~/services/copilot/get-models"
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import {
+  getReasoningEffortForModel,
   getSmallModel,
   isMessageStartInputTokensFallbackEnabled,
   shouldCompactUseSmallModel,
@@ -251,6 +252,7 @@ export async function handleCompletion(c: Context) {
       anthropicPayload,
       anthropicBetaHeader: anthropicBeta ?? undefined,
       instr,
+      selectedModel,
     })
   }
   if (endpoint === RESPONSES_ENDPOINT) {
@@ -1148,9 +1150,10 @@ const handleWithMessagesApi = async (params: {
   anthropicPayload: AnthropicMessagesPayload
   anthropicBetaHeader?: string
   instr: InstrumentationContext
+  selectedModel: Model
 }): Promise<Response> => {
-  const { c, anthropicPayload, anthropicBetaHeader, instr } = params
-
+  const { c, anthropicPayload, anthropicBetaHeader, instr, selectedModel } =
+    params
   // Pre-request processing: filter thinking blocks for Claude models so only
   // valid thinking blocks are sent to the Copilot Messages API.
   for (const msg of anthropicPayload.messages) {
@@ -1166,6 +1169,17 @@ const handleWithMessagesApi = async (params: {
       })
     }
   }
+
+  if (selectedModel.capabilities.supports.adaptive_thinking) {
+    anthropicPayload.thinking = {
+      type: "adaptive",
+    }
+    anthropicPayload.output_config = {
+      effort: getAnthropicEffortForModel(anthropicPayload.model),
+    }
+  }
+
+  logger.debug("Translated Messages payload:", JSON.stringify(anthropicPayload))
 
   const ctx = toAccountContext(instr.account)
   const upstreamRequestId = randomUUID()
@@ -1214,6 +1228,17 @@ const isNonStreaming = (
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
+
+const getAnthropicEffortForModel = (
+  model: string,
+): "low" | "medium" | "high" | "max" => {
+  const reasoningEffort = getReasoningEffortForModel(model)
+
+  if (reasoningEffort === "xhigh") return "max"
+  if (reasoningEffort === "none" || reasoningEffort === "minimal") return "low"
+
+  return reasoningEffort
+}
 
 const isCompactRequest = (
   anthropicPayload: AnthropicMessagesPayload,
