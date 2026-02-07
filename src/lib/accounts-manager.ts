@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import consola from "consola"
 import fs from "node:fs"
 
@@ -96,7 +97,13 @@ export class AccountsManager {
     AccountRuntime,
     AuthSnapshot
   >()
+  private modelsRefreshSnapshotByAccount = new WeakMap<
+    AccountRuntime,
+    AuthSnapshot
+  >()
   private tokenRefreshEnabledAccounts = new WeakSet<AccountRuntime>()
+  private modelsRefreshTimer?: ReturnType<typeof setTimeout>
+  private modelsRefreshIntervalMs = 0
 
   // Registry file watcher for hot reload
   private registryWatcher?: fs.FSWatcher
@@ -156,6 +163,12 @@ export class AccountsManager {
 
   setFreeModelLoadBalancingEnabled(enabled: boolean): void {
     this.freeModelLoadBalancingEnabled = enabled
+  }
+
+  setModelsRefreshIntervalMs(intervalMs: number): void {
+    this.modelsRefreshIntervalMs =
+      Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 0
+    this.scheduleModelsRefresh()
   }
 
   private computeTokenRefreshDelayMs(refreshInSeconds: number): number {
@@ -258,6 +271,7 @@ export class AccountsManager {
       if (!applyModelsIfCurrent(account, snapshot, models)) {
         return
       }
+      account.lastModelsFetch = Date.now()
 
       // Refresh quota
       await this.refreshQuota(account)
@@ -338,6 +352,124 @@ export class AccountsManager {
     if (this.temporaryAccount) {
       this.stopTokenRefresh(this.temporaryAccount)
     }
+  }
+
+  private scheduleModelsRefresh(): void {
+    this.stopModelsRefresh()
+
+    if (!this.modelsRefreshIntervalMs || this.modelsRefreshIntervalMs <= 0) {
+      return
+    }
+
+    this.modelsRefreshTimer = setTimeout(() => {
+      void this.runModelsRefreshTick()
+    }, this.modelsRefreshIntervalMs)
+  }
+
+  private stopModelsRefresh(): void {
+    if (this.modelsRefreshTimer) {
+      clearTimeout(this.modelsRefreshTimer)
+      this.modelsRefreshTimer = undefined
+    }
+  }
+
+  private async runModelsRefreshTick(): Promise<void> {
+    try {
+      await this.refreshAllModels()
+    } catch (error) {
+      consola.error("Failed to refresh models:", error)
+    } finally {
+      this.scheduleModelsRefresh()
+    }
+  }
+
+  private finalizeModelsRefreshPromise(
+    account: AccountRuntime,
+    promise: Promise<void>,
+  ): void {
+    if (account.modelsRefreshPromise !== promise) {
+      return
+    }
+
+    account.isRefreshingModels = false
+    account.modelsRefreshPromise = undefined
+    this.modelsRefreshSnapshotByAccount.delete(account)
+  }
+
+  private async refreshModels(account: AccountRuntime): Promise<void> {
+    if (!account.copilotToken) {
+      consola.debug(
+        `Skip model refresh for ${account.id}: missing Copilot token`,
+      )
+      return
+    }
+
+    const snapshot = takeAuthSnapshot(account)
+
+    if (account.modelsRefreshPromise) {
+      const existingSnapshot = this.modelsRefreshSnapshotByAccount.get(account)
+      if (isSameAuthSnapshot(existingSnapshot, snapshot)) {
+        await account.modelsRefreshPromise
+        return
+      }
+    }
+
+    account.isRefreshingModels = true
+
+    const ctx = toAccountContextFromSnapshot(
+      account,
+      snapshot,
+      account.copilotToken,
+    )
+
+    const promise = (async () => {
+      try {
+        const models = await getModels(ctx)
+        const applied = applyModelsIfCurrent(account, snapshot, models)
+        if (applied) {
+          account.lastModelsFetch = Date.now()
+        }
+      } catch (error) {
+        if (error instanceof HTTPError && error.response.status === 401) {
+          applyUnauthorizedIfCurrent(account, snapshot, "Unauthorized (401)")
+          return
+        }
+
+        consola.error(`Failed to refresh models for ${account.id}:`, error)
+      }
+    })()
+
+    account.modelsRefreshPromise = promise
+    this.modelsRefreshSnapshotByAccount.set(account, snapshot)
+
+    void promise.finally(() => {
+      this.finalizeModelsRefreshPromise(account, promise)
+    })
+
+    await promise
+  }
+
+  private async refreshAllModels(): Promise<void> {
+    const accounts: Array<AccountRuntime> = []
+
+    if (this.temporaryAccount) {
+      accounts.push(this.temporaryAccount)
+    }
+
+    for (const id of this.accountOrder) {
+      const account = this.accounts.get(id)
+      if (account) {
+        accounts.push(account)
+      }
+    }
+
+    if (accounts.length === 0) {
+      return
+    }
+
+    await Promise.allSettled(
+      accounts.map((account) => this.refreshModels(account)),
+    )
   }
 
   /** Refresh quota information for an account. */
@@ -1055,6 +1187,7 @@ export class AccountsManager {
   shutdown(): void {
     this.stopRegistryWatcher()
     this.stopAllTokenRefresh()
+    this.stopModelsRefresh()
     this.accounts.clear()
     this.accountOrder = []
     this.temporaryAccount = undefined

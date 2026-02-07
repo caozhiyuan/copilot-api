@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { Hono, type Context } from "hono"
 import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
@@ -8,6 +9,7 @@ import {
   getConfig,
   getModelAliases,
   getModelAliasesInfo,
+  getModelRefreshIntervalMs,
   isFreeModelLoadBalancingEnabled,
   mergeConfigWithDefaults,
   type AppConfig,
@@ -154,6 +156,7 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "forceAgent",
   "compactUseSmallModel",
   "messageStartInputTokensFallback",
+  "modelRefreshIntervalHours",
 ])
 
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
@@ -205,6 +208,18 @@ function parseOptionalBoolean(
 ): ParseFieldResult<boolean> {
   if (value === null || value === undefined) return { clear: true }
   if (typeof value !== "boolean") return { error: `${field} must be a boolean` }
+  return { value }
+}
+
+function parseOptionalNonNegativeNumber(
+  value: unknown,
+  field: string,
+): ParseFieldResult<number> {
+  if (value === null || value === undefined) return { clear: true }
+  if (typeof value !== "number") return { error: `${field} must be a number` }
+  if (!Number.isFinite(value) || value < 0) {
+    return { error: `${field} must be a non-negative number` }
+  }
   return { value }
 }
 
@@ -389,6 +404,21 @@ function applyOptionalBoolean(
   return undefined
 }
 
+function applyOptionalNumber(
+  next: AppConfig,
+  key: "modelRefreshIntervalHours",
+  value: unknown,
+): string | undefined {
+  const parsed = parseOptionalNonNegativeNumber(value, key)
+  if ("error" in parsed) return parsed.error
+  if ("clear" in parsed) {
+    next[key] = undefined
+    return undefined
+  }
+  next[key] = parsed.value
+  return undefined
+}
+
 function applyExtraPrompts(
   next: AppConfig,
   value: unknown,
@@ -498,6 +528,10 @@ function applyConfigPatch(
         )
         break
       }
+      case "modelRefreshIntervalHours": {
+        error = applyOptionalNumber(next, "modelRefreshIntervalHours", value)
+        break
+      }
       default: {
         return { error: `Unsupported config key: ${rawKey}` }
       }
@@ -597,6 +631,7 @@ adminApiRoutes.post("/config", async (c) => {
     accountsManager.setFreeModelLoadBalancingEnabled(
       isFreeModelLoadBalancingEnabled(),
     )
+    accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
     return c.json({ ...merged, _configPath: PATHS.CONFIG_PATH })
   } catch {
     return jsonError(c, 500, {

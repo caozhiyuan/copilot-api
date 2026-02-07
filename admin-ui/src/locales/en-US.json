@@ -326,6 +326,9 @@
     "advanced": {
       "title": "Advanced",
       "description": "Feature flags and experimental toggles.",
+      "modelRefreshIntervalLabel": "Model refresh interval (hours)",
+      "modelRefreshIntervalHint": "Set to 0 to disable automatic refresh.",
+      "modelRefreshIntervalError": "Must be a non-negative number.",
       "allowOriginalModelNamesLabel": "Allow original model names",
       "allowOriginalModelNamesHint": "Default behavior when aliases do not override original model IDs.",
       "useFunctionApplyPatchLabel": "Use function apply_patch",

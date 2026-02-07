@@ -9,6 +9,7 @@ import invariant from "tiny-invariant"
 import { accountsManager } from "./lib/accounts-manager"
 import { addAccountToRegistry, saveAccountToken } from "./lib/accounts-registry"
 import {
+  getModelRefreshIntervalMs,
   isFreeModelLoadBalancingEnabled,
   mergeConfigWithDefaults,
 } from "./lib/config"
@@ -79,6 +80,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   accountsManager.setFreeModelLoadBalancingEnabled(
     isFreeModelLoadBalancingEnabled(),
   )
+  accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
 
   if (options.proxyEnv) {
     initProxyFromEnv()
@@ -123,6 +125,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
       // Re-initialize accounts manager with the new account
       accountsManager.shutdown()
       await accountsManager.initialize(state.vsCodeVersion)
+      accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
     } catch (error) {
       consola.error("Failed to add account:", error)
       process.exit(1)

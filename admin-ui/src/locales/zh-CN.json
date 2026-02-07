@@ -326,6 +326,9 @@
     "advanced": {
       "title": "高级",
       "description": "功能开关与实验选项。",
+      "modelRefreshIntervalLabel": "模型列表刷新间隔（小时）",
+      "modelRefreshIntervalHint": "设置为 0 表示关闭自动刷新。",
+      "modelRefreshIntervalError": "必须是非负数字。",
       "allowOriginalModelNamesLabel": "允许原始模型名",
       "allowOriginalModelNamesHint": "当别名未覆盖时的默认行为。",
       "useFunctionApplyPatchLabel": "启用 function apply_patch",
