@@ -81,6 +81,9 @@
     "inputPlaceholder": "Enter token",
     "remoteNote": "If the server is not running on localhost, you must set <1>ADMIN_TOKEN</1> on the server to enable remote access.",
     "connected": "Connected: DB v{{version}} · {{path}}",
+    "validation": {
+      "empty": "Token cannot be empty."
+    },
     "toast": {
       "adminApiOk": "Admin API access OK",
       "adminApiFailed": "Admin API access failed",

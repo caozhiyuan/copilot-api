@@ -81,6 +81,9 @@
     "inputPlaceholder": "输入 Token",
     "remoteNote": "如果服务端不在 localhost 运行，你必须在服务端设置 <1>ADMIN_TOKEN</1> 才能启用远程访问。",
     "connected": "已连接：DB v{{version}} · {{path}}",
+    "validation": {
+      "empty": "Token 不能为空。"
+    },
     "toast": {
       "adminApiOk": "Admin API 访问正常",
       "adminApiFailed": "Admin API 访问失败",

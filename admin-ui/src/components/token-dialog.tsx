@@ -31,6 +31,8 @@ export function TokenDialog(): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(token)
   const [testing, setTesting] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [meta, setMeta] = useState<AdminMeta | null>(null)
 
   const tokenStatus = token ? t("common.set") : t("common.unset")
@@ -50,11 +52,13 @@ export function TokenDialog(): React.JSX.Element {
 
   useEffect(() => {
     if (open) setDraft(token)
+    if (open) setSaveError(null)
   }, [open, token])
 
   async function testToken(): Promise<void> {
     setTesting(true)
     setMeta(null)
+    setSaveError(null)
     try {
       const m = await getAdminMeta(draft)
       setMeta(m)
@@ -67,16 +71,33 @@ export function TokenDialog(): React.JSX.Element {
     }
   }
 
-  function save(): void {
-    setToken(draft)
-    toast.success(
-      draft.trim() ? t("tokenDialog.toast.tokenSaved") : t("tokenDialog.toast.tokenCleared")
-    )
+  async function save(): Promise<void> {
+    const trimmed = draft.trim()
+    if (!trimmed) {
+      setSaveError(t("tokenDialog.validation.empty"))
+      return
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const m = await getAdminMeta(trimmed)
+      setMeta(m)
+      setToken(trimmed)
+      setOpen(false)
+      toast.success(t("tokenDialog.toast.tokenSaved"))
+    } catch (err) {
+      const msg = err instanceof AdminApiError ? err.message : String(err)
+      setSaveError(msg)
+    } finally {
+      setSaving(false)
+    }
   }
 
   function clear(): void {
     clearToken()
     setDraft("")
+    setSaveError(null)
+    setMeta(null)
     toast.success(t("tokenDialog.toast.tokenCleared"))
   }
 
@@ -112,9 +133,15 @@ export function TokenDialog(): React.JSX.Element {
             type="password"
             placeholder={t("tokenDialog.inputPlaceholder")}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              if (saveError) setSaveError(null)
+            }}
             autoComplete="off"
           />
+          {saveError ? (
+            <p className="text-destructive text-xs">{saveError}</p>
+          ) : null}
           <p className="text-muted-foreground text-xs">
             <Trans i18nKey="tokenDialog.remoteNote">
               If the server is not running on localhost, you must set <code>ADMIN_TOKEN</code> on the server to enable remote access.
@@ -131,13 +158,25 @@ export function TokenDialog(): React.JSX.Element {
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button variant="secondary" onClick={testToken} disabled={testing}>
+          <Button
+            variant="secondary"
+            onClick={testToken}
+            disabled={testing || saving}
+          >
             {testing ? t("common.testing") : t("common.test")}
           </Button>
-          <Button variant="outline" onClick={clear} disabled={!token && !draft.trim()}>
+          <Button
+            variant="outline"
+            onClick={clear}
+            disabled={(!token && !draft.trim()) || testing || saving}
+          >
             {t("common.clear")}
           </Button>
-          <RainbowButton onClick={save} className="h-9 px-4">
+          <RainbowButton
+            onClick={save}
+            className="h-9 px-4"
+            disabled={testing || saving}
+          >
             {t("common.save")}
           </RainbowButton>
         </DialogFooter>
