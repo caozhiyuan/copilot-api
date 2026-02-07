@@ -428,8 +428,6 @@ export class AccountsManager {
         const applied = applyModelsIfCurrent(account, snapshot, models)
         if (applied) {
           account.lastModelsFetch = Date.now()
-          account.failed = false
-          account.failureReason = undefined
         }
       } catch (error) {
         if (error instanceof HTTPError && error.response.status === 401) {
