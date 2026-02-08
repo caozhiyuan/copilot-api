@@ -12,7 +12,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { LocaleToggle } from "@/components/locale-toggle"
-import { MotionToggle } from "@/components/motion-toggle"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { TokenDialog } from "@/components/token-dialog"
 import { cn } from "@/lib/utils"
@@ -99,7 +98,6 @@ export function AppShell(): React.JSX.Element {
 
           <div className="ml-auto flex items-center gap-2">
             <LocaleToggle />
-            <MotionToggle />
             <ThemeToggle />
             <TokenDialog />
           </div>

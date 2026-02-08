@@ -97,7 +97,8 @@
     "statsWindowLabel": "统计窗口",
     "window": {
       "last24h": "最近 24 小时",
-      "last7d": "最近 7 天"
+      "last7d": "最近 7 天",
+      "thisMonth": "本月"
     },
     "dbInfo": "DB v{{version}} · {{path}}",
     "tableDescription": "点击账号可筛选请求。",

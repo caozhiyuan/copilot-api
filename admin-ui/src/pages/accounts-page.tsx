@@ -12,7 +12,6 @@ import {
 import { fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { i18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
-import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion"
 import { Badge } from "@/components/ui/badge"
 import { InlineAlert } from "@/components/ui/inline-alert"
 import { Input } from "@/components/ui/input"
@@ -45,12 +44,27 @@ import { MagicCard } from "@/components/ui/magic-card"
 import { NumberTicker } from "@/components/ui/number-ticker"
 import { RainbowButton } from "@/components/ui/rainbow-button"
 
-type WindowPreset = "86400000" | "604800000"
+type WindowPreset = "86400000" | "604800000" | "this_month"
 
 type SortBy = "account" | "requests" | "errors" | "tokens" | "last_req"
 
 function sum(items: Array<number | undefined>): number {
   return items.reduce<number>((acc, x) => acc + (x ?? 0), 0)
+}
+
+function windowPresetToRange(
+  preset: WindowPreset,
+  nowMs: number
+): { sinceMs: number; fromMs: string; toMs: string } {
+  if (preset === "this_month") {
+    const now = new Date(nowMs)
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+    return { sinceMs: startOfMonth, fromMs: String(startOfMonth), toMs: String(nowMs) }
+  }
+
+  const windowMs = Number(preset)
+  const sinceMs = nowMs - windowMs
+  return { sinceMs, fromMs: String(sinceMs), toMs: String(nowMs) }
 }
 
 function clampPercent(value: number): number {
@@ -85,19 +99,6 @@ function KpiValue({
   value: number
   decimalPlaces?: number
 }): React.JSX.Element {
-  const reducedMotion = usePrefersReducedMotion()
-
-  if (reducedMotion) {
-    return (
-      <span className="tabular-nums">
-        {Intl.NumberFormat("en-US", {
-          minimumFractionDigits: decimalPlaces,
-          maximumFractionDigits: decimalPlaces,
-        }).format(value)}
-      </span>
-    )
-  }
-
   return <NumberTicker value={value} decimalPlaces={decimalPlaces} />
 }
 
@@ -133,7 +134,7 @@ function AccountsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
 export function AccountsPage(): React.JSX.Element {
   const { t } = useTranslation()
 
-  const [windowPreset, setWindowPreset] = useState<WindowPreset>("86400000")
+  const [windowPreset, setWindowPreset] = useState<WindowPreset>("this_month")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -149,8 +150,8 @@ export function AccountsPage(): React.JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      const windowMs = Number(windowPreset)
-      const sinceMs = Date.now() - windowMs
+      const nowMs = Date.now()
+      const { sinceMs } = windowPresetToRange(windowPreset, nowMs)
 
       const [accRes, metaRes] = await Promise.all([
         getAdminAccounts({ sinceMs, includeStats: true }),
@@ -227,10 +228,8 @@ export function AccountsPage(): React.JSX.Element {
     return out
   }, [accounts, query, sortBy])
 
-  const windowMs = Number(windowPreset)
   const nowMs = Date.now()
-  const fromMs = String(nowMs - windowMs)
-  const toMs = String(nowMs)
+  const { fromMs, toMs } = windowPresetToRange(windowPreset, nowMs)
 
   return (
     <div className="space-y-4">
@@ -244,6 +243,7 @@ export function AccountsPage(): React.JSX.Element {
             <SelectContent>
               <SelectItem value="86400000">{t("accountsPage.window.last24h")}</SelectItem>
               <SelectItem value="604800000">{t("accountsPage.window.last7d")}</SelectItem>
+              <SelectItem value="this_month">{t("accountsPage.window.thisMonth")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
