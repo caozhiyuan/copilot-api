@@ -97,7 +97,8 @@
     "statsWindowLabel": "Stats window",
     "window": {
       "last24h": "Last 24h",
-      "last7d": "Last 7d"
+      "last7d": "Last 7d",
+      "thisMonth": "This month"
     },
     "dbInfo": "DB v{{version}} · {{path}}",
     "tableDescription": "Click an account to filter requests.",
