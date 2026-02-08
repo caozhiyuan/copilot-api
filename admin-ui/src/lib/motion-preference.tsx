@@ -11,6 +11,8 @@ export type MotionPreferenceContextValue = {
 
 const MotionPreferenceContext = createContext<MotionPreferenceContextValue | null>(null)
 
+// Motion is intentionally fixed to "magic" for all users, including those
+// with prefers-reduced-motion enabled. See PR #39 for rationale.
 const FIXED_MOTION: MotionPreference = "magic"
 
 const FIXED_VALUE: MotionPreferenceContextValue = {
