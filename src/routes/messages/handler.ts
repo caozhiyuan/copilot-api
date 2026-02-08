@@ -883,7 +883,7 @@ async function streamResponsesAndLog(params: {
 
       const eventName = (chunk as { event?: string }).event
       if (eventName === "ping") {
-        await stream.writeSSE({ event: "ping", data: "" })
+        await stream.writeSSE({ event: "ping", data: '{"type":"ping"}' })
         continue
       }
 
