@@ -62,6 +62,7 @@ export interface ResponseInputMessage {
   role: "user" | "assistant" | "system" | "developer"
   content?: string | Array<ResponseInputContent>
   status?: string
+  phase?: "commentary" | "final_answer"
 }
 
 export interface ResponseFunctionToolCallItem {
