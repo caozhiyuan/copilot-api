@@ -90,9 +90,13 @@ export type ModelAliasSpec = {
 }
 
 export type AdminConfig = {
+  auth?: {
+    apiKeys?: Array<string>
+  }
   extraPrompts?: Record<string, string>
   smallModel?: string
   freeModelLoadBalancing?: boolean
+  /** @deprecated */
   apiKey?: string
   modelReasoningEfforts?: Record<string, ReasoningEffort>
   modelAliases?: Record<string, ModelAliasSpec | string>

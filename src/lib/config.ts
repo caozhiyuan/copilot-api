@@ -4,9 +4,13 @@ import fs from "node:fs"
 import { PATHS } from "./paths"
 
 export interface AppConfig {
+  auth?: {
+    apiKeys?: Array<string>
+  }
   extraPrompts?: Record<string, string>
   smallModel?: string
   freeModelLoadBalancing?: boolean
+  /** @deprecated */
   apiKey?: string
   modelReasoningEfforts?: Record<
     string,
@@ -29,6 +33,9 @@ const gpt5ExplorationPrompt = `## Exploration and reading files
 - **Workflow:** (a) plan all needed reads → (b) issue one parallel batch → (c) analyze results → (d) repeat if new, unpredictable reads arise.`
 
 const defaultConfig: AppConfig = {
+  auth: {
+    apiKeys: [],
+  },
   extraPrompts: {
     "gpt-5-mini": gpt5ExplorationPrompt,
     "gpt-5.1-codex-max": gpt5ExplorationPrompt,
@@ -46,6 +53,23 @@ const defaultConfig: AppConfig = {
 }
 
 let cachedConfig: AppConfig | null = null
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function normalizeAuthApiKeys(value: unknown): Array<string> {
+  if (!Array.isArray(value)) return []
+
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    ),
+  ]
+}
 
 function normalizeModelRefreshIntervalHours(
   value: unknown,
@@ -127,6 +151,29 @@ function mergeDefaultExtraPrompts(config: AppConfig): {
   }
 }
 
+function mergeDefaultAuth(config: AppConfig): {
+  mergedConfig: AppConfig
+  changed: boolean
+} {
+  const authConfig = isPlainObject(config.auth) ? config.auth : undefined
+  const rawApiKeys =
+    Array.isArray(authConfig?.apiKeys) ? authConfig.apiKeys : undefined
+  const normalizedApiKeys = normalizeAuthApiKeys(rawApiKeys)
+  const nextAuth = { apiKeys: normalizedApiKeys }
+
+  if (authConfig && JSON.stringify(authConfig) === JSON.stringify(nextAuth)) {
+    return { mergedConfig: config, changed: false }
+  }
+
+  return {
+    mergedConfig: {
+      ...config,
+      auth: nextAuth,
+    },
+    changed: true,
+  }
+}
+
 function mergeDefaultFreeModelLoadBalancing(config: AppConfig): {
   mergedConfig: AppConfig
   changed: boolean
@@ -192,6 +239,7 @@ export function mergeConfigWithDefaults(): AppConfig {
   const config = readConfigFromDisk()
 
   const { mergedConfig, changed } = applyConfigMerges(config, [
+    mergeDefaultAuth,
     mergeDefaultExtraPrompts,
     mergeDefaultFreeModelLoadBalancing,
     mergeDefaultModelRefreshInterval,

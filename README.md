@@ -115,9 +115,9 @@ docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here copilot-api
 # This requires setting ADMIN_TOKEN and sending it via request headers (x-admin-token / Authorization: Bearer)
 docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here -e ADMIN_TOKEN=your_admin_token_here copilot-api
 
-# (Optional) Protect selected API endpoints with an API key
-# This protects /v1/*, /token, /usage(/usage/*), and also the non-/v1 OpenAI-style endpoints (/chat/completions, /models, /embeddings, /responses)
-# Clients must send Authorization: Bearer <key> or x-api-key: <key>
+# (Optional) Enable request authentication
+# Preferred: configure auth.apiKeys in config.json.
+# Legacy fallback: COPILOT_API_KEY is still supported during migration.
 docker run -p 4141:4141 -e GH_TOKEN=your_github_token_here -e COPILOT_API_KEY=your_api_key_here copilot-api
 
 # Run with additional options
@@ -240,13 +240,15 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **Default shape:**
   ```json
   {
+    "auth": {
+      "apiKeys": []
+    },
     "extraPrompts": {
       "gpt-5-mini": "<built-in exploration prompt>",
       "gpt-5.1-codex-max": "<built-in exploration prompt>"
     },
     "smallModel": "gpt-5-mini",
     "freeModelLoadBalancing": true,
-    "apiKey": "<your_api_key_here>",
     "modelReasoningEfforts": {
       "gpt-5-mini": "low"
     },
@@ -260,10 +262,11 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     "compactUseSmallModel": true
   }
   ```
+- **auth.apiKeys:** API keys used for request authentication. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication is disabled.
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts.
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to `gpt-5-mini`. If original names are blocked and this points to an aliased target, it resolves to the first alias.
 - **freeModelLoadBalancing:** Enable round-robin routing for free-model requests across multiple accounts. Defaults to `true`. Set to `false` to route free-model requests sequentially (same ordering strategy as premium models).
-- **apiKey (optional):** API key used to protect selected endpoints (see **API Key authentication** below). Prefer setting the `COPILOT_API_KEY` environment variable (takes precedence over `config.json`). The server does not generate an API key automatically — you must provide one. If no key is configured, protected endpoints remain publicly accessible (fail-open). **Do not commit secrets.**
+- **apiKey (deprecated):** Legacy single-key field kept for migration compatibility. Prefer `auth.apiKeys`. When `auth.apiKeys` is empty, the server falls back to `COPILOT_API_KEY` and then `apiKey`.
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 - **modelAliases:** Map of `alias -> { target, allowOriginal? }` (legacy string values are still accepted). Alias keys are normalized (trim + lowercase) and must be non-empty; aliases cannot map to themselves (case-insensitive), and conflicting normalized aliases are rejected. `allowOriginal` overrides the global default per alias. If multiple aliases map to the same target, original names are allowed when any alias sets `allowOriginal: true` (allow-wins). Admin UI/API rejects blocked keys (`__proto__`, `constructor`, `prototype`). Aliases can be used in downstream requests.
 - **allowOriginalModelNamesForAliases:** Global default for aliases that omit `allowOriginal`. When `false` (default), targets are blocked unless an alias explicitly allows them; when `true`, targets are allowed unless all aliases explicitly block them.
@@ -272,6 +275,24 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **compactUseSmallModel:** When `true`, detected "compact" requests (e.g., from Claude Code or opencode compact mode) will automatically use the configured `smallModel` to avoid consuming premium usage for short/background tasks. Defaults to `true`.
 
 Edit this file to customize prompts or swap in your own fast model. If you edit it manually, restart the server (or call `GET /api/admin/config`) so the cached config is refreshed. Changes made through the Admin UI/API are validated, written to disk, and applied immediately; unknown keys are rejected.
+
+## API Authentication
+
+- **Protected routes:** All routes except `/`, `/admin`, and `/api/admin/*` require authentication when effective API keys are configured.
+- **Effective key resolution:** `auth.apiKeys` (preferred). If empty, fallback to legacy `COPILOT_API_KEY`, then `config.json` `apiKey`.
+- **Allowed auth headers:**
+  - `x-api-key: <your_key>`
+  - `Authorization: Bearer <your_key>`
+- **CORS preflight:** `OPTIONS` requests are always allowed.
+- **When no keys are configured:** Server starts normally and allows requests (authentication disabled).
+- **Admin routes:** `/admin` and `/api/admin/*` are excluded from this middleware and continue using admin-specific access control (`localhost` / `ADMIN_TOKEN`).
+
+Example request:
+
+```sh
+curl http://localhost:4141/v1/models \
+  -H "x-api-key: your_api_key"
+```
 
 ## API Endpoints
 
@@ -312,22 +333,13 @@ Endpoints for monitoring your Copilot usage and quotas across all accounts.
 > - If you start the server with `start --github-token ...`, a temporary account is included and shown as `"(temporary)"` in `GET /usage`. In that case, `index=0` refers to the temporary account and registered accounts start at `index=1`.
 > - `auth rm <index>` uses a **1-based** index (as shown by `auth ls`).
 
-### API Key authentication (optional)
+### Legacy authentication compatibility
 
-You can protect selected public endpoints by setting an API key:
+For migration from older deployments, the server still accepts:
+- `COPILOT_API_KEY` (env)
+- `config.json` `apiKey`
 
-- **Environment variable (preferred):** `COPILOT_API_KEY`
-- **config.json:** `"apiKey": "<key>"` (used only when `COPILOT_API_KEY` is not set)
-
-When a key is configured, requests to the following endpoints require authentication:
-- OpenAI-compatible: `/v1/*`, `/chat/completions`, `/models`, `/embeddings`, `/responses`
-- Usage/token: `/usage`, `/usage/*`, `/token`
-
-Send the key using one of:
-- `Authorization: Bearer <key>` (common for OpenAI clients)
-- `x-api-key: <key>` (common for Anthropic clients)
-
-If no key is configured, these endpoints are publicly accessible (fail-open).
+They are used only when `auth.apiKeys` is empty. New setups should use `auth.apiKeys` directly.
 
 ### Admin UI & Admin API
 
@@ -526,7 +538,7 @@ You will be prompted to select a primary model and a "small, fast" model for bac
 
 Paste and run this command in a new terminal to launch Claude Code.
 
-> **API Key note:** If you enabled API key authentication (via `COPILOT_API_KEY` or `config.json` `apiKey`), set `ANTHROPIC_AUTH_TOKEN` in the generated command to the same API key.
+> **API Key note:** If request authentication is enabled (prefer `auth.apiKeys`; legacy `COPILOT_API_KEY`/`apiKey` also works), set `ANTHROPIC_AUTH_TOKEN` to one of the configured API keys.
 
 ### Manual Configuration with `settings.json`
 
@@ -534,7 +546,7 @@ Alternatively, you can configure Claude Code by creating a `.claude/settings.jso
 
 Here is an example `.claude/settings.json` file:
 
-> **API Key note:** If API key authentication is enabled, set `ANTHROPIC_AUTH_TOKEN` to your API key so Claude Code can send `x-api-key`. If not enabled, any value works.
+> **API Key note:** If request authentication is enabled, set `ANTHROPIC_AUTH_TOKEN` to one of your API keys so Claude Code can send `x-api-key`. If not enabled, any value works.
 
 ```json
 {

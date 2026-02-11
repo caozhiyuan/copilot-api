@@ -243,7 +243,6 @@
     "configPath": "Config path: {{path}}",
     "note": "Changes take effect after saving.",
     "errorTitle": "Failed to load settings",
-    "envOverrideNote": "Overridden by env {{env}}.",
     "sections": {
       "general": "General",
       "loadBalancing": "Load balancing",
@@ -284,9 +283,10 @@
       "smallModelPlaceholder": "Select small model",
       "smallModelInputPlaceholder": "gpt-5-mini",
       "smallModelHint": "Controls which model receives lightweight/free requests when routing.",
-      "apiKeyLabel": "API key",
-      "apiKeyPlaceholder": "sk-...",
-      "leaveEmptyHint": "Leave empty to clear config value."
+      "apiKeysLabel": "API keys",
+      "apiKeysPlaceholder": "one key per line",
+      "apiKeysHint": "One key per line (or comma-separated). Leave empty to disable request authentication.",
+      "legacyAuthNote": "Legacy fallback remains enabled for env {{env}} or config.apiKey when auth.apiKeys is empty."
     },
     "loadBalancing": {
       "title": "Load balancing",

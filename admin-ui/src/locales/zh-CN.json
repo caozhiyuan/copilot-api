@@ -243,7 +243,6 @@
     "configPath": "配置路径：{{path}}",
     "note": "更改在保存后生效。",
     "errorTitle": "加载设置失败",
-    "envOverrideNote": "已被环境变量 {{env}} 覆盖。",
     "sections": {
       "general": "通用",
       "loadBalancing": "负载均衡",
@@ -284,9 +283,10 @@
       "smallModelPlaceholder": "选择小模型",
       "smallModelInputPlaceholder": "gpt-5-mini",
       "smallModelHint": "控制路由时接收轻量/免费请求的模型。",
-      "apiKeyLabel": "API 密钥",
-      "apiKeyPlaceholder": "sk-...",
-      "leaveEmptyHint": "留空以清除配置值。"
+      "apiKeysLabel": "API 密钥列表",
+      "apiKeysPlaceholder": "每行一个密钥",
+      "apiKeysHint": "支持每行一个或逗号分隔；留空表示关闭请求鉴权。",
+      "legacyAuthNote": "当 auth.apiKeys 为空时，仍会回退使用环境变量 {{env}} 或 config.apiKey（兼容旧配置）。"
     },
     "loadBalancing": {
       "title": "负载均衡",

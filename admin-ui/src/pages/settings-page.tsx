@@ -142,6 +142,36 @@ function createItemId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function normalizeAuthApiKeys(value: unknown): Array<string> {
+  if (!Array.isArray(value)) return []
+
+  return [...new Set(
+    value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0),
+  )]
+}
+
+function getAuthApiKeysFromConfig(config: AdminConfig): Array<string> {
+  const configuredApiKeys = normalizeAuthApiKeys(config.auth?.apiKeys)
+  if (configuredApiKeys.length > 0) {
+    return configuredApiKeys
+  }
+
+  const legacyApiKey = config.apiKey?.trim()
+  return legacyApiKey ? [legacyApiKey] : []
+}
+
+function parseAuthApiKeysInput(value: string): Array<string> {
+  return [...new Set(
+    value
+      .split(/\r?\n|,/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0),
+  )]
+}
+
 function extraPromptItemsFromRecord(
   record: Record<string, string> | undefined
 ): Array<ExtraPromptItem> {
@@ -669,11 +699,11 @@ type GeneralSettingsCardProps = {
   smallModelValue: string
   smallModelInputValue: string
   models: Array<string>
-  apiKeyValue: string
-  envOverrideNote: string
+  authApiKeysValue: string
+  legacyAuthNote: string
   onSmallModelSelect: (value: string) => void
   onSmallModelInput: (value: string) => void
-  onApiKeyChange: (value: string) => void
+  onAuthApiKeysChange: (value: string) => void
 }
 
 function GeneralSettingsCard({
@@ -682,11 +712,11 @@ function GeneralSettingsCard({
   smallModelValue,
   smallModelInputValue,
   models,
-  apiKeyValue,
-  envOverrideNote,
+  authApiKeysValue,
+  legacyAuthNote,
   onSmallModelSelect,
   onSmallModelInput,
-  onApiKeyChange,
+  onAuthApiKeysChange,
 }: GeneralSettingsCardProps): React.JSX.Element {
   const { t } = useTranslation()
 
@@ -736,16 +766,21 @@ function GeneralSettingsCard({
         </div>
 
         <div className="grid gap-2">
-          <Label className="text-muted-foreground text-xs">{t("settingsPage.general.apiKeyLabel")}</Label>
-          <Input
-            type="password"
-            autoComplete="new-password"
-            placeholder={t("settingsPage.general.apiKeyPlaceholder")}
-            value={apiKeyValue}
-            onChange={(e) => onApiKeyChange(e.target.value)}
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.general.apiKeysLabel")}
+          </Label>
+          <Textarea
+            autoComplete="off"
+            placeholder={t("settingsPage.general.apiKeysPlaceholder")}
+            value={authApiKeysValue}
+            onChange={(e) => onAuthApiKeysChange(e.target.value)}
+            className="min-h-[96px] font-mono text-xs"
           />
           <div className="text-muted-foreground text-xs">
-            {envOverrideNote} {t("settingsPage.general.leaveEmptyHint")}
+            {t("settingsPage.general.apiKeysHint")}
+          </div>
+          <div className="text-muted-foreground text-xs">
+            {legacyAuthNote}
           </div>
         </div>
       </CardContent>
@@ -1503,11 +1538,11 @@ type SettingsPageViewProps = {
   smallModelValue: string
   smallModelInputValue: string
   models: Array<string>
-  apiKeyValue: string
-  envOverrideNote: string
+  authApiKeysValue: string
+  legacyAuthNote: string
   onSmallModelSelect: (value: string) => void
   onSmallModelInput: (value: string) => void
-  onApiKeyChange: (value: string) => void
+  onAuthApiKeysChange: (value: string) => void
   loadBalancingEnabled: boolean
   onLoadBalancingToggle: (value: boolean) => void
   modelRefreshIntervalInput: string
@@ -1623,10 +1658,15 @@ function useSettingsPageState(): SettingsPageViewProps {
       const { _configPath, ...configData } = config
       const aliasItems = aliasItemsFromRecord(configData.modelAliases)
       const normalizedAliases = aliasRecordFromItems(aliasItems)
+      const normalizedAuthApiKeys = getAuthApiKeysFromConfig(configData)
       const intervalValue = configData.modelRefreshIntervalHours
 
       setConfigPath(_configPath ?? null)
-      setDraft({ ...configData, modelAliases: normalizedAliases })
+      setDraft({
+        ...configData,
+        auth: { apiKeys: normalizedAuthApiKeys },
+        modelAliases: normalizedAliases,
+      })
       setExtraFromRecord(configData.extraPrompts)
       setReasoningFromRecord(configData.modelReasoningEfforts)
       setAliasFromRecord(normalizedAliases)
@@ -1724,9 +1764,16 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
-  const handleApiKeyChange = useCallback(
+  const handleAuthApiKeysChange = useCallback(
     (value: string) => {
-      setDraft((prev) => ({ ...prev, apiKey: value }))
+      const apiKeys = parseAuthApiKeysInput(value)
+      setDraft((prev) => ({
+        ...prev,
+        auth: {
+          apiKeys,
+        },
+        apiKey: undefined,
+      }))
     },
     [setDraft],
   )
@@ -1814,7 +1861,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     && !(aliasMode === "json" && aliasJsonIssue)
     && !modelRefreshIntervalIssue
 
-  const envOverrideNote = t("settingsPage.envOverrideNote", {
+  const legacyAuthNote = t("settingsPage.general.legacyAuthNote", {
     env: "COPILOT_API_KEY",
   })
 
@@ -1822,7 +1869,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     ? t("settingsPage.general.smallModel")
     : t("settingsPage.general.smallModelManual")
   const smallModelInputValue = draft.smallModel ?? ""
-  const apiKeyValue = draft.apiKey ?? ""
+  const authApiKeysValue = getAuthApiKeysFromConfig(draft).join("\n")
 
   const loadBalancingEnabled = draft.freeModelLoadBalancing ?? true
   const allowOriginalModelNamesForAliases =
@@ -1846,11 +1893,11 @@ function useSettingsPageState(): SettingsPageViewProps {
     smallModelValue,
     smallModelInputValue,
     models,
-    apiKeyValue,
-    envOverrideNote,
+    authApiKeysValue,
+    legacyAuthNote,
     onSmallModelSelect: handleSmallModelSelect,
     onSmallModelInput: handleSmallModelInput,
-    onApiKeyChange: handleApiKeyChange,
+    onAuthApiKeysChange: handleAuthApiKeysChange,
     loadBalancingEnabled,
     onLoadBalancingToggle: handleLoadBalancingToggle,
     modelRefreshIntervalInput,
@@ -1911,11 +1958,11 @@ function SettingsPageView({
   smallModelValue,
   smallModelInputValue,
   models,
-  apiKeyValue,
-  envOverrideNote,
+  authApiKeysValue,
+  legacyAuthNote,
   onSmallModelSelect,
   onSmallModelInput,
-  onApiKeyChange,
+  onAuthApiKeysChange,
   loadBalancingEnabled,
   onLoadBalancingToggle,
   modelRefreshIntervalInput,
@@ -2042,11 +2089,11 @@ function SettingsPageView({
               smallModelValue={smallModelValue}
               smallModelInputValue={smallModelInputValue}
               models={models}
-              apiKeyValue={apiKeyValue}
-              envOverrideNote={envOverrideNote}
+              authApiKeysValue={authApiKeysValue}
+              legacyAuthNote={legacyAuthNote}
               onSmallModelSelect={onSmallModelSelect}
               onSmallModelInput={onSmallModelInput}
-              onApiKeyChange={onApiKeyChange}
+              onAuthApiKeysChange={onAuthApiKeysChange}
             />
           </SettingsSectionCard>
 

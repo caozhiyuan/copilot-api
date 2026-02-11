@@ -145,6 +145,7 @@ type ConfigErrorPayload = {
 }
 
 const CONFIG_KEYS = new Set<keyof AppConfig>([
+  "auth",
   "extraPrompts",
   "smallModel",
   "freeModelLoadBalancing",
@@ -189,6 +190,8 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 type ParseFieldResult<T> = { clear: true } | { value: T } | { error: string }
 
+type AuthConfig = NonNullable<AppConfig["auth"]>
+
 function parseOptionalString(
   value: unknown,
   field: string,
@@ -221,6 +224,42 @@ function parseOptionalNonNegativeNumber(
     return { error: `${field} must be a non-negative number` }
   }
   return { value }
+}
+
+function parseAuthConfig(value: unknown): ParseFieldResult<AuthConfig> {
+  if (value === null || value === undefined) return { clear: true }
+  if (!isPlainObject(value)) {
+    return { error: "auth must be an object" }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key !== "apiKeys") {
+      return { error: `auth.${key} is not supported` }
+    }
+  }
+
+  if (
+    !("apiKeys" in value)
+    || value.apiKeys === null
+    || value.apiKeys === undefined
+  ) {
+    return { value: { apiKeys: [] } }
+  }
+
+  if (!Array.isArray(value.apiKeys)) {
+    return { error: "auth.apiKeys must be an array of strings" }
+  }
+
+  const normalizedApiKeys = value.apiKeys
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+
+  if (normalizedApiKeys.length !== value.apiKeys.length) {
+    return { error: "auth.apiKeys must contain non-empty strings only" }
+  }
+
+  return { value: { apiKeys: [...new Set(normalizedApiKeys)] } }
 }
 
 function parseStringRecord(
@@ -383,6 +422,18 @@ function applyOptionalString(
   return undefined
 }
 
+function applyAuthConfig(next: AppConfig, value: unknown): string | undefined {
+  const parsed = parseAuthConfig(value)
+  if ("error" in parsed) return parsed.error
+  if ("clear" in parsed) {
+    delete next.auth
+    return undefined
+  }
+
+  next.auth = parsed.value
+  return undefined
+}
+
 function applyOptionalBoolean(
   next: AppConfig,
   key:
@@ -461,6 +512,33 @@ function applyModelAliases(
   return undefined
 }
 
+type ConfigPatchHandler = (
+  next: AppConfig,
+  value: unknown,
+) => string | undefined
+
+const CONFIG_PATCH_HANDLERS: Partial<Record<string, ConfigPatchHandler>> = {
+  auth: applyAuthConfig,
+  extraPrompts: applyExtraPrompts,
+  smallModel: (next, value) => applyOptionalString(next, "smallModel", value),
+  freeModelLoadBalancing: (next, value) =>
+    applyOptionalBoolean(next, "freeModelLoadBalancing", value),
+  apiKey: (next, value) => applyOptionalString(next, "apiKey", value),
+  modelReasoningEfforts: applyReasoningEfforts,
+  modelAliases: applyModelAliases,
+  allowOriginalModelNamesForAliases: (next, value) =>
+    applyOptionalBoolean(next, "allowOriginalModelNamesForAliases", value),
+  useFunctionApplyPatch: (next, value) =>
+    applyOptionalBoolean(next, "useFunctionApplyPatch", value),
+  forceAgent: (next, value) => applyOptionalBoolean(next, "forceAgent", value),
+  compactUseSmallModel: (next, value) =>
+    applyOptionalBoolean(next, "compactUseSmallModel", value),
+  messageStartInputTokensFallback: (next, value) =>
+    applyOptionalBoolean(next, "messageStartInputTokensFallback", value),
+  modelRefreshIntervalHours: (next, value) =>
+    applyOptionalNumber(next, "modelRefreshIntervalHours", value),
+}
+
 function applyConfigPatch(
   base: AppConfig,
   input: Record<string, unknown>,
@@ -473,70 +551,12 @@ function applyConfigPatch(
       return { error: `Unknown config key: ${rawKey}` }
     }
 
-    let error: string | undefined
-
-    switch (rawKey) {
-      case "extraPrompts": {
-        error = applyExtraPrompts(next, value)
-        break
-      }
-      case "smallModel": {
-        error = applyOptionalString(next, "smallModel", value)
-        break
-      }
-      case "freeModelLoadBalancing": {
-        error = applyOptionalBoolean(next, "freeModelLoadBalancing", value)
-        break
-      }
-      case "apiKey": {
-        error = applyOptionalString(next, "apiKey", value)
-        break
-      }
-      case "modelReasoningEfforts": {
-        error = applyReasoningEfforts(next, value)
-        break
-      }
-      case "modelAliases": {
-        error = applyModelAliases(next, value)
-        break
-      }
-      case "allowOriginalModelNamesForAliases": {
-        error = applyOptionalBoolean(
-          next,
-          "allowOriginalModelNamesForAliases",
-          value,
-        )
-        break
-      }
-      case "useFunctionApplyPatch": {
-        error = applyOptionalBoolean(next, "useFunctionApplyPatch", value)
-        break
-      }
-      case "forceAgent": {
-        error = applyOptionalBoolean(next, "forceAgent", value)
-        break
-      }
-      case "compactUseSmallModel": {
-        error = applyOptionalBoolean(next, "compactUseSmallModel", value)
-        break
-      }
-      case "messageStartInputTokensFallback": {
-        error = applyOptionalBoolean(
-          next,
-          "messageStartInputTokensFallback",
-          value,
-        )
-        break
-      }
-      case "modelRefreshIntervalHours": {
-        error = applyOptionalNumber(next, "modelRefreshIntervalHours", value)
-        break
-      }
-      default: {
-        return { error: `Unsupported config key: ${rawKey}` }
-      }
+    const handler = CONFIG_PATCH_HANDLERS[rawKey]
+    if (!handler) {
+      return { error: `Unsupported config key: ${rawKey}` }
     }
 
+    const error = handler(next, value)
     if (error) return { error }
   }
 
