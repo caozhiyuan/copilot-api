@@ -79,6 +79,8 @@ export interface AccountRuntime extends AccountMeta {
   premiumReservations?: Map<symbol, number>
   /** Whether this account has unlimited quota */
   unlimited?: boolean
+  /** Whether this account allows overage billing (enterprise feature) */
+  overagePermitted?: boolean
   /** Timestamp of last quota fetch */
   lastQuotaFetch?: number
   /** Token refresh timer reference */

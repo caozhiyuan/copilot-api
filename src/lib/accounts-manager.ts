@@ -70,15 +70,17 @@ export type SelectAccountForRequestFailureReason =
   | "MODEL_NOT_SUPPORTED"
   | "NO_QUOTA"
 
+type SelectAccountForRequestSuccess = {
+  ok: true
+  account: AccountRuntime
+  selectedModel: Model
+  endpoint: string
+  costUnits: number
+  reservation?: QuotaReservation
+}
+
 export type SelectAccountForRequestResult =
-  | {
-      ok: true
-      account: AccountRuntime
-      selectedModel: Model
-      endpoint: string
-      costUnits: number
-      reservation?: QuotaReservation
-    }
+  | SelectAccountForRequestSuccess
   | {
       ok: false
       reason: SelectAccountForRequestFailureReason
@@ -523,6 +525,26 @@ export class AccountsManager {
     return account.failed === true
   }
 
+  private useOverageFallback(fallback: {
+    account: AccountRuntime
+    model: Model
+    endpoint: string
+    costUnits: number
+  }): SelectAccountForRequestSuccess {
+    const reservation = reservePremiumUnits(
+      fallback.account,
+      fallback.costUnits,
+    )
+    return {
+      ok: true,
+      account: fallback.account,
+      selectedModel: fallback.model,
+      endpoint: fallback.endpoint,
+      costUnits: fallback.costUnits,
+      reservation,
+    }
+  }
+
   private isModelSupportedForEndpoint(model: Model, endpoint: string): boolean {
     if (endpoint === "/responses") {
       return model.supported_endpoints?.includes(endpoint) ?? false
@@ -610,6 +632,7 @@ export class AccountsManager {
     return { ok: false, reason: "NO_QUOTA" }
   }
 
+  // eslint-disable-next-line complexity -- overage fallback adds necessary branching
   private async selectAccountForCandidates(
     orderedAccounts: Array<AccountRuntime>,
     candidates: Array<AccountRequestCandidate>,
@@ -619,6 +642,14 @@ export class AccountsManager {
     }
 
     let supportedCandidateFound = false
+    let overageFallback:
+      | {
+          account: AccountRuntime
+          model: Model
+          endpoint: string
+          costUnits: number
+        }
+      | undefined
 
     for (const account of orderedAccounts) {
       if (this.isAccountFailed(account)) {
@@ -669,8 +700,19 @@ export class AccountsManager {
         }
       }
 
+      // Check if account has sufficient quota.
       const effectiveRemaining = getEffectivePremiumRemaining(account)
       if (effectiveRemaining !== undefined && effectiveRemaining < costUnits) {
+        // Insufficient quota - store as overage fallback if permitted, but keep
+        // looking for accounts with quota to avoid unnecessary overage charges.
+        if (account.overagePermitted && !overageFallback) {
+          overageFallback = {
+            account,
+            model,
+            endpoint: candidate.endpoint,
+            costUnits,
+          }
+        }
         continue
       }
 
@@ -690,7 +732,10 @@ export class AccountsManager {
       return { ok: false, reason: "MODEL_NOT_SUPPORTED" }
     }
 
-    return { ok: false, reason: "NO_QUOTA" }
+    // No account with quota found - use overage fallback if available.
+    return overageFallback ?
+        this.useOverageFallback(overageFallback)
+      : { ok: false, reason: "NO_QUOTA" }
   }
 
   /**
@@ -773,6 +818,7 @@ export class AccountsManager {
     entitlement?: number
     remaining?: number
     unlimited?: boolean
+    overagePermitted?: boolean
     failed?: boolean
     failureReason?: string
   }> {
@@ -781,6 +827,7 @@ export class AccountsManager {
       entitlement?: number
       remaining?: number
       unlimited?: boolean
+      overagePermitted?: boolean
       failed?: boolean
       failureReason?: string
     }> = []
@@ -791,6 +838,7 @@ export class AccountsManager {
         entitlement: this.temporaryAccount.premiumEntitlement,
         remaining: this.temporaryAccount.premiumRemaining,
         unlimited: this.temporaryAccount.unlimited,
+        overagePermitted: this.temporaryAccount.overagePermitted,
         failed: this.temporaryAccount.failed,
         failureReason: this.temporaryAccount.failureReason,
       })
@@ -804,6 +852,7 @@ export class AccountsManager {
           entitlement: account.premiumEntitlement,
           remaining: account.premiumRemaining,
           unlimited: account.unlimited,
+          overagePermitted: account.overagePermitted,
           failed: account.failed,
           failureReason: account.failureReason,
         })
