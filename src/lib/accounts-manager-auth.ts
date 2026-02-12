@@ -110,6 +110,7 @@ export const applyQuotaRefreshSuccessIfCurrent = (
   account.premiumEntitlement = premium.entitlement
   account.premiumRemaining = premium.remaining
   account.unlimited = premium.unlimited
+  account.overagePermitted = premium.overage_permitted
   account.lastQuotaFetch = Date.now()
   account.failed = false
   account.failureReason = undefined
