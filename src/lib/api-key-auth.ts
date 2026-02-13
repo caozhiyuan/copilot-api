@@ -22,6 +22,7 @@ export function resolveConfiguredApiKey(): string | undefined {
   const envKey = process.env[API_KEY_ENV_VAR]?.trim()
   if (envKey) return envKey
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   const configKey = getConfig().apiKey?.trim()
   if (configKey) return configKey
 
