@@ -24,6 +24,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Install admin-ui dependencies
+        run: bun install --cwd admin-ui
+
       - name: Run linter
         run: bun run lint:all
 
