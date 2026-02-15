@@ -1,4 +1,4 @@
-const FALLBACK = "1.109.2"
+const FALLBACK = "1.109.3"
 
 export async function getVSCodeVersion() {
   const controller = new AbortController()
@@ -19,9 +19,6 @@ export async function getVSCodeVersion() {
     const match = pkgbuild.match(pkgverRegex)
 
     if (match) {
-      if (match[1] === "1.109.0") {
-        return FALLBACK
-      }
       return match[1]
     }
 
