@@ -1,5 +1,7 @@
 # Copilot API Proxy（中文说明）
 
+[English](./README.md) | 中文
+
 > [!WARNING]
 > 本项目是对 GitHub Copilot API 的逆向代理实现，并非 GitHub 官方支持产品。接口行为可能随上游变化而失效，请自行评估风险。
 
