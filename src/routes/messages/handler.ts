@@ -71,6 +71,7 @@ import {
   translateToOpenAI,
 } from "./non-stream-translation"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
+import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 import {
   estimateInputTokens,
   handleSelectionFailure,
@@ -123,7 +124,7 @@ type InstrumentationContext = {
   premiumUnlimitedBefore?: boolean
 }
 
-// eslint-disable-next-line max-lines-per-function
+// eslint-disable-next-line max-lines-per-function, complexity
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
   const store = getRequestHistoryStore()
@@ -135,6 +136,13 @@ export async function handleCompletion(c: Context) {
   const userAgent = c.req.header("user-agent") ?? undefined
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
+
+  const subagentMarker = parseSubagentMarkerFromFirstUser(anthropicPayload)
+  const initiatorOverride = subagentMarker ? "agent" : undefined
+  if (subagentMarker) {
+    logger.debug("Detected Subagent marker:", JSON.stringify(subagentMarker))
+  }
+
   const anthropicBeta = c.req.header("anthropic-beta")
   const isCompact = isCompactRequest(anthropicPayload)
 
@@ -178,11 +186,13 @@ export async function handleCompletion(c: Context) {
     userId,
     safetyIdentifier: normalizedSafetyIdentifier,
     promptCacheKey: normalizedPromptCacheKey,
+    initiator: initiatorOverride,
   })
   if (blockedResponse) return blockedResponse
 
   const openAIPayload = translateToOpenAI(anthropicPayload)
-  const fallbackInitiator = getChatInitiator(openAIPayload.messages)
+  const fallbackInitiator =
+    initiatorOverride ?? getChatInitiator(openAIPayload.messages)
 
   const selection = await accountsManager.selectAccountForRequest([
     {
@@ -251,6 +261,7 @@ export async function handleCompletion(c: Context) {
       c,
       anthropicPayload,
       anthropicBetaHeader: anthropicBeta ?? undefined,
+      initiatorOverride,
       instr,
       selectedModel,
     })
@@ -260,6 +271,7 @@ export async function handleCompletion(c: Context) {
       c,
       anthropicPayload,
       openAIPayload,
+      initiatorOverride,
       selectedModel,
       instr,
     })
@@ -268,6 +280,7 @@ export async function handleCompletion(c: Context) {
   return await handleWithChatCompletions({
     c,
     openAIPayload,
+    initiatorOverride,
     selectedModel,
     instr,
   })
@@ -276,17 +289,19 @@ export async function handleCompletion(c: Context) {
 const handleWithChatCompletions = async (params: {
   c: Context
   openAIPayload: ChatCompletionsPayload
+  initiatorOverride?: "agent" | "user"
   selectedModel: Model
   instr: InstrumentationContext
 }): Promise<Response> => {
-  const { c, openAIPayload, selectedModel, instr } = params
+  const { c, openAIPayload, initiatorOverride, selectedModel, instr } = params
   logger.debug(
     "Translated OpenAI request payload:",
     JSON.stringify(openAIPayload),
   )
 
   const ctx = toAccountContext(instr.account)
-  const initiator = getChatInitiator(openAIPayload.messages)
+  const initiator =
+    initiatorOverride ?? getChatInitiator(openAIPayload.messages)
   const upstreamRequestId = randomUUID()
 
   instr.initiator = initiator
@@ -297,6 +312,7 @@ const handleWithChatCompletions = async (params: {
   try {
     response = await createChatCompletions(openAIPayload, ctx, {
       upstreamRequestId,
+      initiator,
     })
   } catch (error) {
     return await handleChatCompletionsCreateError({
@@ -347,10 +363,18 @@ const handleWithResponsesApi = async (params: {
   c: Context
   anthropicPayload: AnthropicMessagesPayload
   openAIPayload: ChatCompletionsPayload
+  initiatorOverride?: "agent" | "user"
   selectedModel: Model
   instr: InstrumentationContext
 }): Promise<Response> => {
-  const { c, anthropicPayload, openAIPayload, selectedModel, instr } = params
+  const {
+    c,
+    anthropicPayload,
+    openAIPayload,
+    initiatorOverride,
+    selectedModel,
+    instr,
+  } = params
   const responsesPayload = translateAnthropicMessagesToResponsesPayload(
     anthropicPayload,
     selectedModel.id,
@@ -361,10 +385,11 @@ const handleWithResponsesApi = async (params: {
   )
 
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
+  const resolvedInitiator = initiatorOverride ?? initiator
   const ctx = toAccountContext(instr.account)
   const upstreamRequestId = randomUUID()
 
-  instr.initiator = initiator
+  instr.initiator = resolvedInitiator
   instr.upstreamRequestId = upstreamRequestId
 
   let response: Awaited<ReturnType<typeof createResponses>>
@@ -374,7 +399,7 @@ const handleWithResponsesApi = async (params: {
       responsesPayload,
       {
         vision,
-        initiator,
+        initiator: resolvedInitiator,
         upstreamRequestId,
       },
       ctx,
@@ -1149,11 +1174,18 @@ const handleWithMessagesApi = async (params: {
   c: Context
   anthropicPayload: AnthropicMessagesPayload
   anthropicBetaHeader?: string
+  initiatorOverride?: "agent" | "user"
   instr: InstrumentationContext
   selectedModel: Model
 }): Promise<Response> => {
-  const { c, anthropicPayload, anthropicBetaHeader, instr, selectedModel } =
-    params
+  const {
+    c,
+    anthropicPayload,
+    anthropicBetaHeader,
+    initiatorOverride,
+    instr,
+    selectedModel,
+  } = params
   // Pre-request processing: filter thinking blocks for Claude models so only
   // valid thinking blocks are sent to the Copilot Messages API.
   for (const msg of anthropicPayload.messages) {
@@ -1183,7 +1215,7 @@ const handleWithMessagesApi = async (params: {
 
   const ctx = toAccountContext(instr.account)
   const upstreamRequestId = randomUUID()
-  const initiator = getMessagesInitiator(anthropicPayload)
+  const initiator = initiatorOverride ?? getMessagesInitiator(anthropicPayload)
 
   instr.initiator = initiator
   instr.upstreamRequestId = upstreamRequestId
@@ -1194,6 +1226,7 @@ const handleWithMessagesApi = async (params: {
     response = await createMessages(anthropicPayload, ctx, {
       anthropicBetaHeader,
       upstreamRequestId,
+      initiator,
     })
   } catch (error) {
     return await handleMessagesCreateError({

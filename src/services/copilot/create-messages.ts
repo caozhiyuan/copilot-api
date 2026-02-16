@@ -38,6 +38,7 @@ export const createMessages = async (
   options?: {
     anthropicBetaHeader?: string
     upstreamRequestId?: string
+    initiator?: "agent" | "user"
   },
 ): Promise<CreateMessagesReturn> => {
   const ctx = account ?? accountFromState()
@@ -49,7 +50,7 @@ export const createMessages = async (
       && message.content.some((block) => block.type === "image"),
   )
 
-  const initiator = getMessagesInitiator(payload)
+  const initiator = options?.initiator ?? getMessagesInitiator(payload)
 
   const headers: Record<string, string> = {
     ...copilotHeaders(ctx, enableVision, options?.upstreamRequestId),

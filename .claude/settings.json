@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --input-type=module -e \"import { homedir } from 'node:os'; import { join } from 'node:path'; import { readFile } from 'node:fs/promises'; const file = join(homedir(), '.claude', 'hooks', 'subagent-start-marker.js'); const source = await readFile(file, 'utf8'); const url = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64'); await import(url);\""
+          }
+        ]
+      }
+    ]
+  }
+}

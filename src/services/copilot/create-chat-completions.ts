@@ -49,7 +49,10 @@ export const getChatInitiator = (
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
   account?: AccountContext,
-  options?: { upstreamRequestId?: string },
+  options?: {
+    upstreamRequestId?: string
+    initiator?: "agent" | "user"
+  },
 ) => {
   const ctx = account ?? accountFromState()
   if (!ctx.copilotToken) throw new Error("Copilot token not found")
@@ -60,7 +63,7 @@ export const createChatCompletions = async (
       && x.content?.some((x) => x.type === "image_url"),
   )
 
-  const initiator = getChatInitiator(payload.messages)
+  const initiator = options?.initiator ?? getChatInitiator(payload.messages)
 
   // Build headers and add X-Initiator
   const headers: Record<string, string> = {

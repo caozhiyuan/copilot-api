@@ -78,6 +78,21 @@ test("sets X-Initiator to user if only user present", async () => {
   expect(headers["X-Initiator"]).toBe("user")
 })
 
+test("respects explicit initiator override", async () => {
+  const callCountBefore = fetchMock.mock.calls.length
+
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gpt-test",
+  }
+
+  await createChatCompletions(payload, undefined, { initiator: "agent" })
+
+  expect(fetchMock.mock.calls.length).toBe(callCountBefore + 1)
+  const { headers } = getLastFetchCall()
+  expect(headers["X-Initiator"]).toBe("agent")
+})
+
 test("injects reasoning_effort from config for gpt-5-mini when omitted", async () => {
   const callCountBefore = fetchMock.mock.calls.length
 

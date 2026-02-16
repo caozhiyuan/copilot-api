@@ -556,7 +556,6 @@ Here is an example `.claude/settings.json` file:
     "ANTHROPIC_MODEL": "gpt-5.2",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.2",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5-mini",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "gpt-5-mini",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "BASH_MAX_TIMEOUT_MS": "600000",
@@ -581,6 +580,45 @@ Please include the following in `CLAUDE.md` (for Claude usage):
 You can find more options here: [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables)
 
 You can also read more about IDE integration here: [Add Claude Code to your IDE](https://docs.anthropic.com/en/docs/claude-code/ide-integrations)
+
+### Subagent Marker Integration (Optional)
+
+This project supports `X-Initiator: agent` for subagent-originated requests
+
+#### Claude Code hook producer
+
+Use the included hook script to inject marker context on `SubagentStart`.
+If you place the script under your user Claude directory (`~/.claude/hooks`), use this cross-platform command in `.claude/settings.json`:
+
+- `.claude/hooks/subagent-start-marker.js`
+
+And enable it from `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node --input-type=module -e \"import { homedir } from 'node:os'; import { join } from 'node:path'; import { readFile } from 'node:fs/promises'; const file = join(homedir(), '.claude', 'hooks', 'subagent-start-marker.js'); const source = await readFile(file, 'utf8'); const url = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64'); await import(url);\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+#### Opencode plugin producer
+
+For opencode, use the plugin implementation at:
+
+- `.opencode/plugins/subagent-marker.js`
+
+This plugin tracks sub-sessions and prepends a marker system reminder to subagent chat messages.
 
 ## Running from Source
 
