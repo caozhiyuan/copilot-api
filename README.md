@@ -597,7 +597,7 @@ The marker producer is packaged as a Claude Code plugin named `claude-plugin`.
 Add the marketplace remotely:
 
 ```sh
-/plugin marketplace add https://github.com/caozhiyuan/copilot-api.git#all
+/plugin marketplace add https://github.com/nick3/copilot-api.git#all
 ```
 
 Install the plugin from the marketplace:
