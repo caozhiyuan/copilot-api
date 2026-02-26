@@ -1,0 +1,8 @@
+{
+  "name": "claude-plugin",
+  "description": "Inject SubagentStart marker context for copilot-api initiator override",
+  "version": "1.0.0",
+  "author": {
+    "name": "copilot-api maintainers"
+  }
+}

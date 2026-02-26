@@ -1,7 +1,7 @@
 import config from "@echristian/eslint-config"
 
 export default config({
-  ignores: [".claude/**", ".opencode/**"],
+  ignores: ["claude-plugin/**", ".opencode/**"],
   prettier: {
     plugins: ["prettier-plugin-packagejson"],
   },

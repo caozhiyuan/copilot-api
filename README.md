@@ -585,34 +585,28 @@ You can also read more about IDE integration here: [Add Claude Code to your IDE]
 
 ### Subagent Marker Integration (Optional)
 
-This project supports `X-Initiator: agent` for subagent-originated requests
+This project supports `X-Initiator: agent` for subagent-originated requests.
 
-#### Claude Code hook producer
+#### Claude Code plugin producer (marketplace-based)
 
-Use the included hook script to inject marker context on `SubagentStart`.
-If you place the script under your user Claude directory (`~/.claude/hooks`), use this cross-platform command in `.claude/settings.json`:
+The marker producer is packaged as a Claude Code plugin named `claude-plugin`.
 
-- `.claude/hooks/subagent-start-marker.js`
+- Marketplace catalog in this repository: `.claude-plugin/marketplace.json`
+- Plugin source in this repository: `claude-plugin`
 
-And enable it from `.claude/settings.json`:
+Add the marketplace remotely:
 
-```json
-{
-  "hooks": {
-    "SubagentStart": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node --input-type=module -e \"import { homedir } from 'node:os'; import { join } from 'node:path'; import { readFile } from 'node:fs/promises'; const file = join(homedir(), '.claude', 'hooks', 'subagent-start-marker.js'); const source = await readFile(file, 'utf8'); const url = 'data:text/javascript;base64,' + Buffer.from(source).toString('base64'); await import(url);\""
-          }
-        ]
-      }
-    ]
-  }
-}
+```sh
+/plugin marketplace add https://github.com/caozhiyuan/copilot-api.git#all
 ```
+
+Install the plugin from the marketplace:
+
+```sh
+/plugin install claude-plugin@copilot-api-marketplace
+```
+
+After installation, the plugin injects `__SUBAGENT_MARKER__...` on `SubagentStart`, and this proxy uses it to infer `X-Initiator: agent`.
 
 #### Opencode plugin producer
 

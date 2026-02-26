@@ -1,0 +1,13 @@
+{
+  "name": "copilot-api-marketplace",
+  "owner": {
+    "name": "copilot-api maintainers"
+  },
+  "plugins": [
+    {
+      "name": "claude-plugin",
+      "description": "Inject SubagentStart marker context for copilot-api initiator override",
+      "source": "./claude-plugin"
+    }
+  ]
+}
