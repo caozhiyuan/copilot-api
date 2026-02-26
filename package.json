@@ -24,14 +24,14 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "dev": "bun run --watch ./src/main.ts",
+    "dev": "bun run --watch ./src/main.ts start",
     "knip": "knip-bun",
     "lint": "eslint --cache",
     "lint:all": "eslint --cache .",
     "prepack": "bun run build",
     "prepare": "simple-git-hooks",
     "release": "bumpp && bun publish --access public",
-    "start": "NODE_ENV=production bun run ./src/main.ts",
+    "start": "NODE_ENV=production bun run ./src/main.ts start",
     "typecheck": "tsc"
   },
   "simple-git-hooks": {
