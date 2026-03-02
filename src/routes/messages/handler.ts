@@ -50,6 +50,39 @@ import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 
 const logger = createHandlerLogger("messages-handler")
 
+const SYSTEM_GENERATED_PATTERNS = [
+  /^<system-reminder>/,
+  /^<teammate-message\s/,
+  /^<local-command-caveat>/,
+  /^\{"type":"idle_notification"/,
+  /^\{"type":"shutdown/,
+  /^\{"type":"teammate_terminated"/,
+]
+
+const isSystemGeneratedText = (text: string): boolean => {
+  const trimmed = text.trim()
+  return SYSTEM_GENERATED_PATTERNS.some((pattern) => pattern.test(trimmed))
+}
+
+const detectSystemGeneratedInitiator = (
+  payload: AnthropicMessagesPayload,
+): "agent" | undefined => {
+  const lastUserMsg = payload.messages.at(-1)
+  if (
+    lastUserMsg?.role === "user"
+    && Array.isArray(lastUserMsg.content)
+    && lastUserMsg.content.length > 0
+    && lastUserMsg.content.every(
+      (block) =>
+        block.type === "tool_result"
+        || (block.type === "text" && isSystemGeneratedText(block.text)),
+    )
+  ) {
+    return "agent"
+  }
+  return undefined
+}
+
 const compactSystemPromptStart =
   "You are a helpful AI assistant tasked with summarizing conversations"
 
@@ -60,7 +93,8 @@ export async function handleCompletion(c: Context) {
   logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
 
   const subagentMarker = parseSubagentMarkerFromFirstUser(anthropicPayload)
-  const initiatorOverride = subagentMarker ? "agent" : undefined
+  let initiatorOverride: "agent" | "user" | undefined =
+    subagentMarker ? "agent" : undefined
   if (subagentMarker) {
     logger.debug("Detected Subagent marker:", JSON.stringify(subagentMarker))
   }
@@ -91,15 +125,20 @@ export async function handleCompletion(c: Context) {
     mergeToolResultForClaude(anthropicPayload)
   }
 
+  // Detect system-generated text-only user messages from Agent Teams
+  // (teammate notifications, idle notifications, system reminders)
+  // that would otherwise be counted as premium (user-initiated) requests
+  initiatorOverride ??= detectSystemGeneratedInitiator(anthropicPayload)
+
   if (state.manualApprove) {
     await awaitApproval()
   }
 
-  const selectedModel = state.models?.data.find(
-    (m) => m.id === anthropicPayload.model,
-  ) ?? state.models?.data.find(
-    (m) => m.id === normalizeModelName(anthropicPayload.model),
-  )
+  const selectedModel =
+    state.models?.data.find((m) => m.id === anthropicPayload.model)
+    ?? state.models?.data.find(
+      (m) => m.id === normalizeModelName(anthropicPayload.model),
+    )
 
   if (shouldUseMessagesApi(selectedModel)) {
     return await handleWithMessagesApi(c, anthropicPayload, {
@@ -450,7 +489,7 @@ const mergeToolResult = (
  * entries in the Copilot models list.
  */
 const normalizeModelName = (model: string): string => {
-  if (/^claude-sonnet-4[.\-]/.test(model)) return "claude-sonnet-4"
-  if (/^claude-opus-4[.\-]/.test(model)) return "claude-opus-4"
+  if (/^claude-sonnet-4[.-]/.test(model)) return "claude-sonnet-4"
+  if (/^claude-opus-4[.-]/.test(model)) return "claude-opus-4"
   return model
 }
