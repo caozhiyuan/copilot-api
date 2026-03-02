@@ -77,11 +77,13 @@ function getThinkingBudget(
 }
 
 function translateModelName(model: string): string {
-  // Subagent requests use a specific model number which Copilot doesn't support
-  if (model.startsWith("claude-sonnet-4-")) {
-    return model.replace(/^claude-sonnet-4-.*/, "claude-sonnet-4")
-  } else if (model.startsWith("claude-opus-4-")) {
-    return model.replace(/^claude-opus-4-.*/, "claude-opus-4")
+  // Subagent and agent team requests use a specific model version which Copilot
+  // doesn't support (e.g. claude-sonnet-4-20250514, claude-opus-4.6).
+  // Handle both dash- and dot-separated version suffixes.
+  if (/^claude-sonnet-4[.\-]/.test(model)) {
+    return "claude-sonnet-4"
+  } else if (/^claude-opus-4[.\-]/.test(model)) {
+    return "claude-opus-4"
   }
   return model
 }

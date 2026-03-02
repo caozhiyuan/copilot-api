@@ -97,6 +97,8 @@ export async function handleCompletion(c: Context) {
 
   const selectedModel = state.models?.data.find(
     (m) => m.id === anthropicPayload.model,
+  ) ?? state.models?.data.find(
+    (m) => m.id === normalizeModelName(anthropicPayload.model),
   )
 
   if (shouldUseMessagesApi(selectedModel)) {
@@ -440,4 +442,15 @@ const mergeToolResult = (
   return toolResults.map((tr, i) =>
     i === lastIndex ? mergeContentWithTexts(tr, textBlocks) : tr,
   )
+}
+
+/**
+ * Strip version suffixes from Claude model names so that versioned model IDs
+ * (e.g. "claude-opus-4.6", "claude-sonnet-4-20250514") can match base model
+ * entries in the Copilot models list.
+ */
+const normalizeModelName = (model: string): string => {
+  if (/^claude-sonnet-4[.\-]/.test(model)) return "claude-sonnet-4"
+  if (/^claude-opus-4[.\-]/.test(model)) return "claude-opus-4"
+  return model
 }
