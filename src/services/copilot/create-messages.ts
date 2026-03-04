@@ -48,7 +48,10 @@ export const createMessages = async (
     const filteredBeta = anthropicBetaHeader
       .split(",")
       .map((item) => item.trim())
-      .filter((item) => item !== "claude-code-20250219")
+      .filter(
+        (item) =>
+          item !== "claude-code-20250219" && !item.startsWith("context-1m-"),
+      )
       .join(",")
     if (filteredBeta) {
       headers["anthropic-beta"] = filteredBeta
