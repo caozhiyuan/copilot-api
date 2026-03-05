@@ -14,7 +14,7 @@ echo Starting server...
 echo The usage viewer page will open automatically after the server starts
 echo.
 
-start "" "https://ericc-ch.github.io/copilot-api?endpoint=http://localhost:4141/usage"
+start "" "http://localhost:4141/usage-viewer?endpoint=http://localhost:4141/usage"
 bun run dev
 
 pause

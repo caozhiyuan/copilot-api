@@ -32,6 +32,45 @@ export const getMessagesInitiator = (
 export type MessagesStream = ReturnType<typeof events>
 export type CreateMessagesReturn = AnthropicResponse | MessagesStream
 
+const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
+const allowedAnthropicBetas = new Set([
+  INTERLEAVED_THINKING_BETA,
+  "context-management-2025-06-27",
+  "advanced-tool-use-2025-11-20",
+])
+
+const buildAnthropicBetaHeader = (
+  anthropicBetaHeader: string | undefined,
+  thinking: AnthropicMessagesPayload["thinking"],
+): string | undefined => {
+  const isAdaptiveThinking = thinking?.type === "adaptive"
+
+  if (anthropicBetaHeader) {
+    const filteredBeta = anthropicBetaHeader
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+      .filter((item) => allowedAnthropicBetas.has(item))
+    const uniqueFilteredBetas = [...new Set(filteredBeta)]
+    const finalFilteredBetas =
+      isAdaptiveThinking ?
+        uniqueFilteredBetas.filter((item) => item !== INTERLEAVED_THINKING_BETA)
+      : uniqueFilteredBetas
+
+    if (finalFilteredBetas.length > 0) {
+      return finalFilteredBetas.join(",")
+    }
+
+    return undefined
+  }
+
+  if (thinking?.budget_tokens && !isAdaptiveThinking) {
+    return INTERLEAVED_THINKING_BETA
+  }
+
+  return undefined
+}
+
 export const createMessages = async (
   payload: AnthropicMessagesPayload,
   account?: AccountContext,
@@ -58,16 +97,12 @@ export const createMessages = async (
   }
 
   // align with vscode copilot extension anthropic-beta
-  const filteredBeta = options?.anthropicBetaHeader
-    ?.split(",")
-    .map((item) => item.trim())
-    .filter((item) => item !== "claude-code-20250219")
-    .join(",")
-
-  if (filteredBeta) {
-    headers["anthropic-beta"] = filteredBeta
-  } else if (payload.thinking?.budget_tokens) {
-    headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
+  const anthropicBeta = buildAnthropicBetaHeader(
+    options?.anthropicBetaHeader,
+    payload.thinking,
+  )
+  if (anthropicBeta) {
+    headers["anthropic-beta"] = anthropicBeta
   }
 
   const response = await fetch(`${copilotBaseUrl(ctx)}/v1/messages`, {
