@@ -11,10 +11,10 @@ if not exist node_modules (
 )
 
 echo Starting server...
-echo The admin page will open automatically after the server starts
+echo The admin page will open automatically shortly after startup
 echo.
 
-start "" "http://localhost:4141/admin"
+start "" cmd /c "timeout /t 2 /nobreak >nul && start \"\" \"http://localhost:4141/admin\""
 bun run dev
 
 pause
