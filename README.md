@@ -313,7 +313,7 @@ After starting the server, a URL to the Copilot Usage Dashboard will be displaye
     npx @jeffreycao/copilot-api@latest start
     ```
 2.  The server will output a URL to the usage viewer. Copy and paste this URL into your browser. It will look something like this:
-    `https://ericc-ch.github.io/copilot-api?endpoint=http://localhost:4141/usage`
+    `http://localhost:4141/usage-viewer?endpoint=http://localhost:4141/usage`
     - If you use the `start.bat` script on Windows, this page will open automatically.
 
 The dashboard provides a user-friendly interface to view your Copilot usage data:
@@ -323,7 +323,7 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 - **Usage Quotas**: View a summary of your usage quotas for different services like Chat and Completions, displayed with progress bars for a quick overview.
 - **Detailed Information**: See the full JSON response from the API for a detailed breakdown of all available usage statistics.
 - **URL-based Configuration**: You can also specify the API endpoint directly in the URL using a query parameter. This is useful for bookmarks or sharing links. For example:
-  `https://ericc-ch.github.io/copilot-api?endpoint=http://your-api-server/usage`
+  `http://localhost:4141/usage-viewer?endpoint=http://your-api-server/usage`
 
 ## Using with Claude Code
 
