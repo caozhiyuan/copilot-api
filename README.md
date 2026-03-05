@@ -322,18 +322,30 @@ These endpoints are designed to be compatible with the Anthropic Messages API.
 
 ### Usage Monitoring Endpoints
 
-Endpoints for monitoring your Copilot usage and quotas across all accounts.
+Endpoints for monitoring Copilot account runtime status and per-account usage details.
 
-| Endpoint             | Method | Description                                                                   |
-| -------------------- | ------ | ----------------------------------------------------------------------------- |
-| `GET /usage`         | `GET`  | Get status of all registered accounts (ID, remaining quota, unlimited flag).  |
-| `GET /usage/:index`  | `GET`  | Get detailed Copilot usage for a specific account by index (0-based).         |
-| `GET /token`         | `GET`  | Get the current Copilot token being used by the API.                          |
+| Endpoint                    | Method | Description                                                                                     |
+| --------------------------- | ------ | ----------------------------------------------------------------------------------------------- |
+| `GET /usage`                | `GET`  | Get runtime status snapshots of all loaded accounts (ID, remaining quota, unlimited flag).     |
+| `GET /usage/:accountIndex`  | `GET`  | Get detailed Copilot usage for a specific account index (0-based, includes `quota_snapshots`). |
+| `GET /token`                | `GET`  | Get the current Copilot token being used by the API.                                            |
 
 > **Note on account indices**
-> - `/usage/:index` is **0-based**.
-> - If you start the server with `start --github-token ...`, a temporary account is included and shown as `"(temporary)"` in `GET /usage`. In that case, `index=0` refers to the temporary account and registered accounts start at `index=1`.
+> - `/usage/:accountIndex` is **0-based**.
+> - If you start the server with `start --github-token ...`, a temporary account is included and shown as `"(temporary)"` in `GET /usage`. In that case, `accountIndex=0` refers to the temporary account and registered accounts start at `accountIndex=1`.
 > - `auth rm <index>` uses a **1-based** index (as shown by `auth ls`).
+
+Example:
+
+```sh
+# Account runtime status list
+curl "http://localhost:4141/usage"
+
+# Detailed usage for account index 0
+curl "http://localhost:4141/usage/0"
+```
+
+> **API Key note:** If you enable API key authentication, `/usage` endpoints require `Authorization: Bearer <key>` or `x-api-key`.
 
 ### Legacy authentication compatibility
 
@@ -455,25 +467,6 @@ curl "http://localhost:4141/api/admin/requests?limit=50&cursor_id=<next_cursor_i
 # Single request detail
 curl "http://localhost:4141/api/admin/requests/<requestId>"
 ```
-
-## Usage API (/usage)
-
-Use these endpoints for programmatic quota/status checks:
-
-- `GET /usage`: returns runtime account status snapshots managed by the proxy (for all loaded accounts).
-- `GET /usage/:accountIndex`: returns detailed Copilot usage for a specific account index (including `quota_snapshots`).
-
-Example:
-
-```sh
-# Account runtime status list
-curl "http://localhost:4141/usage"
-
-# Detailed usage for account index 0
-curl "http://localhost:4141/usage/0"
-```
-
-> **API Key note:** If you enable API key authentication, `/usage` endpoints require `Authorization: Bearer <key>` or `x-api-key`.
 
 ## Using the Admin UI (/admin)
 
