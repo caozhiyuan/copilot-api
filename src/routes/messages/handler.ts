@@ -230,6 +230,7 @@ export async function handleCompletion(c: Context) {
   }
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
   openAIPayload.model = selectedModel.id
+  anthropicPayload.model = selectedModel.id
   const premiumRemainingBefore = account.premiumRemaining
   const premiumUnlimitedBefore = account.unlimited
   if (state.manualApprove) {
