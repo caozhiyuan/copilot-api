@@ -21,6 +21,7 @@ export interface ResponsesPayload {
   parallel_tool_calls?: boolean | null
   store?: boolean | null
   reasoning?: Reasoning | null
+  context_management?: Array<ResponseContextManagementItem> | null
   include?: Array<ResponseIncludable>
   service_tier?: string | null // NOTE: Unsupported by GitHub Copilot
   [key: string]: unknown
@@ -55,6 +56,14 @@ export interface Reasoning {
   summary?: "auto" | "concise" | "detailed" | null
 }
 
+export interface ResponseContextManagementCompactionItem {
+  type: "compaction"
+  compact_threshold: number
+}
+
+export type ResponseContextManagementItem =
+  ResponseContextManagementCompactionItem
+
 export interface ResponseInputMessage {
   type?: "message"
   role: "user" | "assistant" | "system" | "developer"
@@ -88,11 +97,18 @@ export interface ResponseInputReasoning {
   encrypted_content: string
 }
 
+export interface ResponseInputCompaction {
+  id: string
+  type: "compaction"
+  encrypted_content: string
+}
+
 export type ResponseInputItem =
   | ResponseInputMessage
   | ResponseFunctionToolCallItem
   | ResponseFunctionCallOutputItem
   | ResponseInputReasoning
+  | ResponseInputCompaction
   | Record<string, unknown>
 
 export type ResponseInputContent =
@@ -146,6 +162,7 @@ export type ResponseOutputItem =
   | ResponseOutputMessage
   | ResponseOutputReasoning
   | ResponseOutputFunctionCall
+  | ResponseOutputCompaction
 
 export interface ResponseOutputMessage {
   id: string
@@ -175,6 +192,12 @@ export interface ResponseOutputFunctionCall {
   name: string
   arguments: string
   status?: "in_progress" | "completed" | "incomplete"
+}
+
+export interface ResponseOutputCompaction {
+  id: string
+  type: "compaction"
+  encrypted_content: string
 }
 
 export type ResponseOutputContentBlock =

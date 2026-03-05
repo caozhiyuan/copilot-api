@@ -14,7 +14,11 @@ import {
 } from "~/services/copilot/create-responses"
 
 import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
-import { getResponsesRequestOptions } from "./utils"
+import {
+  applyResponsesApiContextManagement,
+  compactInputByLatestCompaction,
+  getResponsesRequestOptions,
+} from "./utils"
 
 const logger = createHandlerLogger("responses-handler")
 
@@ -30,6 +34,8 @@ export const handleResponses = async (c: Context) => {
 
   // Remove web_search tool as it's not supported by GitHub Copilot
   removeWebSearchTool(payload)
+
+  compactInputByLatestCompaction(payload)
 
   const selectedModel = state.models?.data.find(
     (model) => model.id === payload.model,
@@ -49,6 +55,11 @@ export const handleResponses = async (c: Context) => {
       400,
     )
   }
+
+  applyResponsesApiContextManagement(
+    payload,
+    selectedModel?.capabilities.limits.max_prompt_tokens,
+  )
 
   const { vision, initiator } = getResponsesRequestOptions(payload)
 

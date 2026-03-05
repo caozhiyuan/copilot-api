@@ -9,6 +9,7 @@ export interface AppConfig {
   }
   extraPrompts?: Record<string, string>
   smallModel?: string
+  responsesApiContextManagementModels?: Array<string>
   modelReasoningEfforts?: Record<
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -54,6 +55,7 @@ const defaultConfig: AppConfig = {
     "gpt-5.3-codex": gpt5CommentaryPrompt,
   },
   smallModel: "gpt-5-mini",
+  responsesApiContextManagementModels: ["gpt-5.3-codex"],
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
   },
@@ -163,6 +165,19 @@ export function getExtraPromptForModel(model: string): string {
 export function getSmallModel(): string {
   const config = getConfig()
   return config.smallModel ?? "gpt-5-mini"
+}
+
+export function getResponsesApiContextManagementModels(): Array<string> {
+  const config = getConfig()
+  return (
+    config.responsesApiContextManagementModels
+    ?? defaultConfig.responsesApiContextManagementModels
+    ?? []
+  )
+}
+
+export function isResponsesApiContextManagementModel(model: string): boolean {
+  return getResponsesApiContextManagementModels().includes(model)
 }
 
 export function getReasoningEffortForModel(

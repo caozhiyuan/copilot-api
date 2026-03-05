@@ -19,6 +19,7 @@ import {
 import { type AnthropicStreamEventData } from "./anthropic-types"
 import {
   THINKING_TEXT,
+  encodeCompactionCarrierSignature,
   translateResponsesResultToAnthropic,
 } from "./responses-translation"
 
@@ -193,11 +194,45 @@ const handleOutputItemDone = (
   const events = new Array<AnthropicStreamEventData>()
   const item = rawEvent.item
   const itemType = item.type
+  const outputIndex = rawEvent.output_index
+
+  if (itemType === "compaction") {
+    if (!item.id || !item.encrypted_content) {
+      return events
+    }
+
+    const blockIndex = openThinkingBlockIfNeeded(state, outputIndex, events)
+
+    if (!state.blockHasDelta.has(blockIndex)) {
+      events.push({
+        type: "content_block_delta",
+        index: blockIndex,
+        delta: {
+          type: "thinking_delta",
+          thinking: THINKING_TEXT,
+        },
+      })
+    }
+
+    events.push({
+      type: "content_block_delta",
+      index: blockIndex,
+      delta: {
+        type: "signature_delta",
+        signature: encodeCompactionCarrierSignature({
+          id: item.id,
+          encrypted_content: item.encrypted_content,
+        }),
+      },
+    })
+    state.blockHasDelta.add(blockIndex)
+    return events
+  }
+
   if (itemType !== "reasoning") {
     return events
   }
 
-  const outputIndex = rawEvent.output_index
   const blockIndex = openThinkingBlockIfNeeded(state, outputIndex, events)
   const signature = (item.encrypted_content ?? "") + "@" + item.id
   if (signature) {
