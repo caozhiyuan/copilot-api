@@ -185,9 +185,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     }
   }
 
-  consola.box(
-    `🌐 Usage Viewer: ${serverUrl}/usage-viewer?endpoint=${serverUrl}/usage`,
-  )
+  consola.box(`🌐 Admin UI: ${serverUrl}/admin`)
 
   const { server } = await import("./server")
 

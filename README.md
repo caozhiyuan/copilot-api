@@ -456,28 +456,24 @@ curl "http://localhost:4141/api/admin/requests?limit=50&cursor_id=<next_cursor_i
 curl "http://localhost:4141/api/admin/requests/<requestId>"
 ```
 
-## Using the Usage Viewer
+## Usage API (/usage)
 
-After starting the server, a URL to the Copilot Usage Dashboard will be displayed in your console. This dashboard is a web interface for monitoring your API usage.
+Use these endpoints for programmatic quota/status checks:
 
-1.  Start the server. For example, using npx:
-    ```sh
-    npx @nick3/copilot-api@latest start
-    ```
-2.  The server will output a URL to the usage viewer. Copy and paste this URL into your browser. It will look something like this:
-    `http://localhost:4141/usage-viewer?endpoint=http://localhost:4141/usage`
-    - If you use the `start.bat` script on Windows, this page will open automatically.
+- `GET /usage`: returns runtime account status snapshots managed by the proxy (for all loaded accounts).
+- `GET /usage/:accountIndex`: returns detailed Copilot usage for a specific account index (including `quota_snapshots`).
 
-> **API Key note:** If you enable API key authentication for `/usage`, your client must send the API key header. If a client cannot set headers, use `curl` or another API client instead.
+Example:
 
-The dashboard provides a user-friendly interface to view your Copilot usage data:
+```sh
+# Account runtime status list
+curl "http://localhost:4141/usage"
 
-- **API Endpoint URL**: The dashboard is pre-configured to fetch data from your local server endpoint via the URL query parameter. You can change this URL to point to any other compatible API endpoint.
-- **Fetch Data**: Click the "Fetch" button to load or refresh the usage data. The dashboard will automatically fetch data on load.
-- **Usage Quotas**: View a summary of your usage quotas for different services like Chat and Completions, displayed with progress bars for a quick overview.
-- **Detailed Information**: See the full JSON response from the API for a detailed breakdown of all available usage statistics.
-- **URL-based Configuration**: You can also specify the API endpoint directly in the URL using a query parameter. This is useful for bookmarks or sharing links. For example:
-  `http://localhost:4141/usage-viewer?endpoint=http://your-api-server/usage`
+# Detailed usage for account index 0
+curl "http://localhost:4141/usage/0"
+```
+
+> **API Key note:** If you enable API key authentication, `/usage` endpoints require `Authorization: Bearer <key>` or `x-api-key`.
 
 ## Using the Admin UI (/admin)
 
