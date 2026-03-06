@@ -47,7 +47,7 @@ import {
 
 const MESSAGE_TYPE = "message"
 const COMPACTION_SIGNATURE_PREFIX = "cm1#"
-const COMPACTION_SIGNATURE_SEPARATOR = "#"
+const COMPACTION_SIGNATURE_SEPARATOR = "@"
 
 export const THINKING_TEXT = "Thinking..."
 
@@ -112,7 +112,7 @@ export const isCompactionCarrierSignature = (signature: string): boolean =>
 export const encodeCompactionCarrierSignature = (
   compaction: CompactionCarrier,
 ): string => {
-  return `${COMPACTION_SIGNATURE_PREFIX}${compaction.id}${COMPACTION_SIGNATURE_SEPARATOR}${compaction.encrypted_content}`
+  return `${COMPACTION_SIGNATURE_PREFIX}${compaction.encrypted_content}${COMPACTION_SIGNATURE_SEPARATOR}${compaction.id}`
 }
 
 export const decodeCompactionCarrierSignature = (
@@ -126,10 +126,10 @@ export const decodeCompactionCarrierSignature = (
       return undefined
     }
 
-    const id = raw.slice(0, separatorIndex)
-    const encrypted_content = raw.slice(separatorIndex + 1)
+    const encrypted_content = raw.slice(0, separatorIndex)
+    const id = raw.slice(separatorIndex + 1)
 
-    if (!id || !encrypted_content) {
+    if (!encrypted_content) {
       return undefined
     }
 
