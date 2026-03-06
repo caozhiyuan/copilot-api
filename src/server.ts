@@ -1,7 +1,6 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
-import { readFileSync } from "node:fs"
 
 import { createAuthMiddleware } from "~/lib/request-auth"
 
@@ -22,17 +21,12 @@ server.use(cors())
 server.use(
   "*",
   createAuthMiddleware({
-    allowUnauthenticatedPaths: ["/", "/usage-viewer", "/usage-viewer/"],
+    allowUnauthenticatedPaths: ["/"],
     allowUnauthenticatedPathPrefixes: ["/admin", "/api/admin"],
   }),
 )
 
 server.get("/", (c) => c.text("Server running"))
-server.get("/usage-viewer", (c) => {
-  const usageViewerFileUrl = new URL("../pages/index.html", import.meta.url)
-  return c.html(readFileSync(usageViewerFileUrl, "utf8"))
-})
-server.get("/usage-viewer/", (c) => c.redirect("/usage-viewer", 301))
 
 server.route("/chat/completions", completionRoutes)
 server.route("/models", modelRoutes)
