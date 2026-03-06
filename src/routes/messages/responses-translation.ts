@@ -44,7 +44,6 @@ import {
 } from "./anthropic-types"
 
 const MESSAGE_TYPE = "message"
-const CODEX_PHASE_MODEL = "gpt-5.3-codex"
 
 export const THINKING_TEXT = "Thinking..."
 
@@ -54,9 +53,10 @@ export const translateAnthropicMessagesToResponsesPayload = (
 ): ResponsesPayload => {
   const model = modelOverride ?? payload.model
   const input: Array<ResponseInputItem> = []
+  const applyPhase = shouldApplyPhase(payload.model)
 
   for (const message of payload.messages) {
-    input.push(...translateMessage(message, payload.model))
+    input.push(...translateMessage(message, payload.model, applyPhase))
   }
 
   const translatedTools = convertAnthropicTools(payload.tools)
@@ -94,12 +94,13 @@ export const translateAnthropicMessagesToResponsesPayload = (
 const translateMessage = (
   message: AnthropicMessage,
   model: string,
+  applyPhase: boolean,
 ): Array<ResponseInputItem> => {
   if (message.role === "user") {
     return translateUserMessage(message)
   }
 
-  return translateAssistantMessage(message, model)
+  return translateAssistantMessage(message, model, applyPhase)
 }
 
 const translateUserMessage = (
@@ -137,8 +138,13 @@ const translateUserMessage = (
 const translateAssistantMessage = (
   message: AnthropicAssistantMessage,
   model: string,
+  applyPhase: boolean,
 ): Array<ResponseInputItem> => {
-  const assistantPhase = resolveAssistantPhase(model, message.content)
+  const assistantPhase = resolveAssistantPhase(
+    model,
+    message.content,
+    applyPhase,
+  )
 
   if (typeof message.content === "string") {
     return [createMessage("assistant", message.content, assistantPhase)]
@@ -244,10 +250,11 @@ const createMessage = (
 })
 
 const resolveAssistantPhase = (
-  model: string,
+  _model: string,
   content: AnthropicAssistantMessage["content"],
+  applyPhase: boolean,
 ): ResponseInputMessage["phase"] | undefined => {
-  if (!shouldApplyCodexPhase(model)) {
+  if (!applyPhase) {
     return undefined
   }
 
@@ -268,8 +275,10 @@ const resolveAssistantPhase = (
   return hasToolUse ? "commentary" : "final_answer"
 }
 
-const shouldApplyCodexPhase = (model: string): boolean =>
-  model === CODEX_PHASE_MODEL
+const shouldApplyPhase = (model: string): boolean => {
+  const extraPrompt = getExtraPromptForModel(model)
+  return extraPrompt.includes("## Intermediary updates")
+}
 
 const createTextContent = (text: string): ResponseInputText => ({
   type: "input_text",

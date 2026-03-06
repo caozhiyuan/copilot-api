@@ -58,13 +58,14 @@ const defaultConfig: AppConfig = {
   },
   extraPrompts: {
     "gpt-5-mini": gpt5ExplorationPrompt,
-    "gpt-5.1-codex-max": gpt5ExplorationPrompt,
     "gpt-5.3-codex": gpt5CommentaryPrompt,
+    "gpt-5.4": gpt5CommentaryPrompt,
   },
   smallModel: "gpt-5-mini",
   freeModelLoadBalancing: true,
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
+    "gpt-5.3-codex": "xhigh",
   },
   allowOriginalModelNamesForAliases: false,
   useFunctionApplyPatch: true,
@@ -145,18 +146,27 @@ function readConfigFromDisk(): AppConfig {
   }
 }
 
-function mergeDefaultExtraPrompts(config: AppConfig): {
+function mergeDefaultConfig(config: AppConfig): {
   mergedConfig: AppConfig
   changed: boolean
 } {
   const extraPrompts = config.extraPrompts ?? {}
   const defaultExtraPrompts = defaultConfig.extraPrompts ?? {}
+  const modelReasoningEfforts = config.modelReasoningEfforts ?? {}
+  const defaultModelReasoningEfforts = defaultConfig.modelReasoningEfforts ?? {}
 
   const missingExtraPromptModels = Object.keys(defaultExtraPrompts).filter(
     (model) => !Object.hasOwn(extraPrompts, model),
   )
 
-  if (missingExtraPromptModels.length === 0) {
+  const missingReasoningEffortModels = Object.keys(
+    defaultModelReasoningEfforts,
+  ).filter((model) => !Object.hasOwn(modelReasoningEfforts, model))
+
+  const hasExtraPromptChanges = missingExtraPromptModels.length > 0
+  const hasReasoningEffortChanges = missingReasoningEffortModels.length > 0
+
+  if (!hasExtraPromptChanges && !hasReasoningEffortChanges) {
     return { mergedConfig: config, changed: false }
   }
 
@@ -166,6 +176,10 @@ function mergeDefaultExtraPrompts(config: AppConfig): {
       extraPrompts: {
         ...defaultExtraPrompts,
         ...extraPrompts,
+      },
+      modelReasoningEfforts: {
+        ...defaultModelReasoningEfforts,
+        ...modelReasoningEfforts,
       },
     },
     changed: true,
@@ -261,7 +275,7 @@ export function mergeConfigWithDefaults(): AppConfig {
 
   const { mergedConfig, changed } = applyConfigMerges(config, [
     mergeDefaultAuth,
-    mergeDefaultExtraPrompts,
+    mergeDefaultConfig,
     mergeDefaultFreeModelLoadBalancing,
     mergeDefaultModelRefreshInterval,
   ])
