@@ -46,7 +46,6 @@ import {
 } from "./anthropic-types"
 
 const MESSAGE_TYPE = "message"
-const CODEX_PHASE_MODEL = "gpt-5.3-codex"
 const COMPACTION_SIGNATURE_PREFIX = "cm1#"
 const COMPACTION_SIGNATURE_SEPARATOR = "#"
 
@@ -56,6 +55,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
   payload: AnthropicMessagesPayload,
 ): ResponsesPayload => {
   const input: Array<ResponseInputItem> = []
+  const applyPhase = shouldApplyPhase(payload.model)
 
   const latestCompactionMessageIndex = getLatestCompactionMessageIndex(
     payload.messages,
@@ -66,7 +66,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
     : payload.messages
 
   for (const message of messages) {
-    input.push(...translateMessage(message, payload.model))
+    input.push(...translateMessage(message, payload.model, applyPhase))
   }
 
   const translatedTools = convertAnthropicTools(payload.tools)
@@ -173,12 +173,13 @@ const messageContainsCompactionCarrier = (
 const translateMessage = (
   message: AnthropicMessage,
   model: string,
+  applyPhase: boolean,
 ): Array<ResponseInputItem> => {
   if (message.role === "user") {
     return translateUserMessage(message)
   }
 
-  return translateAssistantMessage(message, model)
+  return translateAssistantMessage(message, model, applyPhase)
 }
 
 const translateUserMessage = (
@@ -216,8 +217,13 @@ const translateUserMessage = (
 const translateAssistantMessage = (
   message: AnthropicAssistantMessage,
   model: string,
+  applyPhase: boolean,
 ): Array<ResponseInputItem> => {
-  const assistantPhase = resolveAssistantPhase(model, message.content)
+  const assistantPhase = resolveAssistantPhase(
+    model,
+    message.content,
+    applyPhase,
+  )
 
   if (typeof message.content === "string") {
     return [createMessage("assistant", message.content, assistantPhase)]
@@ -331,10 +337,11 @@ const createMessage = (
 })
 
 const resolveAssistantPhase = (
-  model: string,
+  _model: string,
   content: AnthropicAssistantMessage["content"],
+  applyPhase: boolean,
 ): ResponseInputMessage["phase"] | undefined => {
-  if (!shouldApplyCodexPhase(model)) {
+  if (!applyPhase) {
     return undefined
   }
 
@@ -355,8 +362,10 @@ const resolveAssistantPhase = (
   return hasToolUse ? "commentary" : "final_answer"
 }
 
-const shouldApplyCodexPhase = (model: string): boolean =>
-  model === CODEX_PHASE_MODEL
+const shouldApplyPhase = (model: string): boolean => {
+  const extraPrompt = getExtraPromptForModel(model)
+  return extraPrompt.includes("## Intermediary updates")
+}
 
 const createTextContent = (text: string): ResponseInputText => ({
   type: "input_text",
