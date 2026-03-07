@@ -1,3 +1,5 @@
+import type { ChatCompletionChunk } from "~/services/copilot/create-chat-completions"
+
 // Anthropic API Types
 
 export interface AnthropicMessagesPayload {
@@ -197,10 +199,12 @@ export type AnthropicStreamEventData =
 
 // State for streaming translation
 export interface AnthropicStreamState {
+  currentModel?: string
   messageStartSent: boolean
   contentBlockIndex: number
   contentBlockOpen: boolean
   thinkingBlockOpen: boolean
+  pendingChunksAfterThinking: Array<ChatCompletionChunk>
   toolCalls: {
     [openAIToolIndex: number]: {
       id: string

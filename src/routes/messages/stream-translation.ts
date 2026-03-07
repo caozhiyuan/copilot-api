@@ -26,6 +26,7 @@ export function translateChunkToAnthropicEvents(
   state: AnthropicStreamState,
 ): Array<AnthropicStreamEventData> {
   const events: Array<AnthropicStreamEventData> = []
+  state.currentModel = chunk.model
 
   if (chunk.choices.length === 0) {
     return events
@@ -37,6 +38,16 @@ export function translateChunkToAnthropicEvents(
   handleMessageStart(state, events, chunk)
 
   handleThinkingText(delta, state, events)
+
+  if (shouldBufferChunkUntilReasoningSignature(choice, state)) {
+    state.pendingChunksAfterThinking.push(cloneChunkWithoutReasoningText(chunk))
+    return events
+  }
+
+  if (shouldCloseThinkingBlock(choice, state)) {
+    closeThinkingBlock(state, events, delta.reasoning_opaque ?? "")
+    drainPendingChunksAfterThinking(state, events)
+  }
 
   handleContent(delta, state, events)
 
@@ -93,6 +104,96 @@ function handleFinish(
         type: "message_stop",
       },
     )
+  }
+}
+
+function isClaudeModel(model: string): boolean {
+  return model.toLowerCase().startsWith("claude")
+}
+
+function cloneChunkWithoutReasoningText(
+  chunk: ChatCompletionChunk,
+): ChatCompletionChunk {
+  return {
+    ...chunk,
+    choices: chunk.choices.map((choice) => ({
+      ...choice,
+      delta: {
+        ...choice.delta,
+        reasoning_text: undefined,
+      },
+    })),
+  }
+}
+
+function shouldBufferChunkUntilReasoningSignature(
+  choice: Choice,
+  state: AnthropicStreamState,
+): boolean {
+  const hasPostThinkingOutput =
+    Boolean(choice.delta.content && choice.delta.content.length > 0)
+    || Boolean(choice.delta.tool_calls && choice.delta.tool_calls.length > 0)
+
+  return (
+    state.thinkingBlockOpen
+    && hasPostThinkingOutput
+    && !choice.delta.reasoning_opaque
+    && !choice.finish_reason
+  )
+}
+
+function shouldCloseThinkingBlock(
+  choice: Choice,
+  state: AnthropicStreamState,
+): boolean {
+  return (
+    state.thinkingBlockOpen
+    && Boolean(choice.delta.reasoning_opaque || choice.finish_reason)
+  )
+}
+
+function closeThinkingBlock(
+  state: AnthropicStreamState,
+  events: Array<AnthropicStreamEventData>,
+  signature: string,
+): void {
+  if (!state.thinkingBlockOpen) {
+    return
+  }
+
+  events.push(
+    {
+      type: "content_block_delta",
+      index: state.contentBlockIndex,
+      delta: {
+        type: "signature_delta",
+        signature,
+      },
+    },
+    {
+      type: "content_block_stop",
+      index: state.contentBlockIndex,
+    },
+  )
+  state.contentBlockIndex++
+  state.thinkingBlockOpen = false
+}
+
+function drainPendingChunksAfterThinking(
+  state: AnthropicStreamState,
+  events: Array<AnthropicStreamEventData>,
+): void {
+  if (state.pendingChunksAfterThinking.length === 0) {
+    return
+  }
+
+  const bufferedChunks = state.pendingChunksAfterThinking.splice(0)
+  for (const bufferedChunk of bufferedChunks) {
+    const bufferedChoice = bufferedChunk.choices[0]
+
+    handleContent(bufferedChoice.delta, state, events)
+    handleToolCalls(bufferedChoice.delta, state, events)
+    handleFinish(bufferedChoice, state, { events, chunk: bufferedChunk })
   }
 }
 
@@ -279,6 +380,10 @@ function handleReasoningOpaque(
   state: AnthropicStreamState,
 ) {
   if (delta.reasoning_opaque && delta.reasoning_opaque.length > 0) {
+    if (state.currentModel && isClaudeModel(state.currentModel)) {
+      return
+    }
+
     events.push(
       {
         type: "content_block_start",
@@ -356,22 +461,7 @@ function closeThinkingBlockIfOpen(
   events: Array<AnthropicStreamEventData>,
 ): void {
   if (state.thinkingBlockOpen) {
-    events.push(
-      {
-        type: "content_block_delta",
-        index: state.contentBlockIndex,
-        delta: {
-          type: "signature_delta",
-          signature: "",
-        },
-      },
-      {
-        type: "content_block_stop",
-        index: state.contentBlockIndex,
-      },
-    )
-    state.contentBlockIndex++
-    state.thinkingBlockOpen = false
+    closeThinkingBlock(state, events, "")
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Context } from "hono"
 
+import consola from "consola"
 import { streamSSE } from "hono/streaming"
 
 import type { Model } from "~/services/copilot/get-models"
@@ -36,7 +37,9 @@ import {
 } from "~/services/copilot/create-responses"
 
 import {
+  type AnthropicAssistantContentBlock,
   type AnthropicMessagesPayload,
+  type AnthropicStreamEventData,
   type AnthropicStreamState,
   type AnthropicTextBlock,
   type AnthropicToolResultBlock,
@@ -52,6 +55,195 @@ const logger = createHandlerLogger("messages-handler")
 
 const compactSystemPromptStart =
   "You are a helpful AI assistant tasked with summarizing conversations"
+
+type ThinkingStreamTracker = {
+  activeIndexes: Set<number>
+  textCharsByIndex: Map<number, number>
+  deltaCountsByIndex: Map<number, number>
+  signatureCharsByIndex: Map<number, number>
+}
+
+const createThinkingStreamTracker = (): ThinkingStreamTracker => ({
+  activeIndexes: new Set<number>(),
+  textCharsByIndex: new Map<number, number>(),
+  deltaCountsByIndex: new Map<number, number>(),
+  signatureCharsByIndex: new Map<number, number>(),
+})
+
+const logThinkingTelemetry = (
+  message: string,
+  details?: Record<string, unknown>,
+): void => {
+  const serialized = details ? JSON.stringify(details) : undefined
+  if (serialized) {
+    logger.info("[thinking]", message, serialized)
+  } else {
+    logger.info("[thinking]", message)
+  }
+
+  if (!state.verbose) {
+    return
+  }
+
+  if (serialized) {
+    consola.info(`[thinking] ${message} ${serialized}`)
+    return
+  }
+
+  consola.info(`[thinking] ${message}`)
+}
+
+const isThinkingBlock = (
+  block: AnthropicAssistantContentBlock,
+): block is Extract<AnthropicAssistantContentBlock, { type: "thinking" }> =>
+  block.type === "thinking"
+
+const countAssistantThinkingBlocks = (
+  payload: AnthropicMessagesPayload,
+): number => {
+  return payload.messages.reduce((count, message) => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) {
+      return count
+    }
+
+    return (
+      count + message.content.filter((block) => isThinkingBlock(block)).length
+    )
+  }, 0)
+}
+
+const logThinkingRequestSummary = (
+  route: "messages" | "chat-completions" | "responses",
+  payload: AnthropicMessagesPayload,
+  options?: {
+    filteredThinkingBlocks?: number
+    anthropicBetaHeader?: string
+  },
+): void => {
+  const assistantHistoryThinkingBlocks = countAssistantThinkingBlocks(payload)
+  const thinkingRequested = Boolean(payload.thinking)
+  const filteredThinkingBlocks = options?.filteredThinkingBlocks ?? 0
+
+  if (
+    !thinkingRequested
+    && assistantHistoryThinkingBlocks === 0
+    && filteredThinkingBlocks === 0
+  ) {
+    return
+  }
+
+  logThinkingTelemetry(`${route} request`, {
+    model: payload.model,
+    stream: payload.stream ?? false,
+    thinking_requested: thinkingRequested,
+    thinking_type: payload.thinking?.type ?? null,
+    thinking_budget_tokens: payload.thinking?.budget_tokens ?? null,
+    assistant_history_thinking_blocks: assistantHistoryThinkingBlocks,
+    filtered_thinking_blocks: filteredThinkingBlocks,
+    anthropic_beta: options?.anthropicBetaHeader ?? null,
+  })
+}
+
+const logThinkingResponseSummary = (
+  route: "messages" | "chat-completions" | "responses",
+  content: Array<AnthropicAssistantContentBlock>,
+): void => {
+  const thinkingBlocks = content.filter((block) => isThinkingBlock(block))
+  if (thinkingBlocks.length === 0) {
+    return
+  }
+
+  logThinkingTelemetry(`${route} response`, {
+    thinking_blocks: thinkingBlocks.length,
+    blocks: thinkingBlocks.map((block, index) => ({
+      index,
+      chars: block.thinking.length,
+      signature_present: block.signature.length > 0,
+    })),
+  })
+}
+
+const logThinkingStreamEvent = (
+  route: "messages" | "chat-completions" | "responses",
+  event: AnthropicStreamEventData,
+  tracker: ThinkingStreamTracker,
+): void => {
+  if (
+    event.type === "content_block_start"
+    && event.content_block.type === "thinking"
+  ) {
+    tracker.activeIndexes.add(event.index)
+    tracker.textCharsByIndex.set(event.index, 0)
+    tracker.deltaCountsByIndex.set(event.index, 0)
+    tracker.signatureCharsByIndex.set(event.index, 0)
+    logThinkingTelemetry(`${route} thinking block started`, {
+      index: event.index,
+    })
+    return
+  }
+
+  if (
+    event.type === "content_block_delta"
+    && event.delta.type === "thinking_delta"
+  ) {
+    const chars = event.delta.thinking.length
+    tracker.textCharsByIndex.set(
+      event.index,
+      (tracker.textCharsByIndex.get(event.index) ?? 0) + chars,
+    )
+    tracker.deltaCountsByIndex.set(
+      event.index,
+      (tracker.deltaCountsByIndex.get(event.index) ?? 0) + 1,
+    )
+    return
+  }
+
+  if (
+    event.type === "content_block_delta"
+    && event.delta.type === "signature_delta"
+  ) {
+    if (!tracker.activeIndexes.has(event.index)) {
+      return
+    }
+
+    tracker.signatureCharsByIndex.set(event.index, event.delta.signature.length)
+    logThinkingTelemetry(`${route} thinking signature`, {
+      index: event.index,
+      signature_chars: event.delta.signature.length,
+    })
+    return
+  }
+
+  if (
+    event.type === "content_block_stop"
+    && tracker.activeIndexes.has(event.index)
+  ) {
+    logThinkingTelemetry(`${route} thinking block stopped`, {
+      index: event.index,
+      delta_count: tracker.deltaCountsByIndex.get(event.index) ?? 0,
+      total_chars: tracker.textCharsByIndex.get(event.index) ?? 0,
+      signature_chars: tracker.signatureCharsByIndex.get(event.index) ?? 0,
+    })
+    tracker.activeIndexes.delete(event.index)
+    tracker.textCharsByIndex.delete(event.index)
+    tracker.deltaCountsByIndex.delete(event.index)
+    tracker.signatureCharsByIndex.delete(event.index)
+  }
+}
+
+const tryParseAnthropicStreamEvent = (
+  data: string,
+): AnthropicStreamEventData | undefined => {
+  if (!data) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(data) as AnthropicStreamEventData
+  } catch {
+    return undefined
+  }
+}
 
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
@@ -123,6 +315,7 @@ const handleWithChatCompletions = async (
   initiatorOverride?: "agent" | "user",
 ) => {
   const openAIPayload = translateToOpenAI(anthropicPayload)
+  logThinkingRequestSummary("chat-completions", anthropicPayload)
   logger.debug(
     "Translated OpenAI request payload:",
     JSON.stringify(openAIPayload),
@@ -138,6 +331,7 @@ const handleWithChatCompletions = async (
       JSON.stringify(response),
     )
     const anthropicResponse = translateToAnthropic(response)
+    logThinkingResponseSummary("chat-completions", anthropicResponse.content)
     logger.debug(
       "Translated Anthropic response:",
       JSON.stringify(anthropicResponse),
@@ -147,12 +341,15 @@ const handleWithChatCompletions = async (
 
   logger.debug("Streaming response from Copilot")
   return streamSSE(c, async (stream) => {
+    const thinkingTracker = createThinkingStreamTracker()
     const streamState: AnthropicStreamState = {
+      currentModel: undefined,
       messageStartSent: false,
       contentBlockIndex: 0,
       contentBlockOpen: false,
       toolCalls: {},
       thinkingBlockOpen: false,
+      pendingChunksAfterThinking: [],
     }
 
     for await (const rawEvent of response) {
@@ -169,6 +366,7 @@ const handleWithChatCompletions = async (
       const events = translateChunkToAnthropicEvents(chunk, streamState)
 
       for (const event of events) {
+        logThinkingStreamEvent("chat-completions", event, thinkingTracker)
         logger.debug("Translated Anthropic event:", JSON.stringify(event))
         await stream.writeSSE({
           event: event.type,
@@ -186,6 +384,7 @@ const handleWithResponsesApi = async (
 ) => {
   const responsesPayload =
     translateAnthropicMessagesToResponsesPayload(anthropicPayload)
+  logThinkingRequestSummary("responses", anthropicPayload)
   logger.debug(
     "Translated Responses payload:",
     JSON.stringify(responsesPayload),
@@ -200,6 +399,7 @@ const handleWithResponsesApi = async (
   if (responsesPayload.stream && isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Responses API)")
     return streamSSE(c, async (stream) => {
+      const thinkingTracker = createThinkingStreamTracker()
       const streamState = createResponsesStreamState()
 
       for await (const chunk of response) {
@@ -222,6 +422,7 @@ const handleWithResponsesApi = async (
         )
         for (const event of events) {
           const eventData = JSON.stringify(event)
+          logThinkingStreamEvent("responses", event, thinkingTracker)
           logger.debug("Translated Anthropic event:", eventData)
           await stream.writeSSE({
             event: event.type,
@@ -257,6 +458,7 @@ const handleWithResponsesApi = async (
   const anthropicResponse = translateResponsesResultToAnthropic(
     response as ResponsesResult,
   )
+  logThinkingResponseSummary("responses", anthropicResponse.content)
   logger.debug(
     "Translated Anthropic response:",
     JSON.stringify(anthropicResponse),
@@ -275,6 +477,8 @@ const handleWithMessagesApi = async (
 ) => {
   const { anthropicBetaHeader, initiatorOverride, selectedModel } =
     options ?? {}
+  const thinkingBlocksBeforeFilter =
+    countAssistantThinkingBlocks(anthropicPayload)
   // Pre-request processing: filter thinking blocks for Claude models so only
   // valid thinking blocks are sent to the Copilot Messages API.
   for (const msg of anthropicPayload.messages) {
@@ -290,6 +494,8 @@ const handleWithMessagesApi = async (
       })
     }
   }
+  const filteredThinkingBlocks =
+    thinkingBlocksBeforeFilter - countAssistantThinkingBlocks(anthropicPayload)
 
   if (selectedModel?.capabilities.supports.adaptive_thinking) {
     anthropicPayload.thinking = {
@@ -300,6 +506,11 @@ const handleWithMessagesApi = async (
     }
   }
 
+  logThinkingRequestSummary("messages", anthropicPayload, {
+    filteredThinkingBlocks,
+    anthropicBetaHeader,
+  })
+
   logger.debug("Translated Messages payload:", JSON.stringify(anthropicPayload))
 
   const response = await createMessages(anthropicPayload, anthropicBetaHeader, {
@@ -309,9 +520,14 @@ const handleWithMessagesApi = async (
   if (isAsyncIterable(response)) {
     logger.debug("Streaming response from Copilot (Messages API)")
     return streamSSE(c, async (stream) => {
+      const thinkingTracker = createThinkingStreamTracker()
       for await (const event of response) {
         const eventName = event.event
         const data = event.data ?? ""
+        const parsedEvent = tryParseAnthropicStreamEvent(data)
+        if (parsedEvent) {
+          logThinkingStreamEvent("messages", parsedEvent, thinkingTracker)
+        }
         logger.debug("Messages raw stream event:", data)
         await stream.writeSSE({
           event: eventName,
@@ -325,6 +541,7 @@ const handleWithMessagesApi = async (
     "Non-streaming Messages result:",
     JSON.stringify(response).slice(-400),
   )
+  logThinkingResponseSummary("messages", response.content)
   return c.json(response)
 }
 

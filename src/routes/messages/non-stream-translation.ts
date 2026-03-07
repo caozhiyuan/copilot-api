@@ -29,6 +29,10 @@ import { mapOpenAIStopReasonToAnthropic } from "./utils"
 // Compatible with opencode, it will filter out blocks where the thinking text is empty, so we need add a default thinking text
 export const THINKING_TEXT = "Thinking..."
 
+function isClaudeModel(model: string): boolean {
+  return model.toLowerCase().startsWith("claude")
+}
+
 // Payload translation
 export function translateToOpenAI(
   payload: AnthropicMessagesPayload,
@@ -217,7 +221,7 @@ function handleAssistantMessage(
     (block): block is AnthropicThinkingBlock => block.type === "thinking",
   )
 
-  if (modelId.startsWith("claude")) {
+  if (isClaudeModel(modelId)) {
     thinkingBlocks = thinkingBlocks.filter(
       (b) =>
         b.thinking
@@ -369,6 +373,7 @@ export function translateToAnthropic(
     const thinkBlocks = getAnthropicThinkBlocks(
       choice.message.reasoning_text,
       choice.message.reasoning_opaque,
+      response.model,
     )
     const toolUseBlocks = getAnthropicToolUseBlocks(choice.message.tool_calls)
 
@@ -421,6 +426,7 @@ function getAnthropicTextBlocks(
 function getAnthropicThinkBlocks(
   reasoningText: string | null | undefined,
   reasoningOpaque: string | null | undefined,
+  model: string,
 ): Array<AnthropicThinkingBlock> {
   if (reasoningText && reasoningText.length > 0) {
     return [
@@ -431,7 +437,7 @@ function getAnthropicThinkBlocks(
       },
     ]
   }
-  if (reasoningOpaque && reasoningOpaque.length > 0) {
+  if (reasoningOpaque && reasoningOpaque.length > 0 && !isClaudeModel(model)) {
     return [
       {
         type: "thinking",
