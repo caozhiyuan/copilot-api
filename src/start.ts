@@ -12,7 +12,12 @@ import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { setupCopilotToken, setupGitHubToken } from "./lib/token"
-import { cacheModels, cacheVSCodeVersion } from "./lib/utils"
+import {
+  cacheMacMachineId,
+  cacheModels,
+  cacheVSCodeVersion,
+  cacheVsCodeSessionId,
+} from "./lib/utils"
 
 interface RunServerOptions {
   port: number
@@ -53,6 +58,8 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   await ensurePaths()
   await cacheVSCodeVersion()
+  cacheMacMachineId()
+  cacheVsCodeSessionId()
 
   if (options.githubToken) {
     state.githubToken = options.githubToken

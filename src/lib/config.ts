@@ -55,7 +55,7 @@ const defaultConfig: AppConfig = {
     "gpt-5.4": gpt5CommentaryPrompt,
   },
   smallModel: "gpt-5-mini",
-  responsesApiContextManagementModels: ["gpt-5.4", "gpt-5.3-codex"],
+  responsesApiContextManagementModels: [],
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
     "gpt-5.3-codex": "xhigh",

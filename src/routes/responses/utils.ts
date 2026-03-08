@@ -38,7 +38,7 @@ export const resolveResponsesCompactThreshold = (
   maxPromptTokens?: number,
 ): number => {
   if (typeof maxPromptTokens === "number" && maxPromptTokens > 0) {
-    return Math.floor(maxPromptTokens * 0.75)
+    return Math.floor(maxPromptTokens * 0.9)
   }
 
   return 50000

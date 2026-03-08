@@ -1,6 +1,8 @@
 import consola from "consola"
 import { events } from "fetch-event-stream"
 
+import type { SubagentMarker } from "~/routes/messages/subagent-marker"
+
 import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
@@ -348,17 +350,35 @@ export type CreateResponsesReturn = ResponsesResult | ResponsesStream
 interface ResponsesRequestOptions {
   vision: boolean
   initiator: "agent" | "user"
+  subagentMarker?: SubagentMarker | null
+  requestId: string
+  sessionId?: string
 }
 
 export const createResponses = async (
   payload: ResponsesPayload,
-  { vision, initiator }: ResponsesRequestOptions,
+  {
+    vision,
+    initiator,
+    subagentMarker,
+    requestId,
+    sessionId,
+  }: ResponsesRequestOptions,
 ): Promise<CreateResponsesReturn> => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
 
   const headers: Record<string, string> = {
-    ...copilotHeaders(state, vision),
-    "X-Initiator": initiator,
+    ...copilotHeaders(state, requestId, vision),
+    "x-initiator": initiator,
+  }
+
+  if (subagentMarker) {
+    headers["x-initiator"] = "agent"
+    headers["x-interaction-type"] = "conversation-subagent"
+  }
+
+  if (sessionId) {
+    headers["x-interaction-id"] = sessionId
   }
 
   // service_tier is not supported by github copilot
