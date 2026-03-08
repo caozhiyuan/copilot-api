@@ -7,7 +7,7 @@ export const standardHeaders = () => ({
   accept: "application/json",
 })
 
-const COPILOT_VERSION = "0.37.6"
+const COPILOT_VERSION = "0.38.2"
 const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
 const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
 
@@ -17,7 +17,12 @@ export const copilotBaseUrl = (state: State) =>
   state.accountType === "individual" ?
     "https://api.githubcopilot.com"
   : `https://api.${state.accountType}.githubcopilot.com`
-export const copilotHeaders = (state: State, vision: boolean = false) => {
+export const copilotHeaders = (
+  state: State,
+  requestId?: string,
+  vision: boolean = false,
+) => {
+  const requestIdValue = requestId ?? randomUUID()
   const headers: Record<string, string> = {
     Authorization: `Bearer ${state.copilotToken}`,
     "content-type": standardHeaders()["content-type"],
@@ -27,11 +32,21 @@ export const copilotHeaders = (state: State, vision: boolean = false) => {
     "user-agent": USER_AGENT,
     "openai-intent": "conversation-agent",
     "x-github-api-version": API_VERSION,
-    "x-request-id": randomUUID(),
+    "x-request-id": requestIdValue,
     "x-vscode-user-agent-library-version": "electron-fetch",
+    "x-agent-task-id": requestIdValue,
+    "x-interaction-type": "conversation-agent",
   }
 
   if (vision) headers["copilot-vision-request"] = "true"
+
+  if (state.macMachineId) {
+    headers["vscode-machineid"] = state.macMachineId
+  }
+
+  if (state.vsCodeSessionId) {
+    headers["vscode-sessionid"] = state.vsCodeSessionId
+  }
 
   return headers
 }

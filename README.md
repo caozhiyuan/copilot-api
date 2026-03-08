@@ -377,7 +377,7 @@ You can also read more about IDE integration here: [Add Claude Code to your IDE]
 
 ### Subagent Marker Integration (Optional)
 
-This project supports `X-Initiator: agent` for subagent-originated requests.
+This project supports `x-initiator: agent` for subagent-originated requests.
 
 #### Claude Code plugin producer (marketplace-based)
 
@@ -398,15 +398,31 @@ Install the plugin from the marketplace:
 /plugin install claude-plugin@copilot-api-marketplace
 ```
 
-After installation, the plugin injects `__SUBAGENT_MARKER__...` on `SubagentStart`, and this proxy uses it to infer `X-Initiator: agent`.
+After installation, the plugin injects `__SUBAGENT_MARKER__...` on `SubagentStart`, and this proxy uses it to infer `x-initiator: agent`.
 
 #### Opencode plugin producer
 
-For opencode, use the plugin implementation at:
+The marker producer is packaged as an opencode plugin located at `.opencode/plugins/subagent-marker.js`.
 
-- `.opencode/plugins/subagent-marker.js`
+**Installation:**
 
-This plugin tracks sub-sessions and prepends a marker system reminder to subagent chat messages.
+Copy the plugin file to your opencode plugins directory:
+
+```sh
+# Clone or download this repository, then copy the plugin
+cp .opencode/plugins/subagent-marker.js ~/.config/opencode/plugins/
+```
+
+Or manually create the file at `~/.config/opencode/plugins/subagent-marker.js` with the plugin content.
+
+**Features:**
+
+- Tracks sub-sessions created by subagents
+- Automatically prepends a marker system reminder (`__SUBAGENT_MARKER__...`) to subagent chat messages
+- Sets `x-session-id` header for session tracking
+- Enables this proxy to infer `x-initiator: agent` for subagent-originated requests
+
+The plugin hooks into `session.created`, `session.deleted`, `chat.message`, and `chat.headers` events to provide seamless subagent marker functionality.
 
 ## Running from Source
 

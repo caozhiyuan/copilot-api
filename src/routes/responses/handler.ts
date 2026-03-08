@@ -7,6 +7,7 @@ import { getConfig } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
+import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
 import {
   createResponses,
   type ResponsesPayload,
@@ -29,6 +30,13 @@ export const handleResponses = async (c: Context) => {
 
   const payload = await c.req.json<ResponsesPayload>()
   logger.debug("Responses request payload:", JSON.stringify(payload))
+
+  // not support subagent marker for now , set sessionId = getUUID(requestId)
+  const requestId = generateRequestIdFromPayload({ messages: payload.input })
+  logger.debug("Generated request ID:", requestId)
+
+  const sessionId = getUUID(requestId)
+  logger.debug("Extracted session ID:", sessionId)
 
   useFunctionApplyPatch(payload)
 
@@ -69,7 +77,12 @@ export const handleResponses = async (c: Context) => {
     await awaitApproval()
   }
 
-  const response = await createResponses(payload, { vision, initiator })
+  const response = await createResponses(payload, {
+    vision,
+    initiator,
+    requestId,
+    sessionId: sessionId,
+  })
 
   if (isStreamingRequested(payload) && isAsyncIterable(response)) {
     logger.debug("Forwarding native Responses stream")
