@@ -192,7 +192,10 @@ The following command line options are available for the `start` command:
         "type": "anthropic",
         "enabled": true,
         "baseUrl": "https://openrouter.ai/api",
-        "apiKey": "sk-your-provider-key"
+        "apiKey": "sk-your-provider-key",
+        "defaultTemperature": 0.7,
+        "defaultTopP": 0.9,
+        "defaultTopK": 20
       }
     },
     "extraPrompts": {
@@ -213,6 +216,9 @@ The following command line options are available for the `start` command:
   - `enabled` defaults to `true` if omitted.
   - `baseUrl` should be provider API base URL without trailing `/v1/messages`.
   - `apiKey` is used as upstream `x-api-key`.
+  - `defaultTemperature` (optional): Default temperature value used when the request does not specify one.
+  - `defaultTopP` (optional): Default top_p value used when the request does not specify one.
+  - `defaultTopK` (optional): Default top_k value used when the request does not specify one.
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to `gpt-5-mini`.
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 - **useFunctionApplyPatch:** When `true`, the server will convert any custom tool named `apply_patch` in Responses payloads into an OpenAI-style function tool (`type: "function"`) with a parameter schema so assistants can call it using function-calling semantics to edit files. Set to `false` to leave tools unchanged. Defaults to `true`.

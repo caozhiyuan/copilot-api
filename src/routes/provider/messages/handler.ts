@@ -29,6 +29,10 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
   try {
     const payload = await c.req.json<AnthropicMessagesPayload>()
 
+    payload.temperature ??= providerConfig.defaultTemperature
+    payload.top_p ??= providerConfig.defaultTopP
+    payload.top_k ??= providerConfig.defaultTopK
+
     logger.debug(
       "provider.messages.request",
       JSON.stringify({ payload, provider }),

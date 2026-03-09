@@ -24,6 +24,9 @@ export interface ProviderConfig {
   enabled?: boolean
   baseUrl?: string
   apiKey?: string
+  defaultTemperature?: number
+  defaultTopP?: number
+  defaultTopK?: number
 }
 
 export interface ResolvedProviderConfig {
@@ -31,6 +34,9 @@ export interface ResolvedProviderConfig {
   type: "anthropic"
   baseUrl: string
   apiKey: string
+  defaultTemperature?: number
+  defaultTopP?: number
+  defaultTopK?: number
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -264,6 +270,9 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     type,
     baseUrl,
     apiKey,
+    defaultTemperature: provider.defaultTemperature,
+    defaultTopP: provider.defaultTopP,
+    defaultTopK: provider.defaultTopK,
   }
 }
 
