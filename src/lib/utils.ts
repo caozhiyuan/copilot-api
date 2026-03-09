@@ -124,7 +124,9 @@ const findLastUserContent = (
       if (typeof msg.content === "string") {
         return msg.content
       } else if (Array.isArray(msg.content)) {
-        const array = msg.content.filter((n) => n.type !== "tool_result")
+        const array = msg.content
+          .filter((n) => n.type !== "tool_result")
+          .map((n) => ({ ...n, cache_control: undefined }))
         if (array.length > 0) {
           return JSON.stringify(array)
         }
