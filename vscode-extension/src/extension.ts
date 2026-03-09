@@ -4,6 +4,8 @@ import consola, { type ConsolaReporter } from "consola"
 import * as net from "node:net"
 import * as vscode from "vscode"
 
+import { state } from "~/lib/state"
+
 import { createVscodeOutputReporter } from "./consola-vscode-reporter"
 import { bindElectronNetFetchOnStartup } from "./electron-fetch-bind"
 import { sleep } from "./util"
@@ -225,6 +227,13 @@ async function startServer(): Promise<void> {
       cleanupConsolaReporter()
       return
     }
+
+    const util = await import("../../src/lib/utils")
+    util.stopVsCodeSessionRefreshLoop()
+    state.vsCodeSessionId = vscode.env.sessionId
+    output.appendLine(
+      `[session] Initialized session ID: ${state.vsCodeSessionId}`,
+    )
 
     localServer = currentServer
     endpoint = `http://localhost:${config.port}`

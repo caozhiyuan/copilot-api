@@ -68,33 +68,45 @@ export const cacheMacMachineId = () => {
 
 const SESSION_REFRESH_BASE_MS = 60 * 60 * 1000
 const SESSION_REFRESH_JITTER_MS = 20 * 60 * 1000
+let vsCodeSessionRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
 const generateSessionId = () => {
   state.vsCodeSessionId = randomUUID() + Date.now().toString()
   consola.debug(`Generated VSCode session ID: ${state.vsCodeSessionId}`)
 }
 
-const scheduleSessionIdRefresh = async () => {
-  try {
-    const randomDelay = Math.floor(Math.random() * SESSION_REFRESH_JITTER_MS)
-    const delay = SESSION_REFRESH_BASE_MS + randomDelay
-    consola.debug(
-      `Scheduling next VSCode session ID refresh in ${Math.round(
-        delay / 1000,
-      )} seconds`,
-    )
-    await sleep(delay)
-    generateSessionId()
-    void scheduleSessionIdRefresh()
-  } catch (error) {
-    consola.error("Failed to refresh session ID, rescheduling...", error)
-    void scheduleSessionIdRefresh()
+export const stopVsCodeSessionRefreshLoop = () => {
+  if (vsCodeSessionRefreshTimer) {
+    clearTimeout(vsCodeSessionRefreshTimer)
+    vsCodeSessionRefreshTimer = null
   }
 }
 
+const scheduleSessionIdRefresh = () => {
+  const randomDelay = Math.floor(Math.random() * SESSION_REFRESH_JITTER_MS)
+  const delay = SESSION_REFRESH_BASE_MS + randomDelay
+  consola.debug(
+    `Scheduling next VSCode session ID refresh in ${Math.round(
+      delay / 1000,
+    )} seconds`,
+  )
+
+  stopVsCodeSessionRefreshLoop()
+  vsCodeSessionRefreshTimer = setTimeout(() => {
+    try {
+      generateSessionId()
+    } catch (error) {
+      consola.error("Failed to refresh session ID, rescheduling...", error)
+    } finally {
+      scheduleSessionIdRefresh()
+    }
+  }, delay)
+}
+
 export const cacheVsCodeSessionId = () => {
+  stopVsCodeSessionRefreshLoop()
   generateSessionId()
-  void scheduleSessionIdRefresh()
+  scheduleSessionIdRefresh()
 }
 
 interface PayloadMessage {
