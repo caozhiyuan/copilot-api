@@ -6,6 +6,7 @@ import {
 } from "~/lib/config"
 import {
   type ResponsesPayload,
+  type ResponseInputCompaction,
   type ResponseInputContent,
   type ResponseInputImage,
   type ResponseInputItem,
@@ -14,6 +15,7 @@ import {
   type ResponseInputText,
   type ResponsesResult,
   type ResponseOutputContentBlock,
+  type ResponseOutputCompaction,
   type ResponseOutputFunctionCall,
   type ResponseOutputItem,
   type ResponseOutputReasoning,
@@ -44,6 +46,8 @@ import {
 } from "./anthropic-types"
 
 const MESSAGE_TYPE = "message"
+const COMPACTION_SIGNATURE_PREFIX = "cm1#"
+const COMPACTION_SIGNATURE_SEPARATOR = "@"
 
 export const THINKING_TEXT = "Thinking..."
 
@@ -87,6 +91,44 @@ export const translateAnthropicMessagesToResponsesPayload = (
   }
 
   return responsesPayload
+}
+
+type CompactionCarrier = {
+  id: string
+  encrypted_content: string
+}
+
+export const encodeCompactionCarrierSignature = (
+  compaction: CompactionCarrier,
+): string => {
+  return `${COMPACTION_SIGNATURE_PREFIX}${compaction.encrypted_content}${COMPACTION_SIGNATURE_SEPARATOR}${compaction.id}`
+}
+
+export const decodeCompactionCarrierSignature = (
+  signature: string,
+): CompactionCarrier | undefined => {
+  if (signature.startsWith(COMPACTION_SIGNATURE_PREFIX)) {
+    const raw = signature.slice(COMPACTION_SIGNATURE_PREFIX.length)
+    const separatorIndex = raw.indexOf(COMPACTION_SIGNATURE_SEPARATOR)
+
+    if (separatorIndex <= 0 || separatorIndex === raw.length - 1) {
+      return undefined
+    }
+
+    const encrypted_content = raw.slice(0, separatorIndex)
+    const id = raw.slice(separatorIndex + 1)
+
+    if (!encrypted_content) {
+      return undefined
+    }
+
+    return {
+      id,
+      encrypted_content,
+    }
+  }
+
+  return undefined
 }
 
 const translateMessage = (
@@ -165,17 +207,25 @@ const translateAssistantMessage = (
       continue
     }
 
-    if (
-      block.type === "thinking"
-      && block.signature
-      && block.signature.includes("@")
-    ) {
-      flushPendingContent(pendingContent, items, {
-        role: "assistant",
-        phase: assistantPhase,
-      })
-      items.push(createReasoningContent(block))
-      continue
+    if (block.type === "thinking" && block.signature) {
+      const compactionContent = createCompactionContent(block)
+      if (compactionContent) {
+        flushPendingContent(pendingContent, items, {
+          role: "assistant",
+          phase: assistantPhase,
+        })
+        items.push(compactionContent)
+        continue
+      }
+
+      if (block.signature.includes("@")) {
+        flushPendingContent(pendingContent, items, {
+          role: "assistant",
+          phase: assistantPhase,
+        })
+        items.push(createReasoningContent(block))
+        continue
+      }
     }
 
     const converted = translateAssistantContentBlock(block)
@@ -302,15 +352,43 @@ const createReasoningContent = (
   // align with vscode-copilot-chat extractThinkingData, should add id, otherwise it will cause miss cache occasionally —— the usage input cached tokens to be 0
   // https://github.com/microsoft/vscode-copilot-chat/blob/main/src/platform/endpoint/node/responsesApi.ts#L162
   // when use in codex cli, reasoning id is empty, so it will cause miss cache occasionally
-  const array = block.signature.split("@")
-  const signature = array[0]
-  const id = array[1]
+  const { encryptedContent, id } = parseReasoningSignature(block.signature)
   const thinking = block.thinking === THINKING_TEXT ? "" : block.thinking
   return {
     id,
     type: "reasoning",
     summary: thinking ? [{ type: "summary_text", text: thinking }] : [],
-    encrypted_content: signature,
+    encrypted_content: encryptedContent,
+  }
+}
+
+const createCompactionContent = (
+  block: AnthropicThinkingBlock,
+): ResponseInputCompaction | undefined => {
+  const compaction = decodeCompactionCarrierSignature(block.signature)
+  if (!compaction) {
+    return undefined
+  }
+
+  return {
+    id: compaction.id,
+    type: "compaction",
+    encrypted_content: compaction.encrypted_content,
+  }
+}
+
+const parseReasoningSignature = (
+  signature: string,
+): { encryptedContent: string; id: string } => {
+  const splitIndex = signature.lastIndexOf("@")
+
+  if (splitIndex <= 0 || splitIndex === signature.length - 1) {
+    return { encryptedContent: signature, id: "" }
+  }
+
+  return {
+    encryptedContent: signature.slice(0, splitIndex),
+    id: signature.slice(splitIndex + 1),
   }
 }
 
@@ -456,6 +534,13 @@ const mapOutputToAnthropicContent = (
         }
         break
       }
+      case "compaction": {
+        const compactionBlock = createCompactionThinkingBlock(item)
+        if (compactionBlock) {
+          contentBlocks.push(compactionBlock)
+        }
+        break
+      }
       default: {
         // Future compatibility for unrecognized output item types.
         const combinedText = combineMessageTextContent(
@@ -546,6 +631,23 @@ const createToolUseContentBlock = (
     id: toolId,
     name: call.name,
     input,
+  }
+}
+
+const createCompactionThinkingBlock = (
+  item: ResponseOutputCompaction,
+): AnthropicAssistantContentBlock | null => {
+  if (!item.id || !item.encrypted_content) {
+    return null
+  }
+
+  return {
+    type: "thinking",
+    thinking: THINKING_TEXT,
+    signature: encodeCompactionCarrierSignature({
+      id: item.id,
+      encrypted_content: item.encrypted_content,
+    }),
   }
 }
 

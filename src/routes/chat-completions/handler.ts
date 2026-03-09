@@ -7,7 +7,7 @@ import { createHandlerLogger } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import { getTokenCount } from "~/lib/tokenizer"
-import { isNullish } from "~/lib/utils"
+import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
 import {
   createChatCompletions,
   type ChatCompletionResponse,
@@ -49,7 +49,17 @@ export async function handleCompletion(c: Context) {
     logger.debug("Set max_tokens to:", JSON.stringify(payload.max_tokens))
   }
 
-  const response = await createChatCompletions(payload)
+  // not support subagent marker for now , set sessionId = getUUID(requestId)
+  const requestId = generateRequestIdFromPayload(payload)
+  logger.debug("Generated request ID:", requestId)
+
+  const sessionId = getUUID(requestId)
+  logger.debug("Extracted session ID:", sessionId)
+
+  const response = await createChatCompletions(payload, {
+    requestId,
+    sessionId,
+  })
 
   if (isNonStreaming(response)) {
     logger.debug("Non-streaming response:", JSON.stringify(response))
