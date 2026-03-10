@@ -18,7 +18,11 @@ import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { parseAccountType, type AccountType } from "./lib/types/account"
-import { cacheVSCodeVersion } from "./lib/utils"
+import {
+  cacheMacMachineId,
+  cacheVSCodeVersion,
+  cacheVsCodeSessionId,
+} from "./lib/utils"
 import { getDeviceCode } from "./services/github/get-device-code"
 import { getGitHubUser } from "./services/github/get-user"
 import { pollAccessToken } from "./services/github/poll-access-token"
@@ -104,6 +108,8 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   await ensurePaths()
   await cacheVSCodeVersion()
+  cacheMacMachineId()
+  cacheVsCodeSessionId()
 
   // Initialize accounts manager with VS Code version
   await accountsManager.initialize(state.vsCodeVersion)

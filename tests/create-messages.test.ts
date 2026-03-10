@@ -68,7 +68,7 @@ test("respects explicit initiator override", async () => {
     initiator: "agent",
   })
 
-  expect(getLastHeaders()["X-Initiator"]).toBe("agent")
+  expect(getLastHeaders()["x-initiator"]).toBe("agent")
 })
 
 test("falls back to user initiator for regular user prompt", async () => {
@@ -76,7 +76,7 @@ test("falls back to user initiator for regular user prompt", async () => {
 
   await createMessages(payload, accountContext)
 
-  expect(getLastHeaders()["X-Initiator"]).toBe("user")
+  expect(getLastHeaders()["x-initiator"]).toBe("user")
 })
 
 test("falls back to agent initiator for pure tool_result continuation", async () => {
@@ -90,5 +90,26 @@ test("falls back to agent initiator for pure tool_result continuation", async ()
 
   await createMessages(payload, accountContext)
 
-  expect(getLastHeaders()["X-Initiator"]).toBe("agent")
+  expect(getLastHeaders()["x-initiator"]).toBe("agent")
+})
+
+test("sets interaction headers for subagent session", async () => {
+  const payload = basePayload([{ type: "text", text: "hello" }])
+
+  await createMessages(payload, accountContext, {
+    upstreamRequestId: "request-2",
+    sessionId: "session-2",
+    subagentMarker: {
+      agent_id: "agent-2",
+      agent_type: "opencode-subagent",
+      session_id: "session-2",
+    },
+  })
+
+  const headers = getLastHeaders()
+  expect(headers["x-request-id"]).toBe("request-2")
+  expect(headers["x-agent-task-id"]).toBe("request-2")
+  expect(headers["x-interaction-id"]).toBe("session-2")
+  expect(headers["x-interaction-type"]).toBe("conversation-subagent")
+  expect(headers["x-initiator"]).toBe("agent")
 })

@@ -6,6 +6,7 @@ import type {
   AnthropicMessagesPayload,
   AnthropicResponse,
 } from "~/routes/messages/anthropic-types"
+import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 
 import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
@@ -78,6 +79,8 @@ export const createMessages = async (
     anthropicBetaHeader?: string
     upstreamRequestId?: string
     initiator?: "agent" | "user"
+    subagentMarker?: SubagentMarker | null
+    sessionId?: string
   },
 ): Promise<CreateMessagesReturn> => {
   const ctx = account ?? accountFromState()
@@ -93,7 +96,15 @@ export const createMessages = async (
 
   const headers: Record<string, string> = {
     ...copilotHeaders(ctx, enableVision, options?.upstreamRequestId),
-    "X-Initiator": initiator,
+    "x-initiator": options?.subagentMarker ? "agent" : initiator,
+  }
+
+  if (options?.subagentMarker) {
+    headers["x-interaction-type"] = "conversation-subagent"
+  }
+
+  if (options?.sessionId) {
+    headers["x-interaction-id"] = options.sessionId
   }
 
   // align with vscode copilot extension anthropic-beta

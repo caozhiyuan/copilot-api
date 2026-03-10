@@ -42,7 +42,7 @@ function getLastUpstreamPayload(): Record<string, unknown> {
   return JSON.parse(body as string) as Record<string, unknown>
 }
 
-test("sets X-Initiator to agent if tool/assistant present", async () => {
+test("sets x-initiator to agent if tool/assistant present", async () => {
   const callCountBefore = fetchMock.mock.calls.length
 
   const payload: ChatCompletionsPayload = {
@@ -57,10 +57,12 @@ test("sets X-Initiator to agent if tool/assistant present", async () => {
 
   expect(fetchMock.mock.calls.length).toBe(callCountBefore + 1)
   const { headers } = getLastFetchCall()
-  expect(headers["X-Initiator"]).toBe("agent")
+  expect(headers["x-initiator"]).toBe("agent")
+  expect(headers["x-request-id"]).toBeTruthy()
+  expect(headers["x-agent-task-id"]).toBe(headers["x-request-id"])
 })
 
-test("sets X-Initiator to user if only user present", async () => {
+test("sets x-initiator to user if only user present", async () => {
   const callCountBefore = fetchMock.mock.calls.length
 
   const payload: ChatCompletionsPayload = {
@@ -75,7 +77,7 @@ test("sets X-Initiator to user if only user present", async () => {
 
   expect(fetchMock.mock.calls.length).toBe(callCountBefore + 1)
   const { headers } = getLastFetchCall()
-  expect(headers["X-Initiator"]).toBe("user")
+  expect(headers["x-initiator"]).toBe("user")
 })
 
 test("respects explicit initiator override", async () => {
@@ -90,7 +92,31 @@ test("respects explicit initiator override", async () => {
 
   expect(fetchMock.mock.calls.length).toBe(callCountBefore + 1)
   const { headers } = getLastFetchCall()
-  expect(headers["X-Initiator"]).toBe("agent")
+  expect(headers["x-initiator"]).toBe("agent")
+})
+
+test("sets interaction headers for explicit session and subagent", async () => {
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gpt-test",
+  }
+
+  await createChatCompletions(payload, undefined, {
+    upstreamRequestId: "request-1",
+    sessionId: "session-1",
+    subagentMarker: {
+      agent_id: "agent-1",
+      agent_type: "opencode-subagent",
+      session_id: "session-1",
+    },
+  })
+
+  const { headers } = getLastFetchCall()
+  expect(headers["x-request-id"]).toBe("request-1")
+  expect(headers["x-agent-task-id"]).toBe("request-1")
+  expect(headers["x-interaction-id"]).toBe("session-1")
+  expect(headers["x-interaction-type"]).toBe("conversation-subagent")
+  expect(headers["x-initiator"]).toBe("agent")
 })
 
 test("injects reasoning_effort from config for gpt-5-mini when omitted", async () => {

@@ -1,4 +1,10 @@
+import type { Context } from "hono"
+
 import consola from "consola"
+import { createHash, randomUUID } from "node:crypto"
+import { networkInterfaces } from "node:os"
+
+import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 
 import { getModels } from "~/services/copilot/get-models"
 import { getVSCodeVersion } from "~/services/get-vscode-version"
@@ -23,4 +29,155 @@ export const cacheVSCodeVersion = async () => {
   state.vsCodeVersion = response
 
   consola.info(`Using VSCode version: ${response}`)
+}
+
+const invalidMacAddresses = new Set([
+  "00:00:00:00:00:00",
+  "ff:ff:ff:ff:ff:ff",
+  "ac:de:48:00:11:22",
+])
+
+function validateMacAddress(candidate: string): boolean {
+  const tempCandidate = candidate.replaceAll("-", ":").toLowerCase()
+  return !invalidMacAddresses.has(tempCandidate)
+}
+
+export function getMac(): string | null {
+  const ifaces = networkInterfaces()
+  // eslint-disable-next-line guard-for-in
+  for (const name in ifaces) {
+    const networkInterface = ifaces[name]
+    if (networkInterface) {
+      for (const { mac } of networkInterface) {
+        if (validateMacAddress(mac)) {
+          return mac
+        }
+      }
+    }
+  }
+  return null
+}
+
+export const cacheMacMachineId = () => {
+  const macAddress = getMac() ?? randomUUID()
+  state.macMachineId = createHash("sha256")
+    .update(macAddress, "utf8")
+    .digest("hex")
+  consola.debug(`Using machine ID: ${state.macMachineId}`)
+}
+
+const SESSION_REFRESH_BASE_MS = 60 * 60 * 1000
+const SESSION_REFRESH_JITTER_MS = 20 * 60 * 1000
+let vsCodeSessionRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+const generateSessionId = () => {
+  state.vsCodeSessionId = randomUUID() + Date.now().toString()
+  consola.debug(`Generated VSCode session ID: ${state.vsCodeSessionId}`)
+}
+
+export const stopVsCodeSessionRefreshLoop = () => {
+  if (vsCodeSessionRefreshTimer) {
+    clearTimeout(vsCodeSessionRefreshTimer)
+    vsCodeSessionRefreshTimer = null
+  }
+}
+
+const scheduleSessionIdRefresh = () => {
+  const randomDelay = Math.floor(Math.random() * SESSION_REFRESH_JITTER_MS)
+  const delay = SESSION_REFRESH_BASE_MS + randomDelay
+  consola.debug(
+    `Scheduling next VSCode session ID refresh in ${Math.round(
+      delay / 1000,
+    )} seconds`,
+  )
+
+  stopVsCodeSessionRefreshLoop()
+  vsCodeSessionRefreshTimer = setTimeout(() => {
+    try {
+      generateSessionId()
+    } catch (error) {
+      consola.error("Failed to refresh session ID, rescheduling...", error)
+    } finally {
+      scheduleSessionIdRefresh()
+    }
+  }, delay)
+}
+
+export const cacheVsCodeSessionId = () => {
+  stopVsCodeSessionRefreshLoop()
+  generateSessionId()
+  scheduleSessionIdRefresh()
+}
+
+interface PayloadMessage {
+  role?: string
+  content?: string | Array<{ type?: string; text?: string }> | null
+  type?: string
+}
+
+const findLastUserContent = (
+  messages: Array<PayloadMessage>,
+): string | null => {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role === "user" && msg.content) {
+      if (typeof msg.content === "string") {
+        return msg.content
+      } else if (Array.isArray(msg.content)) {
+        const array = msg.content
+          .filter((n) => n.type !== "tool_result")
+          .map((n) => ({ ...n, cache_control: undefined }))
+        if (array.length > 0) {
+          return JSON.stringify(array)
+        }
+      }
+    }
+  }
+  return null
+}
+
+export const generateRequestIdFromPayload = (
+  payload: {
+    messages: string | Array<PayloadMessage> | undefined
+  },
+  sessionId?: string,
+): string => {
+  const messages = payload.messages
+  if (messages) {
+    const lastUserContent =
+      typeof messages === "string" ? messages : findLastUserContent(messages)
+
+    if (lastUserContent) {
+      return getUUID(
+        (sessionId ?? "") + (state.macMachineId ?? "") + lastUserContent,
+      )
+    }
+  }
+
+  return randomUUID()
+}
+
+export const getRootSessionId = (
+  anthropicPayload: AnthropicMessagesPayload,
+  c: Context,
+): string | undefined => {
+  let sessionId: string | undefined
+  if (anthropicPayload.metadata?.user_id) {
+    const sessionMatch = new RegExp(/_session_(.+)$/).exec(
+      anthropicPayload.metadata.user_id,
+    )
+    sessionId = sessionMatch ? sessionMatch[1] : undefined
+  } else {
+    sessionId = c.req.header("x-session-id")
+  }
+  if (sessionId) {
+    return getUUID(sessionId)
+  }
+  return sessionId
+}
+
+export const getUUID = (content: string): string => {
+  const hash = createHash("sha256").update(content).digest("hex")
+  const hash32 = hash.slice(0, 32)
+  return `${hash32.slice(0, 8)}-${hash32.slice(8, 12)}-${hash32.slice(12, 16)}-${hash32.slice(16, 20)}-${hash32.slice(20)}`
 }

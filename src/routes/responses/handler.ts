@@ -21,6 +21,7 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
+import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
 import { parseUserId } from "~/routes/messages/responses-translation"
 import {
   createResponses,
@@ -30,7 +31,11 @@ import {
 } from "~/services/copilot/create-responses"
 
 import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
-import { getResponsesRequestOptions } from "./utils"
+import {
+  applyResponsesApiContextManagement,
+  compactInputByLatestCompaction,
+  getResponsesRequestOptions,
+} from "./utils"
 
 const logger = createHandlerLogger("responses-handler")
 
@@ -48,6 +53,7 @@ export const handleResponses = async (c: Context) => {
 
   // Remove web_search tool as it's not supported by GitHub Copilot
   removeWebSearchTool(payload)
+  compactInputByLatestCompaction(payload)
 
   const streamRequested = Boolean(payload.stream)
 
@@ -103,6 +109,11 @@ export const handleResponses = async (c: Context) => {
 
   const upstreamPayload = { ...payload, model: selectedModel.id }
   useFunctionApplyPatch(upstreamPayload)
+  applyResponsesApiContextManagement(
+    upstreamPayload,
+    selectedModel.capabilities.limits.max_prompt_tokens,
+  )
+  compactInputByLatestCompaction(upstreamPayload)
 
   const premiumRemainingBefore = account.premiumRemaining
   const premiumUnlimitedBefore = account.unlimited
@@ -112,8 +123,12 @@ export const handleResponses = async (c: Context) => {
   if (state.manualApprove) await awaitApproval()
 
   const accountCtx = toAccountContext(account)
-  const upstreamRequestId = randomUUID()
+  const upstreamRequestId = generateRequestIdFromPayload({
+    messages: upstreamPayload.input,
+  })
+  const upstreamSessionId = getUUID(upstreamRequestId)
   request.upstreamRequestId = upstreamRequestId
+  request.upstreamSessionId = upstreamSessionId
 
   if (streamRequested) {
     return handleStreamingResponses({
@@ -170,6 +185,7 @@ type RequestContext = {
   promptCacheKey?: string
   initiator?: "agent" | "user"
   upstreamRequestId?: string
+  upstreamSessionId?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -354,6 +370,7 @@ async function handleStreamingResponses(params: {
         vision,
         initiator,
         upstreamRequestId: request.upstreamRequestId,
+        sessionId: request.upstreamSessionId,
       },
       accountCtx,
     )
@@ -668,7 +685,12 @@ async function handleNonStreamingResponses(params: {
   try {
     const response = await createResponses(
       payload,
-      { vision, initiator, upstreamRequestId: request.upstreamRequestId },
+      {
+        vision,
+        initiator,
+        upstreamRequestId: request.upstreamRequestId,
+        sessionId: request.upstreamSessionId,
+      },
       accountCtx,
     )
     finishedAtMs = Date.now()

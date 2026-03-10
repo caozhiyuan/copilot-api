@@ -2,6 +2,7 @@ const MARKER_PREFIX = "__SUBAGENT_MARKER__"
 
 const subagentSessions = new Set()
 const markedSessions = new Set()
+const sessionParentMap = new Map()
 
 const getSessionInfo = (event) => {
   if (!event || typeof event !== "object") return undefined
@@ -17,8 +18,13 @@ export const SubagentMarkerPlugin = async () => {
     event: async ({ event }) => {
       if (event.type === "session.created") {
         const info = getSessionInfo(event)
-        if (info?.id && info.parentID) {
-          subagentSessions.add(info.id)
+        if (info?.id) {
+          if (info.parentID) {
+            subagentSessions.add(info.id)
+            sessionParentMap.set(info.id, info.parentID)
+          } else {
+            sessionParentMap.set(info.id, info.id)
+          }
         }
         return
       }
@@ -28,6 +34,7 @@ export const SubagentMarkerPlugin = async () => {
         if (info?.id) {
           subagentSessions.delete(info.id)
           markedSessions.delete(info.id)
+          sessionParentMap.delete(info.id)
         }
       }
     },
@@ -58,8 +65,14 @@ export const SubagentMarkerPlugin = async () => {
           end: Date.now(),
         },
       })
-
       markedSessions.add(sessionID)
+    },
+    "chat.headers": async (input, output) => {
+      const { sessionID } = input
+      const sessionIdValue = sessionParentMap.get(sessionID)
+      if (sessionIdValue) {
+        output.headers["x-session-id"] = sessionIdValue
+      }
     },
   }
 }

@@ -21,7 +21,7 @@ import {
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
 import { getTokenCount } from "~/lib/tokenizer"
-import { isNullish } from "~/lib/utils"
+import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
 import { parseUserId } from "~/routes/messages/responses-translation"
 import {
   createChatCompletions,
@@ -111,8 +111,10 @@ export async function handleCompletion(c: Context) {
   )
 
   const accountCtx = toAccountContext(account)
-  const upstreamRequestId = randomUUID()
+  const upstreamRequestId = generateRequestIdFromPayload(payloadWithMaxTokens)
+  const upstreamSessionId = getUUID(upstreamRequestId)
   request.upstreamRequestId = upstreamRequestId
+  request.upstreamSessionId = upstreamSessionId
 
   if (streamRequested) {
     return handleStreamingRequest({
@@ -165,6 +167,7 @@ type RequestContext = {
   promptCacheKey?: string
   initiator?: "agent" | "user"
   upstreamRequestId?: string
+  upstreamSessionId?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -347,6 +350,7 @@ async function handleStreamingRequest(params: {
   try {
     response = await createChatCompletions(payload, accountCtx, {
       upstreamRequestId: request.upstreamRequestId,
+      sessionId: request.upstreamSessionId,
     })
   } catch (error) {
     return handleUpstreamCreateError({
@@ -667,6 +671,7 @@ async function handleNonStreamingRequest(params: {
   try {
     const response = await createChatCompletions(payload, accountCtx, {
       upstreamRequestId: request.upstreamRequestId,
+      sessionId: request.upstreamSessionId,
     })
     finishedAtMs = Date.now()
 

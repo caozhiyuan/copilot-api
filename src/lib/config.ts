@@ -12,6 +12,7 @@ export interface AppConfig {
   freeModelLoadBalancing?: boolean
   /** @deprecated */
   apiKey?: string
+  responsesApiContextManagementModels?: Array<string>
   modelReasoningEfforts?: Record<
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
@@ -63,6 +64,7 @@ const defaultConfig: AppConfig = {
   },
   smallModel: "gpt-5-mini",
   freeModelLoadBalancing: true,
+  responsesApiContextManagementModels: [],
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
     "gpt-5.3-codex": "xhigh",
@@ -513,6 +515,19 @@ export function getModelRefreshIntervalMs(): number {
 export function isMessageStartInputTokensFallbackEnabled(): boolean {
   const config = getConfig()
   return config.messageStartInputTokensFallback ?? false
+}
+
+export function getResponsesApiContextManagementModels(): Array<string> {
+  const config = getConfig()
+  return (
+    config.responsesApiContextManagementModels
+    ?? defaultConfig.responsesApiContextManagementModels
+    ?? []
+  )
+}
+
+export function isResponsesApiContextManagementModel(model: string): boolean {
+  return getResponsesApiContextManagementModels().includes(model)
 }
 
 export function getReasoningEffortForModel(

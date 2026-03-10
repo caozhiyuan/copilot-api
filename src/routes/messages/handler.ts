@@ -32,6 +32,7 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
+import { generateRequestIdFromPayload, getRootSessionId } from "~/lib/utils"
 import {
   buildErrorEvent,
   createResponsesStreamState,
@@ -42,7 +43,11 @@ import {
   translateAnthropicMessagesToResponsesPayload,
   translateResponsesResultToAnthropic,
 } from "~/routes/messages/responses-translation"
-import { getResponsesRequestOptions } from "~/routes/responses/utils"
+import {
+  applyResponsesApiContextManagement,
+  compactInputByLatestCompaction,
+  getResponsesRequestOptions,
+} from "~/routes/responses/utils"
 import {
   createChatCompletions,
   getChatInitiator,
@@ -59,6 +64,8 @@ import {
   type ResponsesResult,
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
+
+import type { SubagentMarker } from "./subagent-marker"
 
 import {
   type AnthropicMessagesPayload,
@@ -143,6 +150,9 @@ export async function handleCompletion(c: Context) {
     logger.debug("Detected Subagent marker:", JSON.stringify(subagentMarker))
   }
 
+  const sessionId = getRootSessionId(anthropicPayload, c)
+  logger.debug("Extracted session ID:", sessionId)
+
   const anthropicBeta = c.req.header("anthropic-beta")
   const isCompact = isCompactRequest(anthropicPayload)
 
@@ -163,6 +173,12 @@ export async function handleCompletion(c: Context) {
     // not only for claude, but also for opencode
     mergeToolResultForClaude(anthropicPayload)
   }
+
+  const upstreamRequestId = generateRequestIdFromPayload(
+    anthropicPayload,
+    sessionId,
+  )
+  logger.debug("Generated request ID:", upstreamRequestId)
 
   const clientModel = anthropicPayload.model
   const streamRequested = Boolean(anthropicPayload.stream)
@@ -254,6 +270,7 @@ export async function handleCompletion(c: Context) {
     upstreamEndpoint: endpoint,
     upstreamModel: selectedModel.id,
     costUnits,
+    upstreamRequestId,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
   }
@@ -263,6 +280,8 @@ export async function handleCompletion(c: Context) {
       anthropicPayload,
       anthropicBetaHeader: anthropicBeta ?? undefined,
       initiatorOverride,
+      subagentMarker,
+      sessionId,
       instr,
       selectedModel,
     })
@@ -273,6 +292,8 @@ export async function handleCompletion(c: Context) {
       anthropicPayload,
       openAIPayload,
       initiatorOverride,
+      subagentMarker,
+      sessionId,
       selectedModel,
       instr,
     })
@@ -282,6 +303,8 @@ export async function handleCompletion(c: Context) {
     c,
     openAIPayload,
     initiatorOverride,
+    subagentMarker,
+    sessionId,
     selectedModel,
     instr,
   })
@@ -291,10 +314,20 @@ const handleWithChatCompletions = async (params: {
   c: Context
   openAIPayload: ChatCompletionsPayload
   initiatorOverride?: "agent" | "user"
+  subagentMarker?: SubagentMarker | null
+  sessionId?: string
   selectedModel: Model
   instr: InstrumentationContext
 }): Promise<Response> => {
-  const { c, openAIPayload, initiatorOverride, selectedModel, instr } = params
+  const {
+    c,
+    openAIPayload,
+    initiatorOverride,
+    subagentMarker,
+    sessionId,
+    selectedModel,
+    instr,
+  } = params
   logger.debug(
     "Translated OpenAI request payload:",
     JSON.stringify(openAIPayload),
@@ -303,17 +336,17 @@ const handleWithChatCompletions = async (params: {
   const ctx = toAccountContext(instr.account)
   const initiator =
     initiatorOverride ?? getChatInitiator(openAIPayload.messages)
-  const upstreamRequestId = randomUUID()
 
   instr.initiator = initiator
-  instr.upstreamRequestId = upstreamRequestId
 
   let response: ChatCompletionsResult
 
   try {
     response = await createChatCompletions(openAIPayload, ctx, {
-      upstreamRequestId,
+      upstreamRequestId: instr.upstreamRequestId,
       initiator,
+      subagentMarker,
+      sessionId,
     })
   } catch (error) {
     return await handleChatCompletionsCreateError({
@@ -365,6 +398,8 @@ const handleWithResponsesApi = async (params: {
   anthropicPayload: AnthropicMessagesPayload
   openAIPayload: ChatCompletionsPayload
   initiatorOverride?: "agent" | "user"
+  subagentMarker?: SubagentMarker | null
+  sessionId?: string
   selectedModel: Model
   instr: InstrumentationContext
 }): Promise<Response> => {
@@ -373,6 +408,8 @@ const handleWithResponsesApi = async (params: {
     anthropicPayload,
     openAIPayload,
     initiatorOverride,
+    subagentMarker,
+    sessionId,
     selectedModel,
     instr,
   } = params
@@ -380,6 +417,13 @@ const handleWithResponsesApi = async (params: {
     anthropicPayload,
     selectedModel.id,
   )
+
+  applyResponsesApiContextManagement(
+    responsesPayload,
+    selectedModel.capabilities.limits.max_prompt_tokens,
+  )
+  compactInputByLatestCompaction(responsesPayload)
+
   logger.debug(
     "Translated Responses payload:",
     JSON.stringify(responsesPayload),
@@ -388,10 +432,8 @@ const handleWithResponsesApi = async (params: {
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
   const resolvedInitiator = initiatorOverride ?? initiator
   const ctx = toAccountContext(instr.account)
-  const upstreamRequestId = randomUUID()
 
   instr.initiator = resolvedInitiator
-  instr.upstreamRequestId = upstreamRequestId
 
   let response: Awaited<ReturnType<typeof createResponses>>
 
@@ -401,7 +443,9 @@ const handleWithResponsesApi = async (params: {
       {
         vision,
         initiator: resolvedInitiator,
-        upstreamRequestId,
+        upstreamRequestId: instr.upstreamRequestId,
+        subagentMarker,
+        sessionId,
       },
       ctx,
     )
@@ -1176,6 +1220,8 @@ const handleWithMessagesApi = async (params: {
   anthropicPayload: AnthropicMessagesPayload
   anthropicBetaHeader?: string
   initiatorOverride?: "agent" | "user"
+  subagentMarker?: SubagentMarker | null
+  sessionId?: string
   instr: InstrumentationContext
   selectedModel: Model
 }): Promise<Response> => {
@@ -1184,6 +1230,8 @@ const handleWithMessagesApi = async (params: {
     anthropicPayload,
     anthropicBetaHeader,
     initiatorOverride,
+    subagentMarker,
+    sessionId,
     instr,
     selectedModel,
   } = params
@@ -1215,19 +1263,19 @@ const handleWithMessagesApi = async (params: {
   logger.debug("Translated Messages payload:", JSON.stringify(anthropicPayload))
 
   const ctx = toAccountContext(instr.account)
-  const upstreamRequestId = randomUUID()
   const initiator = initiatorOverride ?? getMessagesInitiator(anthropicPayload)
 
   instr.initiator = initiator
-  instr.upstreamRequestId = upstreamRequestId
 
   let response: MessagesResult
 
   try {
     response = await createMessages(anthropicPayload, ctx, {
       anthropicBetaHeader,
-      upstreamRequestId,
+      upstreamRequestId: instr.upstreamRequestId,
       initiator,
+      subagentMarker,
+      sessionId,
     })
   } catch (error) {
     return await handleMessagesCreateError({

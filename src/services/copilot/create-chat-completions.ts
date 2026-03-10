@@ -2,6 +2,7 @@ import consola from "consola"
 import { events } from "fetch-event-stream"
 
 import type { AccountContext } from "~/lib/types/account"
+import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 
 import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
 import { getReasoningEffortForModel, isForceAgentEnabled } from "~/lib/config"
@@ -52,6 +53,8 @@ export const createChatCompletions = async (
   options?: {
     upstreamRequestId?: string
     initiator?: "agent" | "user"
+    subagentMarker?: SubagentMarker | null
+    sessionId?: string
   },
 ) => {
   const ctx = account ?? accountFromState()
@@ -65,10 +68,18 @@ export const createChatCompletions = async (
 
   const initiator = options?.initiator ?? getChatInitiator(payload.messages)
 
-  // Build headers and add X-Initiator
+  // Build headers and add x-initiator
   const headers: Record<string, string> = {
     ...copilotHeaders(ctx, enableVision, options?.upstreamRequestId),
-    "X-Initiator": initiator,
+    "x-initiator": options?.subagentMarker ? "agent" : initiator,
+  }
+
+  if (options?.subagentMarker) {
+    headers["x-interaction-type"] = "conversation-subagent"
+  }
+
+  if (options?.sessionId) {
+    headers["x-interaction-id"] = options.sessionId
   }
 
   const upstreamPayload = applyDefaultReasoningEffort(payload)

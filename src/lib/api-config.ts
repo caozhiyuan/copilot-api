@@ -2,12 +2,14 @@ import { randomUUID } from "node:crypto"
 
 import type { AccountContext } from "./types/account"
 
+import { state } from "./state"
+
 export const standardHeaders = () => ({
   "content-type": "application/json",
   accept: "application/json",
 })
 
-const COPILOT_VERSION = "0.37.6"
+const COPILOT_VERSION = "0.38.2"
 const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
 const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
 
@@ -35,9 +37,19 @@ export const copilotHeaders = (
     "x-github-api-version": API_VERSION,
     "x-request-id": resolvedRequestId,
     "x-vscode-user-agent-library-version": "electron-fetch",
+    "x-agent-task-id": resolvedRequestId,
+    "x-interaction-type": "conversation-agent",
   }
 
   if (vision) headers["copilot-vision-request"] = "true"
+
+  if (state.macMachineId) {
+    headers["vscode-machineid"] = state.macMachineId
+  }
+
+  if (state.vsCodeSessionId) {
+    headers["vscode-sessionid"] = state.vsCodeSessionId
+  }
 
   return headers
 }
