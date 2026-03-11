@@ -2,6 +2,7 @@ import consola from "consola"
 import fs from "node:fs/promises"
 import { setTimeout as delay } from "node:timers/promises"
 
+import { isOpencodeOauthApp } from "~/lib/api-config"
 import { PATHS } from "~/lib/paths"
 import { getCopilotToken } from "~/services/github/get-copilot-token"
 import { getDeviceCode } from "~/services/github/get-device-code"
@@ -28,6 +29,20 @@ const writeGithubToken = (token: string) =>
   fs.writeFile(PATHS.GITHUB_TOKEN_PATH, token)
 
 export const setupCopilotToken = async () => {
+  if (isOpencodeOauthApp()) {
+    if (!state.githubToken) throw new Error(`opencode token not found`)
+
+    state.copilotToken = state.githubToken
+
+    consola.debug("GitHub Copilot token set from opencode auth token")
+    if (state.showToken) {
+      consola.info("Copilot token:", state.copilotToken)
+    }
+
+    stopCopilotRefreshLoop()
+    return
+  }
+
   const { token, refresh_in } = await getCopilotToken()
   state.copilotToken = token
 

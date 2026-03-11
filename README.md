@@ -39,6 +39,7 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **Token Visibility**: Option to display GitHub and Copilot tokens during authentication and refresh for debugging (`--show-token`).
 - **Flexible Authentication**: Authenticate interactively or provide a GitHub token directly, suitable for CI/CD environments.
 - **Support for Different Account Types**: Works with individual, business, and enterprise GitHub Copilot plans.
+- **Opencode OAuth Support**: Use opencode GitHub Copilot authentication by setting `COPILOT_API_OAUTH_APP=opencode` environment variable.
 
 ## Demo
 
@@ -302,6 +303,28 @@ npx @jeffreycao/copilot-api@latest debug --json
 
 # Initialize proxy from environment variables (HTTP_PROXY, HTTPS_PROXY, etc.)
 npx @jeffreycao/copilot-api@latest start --proxy-env
+
+# Use opencode GitHub Copilot authentication
+COPILOT_API_OAUTH_APP=opencode npx @jeffreycao/copilot-api@latest start
+```
+
+### Opencode OAuth Authentication
+
+You can use opencode GitHub Copilot authentication instead of the default one:
+
+```sh
+# Set environment variable before running any command
+export COPILOT_API_OAUTH_APP=opencode
+
+# Then run start or auth commands
+npx @jeffreycao/copilot-api@latest start
+npx @jeffreycao/copilot-api@latest auth
+```
+
+Or use inline environment variable:
+
+```sh
+COPILOT_API_OAUTH_APP=opencode npx @jeffreycao/copilot-api@latest start
 ```
 
 ## Using the Usage Viewer
