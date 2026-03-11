@@ -346,7 +346,13 @@ const handleWithMessagesApi = async (
     }
   }
 
-  if (selectedModel?.capabilities.supports.adaptive_thinking) {
+  // Skip adaptive thinking injection when tool_choice forces tool use,
+  // because Anthropic API does not allow thinking with forced tool_choice.
+  const isToolChoiceForced = anthropicPayload.tool_choice
+    && anthropicPayload.tool_choice.type !== "auto"
+    && anthropicPayload.tool_choice.type !== "none"
+
+  if (selectedModel?.capabilities.supports.adaptive_thinking && !isToolChoiceForced) {
     anthropicPayload.thinking = {
       type: "adaptive",
     }
