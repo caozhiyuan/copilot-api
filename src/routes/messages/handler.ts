@@ -346,7 +346,12 @@ const handleWithMessagesApi = async (
     }
   }
 
-  if (selectedModel?.capabilities.supports.adaptive_thinking) {
+  // https://platform.claude.com/docs/en/build-with-claude/extended-thinking#extended-thinking-with-tool-use
+  // Using tool_choice: {"type": "any"} or tool_choice: {"type": "tool", "name": "..."} will result in an error because these options force tool use, which is incompatible with extended thinking.
+  const toolChoice = anthropicPayload.tool_choice
+  const disableThink = toolChoice?.type === "any" || toolChoice?.type === "tool"
+
+  if (selectedModel?.capabilities.supports.adaptive_thinking && !disableThink) {
     anthropicPayload.thinking = {
       type: "adaptive",
     }
