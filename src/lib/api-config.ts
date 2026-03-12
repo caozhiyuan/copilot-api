@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import type { State } from "./state"
 
 export const isOpencodeOauthApp = (): boolean => {
-  return process.env.COPILOT_API_OAUTH_APP === "opencode"
+  return process.env.COPILOT_API_OAUTH_APP?.trim() === "opencode"
 }
 
 export const normalizeDomain = (input: string): string => {

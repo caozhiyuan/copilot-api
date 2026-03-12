@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-const AUTH_APP = process.env.COPILOT_API_OAUTH_APP || ""
+const AUTH_APP = process.env.COPILOT_API_OAUTH_APP?.trim() || ""
 const ENTERPRISE_PREFIX = process.env.COPILOT_API_ENTERPRISE_URL ? "ent_" : ""
 
 const DEFAULT_DIR = path.join(os.homedir(), ".local", "share", "copilot-api")
