@@ -1,10 +1,6 @@
 import consola from "consola"
 
-import {
-  GITHUB_BASE_URL,
-  GITHUB_CLIENT_ID,
-  standardHeaders,
-} from "~/lib/api-config"
+import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
 import { sleep } from "~/lib/utils"
 
 import type { DeviceCodeResponse } from "./get-device-code"
@@ -12,24 +8,24 @@ import type { DeviceCodeResponse } from "./get-device-code"
 export async function pollAccessToken(
   deviceCode: DeviceCodeResponse,
 ): Promise<string> {
+  const { clientId, headers } = getOauthAppConfig()
+  const { accessTokenUrl } = getOauthUrls()
+
   // Interval is in seconds, we need to multiply by 1000 to get milliseconds
   // I'm also adding another second, just to be safe
   const sleepDuration = (deviceCode.interval + 1) * 1000
   consola.debug(`Polling access token with interval of ${sleepDuration}ms`)
 
   while (true) {
-    const response = await fetch(
-      `${GITHUB_BASE_URL}/login/oauth/access_token`,
-      {
-        method: "POST",
-        headers: standardHeaders(),
-        body: JSON.stringify({
-          client_id: GITHUB_CLIENT_ID,
-          device_code: deviceCode.device_code,
-          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-        }),
-      },
-    )
+    const response = await fetch(accessTokenUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        client_id: clientId,
+        device_code: deviceCode.device_code,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      }),
+    })
 
     if (!response.ok) {
       await sleep(sleepDuration)

@@ -3,7 +3,11 @@ import { events } from "fetch-event-stream"
 
 import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 
-import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
+import {
+  copilotBaseUrl,
+  copilotHeaders,
+  prepareInteractionHeaders,
+} from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
@@ -40,14 +44,11 @@ export const createChatCompletions = async (
     "x-initiator": isAgentCall ? "agent" : "user",
   }
 
-  if (options.subagentMarker) {
-    headers["x-initiator"] = "agent"
-    headers["x-interaction-type"] = "conversation-subagent"
-  }
-
-  if (options.sessionId) {
-    headers["x-interaction-id"] = options.sessionId
-  }
+  prepareInteractionHeaders(
+    options.sessionId,
+    options.subagentMarker !== null,
+    headers,
+  )
 
   const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
     method: "POST",
