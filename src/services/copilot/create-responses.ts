@@ -376,7 +376,7 @@ export const createResponses = async (
     "x-initiator": initiator,
   }
 
-  prepareInteractionHeaders(sessionId, subagentMarker !== null, headers)
+  prepareInteractionHeaders(sessionId, Boolean(subagentMarker), headers)
 
   // service_tier is not supported by github copilot
   payload.service_tier = null

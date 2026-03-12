@@ -81,6 +81,7 @@ const defaultConfig: AppConfig = {
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
     "gpt-5.3-codex": "xhigh",
+    "gpt-5.4": "xhigh",
   },
   useFunctionApplyPatch: true,
   compactUseSmallModel: true,

@@ -90,7 +90,7 @@ export const createMessages = async (
 
   prepareInteractionHeaders(
     options.sessionId,
-    options.subagentMarker !== null,
+    Boolean(options.subagentMarker),
     headers,
   )
 
