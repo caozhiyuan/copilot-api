@@ -21,7 +21,8 @@
 
 ---
 
-**Note:** If you are using [opencode](https://github.com/sst/opencode), you do not need this project. Opencode supports GitHub Copilot provider out of the box.
+> [!NOTE]
+> [opencode](https://github.com/sst/opencode) already ships with a built-in GitHub Copilot provider, so you may not need this project for basic usage. This proxy is still useful if you want OpenCode to talk to Copilot through `@ai-sdk/anthropic`, preserve Anthropic Messages semantics for tool use, prefer the native Messages API over plain Chat Completions for Claude-family models, use `gpt-5.4` phase-aware commentary, or fine-tune premium-request usage with small-model fallbacks.
 
 ---
 
@@ -29,9 +30,17 @@
 
 A reverse-engineered proxy for the GitHub Copilot API that exposes it as an OpenAI and Anthropic compatible service. This allows you to use GitHub Copilot with any tool that supports the OpenAI Chat Completions API or the Anthropic Messages API, including to power [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview).
 
+Compared with routing everything through plain Chat Completions compatibility, this proxy can prefer Copilot's native Anthropic-style Messages API for Claude-family models, preserve more native thinking/tool semantics, reduce unnecessary Premium request consumption on warmup or resumed tool turns, and expose phase-aware `gpt-5.4` / `gpt-5.3-codex` responses that are easier for users to follow.
+
 ## Features
 
 - **OpenAI & Anthropic Compatibility**: Exposes GitHub Copilot as an OpenAI-compatible (`/v1/responses`, `/v1/chat/completions`, `/v1/models`, `/v1/embeddings`) and Anthropic-compatible (`/v1/messages`) API.
+- **Anthropic-First Routing for Claude Models**: When a model supports Copilot's native `/v1/messages` endpoint, the proxy prefers it over `/responses` or `/chat/completions`, preserving Anthropic-style `tool_use` / `tool_result` flows and more Claude-native behavior.
+- **Fewer Unnecessary Premium Requests**: Reduces wasted premium usage by routing warmup and compact/background requests to `smallModel`, merging `tool_result` follow-ups back into the tool flow, and treating resumed tool turns as continuation traffic instead of fresh premium interactions.
+- **Phase-Aware `gpt-5.4` and `gpt-5.3-codex`**: These models can emit user-friendly commentary before deeper reasoning or tool use, so long-running coding actions are easier to understand instead of appearing as a sudden tool burst.
+- **Claude Native Beta Support**: On the Messages API path, supports Anthropic-native capabilities such as `interleaved-thinking`, `advanced-tool-use`, and `context-management`, which are difficult or unavailable through plain Chat Completions compatibility.
+- **Subagent Marker Integration**: Optional Claude Code and opencode plugins can inject `__SUBAGENT_MARKER__...` and propagate `x-session-id` so subagent traffic keeps the correct root session and agent/user semantics.
+- **OpenCode via `@ai-sdk/anthropic`**: Point OpenCode at this proxy as an Anthropic provider so Anthropic Messages semantics, premium-request optimizations, and Claude-native behavior are preserved end to end.
 - **Claude Code Integration**: Easily configure and launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) to use Copilot as its backend with a simple command-line flag (`--claude-code`).
 - **Usage Dashboard**: A web-based dashboard to monitor your Copilot API usage, view quotas, and see detailed statistics.
 - **Rate Limit Control**: Manage API usage with rate-limiting options (`--rate-limit`) and a waiting mechanism (`--wait`) to prevent errors from rapid requests.
@@ -43,6 +52,45 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **GitHub Enterprise Support**: Connect to GHE.com by setting `COPILOT_API_ENTERPRISE_URL` environment variable (e.g., `company.ghe.com`).
 - **Custom Data Directory**: Change the default data directory (where tokens and config are stored) by setting `COPILOT_API_HOME` environment variable.
 - **Multi-Provider Anthropic Proxy Routes**: Add global provider configs and call external Anthropic-compatible APIs via `/:provider/v1/messages` and `/:provider/v1/models`.
+
+## Better Agent Semantics
+
+### Native Anthropic Messages API when available
+
+For models that advertise Copilot support for `/v1/messages`, this project sends the request to the native Messages API first and only falls back to `/responses` or `/chat/completions` when needed.
+
+Compared with using Claude-family models only through Chat Completions compatibility, the Messages API path keeps more Anthropic-native behavior, including support for:
+
+- `interleaved-thinking-2025-05-14`
+- `advanced-tool-use-2025-11-20`
+- `context-management-2025-06-27`
+
+Supported `anthropic-beta` values are filtered and forwarded on the native Messages path, and `interleaved-thinking` is added automatically when a thinking budget is requested for non-adaptive extended thinking.
+
+### Fewer unnecessary Premium requests
+
+The proxy includes request-accounting safeguards designed for tool-heavy coding workflows:
+
+- tool-less warmup or probe requests can be forced onto `smallModel` so background checks do not spend premium usage;
+- compact/background requests can be downgraded to `smallModel` automatically;
+- mixed `tool_result` + reminder text blocks are merged back into the `tool_result` flow instead of being counted like fresh user turns;
+- `x-initiator` is derived from the latest message or item, not stale assistant history.
+
+This helps resumed tool turns continue the existing workflow instead of consuming an extra Premium request as a brand-new interaction.
+
+### Phase-aware `gpt-5.4` and `gpt-5.3-codex`
+
+By default, the built-in `extraPrompts` for `gpt-5.4` and `gpt-5.3-codex` enable intermediary-update behavior, and the proxy translates assistant turns into `phase: "commentary"` before tool calls and `phase: "final_answer"` for the final response.
+
+That gives clients a short, user-friendly explanation of what the model is about to do before deeper reasoning or tool execution begins.
+
+### Subagent marker integration
+
+For subagent-based clients, this project can preserve root session context and correctly classify subagent-originated traffic.
+
+The marker flow uses `__SUBAGENT_MARKER__...` inside a `<system-reminder>` block together with root `x-session-id` propagation. When a marker is detected, the proxy can keep the parent session identity, infer `x-initiator: agent`, and tag the interaction as subagent traffic instead of a fresh top-level request.
+
+Optional marker producers are included for both Claude Code and opencode; see [Subagent Marker Integration](#subagent-marker-integration-optional) below for setup details.
 
 ## Demo
 
@@ -203,18 +251,22 @@ The following command line options are available for the `start` command:
     },
     "extraPrompts": {
       "gpt-5-mini": "<built-in exploration prompt>",
-      "gpt-5.1-codex-max": "<built-in exploration prompt>"
+      "gpt-5.3-codex": "<built-in commentary prompt>",
+      "gpt-5.4": "<built-in commentary prompt>"
     },
     "smallModel": "gpt-5-mini",
+    "responsesApiContextManagementModels": [],
     "modelReasoningEfforts": {
-      "gpt-5-mini": "low"
+      "gpt-5-mini": "low",
+      "gpt-5.3-codex": "xhigh",
+      "gpt-5.4": "xhigh"
     },
     "useFunctionApplyPatch": true,
     "compactUseSmallModel": true
   }
   ```
 - **auth.apiKeys:** API keys used for request authentication. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication is disabled.
-- **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts.
+- **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts. The built-in prompts for `gpt-5.3-codex` and `gpt-5.4` enable phase-aware commentary, which lets the model emit a short user-facing progress update before tools or deeper reasoning.
 - **providers:** Global upstream provider map. Each provider key (for example `openrouter`) becomes a route prefix (`/openrouter/v1/messages`). Currently only `type: "anthropic"` is supported.
   - `enabled` defaults to `true` if omitted.
   - `baseUrl` should be provider API base URL without trailing `/v1/messages`.
@@ -222,7 +274,8 @@ The following command line options are available for the `start` command:
   - `defaultTemperature` (optional): Default temperature value used when the request does not specify one.
   - `defaultTopP` (optional): Default top_p value used when the request does not specify one.
   - `defaultTopK` (optional): Default top_k value used when the request does not specify one.
-- **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to `gpt-5-mini`.
+- **smallModel:** Fallback model used for tool-less warmup messages, compact/background requests, and other short housekeeping turns (for example from Claude Code or OpenCode) to avoid spending premium requests; defaults to `gpt-5-mini`.
+- **responsesApiContextManagementModels:** List of model IDs that should receive Responses API `context_management` compaction instructions. Use this when a model supports server-side context management and you want the proxy to keep only the latest compaction carrier on follow-up turns.
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 - **useFunctionApplyPatch:** When `true`, the server will convert any custom tool named `apply_patch` in Responses payloads into an OpenAI-style function tool (`type: "function"`) with a parameter schema so assistants can call it using function-calling semantics to edit files. Set to `false` to leave tools unchanged. Defaults to `true`.
 - **compactUseSmallModel:** When `true`, detected "compact" requests (e.g., from Claude Code or Opencode compact mode) will automatically use the configured `smallModel` to avoid consuming premium model usage for short/background tasks. Defaults to `true`.
@@ -351,6 +404,96 @@ Or use inline environment variable:
 COPILOT_API_OAUTH_APP=opencode npx @jeffreycao/copilot-api@latest start
 ```
 
+## Using with OpenCode
+
+OpenCode already has a direct GitHub Copilot provider. Use this section when you want OpenCode to point at this proxy through `@ai-sdk/anthropic` and reuse the agent behaviors described earlier in this README.
+
+### Minimal setup
+
+Start the proxy with the OpenCode OAuth app:
+
+```sh
+COPILOT_API_OAUTH_APP=opencode npx @jeffreycao/copilot-api@latest start
+```
+
+Then point OpenCode at the proxy with `@ai-sdk/anthropic`.
+
+Example `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "local/gpt-5.4",
+  "small_model": "local/gpt-5-mini",
+  "agent": {
+    "build": {
+      "model": "local/gpt-5.4"
+    },
+    "plan": {
+      "model": "local/gpt-5.4"
+    },
+    "explore": {
+      "model": "local/gpt-5-mini"
+    }
+  },
+  "provider": {
+    "local": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Copilot API Proxy",
+      "options": {
+        "baseURL": "http://localhost:4141/v1",
+        "apiKey": "dummy"
+      },
+      "models": {
+        "gpt-5.4": {
+          "name": "gpt-5.4",
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "limit": {
+            "context": 272000,
+            "output": 128000
+          }
+        },
+        "gpt-5-mini": {
+          "name": "gpt-5-mini",
+          "limit": {
+            "context": 128000,
+            "output": 64000
+          }
+        },
+        "claude-sonnet-4.6": {
+          "id": "claude-sonnet-4.6",
+          "name": "claude-sonnet-4.6",
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },          
+          "limit": {
+            "context": 128000,
+            "output": 32000
+          },
+          "options": {
+            "thinking": {
+              "type": "enabled",
+              "budgetTokens": 31999
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Why these fields matter:
+
+- `npm: "@ai-sdk/anthropic"` is the important part. OpenCode will speak Anthropic Messages semantics to this proxy instead of flattening everything into OpenAI Chat Completions.
+- `options.baseURL` should be `http://localhost:4141/v1`; the Anthropic SDK will append `/messages`, `/models`, and `/messages/count_tokens` automatically.
+- `model`, `small_model`, and `agent.*.model` let you keep `gpt-5.4` for build/plan work while routing exploration and background work to `gpt-5-mini`.
+- If you enable `auth.apiKeys` in this proxy, replace `dummy` with a real key. Otherwise any placeholder value is fine.
+
 ## Using the Usage Viewer
 
 After starting the server, a URL to the Copilot Usage Dashboard will be displayed in your console. This dashboard is a web interface for monitoring your API usage.
@@ -401,8 +544,8 @@ Here is an example `.claude/settings.json` file:
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:4141",
     "ANTHROPIC_AUTH_TOKEN": "dummy",
-    "ANTHROPIC_MODEL": "gpt-5.2",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.2",
+    "ANTHROPIC_MODEL": "gpt-5.4",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.4",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5-mini",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
@@ -422,9 +565,9 @@ You can find more options here: [Claude Code settings](https://docs.anthropic.co
 
 You can also read more about IDE integration here: [Add Claude Code to your IDE](https://docs.anthropic.com/en/docs/claude-code/ide-integrations)
 
-### Subagent Marker Integration (Optional)
+## Subagent Marker Integration (Optional)
 
-This project supports `x-initiator: agent` for subagent-originated requests.
+This project supports `x-initiator: agent` for subagent-originated requests and can preserve the root session identity with `x-session-id` when a subagent marker is present.
 
 #### Claude Code plugin producer (marketplace-based)
 
