@@ -10,6 +10,8 @@ import { completionRoutes } from "./routes/chat-completions/route"
 import { embeddingRoutes } from "./routes/embeddings/route"
 import { messageRoutes } from "./routes/messages/route"
 import { modelRoutes } from "./routes/models/route"
+import { providerMessageRoutes } from "./routes/provider/messages/route"
+import { providerModelRoutes } from "./routes/provider/models/route"
 import { responsesRoutes } from "./routes/responses/route"
 import { tokenRoute } from "./routes/token/route"
 import { usageRoute } from "./routes/usage/route"
@@ -47,3 +49,7 @@ server.route("/v1/responses", responsesRoutes)
 
 // Anthropic compatible endpoints
 server.route("/v1/messages", messageRoutes)
+
+// Provider scoped Anthropic-compatible endpoints
+server.route("/:provider/v1/messages", providerMessageRoutes)
+server.route("/:provider/v1/models", providerModelRoutes)

@@ -1,6 +1,6 @@
 import type { AccountContext } from "~/lib/types/account"
 
-import { GITHUB_API_BASE_URL, githubHeaders } from "~/lib/api-config"
+import { getGitHubApiBaseUrl, githubHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
 
@@ -8,9 +8,12 @@ export const getCopilotUsage = async (
   account?: AccountContext,
 ): Promise<CopilotUsageResponse> => {
   const ctx = account ?? accountFromState()
-  const response = await fetch(`${GITHUB_API_BASE_URL}/copilot_internal/user`, {
-    headers: githubHeaders(ctx),
-  })
+  const response = await fetch(
+    `${getGitHubApiBaseUrl()}/copilot_internal/user`,
+    {
+      headers: githubHeaders(ctx),
+    },
+  )
 
   if (!response.ok) {
     throw new HTTPError("Failed to get Copilot usage", response)

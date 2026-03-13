@@ -43,6 +43,10 @@ A reverse-engineered proxy for the GitHub Copilot API that exposes it as an Open
 - **Flexible Authentication**: Authenticate interactively or provide a GitHub token directly, suitable for CI/CD environments.
 - **Support for Different Account Types**: Works with individual, business, and enterprise GitHub Copilot plans.
 - **Multi-Account Support**: Use multiple GitHub Copilot accounts with automatic routing: premium models use accounts in order and fall back on quota exhaustion; free models are distributed round-robin across accounts by default (configurable in config.json).
+- **Opencode OAuth Support**: Use opencode GitHub Copilot authentication by setting `COPILOT_API_OAUTH_APP=opencode` environment variable.
+- **GitHub Enterprise Support**: Connect to GHE.com by setting `COPILOT_API_ENTERPRISE_URL` environment variable (e.g., `company.ghe.com`).
+- **Custom Data Directory**: Change the default data directory (where tokens and config are stored) by setting `COPILOT_API_HOME` environment variable.
+- **Multi-Provider Anthropic Proxy Routes**: Add global provider configs and call external Anthropic-compatible APIs via `/:provider/v1/messages` and `/:provider/v1/models`.
 
 ## Demo
 
@@ -245,6 +249,17 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     "auth": {
       "apiKeys": []
     },
+    "providers": {
+      "openrouter": {
+        "type": "anthropic",
+        "enabled": true,
+        "baseUrl": "https://openrouter.ai/api",
+        "apiKey": "sk-your-provider-key",
+        "defaultTemperature": 0.7,
+        "defaultTopP": 0.9,
+        "defaultTopK": 20
+      }
+    },
     "extraPrompts": {
       "gpt-5-mini": "<built-in exploration prompt>",
       "gpt-5.1-codex-max": "<built-in exploration prompt>"
@@ -266,6 +281,13 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
   ```
 - **auth.apiKeys:** API keys used for request authentication. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication is disabled.
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts.
+- **providers:** Global upstream provider map. Each provider key (for example `openrouter`) becomes a route prefix (`/openrouter/v1/messages`). Currently only `type: "anthropic"` is supported.
+  - `enabled` defaults to `true` if omitted.
+  - `baseUrl` should be provider API base URL without trailing `/v1/messages`.
+  - `apiKey` is used as upstream `x-api-key`.
+  - `defaultTemperature` (optional): Default temperature value used when the request does not specify one.
+  - `defaultTopP` (optional): Default top_p value used when the request does not specify one.
+  - `defaultTopK` (optional): Default top_k value used when the request does not specify one.
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to `gpt-5-mini`. If original names are blocked and this points to an aliased target, it resolves to the first alias.
 - **freeModelLoadBalancing:** Enable round-robin routing for free-model requests across multiple accounts. Defaults to `true`. Set to `false` to route free-model requests sequentially (same ordering strategy as premium models).
 - **apiKey (deprecated):** Legacy single-key field kept for migration compatibility. Prefer `auth.apiKeys`. When `auth.apiKeys` is empty, the server falls back to `COPILOT_API_KEY` and then `apiKey`.
@@ -319,6 +341,9 @@ These endpoints are designed to be compatible with the Anthropic Messages API.
 | -------------------------------- | ------ | ------------------------------------------------------------ |
 | `POST /v1/messages`              | `POST` | Creates a model response for a given conversation.           |
 | `POST /v1/messages/count_tokens` | `POST` | Calculates the number of tokens for a given set of messages. |
+| `POST /:provider/v1/messages`       | `POST` | Proxies Anthropic Messages API to the configured provider.   |
+| `GET /:provider/v1/models`          | `GET`  | Proxies Anthropic Models API to the configured provider.     |
+| `POST /:provider/v1/messages/count_tokens` | `POST` | Calculates tokens locally for provider route requests. |
 
 ### Usage Monitoring Endpoints
 
@@ -445,6 +470,28 @@ npx @nick3/copilot-api@latest debug --json
 
 # Initialize proxy from environment variables (HTTP_PROXY, HTTPS_PROXY, etc.)
 npx @nick3/copilot-api@latest start --proxy-env
+
+# Use opencode GitHub Copilot authentication
+COPILOT_API_OAUTH_APP=opencode npx @nick3/copilot-api@latest start
+```
+
+### Opencode OAuth Authentication
+
+You can use opencode GitHub Copilot authentication instead of the default one:
+
+```sh
+# Set environment variable before running any command
+export COPILOT_API_OAUTH_APP=opencode
+
+# Then run start or auth commands
+npx @nick3/copilot-api@latest start
+npx @nick3/copilot-api@latest auth
+```
+
+Or use inline environment variable:
+
+```sh
+COPILOT_API_OAUTH_APP=opencode npx @nick3/copilot-api@latest start
 ```
 
 ### Admin API examples

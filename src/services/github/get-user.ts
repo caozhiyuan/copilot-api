@@ -1,13 +1,17 @@
 import type { AccountContext } from "~/lib/types/account"
 
-import { GITHUB_API_BASE_URL, standardHeaders } from "~/lib/api-config"
+import { getGitHubApiBaseUrl, standardHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
 export async function getGitHubUser(account?: AccountContext) {
   // Use provided account or fall back to state (for legacy compatibility)
   const token = account?.githubToken ?? state.githubToken
-  const response = await fetch(`${GITHUB_API_BASE_URL}/user`, {
+  if (!token) {
+    throw new Error("GitHub token not set")
+  }
+
+  const response = await fetch(`${getGitHubApiBaseUrl()}/user`, {
     headers: {
       authorization: `token ${token}`,
       ...standardHeaders(),

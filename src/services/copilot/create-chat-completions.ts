@@ -4,7 +4,11 @@ import { events } from "fetch-event-stream"
 import type { AccountContext } from "~/lib/types/account"
 import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 
-import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
+import {
+  copilotBaseUrl,
+  copilotHeaders,
+  prepareInteractionHeaders,
+} from "~/lib/api-config"
 import { getReasoningEffortForModel, isForceAgentEnabled } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
@@ -74,13 +78,11 @@ export const createChatCompletions = async (
     "x-initiator": options?.subagentMarker ? "agent" : initiator,
   }
 
-  if (options?.subagentMarker) {
-    headers["x-interaction-type"] = "conversation-subagent"
-  }
-
-  if (options?.sessionId) {
-    headers["x-interaction-id"] = options.sessionId
-  }
+  prepareInteractionHeaders(
+    options?.sessionId,
+    Boolean(options?.subagentMarker),
+    headers,
+  )
 
   const upstreamPayload = applyDefaultReasoningEffort(payload)
 

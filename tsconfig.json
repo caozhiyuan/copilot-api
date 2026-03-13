@@ -22,5 +22,5 @@
       "~/*": ["./src/*"]
     }
   },
-  "exclude": ["admin-ui"]
+  "exclude": ["admin-ui", "vscode-extension"]
 }

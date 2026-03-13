@@ -1,13 +1,13 @@
 import type { AccountContext } from "~/lib/types/account"
 
-import { GITHUB_API_BASE_URL, githubHeaders } from "~/lib/api-config"
+import { getGitHubApiBaseUrl, githubHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
 
 export const getCopilotToken = async (account?: AccountContext) => {
   const ctx = account ?? accountFromState()
   const response = await fetch(
-    `${GITHUB_API_BASE_URL}/copilot_internal/v2/token`,
+    `${getGitHubApiBaseUrl()}/copilot_internal/v2/token`,
     {
       headers: githubHeaders(ctx),
     },

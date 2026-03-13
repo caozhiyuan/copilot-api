@@ -4,7 +4,11 @@ import { events } from "fetch-event-stream"
 import type { AccountContext } from "~/lib/types/account"
 import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 
-import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
+import {
+  copilotBaseUrl,
+  copilotHeaders,
+  prepareInteractionHeaders,
+} from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
 
@@ -375,14 +379,7 @@ export const createResponses = async (
     "x-initiator": initiator,
   }
 
-  if (subagentMarker) {
-    headers["x-initiator"] = "agent"
-    headers["x-interaction-type"] = "conversation-subagent"
-  }
-
-  if (sessionId) {
-    headers["x-interaction-id"] = sessionId
-  }
+  prepareInteractionHeaders(sessionId, Boolean(subagentMarker), headers)
 
   // service_tier is not supported by github copilot
   payload.service_tier = null
