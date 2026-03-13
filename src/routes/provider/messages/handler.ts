@@ -7,7 +7,10 @@ import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types
 
 import { getProviderConfig } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
-import { forwardProviderMessages } from "~/services/providers/anthropic-proxy"
+import {
+  createProviderProxyResponse,
+  forwardProviderMessages,
+} from "~/services/providers/anthropic-proxy"
 
 const logger = createHandlerLogger("provider-messages-handler")
 
@@ -63,7 +66,7 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
       })
     }
 
-    return upstreamResponse
+    return createProviderProxyResponse(upstreamResponse)
   } catch (error) {
     logger.error("provider.messages.error", {
       provider,
