@@ -757,12 +757,14 @@ Here is an example `.claude/settings.json` file:
 }
 ```
 
-### CLAUDE.md / AGENTS.md (Optional)
+### CLAUDE.md or AGENTS.md Recommended Content
 
-If you're using Claude Code (or another agent runner) and want stricter “ask before acting” behavior, you may choose to add rules like:
+Please include the following in `CLAUDE.md` or `AGENTS.md`:
 
-- Prefer using the runner's dedicated question tool for user-facing questions.
-- Ask the user to confirm completion before ending the task.
+```
+- Prohibited from directly asking questions to users, MUST use question tool.
+- Once you can confirm that the task is complete, MUST use question tool to make user confirm. The user may respond with feedback if they are not satisfied with the result, which you can use to make improvements and try again, after try again, MUST use question tool to make user confirm again.
+```
 
 You can find more options here: [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables)
 
