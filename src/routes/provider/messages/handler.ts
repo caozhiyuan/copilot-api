@@ -32,9 +32,10 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
   try {
     const payload = await c.req.json<AnthropicMessagesPayload>()
 
-    payload.temperature ??= providerConfig.defaultTemperature
-    payload.top_p ??= providerConfig.defaultTopP
-    payload.top_k ??= providerConfig.defaultTopK
+    const modelConfig = providerConfig.models?.[payload.model]
+    payload.temperature ??= modelConfig?.temperature
+    payload.top_p ??= modelConfig?.topP
+    payload.top_k ??= modelConfig?.topK
 
     logger.debug(
       "provider.messages.request",

@@ -19,14 +19,18 @@ export interface AppConfig {
   compactUseSmallModel?: boolean
 }
 
+export interface ModelConfig {
+  temperature?: number
+  topP?: number
+  topK?: number
+}
+
 export interface ProviderConfig {
   type?: string
   enabled?: boolean
   baseUrl?: string
   apiKey?: string
-  defaultTemperature?: number
-  defaultTopP?: number
-  defaultTopK?: number
+  models?: Record<string, ModelConfig>
 }
 
 export interface ResolvedProviderConfig {
@@ -34,9 +38,7 @@ export interface ResolvedProviderConfig {
   type: "anthropic"
   baseUrl: string
   apiKey: string
-  defaultTemperature?: number
-  defaultTopP?: number
-  defaultTopK?: number
+  models?: Record<string, ModelConfig>
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -271,9 +273,7 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     type,
     baseUrl,
     apiKey,
-    defaultTemperature: provider.defaultTemperature,
-    defaultTopP: provider.defaultTopP,
-    defaultTopK: provider.defaultTopK,
+    models: provider.models,
   }
 }
 

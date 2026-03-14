@@ -239,14 +239,17 @@ The following command line options are available for the `start` command:
       "apiKeys": []
     },
     "providers": {
-      "openrouter": {
+      "custom": {
         "type": "anthropic",
         "enabled": true,
-        "baseUrl": "https://openrouter.ai/api",
+        "baseUrl": "your-base-url",
         "apiKey": "sk-your-provider-key",
-        "defaultTemperature": 0.7,
-        "defaultTopP": 0.9,
-        "defaultTopK": 20
+        "models": {
+          "kimi-k2.5": {
+            "temperature": 1,
+            "topP": 0.95
+          }
+        }
       }
     },
     "extraPrompts": {
@@ -267,13 +270,14 @@ The following command line options are available for the `start` command:
   ```
 - **auth.apiKeys:** API keys used for request authentication. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication is disabled.
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts. The built-in prompts for `gpt-5.3-codex` and `gpt-5.4` enable phase-aware commentary, which lets the model emit a short user-facing progress update before tools or deeper reasoning.
-- **providers:** Global upstream provider map. Each provider key (for example `openrouter`) becomes a route prefix (`/openrouter/v1/messages`). Currently only `type: "anthropic"` is supported.
+- **providers:** Global upstream provider map. Each provider key (for example `custom`) becomes a route prefix (`/custom/v1/messages`). Currently only `type: "anthropic"` is supported.
   - `enabled` defaults to `true` if omitted.
   - `baseUrl` should be provider API base URL without trailing `/v1/messages`.
   - `apiKey` is used as upstream `x-api-key`.
-  - `defaultTemperature` (optional): Default temperature value used when the request does not specify one.
-  - `defaultTopP` (optional): Default top_p value used when the request does not specify one.
-  - `defaultTopK` (optional): Default top_k value used when the request does not specify one.
+  - `models` (optional): Per-model configuration map. Each key is a model ID (matching the model name in requests), and the value is:
+    - `temperature` (optional): Default temperature value used when the request does not specify one.
+    - `topP` (optional): Default top_p value used when the request does not specify one.
+    - `topK` (optional): Default top_k value used when the request does not specify one.
 - **smallModel:** Fallback model used for tool-less warmup messages, compact/background requests, and other short housekeeping turns (for example from Claude Code or OpenCode) to avoid spending premium requests; defaults to `gpt-5-mini`.
 - **responsesApiContextManagementModels:** List of model IDs that should receive Responses API `context_management` compaction instructions. Use this when a model supports server-side context management and you want the proxy to keep only the latest compaction carrier on follow-up turns.
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
