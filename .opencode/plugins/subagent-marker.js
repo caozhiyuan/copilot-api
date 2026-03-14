@@ -54,7 +54,7 @@ export const SubagentMarkerPlugin = async () => {
       })}`
 
       output.parts.unshift({
-        id: `${output.message.id}-subagent-marker`,
+        id: `prt-${output.message.id}-subagent-marker`,
         sessionID: output.message.sessionID,
         messageID: output.message.id,
         type: "text",

@@ -8,6 +8,19 @@ const FORWARDABLE_HEADERS = [
   "user-agent",
 ] as const
 
+const STRIPPED_RESPONSE_HEADERS = [
+  "connection",
+  "content-encoding",
+  "content-length",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+] as const
+
 export function buildProviderUpstreamHeaders(
   providerConfig: ResolvedProviderConfig,
   requestHeaders: Headers,
@@ -26,6 +39,22 @@ export function buildProviderUpstreamHeaders(
   }
 
   return headers
+}
+
+export function createProviderProxyResponse(
+  upstreamResponse: Response,
+): Response {
+  const headers = new Headers(upstreamResponse.headers)
+
+  for (const headerName of STRIPPED_RESPONSE_HEADERS) {
+    headers.delete(headerName)
+  }
+
+  return new Response(upstreamResponse.body, {
+    headers,
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+  })
 }
 
 export async function forwardProviderMessages(

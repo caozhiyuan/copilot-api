@@ -21,6 +21,7 @@ import {
   toAccountContext,
 } from "~/lib/handler-utils"
 import { createHandlerLogger } from "~/lib/logger"
+import { findEndpointModel } from "~/lib/models"
 import { checkRateLimit } from "~/lib/rate-limit"
 import {
   extractResponsesUsageFromResult,
@@ -210,17 +211,20 @@ export async function handleCompletion(c: Context) {
   const fallbackInitiator =
     initiatorOverride ?? getChatInitiator(openAIPayload.messages)
 
+  const endpointModel = findEndpointModel(clientModel)
+  const resolvedClientModel = endpointModel?.id ?? clientModel
+
   const selection = await accountsManager.selectAccountForRequest([
     {
-      modelId: clientModel,
+      modelId: resolvedClientModel,
       endpoint: MESSAGES_ENDPOINT,
     },
     {
-      modelId: clientModel,
+      modelId: resolvedClientModel,
       endpoint: RESPONSES_ENDPOINT,
     },
     {
-      modelId: openAIPayload.model,
+      modelId: endpointModel?.id ?? openAIPayload.model,
       endpoint: CHAT_COMPLETIONS_ENDPOINT,
     },
   ])

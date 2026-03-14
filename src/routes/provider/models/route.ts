@@ -3,7 +3,10 @@ import { Hono } from "hono"
 import { getProviderConfig } from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
-import { forwardProviderModels } from "~/services/providers/anthropic-proxy"
+import {
+  createProviderProxyResponse,
+  forwardProviderModels,
+} from "~/services/providers/anthropic-proxy"
 
 const logger = createHandlerLogger("provider-models-handler")
 
@@ -36,7 +39,7 @@ providerModelRoutes.get("/", async (c) => {
       statusCode: upstreamResponse.status,
     })
 
-    return upstreamResponse
+    return createProviderProxyResponse(upstreamResponse)
   } catch (error) {
     logger.error("provider.models.error", {
       provider,
