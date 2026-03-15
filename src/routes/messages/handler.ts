@@ -13,6 +13,7 @@ import {
   getReasoningEffortForModel,
   getSmallModel,
   isMessageStartInputTokensFallbackEnabled,
+  isMessagesApiEnabled,
   shouldCompactUseSmallModel,
 } from "~/lib/config"
 import {
@@ -213,12 +214,16 @@ export async function handleCompletion(c: Context) {
 
   const endpointModel = findEndpointModel(clientModel)
   const resolvedClientModel = endpointModel?.id ?? clientModel
+  const useMessagesApi = isMessagesApiEnabled()
 
-  const selection = await accountsManager.selectAccountForRequest([
-    {
+  const candidates: Array<{ modelId: string; endpoint: string }> = []
+  if (useMessagesApi) {
+    candidates.push({
       modelId: resolvedClientModel,
       endpoint: MESSAGES_ENDPOINT,
-    },
+    })
+  }
+  candidates.push(
     {
       modelId: resolvedClientModel,
       endpoint: RESPONSES_ENDPOINT,
@@ -227,7 +232,9 @@ export async function handleCompletion(c: Context) {
       modelId: endpointModel?.id ?? openAIPayload.model,
       endpoint: CHAT_COMPLETIONS_ENDPOINT,
     },
-  ])
+  )
+
+  const selection = await accountsManager.selectAccountForRequest(candidates)
   if (!selection.ok) {
     return handleSelectionFailure({
       c,
