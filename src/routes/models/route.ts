@@ -14,6 +14,7 @@ modelRoutes.get("/", async (c) => {
     }
 
     const models = state.models?.data.map((model) => ({
+      ...model,
       id: model.id,
       object: "model",
       type: "model",
