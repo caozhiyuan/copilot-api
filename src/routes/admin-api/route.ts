@@ -12,7 +12,10 @@ import {
   getModelRefreshIntervalMs,
   isFreeModelLoadBalancingEnabled,
   mergeConfigWithDefaults,
+  PROVIDER_TYPE_ANTHROPIC,
   type AppConfig,
+  type ModelConfig,
+  type ProviderConfig,
 } from "~/lib/config"
 import { PATHS } from "~/lib/paths"
 import {
@@ -150,6 +153,8 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "smallModel",
   "freeModelLoadBalancing",
   "apiKey",
+  "providers",
+  "responsesApiContextManagementModels",
   "modelReasoningEfforts",
   "modelAliases",
   "allowOriginalModelNamesForAliases",
@@ -158,6 +163,7 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "compactUseSmallModel",
   "messageStartInputTokensFallback",
   "modelRefreshIntervalHours",
+  "useMessagesApi",
 ])
 
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
@@ -226,6 +232,30 @@ function parseOptionalNonNegativeNumber(
   return { value }
 }
 
+function parseOptionalStringArray(
+  value: unknown,
+  field: string,
+): ParseFieldResult<Array<string>> {
+  if (value === null || value === undefined) return { clear: true }
+  if (!Array.isArray(value)) {
+    return { error: `${field} must be an array of strings` }
+  }
+
+  const out: Array<string> = []
+  for (const [index, entry] of value.entries()) {
+    if (typeof entry !== "string") {
+      return { error: `${field}[${index}] must be a string` }
+    }
+    const trimmed = entry.trim()
+    if (!trimmed) {
+      return { error: `${field}[${index}] must be a non-empty string` }
+    }
+    out.push(trimmed)
+  }
+
+  return { value: [...new Set(out)] }
+}
+
 function parseAuthConfig(value: unknown): ParseFieldResult<AuthConfig> {
   if (value === null || value === undefined) return { clear: true }
   if (!isPlainObject(value)) {
@@ -280,6 +310,312 @@ function parseStringRecord(
       return { error: `${field}.${key} must be a string` }
     }
     record[key] = entry
+  }
+
+  return { value: record }
+}
+
+const PROVIDER_MODEL_CONFIG_FIELDS = ["temperature", "topP", "topK"] as const
+
+type ProviderModelConfigField = (typeof PROVIDER_MODEL_CONFIG_FIELDS)[number]
+
+const PROVIDER_MODEL_CONFIG_KEYS = new Set<ProviderModelConfigField>(
+  PROVIDER_MODEL_CONFIG_FIELDS,
+)
+
+const PROVIDER_CONFIG_FIELDS = [
+  "type",
+  "enabled",
+  "baseUrl",
+  "apiKey",
+  "models",
+] as const
+
+type ProviderConfigField = (typeof PROVIDER_CONFIG_FIELDS)[number]
+
+const PROVIDER_CONFIG_KEYS = new Set<ProviderConfigField>(
+  PROVIDER_CONFIG_FIELDS,
+)
+
+function validateAllowedObjectKeys(
+  value: Record<string, unknown>,
+  field: string,
+  allowed: ReadonlySet<string>,
+): string | undefined {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      return `${field}.${key} is not supported`
+    }
+  }
+  return undefined
+}
+
+function applyProviderModelTemperature(
+  config: ModelConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "temperature")) return undefined
+
+  const parsed = parseOptionalNonNegativeNumber(
+    value.temperature,
+    `${field}.temperature`,
+  )
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) config.temperature = parsed.value
+  return undefined
+}
+
+function applyProviderModelTopP(
+  config: ModelConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "topP")) return undefined
+
+  const parsed = parseOptionalNonNegativeNumber(value.topP, `${field}.topP`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) config.topP = parsed.value
+  return undefined
+}
+
+function applyProviderModelTopK(
+  config: ModelConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "topK")) return undefined
+
+  const parsed = parseOptionalNonNegativeNumber(value.topK, `${field}.topK`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) config.topK = parsed.value
+  return undefined
+}
+
+function parseProviderModelConfig(
+  value: unknown,
+  field: string,
+): ParseFieldResult<ModelConfig> {
+  if (value === null || value === undefined) {
+    return { error: `${field} must be an object` }
+  }
+  if (!isPlainObject(value)) {
+    return { error: `${field} must be an object` }
+  }
+
+  const keyError = validateAllowedObjectKeys(
+    value,
+    field,
+    PROVIDER_MODEL_CONFIG_KEYS,
+  )
+  if (keyError) return { error: keyError }
+
+  const config: ModelConfig = {}
+
+  const temperatureError = applyProviderModelTemperature(config, value, field)
+  if (temperatureError) return { error: temperatureError }
+
+  const topPError = applyProviderModelTopP(config, value, field)
+  if (topPError) return { error: topPError }
+
+  const topKError = applyProviderModelTopK(config, value, field)
+  if (topKError) return { error: topKError }
+
+  return { value: config }
+}
+
+function parseProviderModelsRecord(
+  value: unknown,
+  field: string,
+): ParseFieldResult<Record<string, ModelConfig>> {
+  if (value === null || value === undefined) return { clear: true }
+  if (!isPlainObject(value)) {
+    return { error: `${field} must be an object` }
+  }
+
+  const record = Object.create(null) as Record<string, ModelConfig>
+
+  for (const [rawModelId, rawModelConfig] of Object.entries(value)) {
+    if (BLOCKED_KEYS.has(rawModelId)) {
+      return { error: `${field}.${rawModelId} is not allowed` }
+    }
+
+    const modelId = rawModelId.trim()
+    if (!modelId) {
+      return { error: `${field} keys must be non-empty strings` }
+    }
+    if (rawModelId !== modelId) {
+      return {
+        error: `${field}.${rawModelId} must not include leading/trailing whitespace`,
+      }
+    }
+    if (BLOCKED_KEYS.has(modelId)) {
+      return { error: `${field}.${modelId} is not allowed` }
+    }
+
+    const parsed = parseProviderModelConfig(
+      rawModelConfig,
+      `${field}.${modelId}`,
+    )
+    if ("error" in parsed) return parsed
+    if ("clear" in parsed) continue
+
+    record[modelId] = parsed.value
+  }
+
+  return { value: record }
+}
+
+function applyProviderType(
+  provider: ProviderConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "type")) return undefined
+
+  const parsed = parseOptionalString(value.type, `${field}.type`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) {
+    if (parsed.value !== PROVIDER_TYPE_ANTHROPIC) {
+      return `${field}.type must be "${PROVIDER_TYPE_ANTHROPIC}"`
+    }
+    provider.type = PROVIDER_TYPE_ANTHROPIC
+  }
+
+  return undefined
+}
+
+function applyProviderEnabled(
+  provider: ProviderConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "enabled")) return undefined
+
+  const parsed = parseOptionalBoolean(value.enabled, `${field}.enabled`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) provider.enabled = parsed.value
+  return undefined
+}
+
+function applyProviderBaseUrl(
+  provider: ProviderConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "baseUrl")) return undefined
+
+  const parsed = parseOptionalString(value.baseUrl, `${field}.baseUrl`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) provider.baseUrl = parsed.value
+  return undefined
+}
+
+function applyProviderApiKey(
+  provider: ProviderConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "apiKey")) return undefined
+
+  const parsed = parseOptionalString(value.apiKey, `${field}.apiKey`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) provider.apiKey = parsed.value
+  return undefined
+}
+
+function applyProviderModels(
+  provider: ProviderConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "models")) return undefined
+
+  const parsed = parseProviderModelsRecord(value.models, `${field}.models`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) provider.models = parsed.value
+  return undefined
+}
+
+function parseProviderConfig(
+  value: unknown,
+  field: string,
+): ParseFieldResult<ProviderConfig> {
+  if (value === null || value === undefined) {
+    return { error: `${field} must be an object` }
+  }
+  if (!isPlainObject(value)) {
+    return { error: `${field} must be an object` }
+  }
+
+  const keyError = validateAllowedObjectKeys(value, field, PROVIDER_CONFIG_KEYS)
+  if (keyError) return { error: keyError }
+
+  const provider: ProviderConfig = {}
+
+  const typeError = applyProviderType(provider, value, field)
+  if (typeError) return { error: typeError }
+
+  const enabledError = applyProviderEnabled(provider, value, field)
+  if (enabledError) return { error: enabledError }
+
+  const baseUrlError = applyProviderBaseUrl(provider, value, field)
+  if (baseUrlError) return { error: baseUrlError }
+
+  const apiKeyError = applyProviderApiKey(provider, value, field)
+  if (apiKeyError) return { error: apiKeyError }
+
+  const modelsError = applyProviderModels(provider, value, field)
+  if (modelsError) return { error: modelsError }
+
+  return { value: provider }
+}
+
+function parseProviders(
+  value: unknown,
+): ParseFieldResult<Record<string, ProviderConfig>> {
+  if (value === null || value === undefined) return { clear: true }
+  if (!isPlainObject(value)) {
+    return { error: "providers must be an object" }
+  }
+
+  const record = Object.create(null) as Record<string, ProviderConfig>
+  const seenProviderNames = new Set<string>()
+
+  for (const [rawProviderName, rawProviderConfig] of Object.entries(value)) {
+    if (BLOCKED_KEYS.has(rawProviderName)) {
+      return { error: `providers.${rawProviderName} is not allowed` }
+    }
+
+    const providerName = rawProviderName.trim()
+    if (!providerName) {
+      return { error: "providers keys must be non-empty strings" }
+    }
+    if (rawProviderName !== providerName) {
+      return {
+        error: `providers.${rawProviderName} must not include leading/trailing whitespace`,
+      }
+    }
+    if (BLOCKED_KEYS.has(providerName)) {
+      return { error: `providers.${providerName} is not allowed` }
+    }
+
+    const normalizedProviderName = providerName.toLowerCase()
+    if (seenProviderNames.has(normalizedProviderName)) {
+      return {
+        error: `providers.${rawProviderName} conflicts with another provider`,
+      }
+    }
+    seenProviderNames.add(normalizedProviderName)
+
+    const parsed = parseProviderConfig(
+      rawProviderConfig,
+      `providers.${providerName}`,
+    )
+    if ("error" in parsed) return parsed
+    if ("clear" in parsed) continue
+
+    record[providerName] = parsed.value
   }
 
   return { value: record }
@@ -440,6 +776,7 @@ function applyOptionalBoolean(
     | "freeModelLoadBalancing"
     | "useFunctionApplyPatch"
     | "forceAgent"
+    | "useMessagesApi"
     | "compactUseSmallModel"
     | "messageStartInputTokensFallback"
     | "allowOriginalModelNamesForAliases",
@@ -512,6 +849,37 @@ function applyModelAliases(
   return undefined
 }
 
+function applyResponsesApiContextManagementModels(
+  next: AppConfig,
+  value: unknown,
+): string | undefined {
+  const parsed = parseOptionalStringArray(
+    value,
+    "responsesApiContextManagementModels",
+  )
+  if ("error" in parsed) return parsed.error
+  if ("clear" in parsed) {
+    delete next.responsesApiContextManagementModels
+    return undefined
+  }
+  next.responsesApiContextManagementModels = parsed.value
+  return undefined
+}
+
+function applyProvidersConfig(
+  next: AppConfig,
+  value: unknown,
+): string | undefined {
+  const parsed = parseProviders(value)
+  if ("error" in parsed) return parsed.error
+  if ("clear" in parsed) {
+    delete next.providers
+    return undefined
+  }
+  next.providers = parsed.value
+  return undefined
+}
+
 type ConfigPatchHandler = (
   next: AppConfig,
   value: unknown,
@@ -524,6 +892,8 @@ const CONFIG_PATCH_HANDLERS: Partial<Record<string, ConfigPatchHandler>> = {
   freeModelLoadBalancing: (next, value) =>
     applyOptionalBoolean(next, "freeModelLoadBalancing", value),
   apiKey: (next, value) => applyOptionalString(next, "apiKey", value),
+  providers: applyProvidersConfig,
+  responsesApiContextManagementModels: applyResponsesApiContextManagementModels,
   modelReasoningEfforts: applyReasoningEfforts,
   modelAliases: applyModelAliases,
   allowOriginalModelNamesForAliases: (next, value) =>
@@ -537,6 +907,8 @@ const CONFIG_PATCH_HANDLERS: Partial<Record<string, ConfigPatchHandler>> = {
     applyOptionalBoolean(next, "messageStartInputTokensFallback", value),
   modelRefreshIntervalHours: (next, value) =>
     applyOptionalNumber(next, "modelRefreshIntervalHours", value),
+  useMessagesApi: (next, value) =>
+    applyOptionalBoolean(next, "useMessagesApi", value),
 }
 
 function applyConfigPatch(

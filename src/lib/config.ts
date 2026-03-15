@@ -34,6 +34,10 @@ export interface ModelConfig {
   topK?: number
 }
 
+export const PROVIDER_TYPE_ANTHROPIC = "anthropic" as const
+
+export type ProviderType = typeof PROVIDER_TYPE_ANTHROPIC
+
 export interface ProviderConfig {
   type?: string
   enabled?: boolean
@@ -44,7 +48,7 @@ export interface ProviderConfig {
 
 export interface ResolvedProviderConfig {
   name: string
-  type: "anthropic"
+  type: ProviderType
   baseUrl: string
   apiKey: string
   models?: Record<string, ModelConfig>
@@ -603,8 +607,8 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     return null
   }
 
-  const type = provider.type ?? "anthropic"
-  if (type !== "anthropic") {
+  const type = provider.type ?? PROVIDER_TYPE_ANTHROPIC
+  if (type !== PROVIDER_TYPE_ANTHROPIC) {
     consola.warn(
       `Provider ${providerName} is ignored because only anthropic type is supported`,
     )
@@ -622,7 +626,7 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
 
   return {
     name: providerName,
-    type,
+    type: PROVIDER_TYPE_ANTHROPIC,
     baseUrl,
     apiKey,
     models: provider.models,

@@ -343,7 +343,27 @@
       "compactUseSmallModelLabel": "Compact uses small model",
       "compactUseSmallModelHint": "When enabled, compact requests use the configured smallModel; otherwise they use the requested model.",
       "messageStartInputTokensFallbackLabel": "Estimate input tokens at stream start",
-      "messageStartInputTokensFallbackHint": "When enabled, estimates message_start input tokens when upstream usage is unavailable."
+      "messageStartInputTokensFallbackHint": "When enabled, estimates message_start input tokens when upstream usage is unavailable.",
+      "useMessagesApiLabel": "Enable Messages API",
+      "useMessagesApiHint": "When enabled, Claude-family models may use Copilot's native /v1/messages endpoint.",
+      "responsesApiContextManagementModelsLabel": "Responses API context_management models",
+      "responsesApiContextManagementModelsPlaceholder": "one model id per line",
+      "responsesApiContextManagementModelsHint": "List of model IDs that should receive Responses API context_management compaction instructions.",
+      "providersTitle": "Providers",
+      "providersDescription": "Configure upstream providers (currently anthropic only). Each provider key becomes a route prefix (/:provider/v1/messages).",
+      "providersIssueTitle": "Invalid providers",
+      "providersEmptyState": "No providers configured.",
+      "providersAddProvider": "Add provider",
+      "providersNamePlaceholder": "Provider key (route prefix)",
+      "providersEnabledLabel": "Enabled",
+      "providersBaseUrlLabel": "Base URL",
+      "providersBaseUrlPlaceholder": "https://api.anthropic.com",
+      "providersApiKeyLabel": "API key",
+      "providersApiKeyPlaceholder": "sk-...",
+      "providersModelsLabel": "Model defaults",
+      "providersModelsEmptyState": "No per-model defaults.",
+      "providersAddModel": "Add model",
+      "providersModelIdPlaceholder": "Model id"
     }
   },
   "notFound": {

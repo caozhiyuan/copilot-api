@@ -89,15 +89,31 @@ export type ModelAliasSpec = {
   allowOriginal?: boolean
 }
 
+export type ProviderModelConfig = {
+  temperature?: number
+  topP?: number
+  topK?: number
+}
+
+export type ProviderConfig = {
+  type?: string
+  enabled?: boolean
+  baseUrl?: string
+  apiKey?: string
+  models?: Record<string, ProviderModelConfig>
+}
+
 export type AdminConfig = {
   auth?: {
     apiKeys?: Array<string>
   }
+  providers?: Record<string, ProviderConfig>
   extraPrompts?: Record<string, string>
   smallModel?: string
   freeModelLoadBalancing?: boolean
   /** @deprecated */
   apiKey?: string
+  responsesApiContextManagementModels?: Array<string>
   modelReasoningEfforts?: Record<string, ReasoningEffort>
   modelAliases?: Record<string, ModelAliasSpec | string>
   allowOriginalModelNamesForAliases?: boolean
@@ -106,6 +122,7 @@ export type AdminConfig = {
   compactUseSmallModel?: boolean
   messageStartInputTokensFallback?: boolean
   modelRefreshIntervalHours?: number
+  useMessagesApi?: boolean
 }
 
 export type AdminConfigResponse = AdminConfig & {
