@@ -9,6 +9,7 @@ import {
   getSmallModel,
   shouldCompactUseSmallModel,
   getReasoningEffortForModel,
+  isMessagesApiEnabled,
 } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
@@ -397,6 +398,10 @@ const shouldUseResponsesApi = (selectedModel: Model | undefined): boolean => {
 }
 
 const shouldUseMessagesApi = (selectedModel: Model | undefined): boolean => {
+  const useMessagesApi = isMessagesApiEnabled()
+  if (!useMessagesApi) {
+    return false
+  }
   return (
     selectedModel?.supported_endpoints?.includes(MESSAGES_ENDPOINT) ?? false
   )

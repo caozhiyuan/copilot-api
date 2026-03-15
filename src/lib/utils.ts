@@ -177,7 +177,15 @@ export const getRootSessionId = (
 }
 
 export const getUUID = (content: string): string => {
-  const hash = createHash("sha256").update(content).digest("hex")
-  const hash32 = hash.slice(0, 32)
-  return `${hash32.slice(0, 8)}-${hash32.slice(8, 12)}-${hash32.slice(12, 16)}-${hash32.slice(16, 20)}-${hash32.slice(20)}`
+  const uuidBytes = createHash("sha256")
+    .update(content)
+    .digest()
+    .subarray(0, 16)
+
+  uuidBytes[6] = (uuidBytes[6] & 0x0f) | 0x40
+  uuidBytes[8] = (uuidBytes[8] & 0x3f) | 0x80
+
+  const uuidHex = uuidBytes.toString("hex")
+
+  return `${uuidHex.slice(0, 8)}-${uuidHex.slice(8, 12)}-${uuidHex.slice(12, 16)}-${uuidHex.slice(16, 20)}-${uuidHex.slice(20)}`
 }

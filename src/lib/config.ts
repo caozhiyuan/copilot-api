@@ -17,6 +17,7 @@ export interface AppConfig {
   >
   useFunctionApplyPatch?: boolean
   compactUseSmallModel?: boolean
+  useMessagesApi?: boolean
 }
 
 export interface ModelConfig {
@@ -87,6 +88,7 @@ const defaultConfig: AppConfig = {
   },
   useFunctionApplyPatch: true,
   compactUseSmallModel: true,
+  useMessagesApi: true,
 }
 
 let cachedConfig: AppConfig | null = null
@@ -281,4 +283,9 @@ export function listEnabledProviders(): Array<string> {
   const config = getConfig()
   const providerNames = Object.keys(config.providers ?? {})
   return providerNames.filter((name) => getProviderConfig(name) !== null)
+}
+
+export function isMessagesApiEnabled(): boolean {
+  const config = getConfig()
+  return config.useMessagesApi ?? true
 }

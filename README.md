@@ -265,7 +265,8 @@ The following command line options are available for the `start` command:
       "gpt-5.4": "xhigh"
     },
     "useFunctionApplyPatch": true,
-    "compactUseSmallModel": true
+    "compactUseSmallModel": true,
+    "useMessagesApi": true
   }
   ```
 - **auth.apiKeys:** API keys used for request authentication. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication is disabled.
@@ -283,6 +284,7 @@ The following command line options are available for the `start` command:
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 - **useFunctionApplyPatch:** When `true`, the server will convert any custom tool named `apply_patch` in Responses payloads into an OpenAI-style function tool (`type: "function"`) with a parameter schema so assistants can call it using function-calling semantics to edit files. Set to `false` to leave tools unchanged. Defaults to `true`.
 - **compactUseSmallModel:** When `true`, detected "compact" requests (e.g., from Claude Code or Opencode compact mode) will automatically use the configured `smallModel` to avoid consuming premium model usage for short/background tasks. Defaults to `true`.
+- **useMessagesApi:** When `true`, Claude-family models that support Copilot's native `/v1/messages` endpoint will use the Messages API; otherwise they fall back to `/chat/completions`. Set to `false` to disable Messages API routing and always use `/chat/completions`. Defaults to `true`.
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
 
