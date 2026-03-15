@@ -327,6 +327,99 @@ function providerHasMeaningfulContent(item: ProviderItem): boolean {
   )
 }
 
+type ParsedProviderModelItem =
+  | {
+      modelId: string
+      config: ProviderModelConfig
+    }
+  | null
+
+function parseSingleModelItem(
+  modelItem: ProviderModelItem,
+  providerName: string,
+  seenModels: Set<string>,
+): ParseResult<ParsedProviderModelItem> {
+  const modelId = modelItem.model.trim()
+  const temperatureInput = modelItem.temperature.trim()
+  const topPInput = modelItem.topP.trim()
+  const topKInput = modelItem.topK.trim()
+
+  const hasNumericOverride = Boolean(temperatureInput || topPInput || topKInput)
+
+  if (!modelId) {
+    if (hasNumericOverride) {
+      return {
+        error: `Provider '${providerName}': model id is required when setting overrides.`,
+      }
+    }
+    return { record: null }
+  }
+
+  const normalizedModelId = modelId.toLowerCase()
+  if (BLOCKED_PROVIDER_KEYS.has(normalizedModelId)) {
+    return { error: `Provider '${providerName}' model '${modelId}' is not allowed.` }
+  }
+  if (seenModels.has(normalizedModelId)) {
+    return { error: `Provider '${providerName}' model '${modelId}' is duplicated.` }
+  }
+
+  const config: ProviderModelConfig = {}
+
+  if (temperatureInput) {
+    const parsed = Number(temperatureInput)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return {
+        error: `Provider '${providerName}' model '${modelId}': temperature must be a non-negative number.`,
+      }
+    }
+    config.temperature = parsed
+  }
+
+  if (topPInput) {
+    const parsed = Number(topPInput)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return {
+        error: `Provider '${providerName}' model '${modelId}': topP must be a non-negative number.`,
+      }
+    }
+    config.topP = parsed
+  }
+
+  if (topKInput) {
+    const parsed = Number(topKInput)
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return {
+        error: `Provider '${providerName}' model '${modelId}': topK must be a non-negative number.`,
+      }
+    }
+    config.topK = parsed
+  }
+
+  if (Object.keys(config).length === 0) {
+    return { record: null }
+  }
+
+  seenModels.add(normalizedModelId)
+  return { record: { modelId, config } }
+}
+
+function parseProviderModelItems(
+  items: Array<ProviderModelItem>,
+  providerName: string,
+): ParseResult<Record<string, ProviderModelConfig>> {
+  const modelsRecord = Object.create(null) as Record<string, ProviderModelConfig>
+  const seenModels = new Set<string>()
+
+  for (const modelItem of items) {
+    const result = parseSingleModelItem(modelItem, providerName, seenModels)
+    if ("error" in result) return result
+    if (!result.record) continue
+    modelsRecord[result.record.modelId] = result.record.config
+  }
+
+  return { record: modelsRecord }
+}
+
 function providerRecordFromItems(items: Array<ProviderItem>): ParseResult<ProviderRecord> {
   const record: ProviderRecord = Object.create(null) as ProviderRecord
   const seenProviders = new Set<string>()
@@ -360,76 +453,11 @@ function providerRecordFromItems(items: Array<ProviderItem>): ParseResult<Provid
       apiKey: apiKey || undefined,
     }
 
-    const modelsRecord = Object.create(null) as Record<string, ProviderModelConfig>
-    const seenModels = new Set<string>()
+    const modelItemsResult = parseProviderModelItems(item.models, providerName)
+    if ("error" in modelItemsResult) return modelItemsResult
 
-    for (const modelItem of item.models) {
-      const modelId = modelItem.model.trim()
-      const temperatureInput = modelItem.temperature.trim()
-      const topPInput = modelItem.topP.trim()
-      const topKInput = modelItem.topK.trim()
-
-      const hasNumericOverride = Boolean(temperatureInput || topPInput || topKInput)
-
-      if (!modelId) {
-        if (hasNumericOverride) {
-          return {
-            error: `Provider '${providerName}': model id is required when setting overrides.`,
-          }
-        }
-        continue
-      }
-
-      const normalizedModelId = modelId.toLowerCase()
-      if (BLOCKED_PROVIDER_KEYS.has(normalizedModelId)) {
-        return { error: `Provider '${providerName}' model '${modelId}' is not allowed.` }
-      }
-      if (seenModels.has(normalizedModelId)) {
-        return { error: `Provider '${providerName}' model '${modelId}' is duplicated.` }
-      }
-
-      const config: ProviderModelConfig = {}
-
-      if (temperatureInput) {
-        const parsed = Number(temperatureInput)
-        if (!Number.isFinite(parsed) || parsed < 0) {
-          return {
-            error: `Provider '${providerName}' model '${modelId}': temperature must be a non-negative number.`,
-          }
-        }
-        config.temperature = parsed
-      }
-
-      if (topPInput) {
-        const parsed = Number(topPInput)
-        if (!Number.isFinite(parsed) || parsed < 0) {
-          return {
-            error: `Provider '${providerName}' model '${modelId}': topP must be a non-negative number.`,
-          }
-        }
-        config.topP = parsed
-      }
-
-      if (topKInput) {
-        const parsed = Number(topKInput)
-        if (!Number.isFinite(parsed) || parsed < 0) {
-          return {
-            error: `Provider '${providerName}' model '${modelId}': topK must be a non-negative number.`,
-          }
-        }
-        config.topK = parsed
-      }
-
-      if (Object.keys(config).length === 0) {
-        continue
-      }
-
-      seenModels.add(normalizedModelId)
-      modelsRecord[modelId] = config
-    }
-
-    if (Object.keys(modelsRecord).length > 0) {
-      provider.models = modelsRecord
+    if (Object.keys(modelItemsResult.record).length > 0) {
+      provider.models = modelItemsResult.record
     }
 
     record[providerName] = provider

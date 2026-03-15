@@ -161,6 +161,32 @@ test("POST /api/admin/config updates providers", async () => {
   })
 })
 
+test("POST /api/admin/config rejects case-insensitive duplicate providers", async () => {
+  await withConfig({}, async () => {
+    const { server } = await import("../src/server")
+
+    const res = await server.fetch(
+      new Request("http://localhost/api/admin/config", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          providers: {
+            Anthropic: { type: "anthropic" },
+            anthropic: { type: "anthropic" },
+          },
+        }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+
+    const body = (await res.json()) as { error?: { message?: string } }
+    expect(body.error?.message).toContain("conflicts with another provider")
+  })
+})
+
 test("POST /api/admin/config rejects unsupported provider keys", async () => {
   await withConfig({}, async () => {
     const { server } = await import("../src/server")

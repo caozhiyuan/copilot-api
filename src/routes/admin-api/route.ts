@@ -12,6 +12,7 @@ import {
   getModelRefreshIntervalMs,
   isFreeModelLoadBalancingEnabled,
   mergeConfigWithDefaults,
+  PROVIDER_TYPE_ANTHROPIC,
   type AppConfig,
   type ModelConfig,
   type ProviderConfig,
@@ -475,10 +476,10 @@ function applyProviderType(
   const parsed = parseOptionalString(value.type, `${field}.type`)
   if ("error" in parsed) return parsed.error
   if ("value" in parsed) {
-    if (parsed.value !== "anthropic") {
-      return `${field}.type must be "anthropic"`
+    if (parsed.value !== PROVIDER_TYPE_ANTHROPIC) {
+      return `${field}.type must be "${PROVIDER_TYPE_ANTHROPIC}"`
     }
-    provider.type = parsed.value
+    provider.type = PROVIDER_TYPE_ANTHROPIC
   }
 
   return undefined
@@ -579,6 +580,7 @@ function parseProviders(
   }
 
   const record = Object.create(null) as Record<string, ProviderConfig>
+  const seenProviderNames = new Set<string>()
 
   for (const [rawProviderName, rawProviderConfig] of Object.entries(value)) {
     if (BLOCKED_KEYS.has(rawProviderName)) {
@@ -598,18 +600,20 @@ function parseProviders(
       return { error: `providers.${providerName} is not allowed` }
     }
 
+    const normalizedProviderName = providerName.toLowerCase()
+    if (seenProviderNames.has(normalizedProviderName)) {
+      return {
+        error: `providers.${rawProviderName} conflicts with another provider`,
+      }
+    }
+    seenProviderNames.add(normalizedProviderName)
+
     const parsed = parseProviderConfig(
       rawProviderConfig,
       `providers.${providerName}`,
     )
     if ("error" in parsed) return parsed
     if ("clear" in parsed) continue
-
-    if (Object.hasOwn(record, providerName)) {
-      return {
-        error: `providers.${rawProviderName} conflicts with another provider`,
-      }
-    }
 
     record[providerName] = parsed.value
   }
