@@ -33,6 +33,7 @@
 - 支持请求级限速（`--rate-limit`）与等待模式（`--wait`）
 - 支持手动审批请求（`--manual`）
 - 支持 API Key 鉴权中间件（`auth.apiKeys`，兼容旧字段）
+- 支持多 Provider Anthropic 上游代理路由（`/:provider/v1/messages`、`/:provider/v1/models`），并支持按模型配置默认参数（temperature/topP/topK）
 - 内置 Admin UI 与 Admin API（账户状态、请求日志、配置管理）
 - 请求历史落库 SQLite（默认 14 天保留、上限 200000 行）
 - 支持 `--claude-code` 一键生成 Claude Code 环境变量命令
@@ -263,26 +264,34 @@ Admin API 规则独立于业务 API：
 
 ## 配置文件（config.json）
 
-路径：`~/.local/share/copilot-api/config.json`
+路径：`~/.local/share/copilot-api/config.json`（Linux/macOS）或 `%USERPROFILE%\\.local\\share\\copilot-api\\config.json`（Windows）
 
 默认值（按当前代码）：
 
 ```json
 {
-  "auth": { "apiKeys": [] },
+  "auth": {
+    "apiKeys": []
+  },
+  "providers": {},
   "extraPrompts": {
     "gpt-5-mini": "<built-in prompt>",
-    "gpt-5.1-codex-max": "<built-in prompt>",
-    "gpt-5.3-codex": "<built-in prompt>"
+    "gpt-5.3-codex": "<built-in prompt>",
+    "gpt-5.4": "<built-in prompt>"
   },
   "smallModel": "gpt-5-mini",
   "freeModelLoadBalancing": true,
+  "responsesApiContextManagementModels": [],
   "modelReasoningEfforts": {
-    "gpt-5-mini": "low"
+    "gpt-5-mini": "low",
+    "gpt-5.3-codex": "xhigh",
+    "gpt-5.4": "xhigh"
   },
   "allowOriginalModelNamesForAliases": false,
   "useFunctionApplyPatch": true,
+  "forceAgent": false,
   "compactUseSmallModel": true,
+  "useMessagesApi": true,
   "messageStartInputTokensFallback": false,
   "modelRefreshIntervalHours": 24
 }
@@ -294,24 +303,58 @@ Admin API 规则独立于业务 API：
 | --- | --- |
 | `auth.apiKeys` | 业务 API 鉴权 key 列表（推荐） |
 | `apiKey` | 旧版单 key（弃用兼容） |
-| `extraPrompts` | 按模型附加系统提示词 |
+| `providers` | 上游 provider 映射（Anthropic 兼容代理路由）：每个 key 会生成 `/:provider/v1/messages`、`/:provider/v1/models` 等路由前缀；目前仅支持 `type: "anthropic"`；可选 `models` 定义 `temperature/topP/topK` 默认值（仅在请求未显式指定时生效）。 |
+| `extraPrompts` | 按模型附加 system prompt（在 Anthropic 请求翻译时注入） |
 | `smallModel` | 小模型（预热/compact 场景回落） |
 | `freeModelLoadBalancing` | 免费模型是否轮询分发 |
+| `responsesApiContextManagementModels` | 需要注入 Responses API `context_management` 压缩指令的模型 ID 列表（用于支持服务端 context management 的模型）。 |
 | `modelReasoningEfforts` | Responses API 的模型推理强度配置 |
 | `modelAliases` | 模型别名映射（支持 `allowOriginal`） |
 | `allowOriginalModelNamesForAliases` | 别名目标模型原名是否全局可用 |
 | `useFunctionApplyPatch` | 是否将 `custom/apply_patch` 转换为 function tool |
 | `forceAgent` | Responses 中 assistant 角色判定策略 |
 | `compactUseSmallModel` | compact 请求自动使用 smallModel |
+| `useMessagesApi` | 是否允许 `/v1/messages` 优先尝试 Copilot 原生 Messages API；关闭时将跳过该候选并从 `/responses`（如支持）或 `/chat/completions` 回退。 |
 | `messageStartInputTokensFallback` | Anthropic 流式首包 token 估算回退 |
 | `modelRefreshIntervalHours` | 模型刷新周期（小时，`0` 关闭） |
 
+### providers 示例（Anthropic 上游代理）
+
+`providers` 用于将本服务作为“Anthropic 兼容代理”，转发请求到你自定义的 Anthropic-compatible 上游。
+
+- provider key 会作为路由前缀（例如 `custom` -> `http://localhost:4141/custom/v1/messages`）
+- `baseUrl` 为上游 API base URL（不要带尾部 `/v1/messages`）
+- `enabled` 省略时默认 `true`
+- `models` 为可选的按模型默认参数配置（仅在请求未显式指定时生效）
+
+```json
+{
+  "providers": {
+    "custom": {
+      "type": "anthropic",
+      "enabled": true,
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "sk-your-provider-key",
+      "models": {
+        "kimi-k2.5": {
+          "temperature": 1,
+          "topP": 0.95,
+          "topK": 50
+        }
+      }
+    }
+  }
+}
+```
+
 ### 配置热更新
 
-可通过 Admin API 修改配置：
+可通过 Admin UI 或 Admin API 修改配置：
 
-- `GET /api/admin/config`
-- `POST /api/admin/config`
+- Admin UI：`/admin#/settings`
+- Admin API：
+  - `GET /api/admin/config`
+  - `POST /api/admin/config`
 
 `POST` 支持部分字段 patch，包含类型校验与安全键过滤（如 `__proto__` 会被拒绝）。更新成功后会立即应用关键运行参数（如免费模型负载均衡、模型刷新间隔）。
 
@@ -342,6 +385,9 @@ Admin API 规则独立于业务 API：
 | --- | --- | --- |
 | `/v1/messages` | `POST` | Messages 接口 |
 | `/v1/messages/count_tokens` | `POST` | Token 计数 |
+| `/:provider/v1/messages` | `POST` | 代理转发 Anthropic Messages API 到配置的 provider |
+| `/:provider/v1/models` | `GET` | 代理转发 Anthropic Models API 到配置的 provider |
+| `/:provider/v1/messages/count_tokens` | `POST` | provider 路由的 token 计数（本地计算） |
 
 ### 使用与状态
 
@@ -368,11 +414,15 @@ Admin API 规则独立于业务 API：
 
 ### 0) Messages 上游回退链路
 
-`POST /v1/messages` 在选择可用上游时，会按候选顺序尝试：
+`POST /v1/messages` 在选择可用上游时，会按候选顺序尝试（候选集受 `useMessagesApi` 影响）：
 
-1. `"/v1/messages"`
-2. `"/responses"`
-3. `"/chat/completions"`
+- 当 `useMessagesApi=true`（默认）：
+  1. `"/v1/messages"`
+  2. `"/responses"`
+  3. `"/chat/completions"`
+- 当 `useMessagesApi=false`：
+  1. `"/responses"`
+  2. `"/chat/completions"`
 
 系统会结合模型可用性、账号状态与配额结果选择最终路径。
 
