@@ -7,6 +7,8 @@ import {
   type AdminConfig,
   type AdminConfigResponse,
   type ModelAliasSpec,
+  type ProviderConfig,
+  type ProviderModelConfig,
   type ReasoningEffort,
   getAdminConfig,
   getAdminModels,
@@ -79,6 +81,25 @@ type ModelAliasItem = {
 type ModelAliasRecord = Record<string, ModelAliasSpec>
 
 type ModelAliasRecordInput = Record<string, ModelAliasSpec | string>
+
+type ProviderModelItem = {
+  id: string
+  model: string
+  temperature: string
+  topP: string
+  topK: string
+}
+
+type ProviderItem = {
+  id: string
+  name: string
+  enabled: boolean
+  baseUrl: string
+  apiKey: string
+  models: Array<ProviderModelItem>
+}
+
+type ProviderRecord = Record<string, ProviderConfig>
 
 type ParseResult<T> = { record: T } | { error: string }
 
@@ -164,12 +185,18 @@ function getAuthApiKeysFromConfig(config: AdminConfig): Array<string> {
 }
 
 function parseAuthApiKeysInput(value: string): Array<string> {
-  return [...new Set(
-    value
-      .split(/\r?\n|,/)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0),
-  )]
+  return parseStringListInput(value)
+}
+
+function parseStringListInput(value: string): Array<string> {
+  return [
+    ...new Set(
+      value
+        .split(/\r?\n|,/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0),
+    ),
+  ]
 }
 
 function extraPromptItemsFromRecord(
@@ -264,6 +291,287 @@ function aliasRecordFromItems(items: Array<ModelAliasItem>): ModelAliasRecord {
   }
 
   return record
+}
+
+const BLOCKED_PROVIDER_KEYS = new Set(["__proto__", "constructor", "prototype"])
+
+function providerItemsFromRecord(record: ProviderRecord | undefined): Array<ProviderItem> {
+  if (!record) return []
+
+  return Object.entries(record).map(([name, provider]) => ({
+    id: createItemId(),
+    name,
+    enabled: provider.enabled ?? true,
+    baseUrl: provider.baseUrl ?? "",
+    apiKey: provider.apiKey ?? "",
+    models: Object.entries(provider.models ?? {}).map(([model, config]) => ({
+      id: createItemId(),
+      model,
+      temperature: config.temperature === undefined ? "" : String(config.temperature),
+      topP: config.topP === undefined ? "" : String(config.topP),
+      topK: config.topK === undefined ? "" : String(config.topK),
+    })),
+  }))
+}
+
+function providerHasMeaningfulContent(item: ProviderItem): boolean {
+  if (item.enabled === false) return true
+  if (item.baseUrl.trim() || item.apiKey.trim()) return true
+
+  return item.models.some(
+    (model) =>
+      Boolean(model.model.trim())
+      || Boolean(model.temperature.trim())
+      || Boolean(model.topP.trim())
+      || Boolean(model.topK.trim()),
+  )
+}
+
+function providerRecordFromItems(items: Array<ProviderItem>): ParseResult<ProviderRecord> {
+  const record: ProviderRecord = Object.create(null) as ProviderRecord
+  const seenProviders = new Set<string>()
+
+  for (const item of items) {
+    const providerName = item.name.trim()
+    if (!providerName) {
+      if (providerHasMeaningfulContent(item)) {
+        return { error: "Provider name is required." }
+      }
+      continue
+    }
+
+    const normalizedProviderName = providerName.toLowerCase()
+    if (BLOCKED_PROVIDER_KEYS.has(normalizedProviderName)) {
+      return { error: `Provider '${providerName}' is not allowed.` }
+    }
+    if (seenProviders.has(normalizedProviderName)) {
+      return { error: `Provider '${providerName}' is duplicated.` }
+    }
+
+    seenProviders.add(normalizedProviderName)
+
+    const baseUrl = item.baseUrl.trim()
+    const apiKey = item.apiKey.trim()
+
+    const provider: ProviderConfig = {
+      type: "anthropic",
+      enabled: item.enabled,
+      baseUrl: baseUrl || undefined,
+      apiKey: apiKey || undefined,
+    }
+
+    const modelsRecord = Object.create(null) as Record<string, ProviderModelConfig>
+    const seenModels = new Set<string>()
+
+    for (const modelItem of item.models) {
+      const modelId = modelItem.model.trim()
+      const temperatureInput = modelItem.temperature.trim()
+      const topPInput = modelItem.topP.trim()
+      const topKInput = modelItem.topK.trim()
+
+      const hasNumericOverride = Boolean(temperatureInput || topPInput || topKInput)
+
+      if (!modelId) {
+        if (hasNumericOverride) {
+          return {
+            error: `Provider '${providerName}': model id is required when setting overrides.`,
+          }
+        }
+        continue
+      }
+
+      const normalizedModelId = modelId.toLowerCase()
+      if (BLOCKED_PROVIDER_KEYS.has(normalizedModelId)) {
+        return { error: `Provider '${providerName}' model '${modelId}' is not allowed.` }
+      }
+      if (seenModels.has(normalizedModelId)) {
+        return { error: `Provider '${providerName}' model '${modelId}' is duplicated.` }
+      }
+
+      const config: ProviderModelConfig = {}
+
+      if (temperatureInput) {
+        const parsed = Number(temperatureInput)
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return {
+            error: `Provider '${providerName}' model '${modelId}': temperature must be a non-negative number.`,
+          }
+        }
+        config.temperature = parsed
+      }
+
+      if (topPInput) {
+        const parsed = Number(topPInput)
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return {
+            error: `Provider '${providerName}' model '${modelId}': topP must be a non-negative number.`,
+          }
+        }
+        config.topP = parsed
+      }
+
+      if (topKInput) {
+        const parsed = Number(topKInput)
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          return {
+            error: `Provider '${providerName}' model '${modelId}': topK must be a non-negative number.`,
+          }
+        }
+        config.topK = parsed
+      }
+
+      if (Object.keys(config).length === 0) {
+        continue
+      }
+
+      seenModels.add(normalizedModelId)
+      modelsRecord[modelId] = config
+    }
+
+    if (Object.keys(modelsRecord).length > 0) {
+      provider.models = modelsRecord
+    }
+
+    record[providerName] = provider
+  }
+
+  return { record }
+}
+
+type ProvidersEditor = {
+  items: Array<ProviderItem>
+  issue: string | null
+  onAddProvider: () => void
+  onRemoveProvider: (id: string) => void
+  onUpdateProvider: (id: string, patch: Partial<ProviderItem>) => void
+  onAddModel: (providerId: string) => void
+  onRemoveModel: (providerId: string, modelItemId: string) => void
+  onUpdateModel: (
+    providerId: string,
+    modelItemId: string,
+    patch: Partial<ProviderModelItem>,
+  ) => void
+  setFromRecord: (record?: ProviderRecord) => void
+}
+
+function useProvidersEditor(
+  onRecordChange: (record: ProviderRecord) => void,
+): ProvidersEditor {
+  const [items, setItems] = useState<Array<ProviderItem>>([])
+  const [issue, setIssue] = useState<string | null>(null)
+
+  const setFromRecord = useCallback((record?: ProviderRecord) => {
+    setItems(providerItemsFromRecord(record))
+    setIssue(null)
+  }, [])
+
+  const updateItems = useCallback(
+    (nextItems: Array<ProviderItem>) => {
+      setItems(nextItems)
+      const result = providerRecordFromItems(nextItems)
+      if ("error" in result) {
+        setIssue(result.error)
+        return
+      }
+      setIssue(null)
+      onRecordChange(result.record)
+    },
+    [onRecordChange],
+  )
+
+  const onAddProvider = useCallback(() => {
+    updateItems(
+      items.concat({
+        id: createItemId(),
+        name: "",
+        enabled: true,
+        baseUrl: "",
+        apiKey: "",
+        models: [],
+      }),
+    )
+  }, [items, updateItems])
+
+  const onRemoveProvider = useCallback(
+    (id: string) => {
+      updateItems(items.filter((item) => item.id !== id))
+    },
+    [items, updateItems],
+  )
+
+  const onUpdateProvider = useCallback(
+    (id: string, patch: Partial<ProviderItem>) => {
+      const next = items.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      updateItems(next)
+    },
+    [items, updateItems],
+  )
+
+  const onAddModel = useCallback(
+    (providerId: string) => {
+      const next = items.map((provider) => {
+        if (provider.id !== providerId) return provider
+        return {
+          ...provider,
+          models: provider.models.concat({
+            id: createItemId(),
+            model: "",
+            temperature: "",
+            topP: "",
+            topK: "",
+          }),
+        }
+      })
+      updateItems(next)
+    },
+    [items, updateItems],
+  )
+
+  const onRemoveModel = useCallback(
+    (providerId: string, modelItemId: string) => {
+      const next = items.map((provider) => {
+        if (provider.id !== providerId) return provider
+        return {
+          ...provider,
+          models: provider.models.filter((model) => model.id !== modelItemId),
+        }
+      })
+      updateItems(next)
+    },
+    [items, updateItems],
+  )
+
+  const onUpdateModel = useCallback(
+    (
+      providerId: string,
+      modelItemId: string,
+      patch: Partial<ProviderModelItem>,
+    ) => {
+      const next = items.map((provider) => {
+        if (provider.id !== providerId) return provider
+        return {
+          ...provider,
+          models: provider.models.map((model) =>
+            model.id === modelItemId ? { ...model, ...patch } : model,
+          ),
+        }
+      })
+      updateItems(next)
+    },
+    [items, updateItems],
+  )
+
+  return {
+    items,
+    issue,
+    onAddProvider,
+    onRemoveProvider,
+    onUpdateProvider,
+    onAddModel,
+    onRemoveModel,
+    onUpdateModel,
+    setFromRecord,
+  }
 }
 
 function parseExtraPromptsJson(
@@ -1378,6 +1686,8 @@ type AdvancedSettingsCardProps = {
   forceAgent: boolean
   compactUseSmallModel: boolean
   messageStartInputTokensFallback: boolean
+  useMessagesApi: boolean
+  responsesApiContextManagementModelsValue: string
   onToggleLoadBalancing: (value: boolean) => void
   onModelRefreshIntervalChange: (value: string) => void
   onToggleAllowOriginalModelNamesForAliases: (value: boolean) => void
@@ -1385,6 +1695,8 @@ type AdvancedSettingsCardProps = {
   onToggleForceAgent: (value: boolean) => void
   onToggleCompactUseSmallModel: (value: boolean) => void
   onToggleMessageStartInputTokensFallback: (value: boolean) => void
+  onToggleUseMessagesApi: (value: boolean) => void
+  onResponsesApiContextManagementModelsChange: (value: string) => void
 }
 
 function AdvancedSettingsCard({
@@ -1396,6 +1708,8 @@ function AdvancedSettingsCard({
   forceAgent,
   compactUseSmallModel,
   messageStartInputTokensFallback,
+  useMessagesApi,
+  responsesApiContextManagementModelsValue,
   onToggleLoadBalancing,
   onModelRefreshIntervalChange,
   onToggleAllowOriginalModelNamesForAliases,
@@ -1403,6 +1717,8 @@ function AdvancedSettingsCard({
   onToggleForceAgent,
   onToggleCompactUseSmallModel,
   onToggleMessageStartInputTokensFallback,
+  onToggleUseMessagesApi,
+  onResponsesApiContextManagementModelsChange,
 }: AdvancedSettingsCardProps): React.JSX.Element {
   const { t } = useTranslation()
 
@@ -1520,6 +1836,289 @@ function AdvancedSettingsCard({
             onCheckedChange={onToggleMessageStartInputTokensFallback}
           />
         </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.useMessagesApiLabel")}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {t("settingsPage.advanced.useMessagesApiHint")}
+            </div>
+          </div>
+          <Switch checked={useMessagesApi} onCheckedChange={onToggleUseMessagesApi} />
+        </div>
+
+        <div className="grid gap-2">
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.responsesApiContextManagementModelsLabel")}
+          </Label>
+          <Textarea
+            autoComplete="off"
+            placeholder={t(
+              "settingsPage.advanced.responsesApiContextManagementModelsPlaceholder",
+            )}
+            value={responsesApiContextManagementModelsValue}
+            onChange={(e) =>
+              onResponsesApiContextManagementModelsChange(e.target.value)
+            }
+            className="min-h-[96px] font-mono text-xs"
+          />
+          <div className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.responsesApiContextManagementModelsHint")}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+type ProviderModelRowProps = {
+  providerId: string
+  item: ProviderModelItem
+  onRemoveModel: (providerId: string, modelItemId: string) => void
+  onUpdateModel: (
+    providerId: string,
+    modelItemId: string,
+    patch: Partial<ProviderModelItem>,
+  ) => void
+}
+
+function ProviderModelRow({
+  providerId,
+  item,
+  onRemoveModel,
+  onUpdateModel,
+}: ProviderModelRowProps): React.JSX.Element {
+  const { t } = useTranslation()
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Input
+        className="min-w-[180px]"
+        placeholder={t("settingsPage.advanced.providersModelIdPlaceholder")}
+        value={item.model}
+        onChange={(e) => onUpdateModel(providerId, item.id, { model: e.target.value })}
+      />
+      <Input
+        className="w-28"
+        type="number"
+        step="0.1"
+        min="0"
+        placeholder="temperature"
+        value={item.temperature}
+        onChange={(e) =>
+          onUpdateModel(providerId, item.id, { temperature: e.target.value })
+        }
+      />
+      <Input
+        className="w-28"
+        type="number"
+        step="0.01"
+        min="0"
+        placeholder="topP"
+        value={item.topP}
+        onChange={(e) => onUpdateModel(providerId, item.id, { topP: e.target.value })}
+      />
+      <Input
+        className="w-28"
+        type="number"
+        step="1"
+        min="0"
+        placeholder="topK"
+        value={item.topK}
+        onChange={(e) => onUpdateModel(providerId, item.id, { topK: e.target.value })}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => onRemoveModel(providerId, item.id)}
+      >
+        {t("settingsPage.common.remove")}
+      </Button>
+    </div>
+  )
+}
+
+type ProviderItemCardProps = {
+  item: ProviderItem
+  onRemoveProvider: (id: string) => void
+  onUpdateProvider: (id: string, patch: Partial<ProviderItem>) => void
+  onAddModel: (providerId: string) => void
+  onRemoveModel: (providerId: string, modelItemId: string) => void
+  onUpdateModel: (
+    providerId: string,
+    modelItemId: string,
+    patch: Partial<ProviderModelItem>,
+  ) => void
+}
+
+function ProviderItemCard({
+  item,
+  onRemoveProvider,
+  onUpdateProvider,
+  onAddModel,
+  onRemoveModel,
+  onUpdateModel,
+}: ProviderItemCardProps): React.JSX.Element {
+  const { t } = useTranslation()
+
+  return (
+    <div className="grid gap-3 rounded-lg border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="min-w-[200px]"
+          placeholder={t("settingsPage.advanced.providersNamePlaceholder")}
+          value={item.name}
+          onChange={(e) => onUpdateProvider(item.id, { name: e.target.value })}
+        />
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={item.enabled}
+            onCheckedChange={(value) => onUpdateProvider(item.id, { enabled: value })}
+          />
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.providersEnabledLabel")}
+          </Label>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onRemoveProvider(item.id)}
+        >
+          {t("settingsPage.common.remove")}
+        </Button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-2">
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.providersBaseUrlLabel")}
+          </Label>
+          <Input
+            autoComplete="off"
+            placeholder={t("settingsPage.advanced.providersBaseUrlPlaceholder")}
+            value={item.baseUrl}
+            onChange={(e) => onUpdateProvider(item.id, { baseUrl: e.target.value })}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.providersApiKeyLabel")}
+          </Label>
+          <Input
+            type="password"
+            autoComplete="off"
+            placeholder={t("settingsPage.advanced.providersApiKeyPlaceholder")}
+            value={item.apiKey}
+            onChange={(e) => onUpdateProvider(item.id, { apiKey: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-medium">
+            {t("settingsPage.advanced.providersModelsLabel")}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onAddModel(item.id)}
+          >
+            {t("settingsPage.advanced.providersAddModel")}
+          </Button>
+        </div>
+
+        {item.models.length === 0 ? (
+          <div className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.providersModelsEmptyState")}
+          </div>
+        ) : (
+          item.models.map((model) => (
+            <ProviderModelRow
+              key={model.id}
+              providerId={item.id}
+              item={model}
+              onUpdateModel={onUpdateModel}
+              onRemoveModel={onRemoveModel}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+type ProvidersSettingsCardProps = {
+  items: Array<ProviderItem>
+  issue: string | null
+  onAddProvider: () => void
+  onRemoveProvider: (id: string) => void
+  onUpdateProvider: (id: string, patch: Partial<ProviderItem>) => void
+  onAddModel: (providerId: string) => void
+  onRemoveModel: (providerId: string, modelItemId: string) => void
+  onUpdateModel: (
+    providerId: string,
+    modelItemId: string,
+    patch: Partial<ProviderModelItem>,
+  ) => void
+}
+
+function ProvidersSettingsCard({
+  items,
+  issue,
+  onAddProvider,
+  onRemoveProvider,
+  onUpdateProvider,
+  onAddModel,
+  onRemoveModel,
+  onUpdateModel,
+}: ProvidersSettingsCardProps): React.JSX.Element {
+  const { t } = useTranslation()
+
+  return (
+    <Card className="gap-4 py-4">
+      <CardHeader className="px-4">
+        <CardTitle>{t("settingsPage.advanced.providersTitle")}</CardTitle>
+        <CardDescription className="hidden sm:block">
+          {t("settingsPage.advanced.providersDescription")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 px-4">
+        {issue ? (
+          <InlineAlert
+            variant="warning"
+            title={t("settingsPage.advanced.providersIssueTitle")}
+            description={issue}
+          />
+        ) : null}
+
+        {items.length === 0 ? (
+          <div className="text-muted-foreground text-sm">
+            {t("settingsPage.advanced.providersEmptyState")}
+          </div>
+        ) : (
+          items.map((item) => (
+            <ProviderItemCard
+              key={item.id}
+              item={item}
+              onRemoveProvider={onRemoveProvider}
+              onUpdateProvider={onUpdateProvider}
+              onAddModel={onAddModel}
+              onRemoveModel={onRemoveModel}
+              onUpdateModel={onUpdateModel}
+            />
+          ))
+        )}
+
+        <Button type="button" variant="outline" size="sm" onClick={onAddProvider}>
+          {t("settingsPage.advanced.providersAddProvider")}
+        </Button>
       </CardContent>
     </Card>
   )
@@ -1580,6 +2179,22 @@ type SettingsPageViewProps = {
   forceAgent: boolean
   compactUseSmallModel: boolean
   messageStartInputTokensFallback: boolean
+  useMessagesApi: boolean
+  responsesApiContextManagementModelsValue: string
+  onUseMessagesApiToggle: (value: boolean) => void
+  onResponsesApiContextManagementModelsChange: (value: string) => void
+  providersItems: Array<ProviderItem>
+  providersIssue: string | null
+  onProvidersAddProvider: () => void
+  onProvidersRemoveProvider: (id: string) => void
+  onProvidersUpdateProvider: (id: string, patch: Partial<ProviderItem>) => void
+  onProvidersAddModel: (providerId: string) => void
+  onProvidersRemoveModel: (providerId: string, modelItemId: string) => void
+  onProvidersUpdateModel: (
+    providerId: string,
+    modelItemId: string,
+    patch: Partial<ProviderModelItem>,
+  ) => void
   onAllowOriginalModelNamesForAliasesToggle: (value: boolean) => void
   onUseFunctionApplyPatchToggle: (value: boolean) => void
   onForceAgentToggle: (value: boolean) => void
@@ -1602,6 +2217,10 @@ function useSettingsPageState(): SettingsPageViewProps {
   const [modelRefreshIntervalIssue, setModelRefreshIntervalIssue] = useState<
     string | null
   >(null)
+  const [
+    responsesApiContextManagementModelsValue,
+    setResponsesApiContextManagementModelsValue,
+  ] = useState<string>("")
 
   const extraEditor = useExtraPromptEditor((record) =>
     setDraft((prev) => ({ ...prev, extraPrompts: record })),
@@ -1612,6 +2231,10 @@ function useSettingsPageState(): SettingsPageViewProps {
 
   const aliasEditor = useModelAliasEditor((record) =>
     setDraft((prev) => ({ ...prev, modelAliases: record })),
+  )
+
+  const providersEditor = useProvidersEditor((record) =>
+    setDraft((prev) => ({ ...prev, providers: record })),
   )
 
   const {
@@ -1653,6 +2276,18 @@ function useSettingsPageState(): SettingsPageViewProps {
     setFromRecord: setAliasFromRecord,
   } = aliasEditor
 
+  const {
+    items: providersItems,
+    issue: providersIssue,
+    onAddProvider: onProvidersAddProvider,
+    onRemoveProvider: onProvidersRemoveProvider,
+    onUpdateProvider: onProvidersUpdateProvider,
+    onAddModel: onProvidersAddModel,
+    onRemoveModel: onProvidersRemoveModel,
+    onUpdateModel: onProvidersUpdateModel,
+    setFromRecord: setProvidersFromRecord,
+  } = providersEditor
+
   const applyConfigResponse = useCallback(
     (config: AdminConfigResponse) => {
       const { _configPath, ...configData } = config
@@ -1670,17 +2305,23 @@ function useSettingsPageState(): SettingsPageViewProps {
       setExtraFromRecord(configData.extraPrompts)
       setReasoningFromRecord(configData.modelReasoningEfforts)
       setAliasFromRecord(normalizedAliases)
+      setProvidersFromRecord(configData.providers)
       setModelRefreshIntervalInput(
         typeof intervalValue === "number" ? String(intervalValue) : "",
       )
       setModelRefreshIntervalIssue(null)
+      setResponsesApiContextManagementModelsValue(
+        configData.responsesApiContextManagementModels?.join("\n") ?? "",
+      )
     },
     [
       setExtraFromRecord,
       setReasoningFromRecord,
       setAliasFromRecord,
+      setProvidersFromRecord,
       setModelRefreshIntervalInput,
       setModelRefreshIntervalIssue,
+      setResponsesApiContextManagementModelsValue,
     ],
   )
 
@@ -1851,6 +2492,25 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleUseMessagesApiToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, useMessagesApi: value }))
+    },
+    [setDraft],
+  )
+
+  const handleResponsesApiContextManagementModelsChange = useCallback(
+    (value: string) => {
+      setResponsesApiContextManagementModelsValue(value)
+      const models = parseStringListInput(value)
+      setDraft((prev) => ({
+        ...prev,
+        responsesApiContextManagementModels: models,
+      }))
+    },
+    [setDraft, setResponsesApiContextManagementModelsValue],
+  )
+
   const hasModels = models.length > 0
   const smallModelValue = draft.smallModel ? draft.smallModel : "__default__"
   const canSave =
@@ -1860,6 +2520,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     && !(reasoningMode === "json" && reasoningJsonIssue)
     && !(aliasMode === "json" && aliasJsonIssue)
     && !modelRefreshIntervalIssue
+    && !providersIssue
 
   const legacyAuthNote = t("settingsPage.general.legacyAuthNote", {
     env: "COPILOT_API_KEY",
@@ -1879,6 +2540,7 @@ function useSettingsPageState(): SettingsPageViewProps {
   const compactUseSmallModel = draft.compactUseSmallModel ?? true
   const messageStartInputTokensFallback =
     draft.messageStartInputTokensFallback ?? false
+  const useMessagesApi = draft.useMessagesApi ?? true
 
   return {
     loading,
@@ -1935,6 +2597,19 @@ function useSettingsPageState(): SettingsPageViewProps {
     forceAgent,
     compactUseSmallModel,
     messageStartInputTokensFallback,
+    useMessagesApi,
+    responsesApiContextManagementModelsValue,
+    onUseMessagesApiToggle: handleUseMessagesApiToggle,
+    onResponsesApiContextManagementModelsChange:
+      handleResponsesApiContextManagementModelsChange,
+    providersItems,
+    providersIssue,
+    onProvidersAddProvider,
+    onProvidersRemoveProvider,
+    onProvidersUpdateProvider,
+    onProvidersAddModel,
+    onProvidersRemoveModel,
+    onProvidersUpdateModel,
     onAllowOriginalModelNamesForAliasesToggle:
       handleAllowOriginalModelNamesForAliasesToggle,
     onUseFunctionApplyPatchToggle: handleUseFunctionApplyPatchToggle,
@@ -2000,6 +2675,18 @@ function SettingsPageView({
   forceAgent,
   compactUseSmallModel,
   messageStartInputTokensFallback,
+  useMessagesApi,
+  responsesApiContextManagementModelsValue,
+  onUseMessagesApiToggle,
+  onResponsesApiContextManagementModelsChange,
+  providersItems,
+  providersIssue,
+  onProvidersAddProvider,
+  onProvidersRemoveProvider,
+  onProvidersUpdateProvider,
+  onProvidersAddModel,
+  onProvidersRemoveModel,
+  onProvidersUpdateModel,
   onAllowOriginalModelNamesForAliasesToggle,
   onUseFunctionApplyPatchToggle,
   onForceAgentToggle,
@@ -2165,27 +2852,50 @@ function SettingsPageView({
             isActive={activeSection === "advanced"}
             ref={(el) => registerSection("advanced", el)}
           >
-            <AdvancedSettingsCard
-              loadBalancingEnabled={loadBalancingEnabled}
-              modelRefreshIntervalInput={modelRefreshIntervalInput}
-              modelRefreshIntervalIssue={modelRefreshIntervalIssue}
-              allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
-              useFunctionApplyPatch={useFunctionApplyPatch}
-              forceAgent={forceAgent}
-              compactUseSmallModel={compactUseSmallModel}
-              messageStartInputTokensFallback={messageStartInputTokensFallback}
-              onToggleLoadBalancing={onLoadBalancingToggle}
-              onModelRefreshIntervalChange={onModelRefreshIntervalChange}
-              onToggleAllowOriginalModelNamesForAliases={
-                onAllowOriginalModelNamesForAliasesToggle
-              }
-              onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
-              onToggleForceAgent={onForceAgentToggle}
-              onToggleCompactUseSmallModel={onCompactUseSmallModelToggle}
-              onToggleMessageStartInputTokensFallback={
-                onMessageStartInputTokensFallbackToggle
-              }
-            />
+            <div className="space-y-6">
+              <AdvancedSettingsCard
+                loadBalancingEnabled={loadBalancingEnabled}
+                modelRefreshIntervalInput={modelRefreshIntervalInput}
+                modelRefreshIntervalIssue={modelRefreshIntervalIssue}
+                allowOriginalModelNamesForAliases={
+                  allowOriginalModelNamesForAliases
+                }
+                useFunctionApplyPatch={useFunctionApplyPatch}
+                forceAgent={forceAgent}
+                compactUseSmallModel={compactUseSmallModel}
+                messageStartInputTokensFallback={messageStartInputTokensFallback}
+                useMessagesApi={useMessagesApi}
+                responsesApiContextManagementModelsValue={
+                  responsesApiContextManagementModelsValue
+                }
+                onToggleLoadBalancing={onLoadBalancingToggle}
+                onModelRefreshIntervalChange={onModelRefreshIntervalChange}
+                onToggleAllowOriginalModelNamesForAliases={
+                  onAllowOriginalModelNamesForAliasesToggle
+                }
+                onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
+                onToggleForceAgent={onForceAgentToggle}
+                onToggleCompactUseSmallModel={onCompactUseSmallModelToggle}
+                onToggleMessageStartInputTokensFallback={
+                  onMessageStartInputTokensFallbackToggle
+                }
+                onToggleUseMessagesApi={onUseMessagesApiToggle}
+                onResponsesApiContextManagementModelsChange={
+                  onResponsesApiContextManagementModelsChange
+                }
+              />
+
+              <ProvidersSettingsCard
+                items={providersItems}
+                issue={providersIssue}
+                onAddProvider={onProvidersAddProvider}
+                onRemoveProvider={onProvidersRemoveProvider}
+                onUpdateProvider={onProvidersUpdateProvider}
+                onAddModel={onProvidersAddModel}
+                onRemoveModel={onProvidersRemoveModel}
+                onUpdateModel={onProvidersUpdateModel}
+              />
+            </div>
           </SettingsSectionCard>
         </main>
       </div>
