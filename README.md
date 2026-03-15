@@ -48,9 +48,9 @@ Compared with routing everything through plain Chat Completions compatibility, t
 - **Token Visibility**: Option to display GitHub and Copilot tokens during authentication and refresh for debugging (`--show-token`).
 - **Flexible Authentication**: Authenticate interactively or provide a GitHub token directly, suitable for CI/CD environments.
 - **Support for Different Account Types**: Works with individual, business, and enterprise GitHub Copilot plans.
-- **Opencode OAuth Support**: Use opencode GitHub Copilot authentication by setting `COPILOT_API_OAUTH_APP=opencode` environment variable.
-- **GitHub Enterprise Support**: Connect to GHE.com by setting `COPILOT_API_ENTERPRISE_URL` environment variable (e.g., `company.ghe.com`).
-- **Custom Data Directory**: Change the default data directory (where tokens and config are stored) by setting `COPILOT_API_HOME` environment variable.
+- **Opencode OAuth Support**: Use opencode GitHub Copilot authentication by setting `COPILOT_API_OAUTH_APP=opencode` environment variable or using `--oauth-app=opencode` command line option.
+- **GitHub Enterprise Support**: Connect to GHE.com by setting `COPILOT_API_ENTERPRISE_URL` environment variable (e.g., `company.ghe.com`) or using `--enterprise-url=company.ghe.com` command line option.
+- **Custom Data Directory**: Change the default data directory (where tokens and config are stored) by setting `COPILOT_API_HOME` environment variable or using `--api-home=/path/to/dir` command line option.
 - **Multi-Provider Anthropic Proxy Routes**: Add global provider configs and call external Anthropic-compatible APIs via `/:provider/v1/messages` and `/:provider/v1/models`.
 
 ## Better Agent Semantics
@@ -198,6 +198,16 @@ Copilot API now uses a subcommand structure with these main commands:
 - `debug`: Display diagnostic information including version, runtime details, file paths, and authentication status. Useful for troubleshooting and support.
 
 ## Command Line Options
+
+### Global Options
+
+The following options can be used with any subcommand. When passing them before the subcommand, use the `--key=value` form:
+
+| Option            | Description                                            | Default | Alias |
+| ----------------- | ------------------------------------------------------ | ------- | ----- |
+| --api-home        | Path to the API home directory (sets COPILOT_API_HOME) | none    | none  |
+| --oauth-app       | OAuth app identifier (sets COPILOT_API_OAUTH_APP)      | none    | none  |
+| --enterprise-url  | Enterprise URL for GitHub (sets COPILOT_API_ENTERPRISE_URL) | none | none |
 
 ### Start Command Options
 
@@ -389,6 +399,18 @@ npx @jeffreycao/copilot-api@latest start --proxy-env
 
 # Use opencode GitHub Copilot authentication
 COPILOT_API_OAUTH_APP=opencode npx @jeffreycao/copilot-api@latest start
+
+# Set custom API home directory via command line
+npx @jeffreycao/copilot-api@latest --api-home=/path/to/custom/dir start
+
+# Use GitHub Enterprise via command line
+npx @jeffreycao/copilot-api@latest --enterprise-url=company.ghe.com start
+
+# Use opencode OAuth via command line
+npx @jeffreycao/copilot-api@latest --oauth-app=opencode start
+
+# Combine multiple global options
+npx @jeffreycao/copilot-api@latest --api-home=/custom/path --oauth-app=opencode --enterprise-url=company.ghe.com start
 ```
 
 ### Opencode OAuth Authentication
