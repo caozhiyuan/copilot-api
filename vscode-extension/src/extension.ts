@@ -4,8 +4,6 @@ import consola, { type ConsolaReporter } from "consola"
 import * as net from "node:net"
 import * as vscode from "vscode"
 
-import { state } from "~/lib/state"
-
 import { createVscodeOutputReporter } from "./consola-vscode-reporter"
 import { bindElectronNetFetchOnStartup } from "./electron-fetch-bind"
 import { sleep } from "./util"
@@ -20,6 +18,9 @@ interface ExtensionConfig {
   rateLimitWait: boolean
   proxyEnv: boolean
   showToken: boolean
+  apiHome: string | null
+  oauthApp: string | null
+  enterpriseUrl: string | null
 }
 
 let outputChannel: vscode.OutputChannel | undefined
@@ -85,6 +86,9 @@ function getConfig(): ExtensionConfig {
   const rateLimitWait = cfg.get<boolean>("rateLimitWait", false)
   const proxyEnv = cfg.get<boolean>("proxyEnv", false)
   const showToken = cfg.get<boolean>("showToken", false)
+  const apiHome = cfg.get<string | null>("apiHome", null)
+  const oauthApp = cfg.get<string | null>("oauthApp", null)
+  const enterpriseUrl = cfg.get<string | null>("enterpriseUrl", null)
 
   return {
     port,
@@ -94,6 +98,9 @@ function getConfig(): ExtensionConfig {
     rateLimitWait,
     proxyEnv,
     showToken,
+    apiHome,
+    oauthApp,
+    enterpriseUrl,
   }
 }
 
@@ -208,6 +215,17 @@ async function startServer(): Promise<void> {
     process.env.HOST = "127.0.0.1"
     process.env.NODE_ENV ??= "production"
 
+    // Set CLI args as environment variables
+    if (config.apiHome) {
+      process.env.COPILOT_API_HOME = config.apiHome
+    }
+    if (config.oauthApp) {
+      process.env.COPILOT_API_OAUTH_APP = config.oauthApp
+    }
+    if (config.enterpriseUrl) {
+      process.env.COPILOT_API_ENTERPRISE_URL = config.enterpriseUrl
+    }
+
     const { startServer: startCopilotServer } = await import("../../src/start")
     const currentServer = await startCopilotServer({
       port: config.port,
@@ -230,6 +248,7 @@ async function startServer(): Promise<void> {
 
     const util = await import("../../src/lib/utils")
     util.stopVsCodeSessionRefreshLoop()
+    const { state } = await import("~/lib/state")
     state.vsCodeSessionId = vscode.env.sessionId
     output.appendLine(
       `[session] Initialized session ID: ${state.vsCodeSessionId}`,

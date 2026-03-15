@@ -98,6 +98,30 @@
           "type": "boolean",
           "default": false,
           "description": "Log GitHub and Copilot tokens (debug only)."
+        },
+        "copilotApi.apiHome": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Path to the API home directory."
+        },
+        "copilotApi.oauthApp": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "OAuth app identifier."
+        },
+        "copilotApi.enterpriseUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Enterprise URL for GitHub."
         }
       }
     }
