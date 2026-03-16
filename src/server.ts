@@ -5,6 +5,7 @@ import { logger } from "hono/logger"
 import { readFileSync } from "node:fs"
 
 import { createAuthMiddleware } from "./lib/request-auth"
+import { traceIdMiddleware } from "./lib/trace"
 import { completionRoutes } from "./routes/chat-completions/route"
 import { embeddingRoutes } from "./routes/embeddings/route"
 import { messageRoutes } from "./routes/messages/route"
@@ -17,6 +18,7 @@ import { usageRoute } from "./routes/usage/route"
 
 export const server = new Hono()
 
+server.use(traceIdMiddleware)
 server.use(
   logger((line, ...rest) => {
     const message = [line, ...rest].filter(Boolean).join(" ")

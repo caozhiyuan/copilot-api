@@ -83,7 +83,6 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
               adjustInputTokens(providerConfig, parsed.usage)
             }
             data = JSON.stringify(parsed)
-            logger.debug("provider.messages.stream_event:", data)
           } catch (error) {
             logger.error("provider.messages.streaming.adjust_tokens_error", {
               error,
@@ -134,4 +133,5 @@ const adjustInputTokens = (
       - (usage.cache_creation_input_tokens ?? 0),
   )
   usage.input_tokens = adjustedInput
+  logger.debug("provider.messages.adjusted_usage:", JSON.stringify(usage))
 }
