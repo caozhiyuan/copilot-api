@@ -3,14 +3,16 @@ import type { Context } from "hono"
 import { events } from "fetch-event-stream"
 import { streamSSE } from "hono/streaming"
 
-import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
+import type {
+  AnthropicMessagesPayload,
+  AnthropicResponse,
+  AnthropicStreamEventData,
+} from "~/routes/messages/anthropic-types"
 
-import { getProviderConfig } from "~/lib/config"
+import { getProviderConfig, type ResolvedProviderConfig } from "~/lib/config"
+import { HTTPError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
-import {
-  createProviderProxyResponse,
-  forwardProviderMessages,
-} from "~/services/providers/anthropic-proxy"
+import { forwardProviderMessages } from "~/services/providers/anthropic-proxy"
 
 const logger = createHandlerLogger("provider-messages-handler")
 
@@ -48,6 +50,11 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
       c.req.raw.headers,
     )
 
+    if (!upstreamResponse.ok) {
+      logger.error("Failed to create responses", upstreamResponse)
+      throw new HTTPError("Failed to create responses", upstreamResponse)
+    }
+
     const contentType = upstreamResponse.headers.get("content-type") ?? ""
     const isStreamingResponse =
       Boolean(payload.stream) && contentType.includes("text/event-stream")
@@ -55,10 +62,34 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
     if (isStreamingResponse) {
       logger.debug("provider.messages.streaming")
       return streamSSE(c, async (stream) => {
-        for await (const event of events(upstreamResponse)) {
-          const eventName = event.event
-          const data = event.data ?? ""
-          logger.debug("provider.messages.raw_stream_event", data)
+        for await (const chunk of events(upstreamResponse)) {
+          logger.debug("provider.messages.raw_stream_event:", chunk.data)
+          const eventName = chunk.event
+          if (eventName === "ping") {
+            await stream.writeSSE({ event: "ping", data: '{"type":"ping"}' })
+            continue
+          }
+
+          let data = chunk.data
+          if (!data) {
+            continue
+          }
+
+          try {
+            const parsed = JSON.parse(data) as AnthropicStreamEventData
+            if (parsed.type === "message_start") {
+              adjustInputTokens(providerConfig, parsed.message.usage)
+            } else if (parsed.type === "message_delta") {
+              adjustInputTokens(providerConfig, parsed.usage)
+            }
+            data = JSON.stringify(parsed)
+            logger.debug("provider.messages.stream_event:", data)
+          } catch (error) {
+            logger.error("provider.messages.streaming.adjust_tokens_error", {
+              error,
+              originalData: data,
+            })
+          }
           await stream.writeSSE({
             event: eventName,
             data,
@@ -67,7 +98,15 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
       })
     }
 
-    return createProviderProxyResponse(upstreamResponse)
+    const jsonBody = (await upstreamResponse.json()) as AnthropicResponse
+
+    adjustInputTokens(providerConfig, jsonBody.usage)
+
+    logger.debug(
+      "provider.messages.no_stream result:",
+      JSON.stringify(jsonBody),
+    )
+    return c.json(jsonBody)
   } catch (error) {
     logger.error("provider.messages.error", {
       provider,
@@ -75,4 +114,24 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
     })
     throw error
   }
+}
+
+const adjustInputTokens = (
+  providerConfig: ResolvedProviderConfig,
+  usage?: {
+    input_tokens?: number
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+  },
+): void => {
+  if (!providerConfig.adjustInputTokens || !usage) {
+    return
+  }
+  const adjustedInput = Math.max(
+    0,
+    (usage.input_tokens ?? 0)
+      - (usage.cache_read_input_tokens ?? 0)
+      - (usage.cache_creation_input_tokens ?? 0),
+  )
+  usage.input_tokens = adjustedInput
 }

@@ -32,6 +32,7 @@ export interface ProviderConfig {
   baseUrl?: string
   apiKey?: string
   models?: Record<string, ModelConfig>
+  adjustInputTokens?: boolean
 }
 
 export interface ResolvedProviderConfig {
@@ -40,6 +41,7 @@ export interface ResolvedProviderConfig {
   baseUrl: string
   apiKey: string
   models?: Record<string, ModelConfig>
+  adjustInputTokens?: boolean
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -276,6 +278,7 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     baseUrl,
     apiKey,
     models: provider.models,
+    adjustInputTokens: provider.adjustInputTokens,
   }
 }
 
