@@ -1,18 +1,22 @@
 import { Hono } from "hono"
 
-import { accountsManager } from "~/lib/accounts-manager"
 import { getAliasTargetSet, getModelAliases } from "~/lib/config"
 import { forwardError } from "~/lib/error"
+import { state } from "~/lib/state"
+import { cacheModels } from "~/lib/utils"
 
 export const modelRoutes = new Hono()
 
 modelRoutes.get("/", async (c) => {
   try {
-    const accountModels = accountsManager.getFirstAccountModels()
+    if (!state.models) {
+      // This should be handled by startup logic, but as a fallback.
+      await cacheModels()
+    }
 
     const blockedTargets = getAliasTargetSet()
     const models =
-      accountModels?.data
+      state.models?.data
         .filter((model) => !blockedTargets.has(model.id.toLowerCase()))
         .map((model) => ({
           id: model.id,

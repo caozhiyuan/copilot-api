@@ -6,10 +6,10 @@ import path from "node:path"
 
 import type { Model } from "~/services/copilot/get-models"
 
-import { accountsManager } from "~/lib/accounts-manager"
 import { getSmallModel, mergeConfigWithDefaults } from "~/lib/config"
 import { PATHS } from "~/lib/paths"
 import { getRequestHistoryStore } from "~/lib/request-history"
+import { state } from "~/lib/state"
 import { maybeBlockOriginalModelName } from "~/routes/messages/utils"
 import { modelRoutes } from "~/routes/models/route"
 
@@ -70,19 +70,17 @@ const withConfig = async (config: TestConfig, run: () => Promise<void>) => {
 }
 
 const withMockedModels = async (run: () => Promise<void>) => {
-  const originalGetFirstAccountModels =
-    accountsManager.getFirstAccountModels.bind(accountsManager)
-  accountsManager.getFirstAccountModels = () =>
-    ({
-      data: [buildModel("gpt-5-mini"), buildModel("gpt-4")],
-      object: "list",
-    }) as ModelsResponse
+  const originalModels = state.models
+  state.models = {
+    data: [buildModel("gpt-5-mini"), buildModel("gpt-4")],
+    object: "list",
+  } as ModelsResponse
 
   try {
     await run()
   } finally {
     // eslint-disable-next-line require-atomic-updates
-    accountsManager.getFirstAccountModels = originalGetFirstAccountModels
+    state.models = originalModels
   }
 }
 
