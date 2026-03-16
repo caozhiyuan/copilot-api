@@ -33,6 +33,9 @@
 - 支持请求级限速（`--rate-limit`）与等待模式（`--wait`）
 - 支持手动审批请求（`--manual`）
 - 支持 API Key 鉴权中间件（`auth.apiKeys`，兼容旧字段）
+- 支持 opencode OAuth（环境变量 `COPILOT_API_OAUTH_APP=opencode` 或全局参数 `--oauth-app=opencode`）
+- 支持 GitHub Enterprise（环境变量 `COPILOT_API_ENTERPRISE_URL=company.ghe.com` 或全局参数 `--enterprise-url=company.ghe.com`）
+- 支持自定义数据目录（环境变量 `COPILOT_API_HOME=/path/to/dir` 或全局参数 `--api-home=/path/to/dir`）
 - 支持多 Provider Anthropic 上游代理路由（`/:provider/v1/messages`、`/:provider/v1/models`），并支持按模型配置默认参数（temperature/topP/topK）
 - 内置 Admin UI 与 Admin API（账户状态、请求日志、配置管理）
 - 请求历史落库 SQLite（默认 14 天保留、上限 200000 行）
@@ -175,12 +178,22 @@ services:
 
 ## CLI 命令
 
-入口命令：`copilot-api <subcommand>`
+入口命令：`copilot-api [global-options] <subcommand>`
 
 - `start`: 启动 API 服务（无账号时自动触发登录）
 - `auth`: 账号管理（`add`/`ls`/`rm`）
 - `check-usage`: 终端查看 Copilot 配额（单账号 token 视角）
 - `debug`: 打印运行时与路径诊断信息
+
+### 全局参数（可用于所有子命令）
+
+在子命令前传参时，建议使用 `--key=value` 形式：
+
+| 参数 | 含义 | 默认值 |
+| --- | --- | --- |
+| `--api-home` | API home 目录路径（设置 `COPILOT_API_HOME`） | 未设置 |
+| `--oauth-app` | OAuth app 标识（设置 `COPILOT_API_OAUTH_APP`） | 未设置 |
+| `--enterprise-url` | GitHub Enterprise 域名（设置 `COPILOT_API_ENTERPRISE_URL`） | 未设置 |
 
 ### start 常用参数
 
@@ -208,6 +221,8 @@ services:
 ## 数据目录与持久化
 
 默认数据目录：`~/.local/share/copilot-api`
+
+可通过环境变量 `COPILOT_API_HOME` 或全局参数 `--api-home=/path/to/dir` 修改数据目录（影响 token、配置与 Admin DB 等文件落盘位置）。
 
 | 路径 | 用途 |
 | --- | --- |
@@ -543,6 +558,12 @@ npx @nick3/copilot-api@latest auth rm 2
 
 # 终端查看当前 token 配额
 npx @nick3/copilot-api@latest check-usage
+
+# 使用全局参数（需在子命令前传入，推荐 `--key=value` 形式）
+npx @nick3/copilot-api@latest --api-home=/path/to/custom/dir start
+npx @nick3/copilot-api@latest --enterprise-url=company.ghe.com start
+npx @nick3/copilot-api@latest --oauth-app=opencode start
+npx @nick3/copilot-api@latest --api-home=/custom/path --oauth-app=opencode --enterprise-url=company.ghe.com start
 ```
 
 ---
