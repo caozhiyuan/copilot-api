@@ -75,6 +75,15 @@ export const getOauthAppConfig = (): OauthAppConfig => {
   }
 }
 
+export const prepareForCompact = (
+  headers: Record<string, string>,
+  isCompact?: boolean,
+) => {
+  if (isCompact) {
+    headers["x-initiator"] = "agent"
+  }
+}
+
 export const prepareInteractionHeaders = (
   sessionId: string | undefined,
   isSubagent: boolean,

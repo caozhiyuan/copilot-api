@@ -7,7 +7,6 @@ import type { Model } from "~/services/copilot/get-models"
 import { awaitApproval } from "~/lib/approval"
 import {
   getSmallModel,
-  shouldCompactUseSmallModel,
   getReasoningEffortForModel,
   isMessagesApiEnabled,
 } from "~/lib/config"
@@ -90,9 +89,6 @@ export async function handleCompletion(c: Context) {
 
   if (isCompact) {
     logger.debug("Is compact request:", isCompact)
-    if (shouldCompactUseSmallModel()) {
-      anthropicPayload.model = getSmallModel()
-    }
   } else {
     // Merge tool_result and text blocks into tool_result to avoid consuming premium requests
     // (caused by skill invocations, edit hooks, plan or to do reminders)
@@ -119,6 +115,7 @@ export async function handleCompletion(c: Context) {
       selectedModel,
       requestId,
       sessionId,
+      isCompact,
     })
   }
 
@@ -128,6 +125,7 @@ export async function handleCompletion(c: Context) {
       selectedModel,
       requestId,
       sessionId,
+      isCompact,
     })
   }
 
@@ -135,6 +133,7 @@ export async function handleCompletion(c: Context) {
     subagentMarker,
     requestId,
     sessionId,
+    isCompact,
   })
 }
 
@@ -148,9 +147,10 @@ const handleWithChatCompletions = async (
     subagentMarker?: SubagentMarker | null
     requestId: string
     sessionId?: string
+    isCompact?: boolean
   },
 ) => {
-  const { subagentMarker, requestId, sessionId } = options
+  const { subagentMarker, requestId, sessionId, isCompact } = options
   const openAIPayload = translateToOpenAI(anthropicPayload)
   logger.debug(
     "Translated OpenAI request payload:",
@@ -161,6 +161,7 @@ const handleWithChatCompletions = async (
     subagentMarker,
     requestId,
     sessionId,
+    isCompact,
   })
 
   if (isNonStreaming(response)) {
@@ -218,9 +219,11 @@ const handleWithResponsesApi = async (
     selectedModel?: Model
     requestId: string
     sessionId?: string
+    isCompact?: boolean
   },
 ) => {
-  const { subagentMarker, selectedModel, requestId, sessionId } = options
+  const { subagentMarker, selectedModel, requestId, sessionId, isCompact } =
+    options
 
   const responsesPayload =
     translateAnthropicMessagesToResponsesPayload(anthropicPayload)
@@ -244,6 +247,7 @@ const handleWithResponsesApi = async (
     subagentMarker,
     requestId,
     sessionId,
+    isCompact,
   })
 
   if (responsesPayload.stream && isAsyncIterable(response)) {
@@ -322,6 +326,7 @@ const handleWithMessagesApi = async (
     selectedModel?: Model
     requestId: string
     sessionId?: string
+    isCompact?: boolean
   },
 ) => {
   const {
@@ -330,6 +335,7 @@ const handleWithMessagesApi = async (
     selectedModel,
     requestId,
     sessionId,
+    isCompact,
   } = options
   // Pre-request processing: filter thinking blocks for Claude models so only
   // valid thinking blocks are sent to the Copilot Messages API.
@@ -367,6 +373,7 @@ const handleWithMessagesApi = async (
     subagentMarker,
     requestId,
     sessionId,
+    isCompact,
   })
 
   if (isAsyncIterable(response)) {

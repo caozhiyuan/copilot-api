@@ -16,7 +16,6 @@ export interface AppConfig {
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
   >
   useFunctionApplyPatch?: boolean
-  compactUseSmallModel?: boolean
   useMessagesApi?: boolean
 }
 
@@ -89,7 +88,6 @@ const defaultConfig: AppConfig = {
     "gpt-5.4": "xhigh",
   },
   useFunctionApplyPatch: true,
-  compactUseSmallModel: true,
   useMessagesApi: true,
 }
 
@@ -228,11 +226,6 @@ export function getReasoningEffortForModel(
 ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
   const config = getConfig()
   return config.modelReasoningEfforts?.[model] ?? "high"
-}
-
-export function shouldCompactUseSmallModel(): boolean {
-  const config = getConfig()
-  return config.compactUseSmallModel ?? true
 }
 
 export function normalizeProviderBaseUrl(url: string): string {

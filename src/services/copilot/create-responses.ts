@@ -6,6 +6,7 @@ import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 import {
   copilotBaseUrl,
   copilotHeaders,
+  prepareForCompact,
   prepareInteractionHeaders,
 } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
@@ -357,6 +358,7 @@ interface ResponsesRequestOptions {
   subagentMarker?: SubagentMarker | null
   requestId: string
   sessionId?: string
+  isCompact?: boolean
 }
 
 export const createResponses = async (
@@ -367,6 +369,7 @@ export const createResponses = async (
     subagentMarker,
     requestId,
     sessionId,
+    isCompact,
   }: ResponsesRequestOptions,
 ): Promise<CreateResponsesReturn> => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
@@ -377,6 +380,8 @@ export const createResponses = async (
   }
 
   prepareInteractionHeaders(sessionId, Boolean(subagentMarker), headers)
+
+  prepareForCompact(headers, isCompact)
 
   // service_tier is not supported by github copilot
   payload.service_tier = null
