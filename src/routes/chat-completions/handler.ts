@@ -8,11 +8,26 @@ import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import { getTokenCount } from "~/lib/tokenizer"
 import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
+import { getResponsesRequestOptions } from "~/routes/responses/utils"
 import {
   createChatCompletions,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
 } from "~/services/copilot/create-chat-completions"
+import {
+  createResponses,
+  type ResponseStreamEvent,
+  type ResponsesResult,
+} from "~/services/copilot/create-responses"
+
+import {
+  CHAT_COMPLETIONS_ENDPOINT,
+  RESPONSES_ENDPOINT_PATH,
+  createResponsesCompletionStreamState,
+  translateChatCompletionsToResponsesPayload,
+  translateResponsesEventToChunks,
+  translateResponsesResultToChatCompletion,
+} from "./responses-fallback"
 
 const logger = createHandlerLogger("chat-completions-handler")
 
@@ -56,6 +71,22 @@ export async function handleCompletion(c: Context) {
   const sessionId = getUUID(requestId)
   logger.debug("Extracted session ID:", sessionId)
 
+  // If the model doesn't support /chat/completions but supports /responses,
+  // translate and route through the Responses API
+  const endpoints = selectedModel?.supported_endpoints
+  const supportsChatCompletions =
+    !endpoints || endpoints.includes(CHAT_COMPLETIONS_ENDPOINT)
+  const supportsResponses =
+    endpoints?.includes(RESPONSES_ENDPOINT_PATH) ?? false
+
+  if (!supportsChatCompletions && supportsResponses) {
+    logger.debug(
+      "Model only supports Responses API, routing via /responses:",
+      payload.model,
+    )
+    return handleViaResponsesApi(c, payload, { requestId, sessionId })
+  }
+
   const response = await createChatCompletions(payload, {
     requestId,
     sessionId,
@@ -75,6 +106,50 @@ export async function handleCompletion(c: Context) {
   })
 }
 
+const handleViaResponsesApi = async (
+  c: Context,
+  payload: ChatCompletionsPayload,
+  options: { requestId: string; sessionId: string },
+) => {
+  const { requestId, sessionId } = options
+  const responsesPayload = translateChatCompletionsToResponsesPayload(payload)
+  const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
+
+  const response = await createResponses(responsesPayload, {
+    vision,
+    initiator,
+    requestId,
+    sessionId,
+  })
+
+  if (isResponsesNonStreaming(response)) {
+    logger.debug("Non-streaming Responses result")
+    return c.json(translateResponsesResultToChatCompletion(response))
+  }
+
+  logger.debug("Streaming Responses response")
+  const streamState = createResponsesCompletionStreamState(payload.model)
+  return streamSSE(c, async (stream) => {
+    for await (const chunk of response) {
+      if (chunk.event === "ping") continue
+      if (!chunk.data) continue
+
+      const event = JSON.parse(chunk.data) as ResponseStreamEvent
+      const sseMessages = translateResponsesEventToChunks(event, streamState)
+      for (const msg of sseMessages) {
+        logger.debug("Responses→completion chunk:", msg.data)
+        await stream.writeSSE(msg)
+      }
+
+      if (streamState.finishReason !== null) break
+    }
+  })
+}
+
 const isNonStreaming = (
   response: Awaited<ReturnType<typeof createChatCompletions>>,
 ): response is ChatCompletionResponse => Object.hasOwn(response, "choices")
+
+const isResponsesNonStreaming = (
+  response: Awaited<ReturnType<typeof createResponses>>,
+): response is ResponsesResult => Object.hasOwn(response, "output")
