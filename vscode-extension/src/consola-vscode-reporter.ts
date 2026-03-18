@@ -8,7 +8,7 @@ import { stripAnsi } from "./util"
 function formatConsolaLogObject(logObj: LogObject): string {
   const parts: Array<string> = []
 
-  parts.push(`[${logObj.type}]`)
+  parts.push(logObj.type.slice(0, 1).toLocaleLowerCase())
   if (logObj.message) parts.push(logObj.message)
 
   if (typeof logObj.additional === "string") {

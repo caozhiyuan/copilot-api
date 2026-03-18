@@ -290,7 +290,7 @@ The following command line options are available for the `start` command:
     - `temperature` (optional): Default temperature value used when the request does not specify one.
     - `topP` (optional): Default top_p value used when the request does not specify one.
     - `topK` (optional): Default top_k value used when the request does not specify one.
-- **smallModel:** Fallback model used for tool-less warmup messages, compact/background requests, and other short housekeeping turns (for example from Claude Code or OpenCode) to avoid spending premium requests; defaults to `gpt-5-mini`.
+- **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests) to avoid spending premium requests; defaults to gpt-5-mini.
 - **responsesApiContextManagementModels:** List of model IDs that should receive Responses API `context_management` compaction instructions. Use this when a model supports server-side context management and you want the proxy to keep only the latest compaction carrier on follow-up turns.
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 - **useFunctionApplyPatch:** When `true`, the server will convert any custom tool named `apply_patch` in Responses payloads into an OpenAI-style function tool (`type: "function"`) with a parameter schema so assistants can call it using function-calling semantics to edit files. Set to `false` to leave tools unchanged. Defaults to `true`.
