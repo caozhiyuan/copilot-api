@@ -3,6 +3,7 @@ import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 
 import { createAuthMiddleware } from "~/lib/request-auth"
+import { traceIdMiddleware } from "~/lib/trace"
 
 import { adminApiRoutes } from "./routes/admin-api/route"
 import { adminRoutes } from "./routes/admin/route"
@@ -18,6 +19,7 @@ import { usageRoute } from "./routes/usage/route"
 
 export const server = new Hono()
 
+server.use(traceIdMiddleware)
 server.use(logger())
 server.use(cors())
 server.use(

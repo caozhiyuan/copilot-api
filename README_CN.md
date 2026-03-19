@@ -36,7 +36,7 @@
 - 支持 opencode OAuth（环境变量 `COPILOT_API_OAUTH_APP=opencode` 或全局参数 `--oauth-app=opencode`）
 - 支持 GitHub Enterprise（环境变量 `COPILOT_API_ENTERPRISE_URL=company.ghe.com` 或全局参数 `--enterprise-url=company.ghe.com`）
 - 支持自定义数据目录（环境变量 `COPILOT_API_HOME=/path/to/dir` 或全局参数 `--api-home=/path/to/dir`）
-- 支持多 Provider Anthropic 上游代理路由（`/:provider/v1/messages`、`/:provider/v1/models`），并支持按模型配置默认参数（temperature/topP/topK）
+- 支持多 Provider Anthropic 上游代理路由（`/:provider/v1/messages`、`/:provider/v1/models`），支持按模型配置默认参数（temperature/topP/topK），并可选修正上游 usage 中的 `input_tokens`
 - 内置 Admin UI 与 Admin API（账户状态、请求日志、配置管理）
 - 请求历史落库 SQLite（默认 14 天保留、上限 200000 行）
 - 支持 `--claude-code` 一键生成 Claude Code 环境变量命令
@@ -292,6 +292,7 @@ Admin API 规则独立于业务 API：
   "extraPrompts": {
     "gpt-5-mini": "<built-in prompt>",
     "gpt-5.3-codex": "<built-in prompt>",
+    "gpt-5.4-mini": "<built-in prompt>",
     "gpt-5.4": "<built-in prompt>"
   },
   "smallModel": "gpt-5-mini",
@@ -300,15 +301,15 @@ Admin API 规则独立于业务 API：
   "modelReasoningEfforts": {
     "gpt-5-mini": "low",
     "gpt-5.3-codex": "xhigh",
+    "gpt-5.4-mini": "xhigh",
     "gpt-5.4": "xhigh"
   },
   "allowOriginalModelNamesForAliases": false,
   "useFunctionApplyPatch": true,
-  "forceAgent": false,
   "compactUseSmallModel": true,
-  "useMessagesApi": true,
   "messageStartInputTokensFallback": false,
-  "modelRefreshIntervalHours": 24
+  "modelRefreshIntervalHours": 24,
+  "useMessagesApi": true
 }
 ```
 
@@ -318,8 +319,8 @@ Admin API 规则独立于业务 API：
 | --- | --- |
 | `auth.apiKeys` | 业务 API 鉴权 key 列表（推荐） |
 | `apiKey` | 旧版单 key（弃用兼容） |
-| `providers` | 上游 provider 映射（Anthropic 兼容代理路由）：每个 key 会生成 `/:provider/v1/messages`、`/:provider/v1/models` 等路由前缀；目前仅支持 `type: "anthropic"`；可选 `models` 定义 `temperature/topP/topK` 默认值（仅在请求未显式指定时生效）。 |
-| `extraPrompts` | 按模型附加 system prompt（在 Anthropic 请求翻译时注入） |
+| `providers` | 上游 provider 映射（Anthropic 兼容代理路由）：每个 key 会生成 `/:provider/v1/messages`、`/:provider/v1/models` 等路由前缀；目前仅支持 `type: "anthropic"`；可选 `models` 定义 `temperature/topP/topK` 默认值；可选 `adjustInputTokens` 用于从 usage 的 `input_tokens` 中扣除缓存读写 token。 |
+| `extraPrompts` | 按模型附加 system prompt（在 Anthropic 请求翻译时注入；内置默认项包含 `gpt-5.3-codex`、`gpt-5.4-mini`、`gpt-5.4`） |
 | `smallModel` | 小模型（预热/compact 场景回落） |
 | `freeModelLoadBalancing` | 免费模型是否轮询分发 |
 | `responsesApiContextManagementModels` | 需要注入 Responses API `context_management` 压缩指令的模型 ID 列表（用于支持服务端 context management 的模型）。 |
@@ -340,6 +341,7 @@ Admin API 规则独立于业务 API：
 - provider key 会作为路由前缀（例如 `custom` -> `http://localhost:4141/custom/v1/messages`）
 - `baseUrl` 为上游 API base URL（不要带尾部 `/v1/messages`）
 - `enabled` 省略时默认 `true`
+- `adjustInputTokens=true` 时，会将 usage 中的 `input_tokens` 扣除 `cache_read_input_tokens` 与 `cache_creation_input_tokens`
 - `models` 为可选的按模型默认参数配置（仅在请求未显式指定时生效）
 
 ```json
@@ -350,6 +352,7 @@ Admin API 规则独立于业务 API：
       "enabled": true,
       "baseUrl": "https://api.anthropic.com",
       "apiKey": "sk-your-provider-key",
+      "adjustInputTokens": false,
       "models": {
         "kimi-k2.5": {
           "temperature": 1,

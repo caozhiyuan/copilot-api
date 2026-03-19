@@ -78,6 +78,13 @@ async function runAuthFlow(accountType: AccountType): Promise<void> {
   consola.success(`Account "${accountId}" added successfully!`)
 }
 
+function logClaudeCodeTip(): void {
+  consola.log(
+    "\n💡 Tip: The --claude-code flag simply generates a clipboard command for launching Claude Code. \n"
+      + "All models remain fully accessible without this flag, just configure the model ID directly in your settings.json file.",
+  )
+}
+
 export async function runServer(options: RunServerOptions): Promise<void> {
   // Ensure config is merged with defaults at startup
   mergeConfigWithDefaults()
@@ -148,6 +155,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   const serverUrl = `http://localhost:${options.port}`
 
   if (options.claudeCode) {
+    logClaudeCodeTip()
     invariant(models, "Models should be loaded by now")
 
     const selectedModel = await consola.prompt(

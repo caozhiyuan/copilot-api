@@ -11,6 +11,7 @@ import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 import {
   copilotBaseUrl,
   copilotHeaders,
+  prepareForCompact,
   prepareInteractionHeaders,
 } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
@@ -85,6 +86,7 @@ export const createMessages = async (
     initiator?: "agent" | "user"
     subagentMarker?: SubagentMarker | null
     sessionId?: string
+    isCompact?: boolean
   },
 ): Promise<CreateMessagesReturn> => {
   const ctx = account ?? accountFromState()
@@ -108,6 +110,8 @@ export const createMessages = async (
     Boolean(options?.subagentMarker),
     headers,
   )
+
+  prepareForCompact(headers, options?.isCompact)
 
   // align with vscode copilot extension anthropic-beta
   const anthropicBeta = buildAnthropicBetaHeader(

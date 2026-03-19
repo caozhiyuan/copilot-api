@@ -7,6 +7,7 @@ import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 import {
   copilotBaseUrl,
   copilotHeaders,
+  prepareForCompact,
   prepareInteractionHeaders,
 } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
@@ -358,6 +359,7 @@ interface ResponsesRequestOptions {
   upstreamRequestId?: string
   subagentMarker?: SubagentMarker | null
   sessionId?: string
+  isCompact?: boolean
 }
 
 export const createResponses = async (
@@ -368,6 +370,7 @@ export const createResponses = async (
     upstreamRequestId,
     subagentMarker,
     sessionId,
+    isCompact,
   }: ResponsesRequestOptions,
   account?: AccountContext,
 ): Promise<CreateResponsesReturn> => {
@@ -380,6 +383,8 @@ export const createResponses = async (
   }
 
   prepareInteractionHeaders(sessionId, Boolean(subagentMarker), headers)
+
+  prepareForCompact(headers, isCompact)
 
   // service_tier is not supported by github copilot
   payload.service_tier = null

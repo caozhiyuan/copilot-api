@@ -307,25 +307,12 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     "auth": {
       "apiKeys": []
     },
-    "providers": {
-      "custom": {
-        "type": "anthropic",
-        "enabled": true,
-        "baseUrl": "your-base-url",
-        "apiKey": "sk-your-provider-key",
-        "models": {
-          "kimi-k2.5": {
-            "temperature": 1,
-            "topP": 0.95
-          }
-        }
-      }
-    },
+    "providers": {},
     "extraPrompts": {
       "gpt-5-mini": "<built-in exploration prompt>",
       "gpt-5.3-codex": "<built-in commentary prompt>",
+      "gpt-5.4-mini": "<built-in commentary prompt>",
       "gpt-5.4": "<built-in commentary prompt>"
-    "useMessagesApi": true
     },
     "smallModel": "gpt-5-mini",
     "freeModelLoadBalancing": true,
@@ -333,25 +320,24 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     "modelReasoningEfforts": {
       "gpt-5-mini": "low",
       "gpt-5.3-codex": "xhigh",
+      "gpt-5.4-mini": "xhigh",
       "gpt-5.4": "xhigh"
-    },
-    "modelAliases": {
-      "fast": { "target": "gpt-5-mini", "allowOriginal": false },
-      "draft": { "target": "gpt-5.1-codex-max" }
     },
     "allowOriginalModelNamesForAliases": false,
     "useFunctionApplyPatch": true,
-    "forceAgent": false,
     "compactUseSmallModel": true,
+    "messageStartInputTokensFallback": false,
+    "modelRefreshIntervalHours": 24,
     "useMessagesApi": true
   }
   ```
 - **auth.apiKeys:** API keys used for request authentication. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication is disabled.
-- **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts. The built-in prompts for `gpt-5.3-codex` and `gpt-5.4` enable phase-aware commentary, which lets the model emit a short user-facing progress update before tools or deeper reasoning.
+- **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Copilot. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts. The built-in prompts for `gpt-5.3-codex`, `gpt-5.4-mini`, and `gpt-5.4` enable phase-aware commentary, which lets the model emit a short user-facing progress update before tools or deeper reasoning.
 - **providers:** Global upstream provider map. Each provider key (for example `custom`) becomes a route prefix (`/custom/v1/messages`). Currently only `type: "anthropic"` is supported.
   - `enabled` defaults to `true` if omitted.
   - `baseUrl` should be provider API base URL without trailing `/v1/messages`.
   - `apiKey` is used as upstream `x-api-key`.
+  - `adjustInputTokens` (optional): When `true`, the proxy will adjust the `input_tokens` in the usage response by subtracting `cache_read_input_tokens` and `cache_creation_input_tokens`.
   - `models` (optional): Per-model configuration map. Each key is a model ID (matching the model name in requests), and the value is:
     - `temperature` (optional): Default temperature value used when the request does not specify one.
     - `topP` (optional): Default top_p value used when the request does not specify one.
@@ -366,6 +352,8 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **useFunctionApplyPatch:** When `true` (default), `POST /v1/responses` converts a `tools` entry with `{ "type": "custom", "name": "apply_patch" }` into an OpenAI-style `function` tool (with a parameter schema) for upstream compatibility. Set to `false` to leave custom tools untouched.
 - **forceAgent:** When `true`, `POST /v1/responses` treats a request as agent-initiated if **any** input item has `role: "assistant"`. When `false` (default), only the **last** input item is checked.
 - **compactUseSmallModel:** When `true`, detected "compact" requests (e.g., from Claude Code or opencode compact mode) will automatically use the configured `smallModel` to avoid consuming premium usage for short/background tasks. Defaults to `true`.
+- **messageStartInputTokensFallback:** When `true`, the Anthropic streaming translation layer estimates `message_start.input_tokens` when upstream stream events do not provide it. Defaults to `false`.
+- **modelRefreshIntervalHours:** Interval for refreshing account model lists in the background. Set to `0` to disable refresh. Defaults to `24`.
 - **useMessagesApi:** When `true` (default), Claude-family models that support Copilot's native `/v1/messages` endpoint may use the Messages API path. Set to `false` to skip the Messages API candidate and fall back to `/responses` (if supported) or `/chat/completions`.
 
 Edit this file to customize prompts or swap in your own fast model. If you edit it manually, restart the server (or call `GET /api/admin/config`) so the cached config is refreshed. Changes made through the Admin UI/API are validated, written to disk, and applied immediately; unknown keys are rejected.

@@ -44,6 +44,7 @@ export interface ProviderConfig {
   baseUrl?: string
   apiKey?: string
   models?: Record<string, ModelConfig>
+  adjustInputTokens?: boolean
 }
 
 export interface ResolvedProviderConfig {
@@ -52,6 +53,7 @@ export interface ResolvedProviderConfig {
   baseUrl: string
   apiKey: string
   models?: Record<string, ModelConfig>
+  adjustInputTokens?: boolean
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -89,6 +91,7 @@ const defaultConfig: AppConfig = {
   extraPrompts: {
     "gpt-5-mini": gpt5ExplorationPrompt,
     "gpt-5.3-codex": gpt5CommentaryPrompt,
+    "gpt-5.4-mini": gpt5CommentaryPrompt,
     "gpt-5.4": gpt5CommentaryPrompt,
   },
   smallModel: "gpt-5-mini",
@@ -97,6 +100,7 @@ const defaultConfig: AppConfig = {
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
     "gpt-5.3-codex": "xhigh",
+    "gpt-5.4-mini": "xhigh",
     "gpt-5.4": "xhigh",
   },
   allowOriginalModelNamesForAliases: false,
@@ -548,6 +552,11 @@ export function isMessageStartInputTokensFallbackEnabled(): boolean {
   return config.messageStartInputTokensFallback ?? false
 }
 
+export function shouldCompactUseSmallModel(): boolean {
+  const config = getConfig()
+  return config.compactUseSmallModel ?? true
+}
+
 export function getResponsesApiContextManagementModels(): Array<string> {
   const config = getConfig()
   return (
@@ -580,11 +589,6 @@ export function getReasoningEffortForModel(
 export function isForceAgentEnabled(): boolean {
   const config = getConfig()
   return config.forceAgent ?? false
-}
-
-export function shouldCompactUseSmallModel(): boolean {
-  const config = getConfig()
-  return config.compactUseSmallModel ?? true
 }
 
 export function normalizeProviderBaseUrl(url: string): string {
@@ -630,6 +634,7 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     baseUrl,
     apiKey,
     models: provider.models,
+    adjustInputTokens: provider.adjustInputTokens,
   }
 }
 

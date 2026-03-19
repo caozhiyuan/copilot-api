@@ -4,6 +4,7 @@ import path from "node:path"
 import util from "node:util"
 
 import { PATHS } from "./paths"
+import { requestContext } from "./request-context"
 import { state } from "./state"
 
 const LOG_RETENTION_DAYS = 7
@@ -165,12 +166,15 @@ export const createHandlerLogger = (name: string): ConsolaInstance => {
         lastCleanup = Date.now()
       }
 
+      const context = requestContext.getStore()
+      const traceId = context?.traceId
       const date = logObj.date
       const dateKey = date.toLocaleDateString("sv-SE")
       const timestamp = date.toLocaleString("sv-SE", { hour12: false })
       const filePath = path.join(LOG_DIR, `${sanitizedName}-${dateKey}.log`)
       const message = formatArgs(logObj.args as Array<unknown>)
-      const line = `[${timestamp}] [${logObj.type}] [${logObj.tag || name}]${
+      const traceIdStr = traceId ? ` [${traceId}]` : ""
+      const line = `[${timestamp}] [${logObj.type}] [${logObj.tag || name}]${traceIdStr}${
         message ? ` ${message}` : ""
       }`
 

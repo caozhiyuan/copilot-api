@@ -7,6 +7,7 @@ import type { SubagentMarker } from "~/routes/messages/subagent-marker"
 import {
   copilotBaseUrl,
   copilotHeaders,
+  prepareForCompact,
   prepareInteractionHeaders,
 } from "~/lib/api-config"
 import { getReasoningEffortForModel, isForceAgentEnabled } from "~/lib/config"
@@ -59,6 +60,7 @@ export const createChatCompletions = async (
     initiator?: "agent" | "user"
     subagentMarker?: SubagentMarker | null
     sessionId?: string
+    isCompact?: boolean
   },
 ) => {
   const ctx = account ?? accountFromState()
@@ -85,6 +87,7 @@ export const createChatCompletions = async (
   )
 
   const upstreamPayload = applyDefaultReasoningEffort(payload)
+  prepareForCompact(headers, options?.isCompact)
 
   const response = await fetch(`${copilotBaseUrl(ctx)}/chat/completions`, {
     method: "POST",

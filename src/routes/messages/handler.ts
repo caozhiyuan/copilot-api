@@ -295,6 +295,7 @@ export async function handleCompletion(c: Context) {
       sessionId,
       instr,
       selectedModel,
+      isCompact,
     })
   }
   if (endpoint === RESPONSES_ENDPOINT) {
@@ -307,6 +308,7 @@ export async function handleCompletion(c: Context) {
       sessionId,
       selectedModel,
       instr,
+      isCompact,
     })
   }
 
@@ -318,6 +320,7 @@ export async function handleCompletion(c: Context) {
     sessionId,
     selectedModel,
     instr,
+    isCompact,
   })
 }
 
@@ -329,6 +332,7 @@ const handleWithChatCompletions = async (params: {
   sessionId?: string
   selectedModel: Model
   instr: InstrumentationContext
+  isCompact?: boolean
 }): Promise<Response> => {
   const {
     c,
@@ -338,6 +342,7 @@ const handleWithChatCompletions = async (params: {
     sessionId,
     selectedModel,
     instr,
+    isCompact,
   } = params
   logger.debug(
     "Translated OpenAI request payload:",
@@ -358,6 +363,7 @@ const handleWithChatCompletions = async (params: {
       initiator,
       subagentMarker,
       sessionId,
+      isCompact,
     })
   } catch (error) {
     return await handleChatCompletionsCreateError({
@@ -413,6 +419,7 @@ const handleWithResponsesApi = async (params: {
   sessionId?: string
   selectedModel: Model
   instr: InstrumentationContext
+  isCompact?: boolean
 }): Promise<Response> => {
   const {
     c,
@@ -423,6 +430,7 @@ const handleWithResponsesApi = async (params: {
     sessionId,
     selectedModel,
     instr,
+    isCompact,
   } = params
   const responsesPayload = translateAnthropicMessagesToResponsesPayload(
     anthropicPayload,
@@ -457,6 +465,7 @@ const handleWithResponsesApi = async (params: {
         upstreamRequestId: instr.upstreamRequestId,
         subagentMarker,
         sessionId,
+        isCompact,
       },
       ctx,
     )
@@ -1235,6 +1244,7 @@ const handleWithMessagesApi = async (params: {
   sessionId?: string
   instr: InstrumentationContext
   selectedModel: Model
+  isCompact?: boolean
 }): Promise<Response> => {
   const {
     c,
@@ -1245,6 +1255,7 @@ const handleWithMessagesApi = async (params: {
     sessionId,
     instr,
     selectedModel,
+    isCompact,
   } = params
   // Pre-request processing: filter thinking blocks for Claude models so only
   // valid thinking blocks are sent to the Copilot Messages API.
@@ -1295,6 +1306,7 @@ const handleWithMessagesApi = async (params: {
       initiator,
       subagentMarker,
       sessionId,
+      isCompact,
     })
   } catch (error) {
     return await handleMessagesCreateError({
