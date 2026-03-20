@@ -44,6 +44,7 @@ import {
   type AnthropicUserContentBlock,
   type AnthropicUserMessage,
 } from "./anthropic-types"
+import { normalizeToolSchema } from "./non-stream-translation"
 
 const MESSAGE_TYPE = "message"
 const COMPACTION_SIGNATURE_PREFIX = "cm1#"
@@ -446,7 +447,7 @@ const convertAnthropicTools = (
   return tools.map((tool) => ({
     type: "function",
     name: tool.name,
-    parameters: tool.input_schema,
+    parameters: normalizeToolSchema(tool.input_schema),
     strict: false,
     ...(tool.description ? { description: tool.description } : {}),
   }))
