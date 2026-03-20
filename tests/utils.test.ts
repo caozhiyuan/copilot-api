@@ -1,7 +1,20 @@
+import type { Context } from "hono"
+
 import { expect, test } from "bun:test"
 import { createHash, randomUUID } from "node:crypto"
 
-import { getUUID } from "../src/lib/utils"
+import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
+
+import { getRootSessionId, getUUID } from "../src/lib/utils"
+
+const jsonStyleUserId = JSON.stringify({
+  device_id: "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
+  account_uuid: "",
+  session_id: "2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752",
+})
+
+const legacyStyleUserId =
+  "user_8b7e2c1d4f6a9b3c0d1e2f3456789abcdeffedcba9876543210fedcba1234567_account__session_7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b"
 
 const getLegacyUUID = (content: string): string => {
   const hash32 = createHash("sha256").update(content).digest("hex").slice(0, 32)
@@ -42,4 +55,44 @@ test("prints randomUUID and deterministic UUID for comparison", () => {
   expect(derivedAgain).toBe(derived)
   expect(legacy).not.toBe(derived)
   expect(random).not.toBe(derived)
+})
+
+test("getRootSessionId supports JSON-like user_id metadata", () => {
+  const anthropicPayload = {
+    model: "claude-3-5-sonnet",
+    messages: [],
+    max_tokens: 0,
+    metadata: {
+      user_id: jsonStyleUserId,
+    },
+  } as AnthropicMessagesPayload
+  const context = {
+    req: {
+      header: (_name: string) => undefined,
+    },
+  } as unknown as Context
+
+  expect(getRootSessionId(anthropicPayload, context)).toBe(
+    getUUID("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752"),
+  )
+})
+
+test("getRootSessionId keeps legacy parsing before JSON fallback", () => {
+  const anthropicPayload = {
+    model: "claude-3-5-sonnet",
+    messages: [],
+    max_tokens: 0,
+    metadata: {
+      user_id: legacyStyleUserId,
+    },
+  } as AnthropicMessagesPayload
+  const context = {
+    req: {
+      header: (_name: string) => undefined,
+    },
+  } as unknown as Context
+
+  expect(getRootSessionId(anthropicPayload, context)).toBe(
+    getUUID("7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b"),
+  )
 })

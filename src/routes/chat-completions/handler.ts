@@ -21,8 +21,12 @@ import {
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
 import { getTokenCount } from "~/lib/tokenizer"
-import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
-import { parseUserId } from "~/routes/messages/responses-translation"
+import {
+  generateRequestIdFromPayload,
+  getUUID,
+  isNullish,
+  parseUserIdMetadata,
+} from "~/lib/utils"
 import {
   createChatCompletions,
   getChatInitiator,
@@ -47,7 +51,8 @@ export async function handleCompletion(c: Context) {
 
   const initiator = getChatInitiator(payload.messages)
   const userId = payload.user ?? undefined
-  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const { safetyIdentifier, sessionId: promptCacheKey } =
+    parseUserIdMetadata(userId)
   const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
   const normalizedPromptCacheKey = promptCacheKey ?? undefined
 

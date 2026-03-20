@@ -4,6 +4,7 @@ import {
   getExtraPromptForModel,
   getReasoningEffortForModel,
 } from "~/lib/config"
+import { parseUserIdMetadata } from "~/lib/utils"
 import {
   type ResponsesPayload,
   type ResponseInputCompaction,
@@ -66,7 +67,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
   const translatedTools = convertAnthropicTools(payload.tools)
   const toolChoice = convertAnthropicToolChoice(payload.tool_choice)
 
-  const { safetyIdentifier, promptCacheKey } = parseUserId(
+  const { safetyIdentifier, sessionId: promptCacheKey } = parseUserIdMetadata(
     payload.metadata?.user_id,
   )
 
@@ -752,24 +753,6 @@ const isResponseOutputRefusal = (
   isRecord(block)
   && "type" in block
   && (block as { type?: unknown }).type === "refusal"
-
-export const parseUserId = (
-  userId: string | undefined,
-): { safetyIdentifier: string | null; promptCacheKey: string | null } => {
-  if (!userId || typeof userId !== "string") {
-    return { safetyIdentifier: null, promptCacheKey: null }
-  }
-
-  // Parse safety_identifier: content between "user_" and "_account"
-  const userMatch = userId.match(/user_([^_]+)_account/)
-  const safetyIdentifier = userMatch ? userMatch[1] : null
-
-  // Parse prompt_cache_key: content after "_session_"
-  const sessionMatch = userId.match(/_session_(.+)$/)
-  const promptCacheKey = sessionMatch ? sessionMatch[1] : null
-
-  return { safetyIdentifier, promptCacheKey }
-}
 
 const convertToolResultContent = (
   content: string | Array<AnthropicTextBlock | AnthropicImageBlock>,

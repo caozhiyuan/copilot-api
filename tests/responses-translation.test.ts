@@ -46,6 +46,15 @@ const samplePayload = {
   ],
 } as unknown as AnthropicMessagesPayload
 
+const jsonStyleUserId = JSON.stringify({
+  device_id: "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
+  account_uuid: "",
+  session_id: "2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752",
+})
+
+const legacyStyleUserId =
+  "user_8b7e2c1d4f6a9b3c0d1e2f3456789abcdeffedcba9876543210fedcba1234567_account__session_7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b"
+
 describe("translateAnthropicMessagesToResponsesPayload", () => {
   it("converts anthropic text blocks into response input messages", () => {
     const result = translateAnthropicMessagesToResponsesPayload(samplePayload)
@@ -66,6 +75,34 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
       "<system-reminder>\nThe user opened the file c:\\Work2\\copilot-api\\src\\routes\\responses\\translation.ts in the IDE. This may or may not be related to the current task.\n</system-reminder>",
       "hi",
     ])
+  })
+
+  it("extracts identifiers from JSON-like user_id metadata", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      metadata: {
+        user_id: jsonStyleUserId,
+      },
+    })
+
+    expect(result.safety_identifier).toBe(
+      "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
+    )
+    expect(result.prompt_cache_key).toBe("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752")
+  })
+
+  it("keeps legacy user_id parsing before JSON fallback", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      metadata: {
+        user_id: legacyStyleUserId,
+      },
+    })
+
+    expect(result.safety_identifier).toBe(
+      "8b7e2c1d4f6a9b3c0d1e2f3456789abcdeffedcba9876543210fedcba1234567",
+    )
+    expect(result.prompt_cache_key).toBe("7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b")
   })
 })
 

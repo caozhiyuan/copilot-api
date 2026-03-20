@@ -34,14 +34,17 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
-import { generateRequestIdFromPayload, getRootSessionId } from "~/lib/utils"
+import {
+  generateRequestIdFromPayload,
+  getRootSessionId,
+  parseUserIdMetadata,
+} from "~/lib/utils"
 import {
   buildErrorEvent,
   createResponsesStreamState,
   translateResponsesStreamEvent,
 } from "~/routes/messages/responses-stream-translation"
 import {
-  parseUserId,
   translateAnthropicMessagesToResponsesPayload,
   translateResponsesResultToAnthropic,
 } from "~/routes/messages/responses-translation"
@@ -186,7 +189,8 @@ export async function handleCompletion(c: Context) {
   const streamRequested = Boolean(anthropicPayload.stream)
   const rawUserId = anthropicPayload.metadata?.user_id
   const userId = typeof rawUserId === "string" ? rawUserId : undefined
-  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const { safetyIdentifier, sessionId: promptCacheKey } =
+    parseUserIdMetadata(userId)
   const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
   const normalizedPromptCacheKey = promptCacheKey ?? undefined
   const blockedResponse = maybeBlockOriginalModelName({

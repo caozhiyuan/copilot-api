@@ -115,6 +115,50 @@ interface PayloadMessage {
   type?: string
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+const getUserIdJsonField = (
+  userIdPayload: Record<string, unknown> | null,
+  field: string,
+): string | null => {
+  const value = userIdPayload?.[field]
+  return typeof value === "string" && value.length > 0 ? value : null
+}
+
+const parseJsonUserId = (userId: string): Record<string, unknown> | null => {
+  try {
+    const parsed: unknown = JSON.parse(userId)
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export const parseUserIdMetadata = (
+  userId: string | undefined,
+): { safetyIdentifier: string | null; sessionId: string | null } => {
+  if (!userId || typeof userId !== "string") {
+    return { safetyIdentifier: null, sessionId: null }
+  }
+
+  const legacySafetyIdentifier =
+    userId.match(/user_([^_]+)_account/)?.[1] ?? null
+  const legacySessionId = userId.match(/_session_(.+)$/)?.[1] ?? null
+
+  const parsedUserId =
+    legacySafetyIdentifier && legacySessionId ? null : parseJsonUserId(userId)
+
+  const safetyIdentifier =
+    legacySafetyIdentifier
+    ?? getUserIdJsonField(parsedUserId, "device_id")
+    ?? getUserIdJsonField(parsedUserId, "account_uuid")
+  const sessionId =
+    legacySessionId ?? getUserIdJsonField(parsedUserId, "session_id")
+
+  return { safetyIdentifier, sessionId }
+}
+
 const findLastUserContent = (
   messages: Array<PayloadMessage>,
 ): string | null => {
@@ -161,19 +205,13 @@ export const getRootSessionId = (
   anthropicPayload: AnthropicMessagesPayload,
   c: Context,
 ): string | undefined => {
-  let sessionId: string | undefined
-  if (anthropicPayload.metadata?.user_id) {
-    const sessionMatch = new RegExp(/_session_(.+)$/).exec(
-      anthropicPayload.metadata.user_id,
-    )
-    sessionId = sessionMatch ? sessionMatch[1] : undefined
-  } else {
-    sessionId = c.req.header("x-session-id")
-  }
-  if (sessionId) {
-    return getUUID(sessionId)
-  }
-  return sessionId
+  const userId = anthropicPayload.metadata?.user_id
+  const sessionId =
+    userId ?
+      parseUserIdMetadata(userId).sessionId || undefined
+    : c.req.header("x-session-id")
+
+  return sessionId ? getUUID(sessionId) : sessionId
 }
 
 export const getUUID = (content: string): string => {

@@ -21,8 +21,11 @@ import {
   type NormalizedUsage,
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
-import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
-import { parseUserId } from "~/routes/messages/responses-translation"
+import {
+  generateRequestIdFromPayload,
+  getUUID,
+  parseUserIdMetadata,
+} from "~/lib/utils"
 import {
   createResponses,
   type ResponsesPayload,
@@ -41,6 +44,7 @@ const logger = createHandlerLogger("responses-handler")
 
 const RESPONSES_ENDPOINT = "/responses"
 
+// eslint-disable-next-line max-lines-per-function
 export const handleResponses = async (c: Context) => {
   await checkRateLimit(state)
 
@@ -56,11 +60,11 @@ export const handleResponses = async (c: Context) => {
   compactInputByLatestCompaction(payload)
 
   const streamRequested = Boolean(payload.stream)
-
   const { initiator: initialInitiator } = getResponsesRequestOptions(payload)
   const userId = (payload.metadata as { user_id?: string } | null | undefined)
     ?.user_id
-  const { safetyIdentifier, promptCacheKey } = parseUserId(userId)
+  const { safetyIdentifier, sessionId: promptCacheKey } =
+    parseUserIdMetadata(userId)
   const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
   const normalizedPromptCacheKey = promptCacheKey ?? undefined
 
