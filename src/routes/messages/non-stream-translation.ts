@@ -268,9 +268,22 @@ function translateAnthropicToolsToOpenAI(
     function: {
       name: tool.name,
       description: tool.description,
-      parameters: tool.input_schema,
+      parameters: normalizeToolSchema(tool.input_schema),
     },
   }))
+}
+
+/**
+ * Ensures `type: "object"` schema has a `properties` field.
+ * OpenAI's API rejects object schemas without it.
+ */
+export const normalizeToolSchema = (
+  schema: Record<string, unknown>,
+): Record<string, unknown> => {
+  if (schema.type === "object" && !schema.properties) {
+    return { ...schema, properties: {} }
+  }
+  return schema
 }
 
 function translateAnthropicToolChoiceToOpenAI(
