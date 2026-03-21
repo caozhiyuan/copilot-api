@@ -29,9 +29,7 @@ export const getGitHubBaseUrl = (): string => {
 
 export const getGitHubApiBaseUrl = (): string => {
   const resolvedDomain = getEnterpriseDomain()
-  return resolvedDomain ?
-      `https://${resolvedDomain}/api/v3`
-    : GITHUB_API_BASE_URL
+  return resolvedDomain ? `https://api.${resolvedDomain}` : GITHUB_API_BASE_URL
 }
 
 export const getOpencodeOauthHeaders = (): Record<string, string> => {
