@@ -17,6 +17,7 @@ export interface AppConfig {
   >
   useFunctionApplyPatch?: boolean
   useMessagesApi?: boolean
+  anthropicApiKey?: string
 }
 
 export interface ModelConfig {
@@ -286,4 +287,9 @@ export function listEnabledProviders(): Array<string> {
 export function isMessagesApiEnabled(): boolean {
   const config = getConfig()
   return config.useMessagesApi ?? true
+}
+
+export function getAnthropicApiKey(): string | undefined {
+  const config = getConfig()
+  return config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined
 }
