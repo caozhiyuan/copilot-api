@@ -18,6 +18,7 @@ import {
   cacheVSCodeVersion,
   cacheVsCodeSessionId,
 } from "./lib/utils"
+import { checkModelAvailability } from "./services/copilot/check-model"
 
 interface RunServerOptions {
   port: number
@@ -85,11 +86,34 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
     invariant(state.models, "Models should be loaded by now")
 
+    consola.start("Probing model availability...")
+    const concurrency = 10
+    const results: Record<string, boolean> = {}
+    const modelIds = state.models.data.map((m) => m.id)
+
+    for (let i = 0; i < modelIds.length; i += concurrency) {
+      const chunk = modelIds.slice(i, i + concurrency)
+      await Promise.all(
+        chunk.map(async (id) => {
+          results[id] = await checkModelAvailability(id)
+        }),
+      )
+    }
+    consola.success("Model probing complete.")
+
+    const modelOptions = state.models.data
+      .map((model) => ({
+        label: `${model.id} ${results[model.id] ? "✅" : "❌"}`,
+        value: model.id,
+        available: results[model.id],
+      }))
+      .sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1))
+
     const selectedModel = await consola.prompt(
       "Select a model to use with Claude Code",
       {
         type: "select",
-        options: state.models.data.map((model) => model.id),
+        options: modelOptions,
       },
     )
 
@@ -97,7 +121,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
       "Select a small model to use with Claude Code",
       {
         type: "select",
-        options: state.models.data.map((model) => model.id),
+        options: modelOptions,
       },
     )
 
