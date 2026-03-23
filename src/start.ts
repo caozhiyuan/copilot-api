@@ -109,21 +109,31 @@ export async function runServer(options: RunServerOptions): Promise<void> {
       }))
       .sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1))
 
-    const selectedModel = await consola.prompt(
+    const selectedModel = (await consola.prompt(
       "Select a model to use with Claude Code",
       {
         type: "select",
         options: modelOptions,
       },
-    )
+    )) as string | undefined
 
-    const selectedSmallModel = await consola.prompt(
+    if (!selectedModel || typeof selectedModel !== "string") {
+      consola.info("Model selection cancelled.")
+      return
+    }
+
+    const selectedSmallModel = (await consola.prompt(
       "Select a small model to use with Claude Code",
       {
         type: "select",
         options: modelOptions,
       },
-    )
+    )) as string | undefined
+
+    if (!selectedSmallModel || typeof selectedSmallModel !== "string") {
+      consola.info("Model selection cancelled.")
+      return
+    }
 
     const command = generateEnvScript(
       {
