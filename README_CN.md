@@ -14,6 +14,27 @@
 
 ---
 
+> [!NOTE]
+> [opencode](https://github.com/sst/opencode) 已内置 GitHub Copilot provider，基础场景下你未必需要本项目；但如果你希望通过 `@ai-sdk/anthropic` 让 OpenCode 接入 Copilot、保留 Anthropic Messages 工具语义、优先使用 Claude 家族模型的原生 Messages API、使用 GPT 的阶段化中间说明，或进一步优化 Premium 请求消耗，这个代理仍然有价值。
+
+---
+
+## 重要提示
+
+> [!IMPORTANT]
+> **使用前请先注意以下几点：**
+>
+> 1. **Claude Code 模型 ID 配置：** 与 Claude Code 搭配使用时，请将模型 ID 配置为 `claude-opus-4-6` 或 `claude-opus-4.6`（不要带 `[1m]` 后缀）。如果显著超出 GitHub Copilot 的上下文窗口限制，存在被风控的风险。
+>
+> 2. **Opencode 推荐用法：** 与 opencode 搭配时，建议优先使用 opencode OAuth app 启动。这一方式与 opencode 内置 GitHub Copilot provider 的行为保持一致，也没有额外的 Terms of Service 风险：
+>    ```sh
+>    npx @nick3/copilot-api@latest --oauth-app=opencode start
+>    ```
+>
+> 3. **通过 Copilot 使用 codex 时建议关闭 multi agent：** 当前 codex 经由 GitHub Copilot 使用时，GitHub Copilot 的计费仍与“最后一条消息是否为 user 角色”相关，而这部分计费逻辑尚未完成适配。
+
+---
+
 ## 项目定位
 
 该项目将 GitHub Copilot 能力封装为：
@@ -37,6 +58,8 @@
 - 支持 GitHub Enterprise（环境变量 `COPILOT_API_ENTERPRISE_URL=company.ghe.com` 或全局参数 `--enterprise-url=company.ghe.com`）
 - 支持自定义数据目录（环境变量 `COPILOT_API_HOME=/path/to/dir` 或全局参数 `--api-home=/path/to/dir`）
 - 支持多 Provider Anthropic 上游代理路由（`/:provider/v1/messages`、`/:provider/v1/models`），支持按模型配置默认参数（temperature/topP/topK），并可选修正上游 usage 中的 `input_tokens`
+- 支持 Claude 模型 `/v1/messages/count_tokens` 精确计数：配置 `anthropicApiKey` 或 `ANTHROPIC_API_KEY` 后，可转发到 Anthropic 官方免费 token counting endpoint；未配置时回退本地估算
+- 支持通过 `responsesApiContextManagementModels` 启用 GPT 上下文压缩（context management），在长对话接近 token 上限时减少不必要的 Premium 消耗
 - 内置 Admin UI 与 Admin API（账户状态、请求日志、配置管理）
 - 请求历史落库 SQLite（默认 14 天保留、上限 200000 行）
 - 支持 `--claude-code` 一键生成 Claude Code 环境变量命令
@@ -331,6 +354,7 @@ Admin API 规则独立于业务 API：
 | `forceAgent` | Responses 中 assistant 角色判定策略 |
 | `compactUseSmallModel` | compact 请求自动使用 smallModel |
 | `useMessagesApi` | 是否允许 `/v1/messages` 优先尝试 Copilot 原生 Messages API；关闭时将跳过该候选并从 `/responses`（如支持）或 `/chat/completions` 回退。 |
+| `anthropicApiKey` | 可选 Anthropic API key；用于 Claude 模型 `count_tokens` 精确计数，也可通过环境变量 `ANTHROPIC_API_KEY` 提供 |
 | `messageStartInputTokensFallback` | Anthropic 流式首包 token 估算回退 |
 | `modelRefreshIntervalHours` | 模型刷新周期（小时，`0` 关闭） |
 
@@ -375,6 +399,23 @@ Admin API 规则独立于业务 API：
   - `POST /api/admin/config`
 
 `POST` 支持部分字段 patch，包含类型校验与安全键过滤（如 `__proto__` 会被拒绝）。更新成功后会立即应用关键运行参数（如免费模型负载均衡、模型刷新间隔）。
+
+### Claude 模型精确 Token 计数
+
+默认情况下，`/v1/messages/count_tokens` 对 Claude 模型使用 GPT `o200k_base` tokenizer 并乘以 `1.15` 做估算。这个结果通常会低估真实 Claude token 用量，可能导致 Claude Code 等客户端在 compact 触发过晚时遇到 `prompt token count exceeds limit`。
+
+当配置了 Anthropic API key 后，代理会把 Claude 模型的 token 计数请求转发到 Anthropic 官方的 `/v1/messages/count_tokens` 免费接口，返回精确结果；非 Claude 模型或上游失败时仍会自动回退到本地估算。
+
+配置方式任选其一：
+
+1. 在 `config.json` 中设置 `"anthropicApiKey": "sk-ant-..."`
+2. 设置环境变量 `ANTHROPIC_API_KEY=sk-ant-...`
+
+补充说明：
+
+- Anthropic 的 `/v1/messages/count_tokens` 接口本身免费，不按 token 计费
+- 但 Anthropic API key 需要先激活 API 访问权限；通常需要账户有最低充值额度
+- Tier 1 速率限制为 100 RPM
 
 ## API 端点清单
 
@@ -519,6 +560,7 @@ Admin API 规则独立于业务 API：
 - `start --claude-code`：交互选择主模型与小模型，并生成可直接运行的环境变量命令（尝试复制到剪贴板）
 - `/v1/messages` 支持从首条 user 消息解析子代理 marker（`__SUBAGENT_MARKER__`）
 - Messages 路由支持 compact/warmup 识别并回退到 `smallModel`（由配置控制）
+- Claude 模型在配置 Anthropic API key 时，会优先把 `/v1/messages/count_tokens` 转发到 Anthropic 官方接口做精确计数
 - Responses 路由会去除 `web_search` 工具；可选将 `apply_patch` 自定义工具改写为 function tool
 
 ## 常见问题与排障
@@ -532,6 +574,7 @@ Admin API 规则独立于业务 API：
 | `429` 且提示账号配额耗尽 | 全部账号 premium 配额不足 | 等待刷新、增加账号、切换免费模型 |
 | `400 MODEL_NOT_SUPPORTED` | 模型在当前账号不可用，或目标模型名被别名策略阻止 | 改用可用模型或使用配置的别名名 |
 | `/usage/:index` 查错账号 | 索引是 0-based，且临时账号占用 `0` | 先看 `/usage` 返回顺序再查询 |
+| Claude Code 提示 `prompt token count exceeds limit` 或 compact 触发过晚 | Claude token 计数仍在使用本地估算，低估了真实 token 用量 | 配置 `anthropicApiKey` 或 `ANTHROPIC_API_KEY`，让 `/v1/messages/count_tokens` 走 Anthropic 官方精确计数 |
 
 排障命令建议：
 
