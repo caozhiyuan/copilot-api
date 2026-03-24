@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { EyeIcon, EyeOffIcon } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
@@ -1036,10 +1037,13 @@ type GeneralSettingsCardProps = {
   smallModelInputValue: string
   models: Array<string>
   authApiKeysValue: string
+  anthropicApiKeyValue: string
   legacyAuthNote: string
+  anthropicApiKeyEnvNote: string
   onSmallModelSelect: (value: string) => void
   onSmallModelInput: (value: string) => void
   onAuthApiKeysChange: (value: string) => void
+  onAnthropicApiKeyChange: (value: string) => void
 }
 
 function GeneralSettingsCard({
@@ -1049,12 +1053,16 @@ function GeneralSettingsCard({
   smallModelInputValue,
   models,
   authApiKeysValue,
+  anthropicApiKeyValue,
   legacyAuthNote,
+  anthropicApiKeyEnvNote,
   onSmallModelSelect,
   onSmallModelInput,
   onAuthApiKeysChange,
+  onAnthropicApiKeyChange,
 }: GeneralSettingsCardProps): React.JSX.Element {
   const { t } = useTranslation()
+  const [showAnthropicApiKey, setShowAnthropicApiKey] = useState(false)
 
   const showCustomModel =
     hasModels
@@ -1117,6 +1125,44 @@ function GeneralSettingsCard({
           </div>
           <div className="text-muted-foreground text-xs">
             {legacyAuthNote}
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.general.anthropicApiKeyLabel")}
+          </Label>
+          <div className="flex items-center gap-2">
+            <Input
+              autoComplete="off"
+              type={showAnthropicApiKey ? "text" : "password"}
+              placeholder={t("settingsPage.general.anthropicApiKeyPlaceholder")}
+              value={anthropicApiKeyValue}
+              onChange={(e) => onAnthropicApiKeyChange(e.target.value)}
+              className="font-mono text-xs"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0"
+              onClick={() => setShowAnthropicApiKey((prev) => !prev)}
+              aria-label={showAnthropicApiKey
+                ? t("settingsPage.general.hideAnthropicApiKey")
+                : t("settingsPage.general.showAnthropicApiKey")}
+            >
+              {showAnthropicApiKey ? <EyeOffIcon /> : <EyeIcon />}
+              <span className="hidden sm:inline">
+                {showAnthropicApiKey
+                  ? t("settingsPage.general.hideAnthropicApiKey")
+                  : t("settingsPage.general.showAnthropicApiKey")}
+              </span>
+            </Button>
+          </div>
+          <div className="text-muted-foreground text-xs">
+            {t("settingsPage.general.anthropicApiKeyHint")}
+          </div>
+          <div className="text-muted-foreground text-xs">
+            {anthropicApiKeyEnvNote}
           </div>
         </div>
       </CardContent>
@@ -2166,10 +2212,13 @@ type SettingsPageViewProps = {
   smallModelInputValue: string
   models: Array<string>
   authApiKeysValue: string
+  anthropicApiKeyValue: string
   legacyAuthNote: string
+  anthropicApiKeyEnvNote: string
   onSmallModelSelect: (value: string) => void
   onSmallModelInput: (value: string) => void
   onAuthApiKeysChange: (value: string) => void
+  onAnthropicApiKeyChange: (value: string) => void
   loadBalancingEnabled: boolean
   onLoadBalancingToggle: (value: boolean) => void
   modelRefreshIntervalInput: string
@@ -2447,6 +2496,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleAnthropicApiKeyChange = useCallback(
+    (value: string) => {
+      setDraft((prev) => ({ ...prev, anthropicApiKey: value }))
+    },
+    [setDraft],
+  )
+
   const handleLoadBalancingToggle = useCallback(
     (value: boolean) => {
       setDraft((prev) => ({ ...prev, freeModelLoadBalancing: value }))
@@ -2559,6 +2615,11 @@ function useSettingsPageState(): SettingsPageViewProps {
     : t("settingsPage.general.smallModelManual")
   const smallModelInputValue = draft.smallModel ?? ""
   const authApiKeysValue = getAuthApiKeysFromConfig(draft).join("\n")
+  const anthropicApiKeyValue = draft.anthropicApiKey ?? ""
+  const anthropicApiKeyEnvNote = t(
+    "settingsPage.general.anthropicApiKeyEnvNote",
+    { env: "ANTHROPIC_API_KEY" },
+  )
 
   const loadBalancingEnabled = draft.freeModelLoadBalancing ?? true
   const allowOriginalModelNamesForAliases =
@@ -2584,10 +2645,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     smallModelInputValue,
     models,
     authApiKeysValue,
+    anthropicApiKeyValue,
     legacyAuthNote,
+    anthropicApiKeyEnvNote,
     onSmallModelSelect: handleSmallModelSelect,
     onSmallModelInput: handleSmallModelInput,
     onAuthApiKeysChange: handleAuthApiKeysChange,
+    onAnthropicApiKeyChange: handleAnthropicApiKeyChange,
     loadBalancingEnabled,
     onLoadBalancingToggle: handleLoadBalancingToggle,
     modelRefreshIntervalInput,
@@ -2662,10 +2726,13 @@ function SettingsPageView({
   smallModelInputValue,
   models,
   authApiKeysValue,
+  anthropicApiKeyValue,
   legacyAuthNote,
+  anthropicApiKeyEnvNote,
   onSmallModelSelect,
   onSmallModelInput,
   onAuthApiKeysChange,
+  onAnthropicApiKeyChange,
   loadBalancingEnabled,
   onLoadBalancingToggle,
   modelRefreshIntervalInput,
@@ -2805,10 +2872,13 @@ function SettingsPageView({
               smallModelInputValue={smallModelInputValue}
               models={models}
               authApiKeysValue={authApiKeysValue}
+              anthropicApiKeyValue={anthropicApiKeyValue}
               legacyAuthNote={legacyAuthNote}
+              anthropicApiKeyEnvNote={anthropicApiKeyEnvNote}
               onSmallModelSelect={onSmallModelSelect}
               onSmallModelInput={onSmallModelInput}
               onAuthApiKeysChange={onAuthApiKeysChange}
+              onAnthropicApiKeyChange={onAnthropicApiKeyChange}
             />
           </SettingsSectionCard>
 

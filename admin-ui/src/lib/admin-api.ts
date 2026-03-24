@@ -113,6 +113,7 @@ export type AdminConfig = {
   freeModelLoadBalancing?: boolean
   /** @deprecated */
   apiKey?: string
+  anthropicApiKey?: string
   responsesApiContextManagementModels?: Array<string>
   modelReasoningEfforts?: Record<string, ReasoningEffort>
   modelAliases?: Record<string, ModelAliasSpec | string>

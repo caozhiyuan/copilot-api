@@ -286,7 +286,13 @@
       "apiKeysLabel": "API keys",
       "apiKeysPlaceholder": "one key per line",
       "apiKeysHint": "One key per line (or comma-separated). Leave empty to disable request authentication.",
-      "legacyAuthNote": "Legacy fallback remains enabled for env {{env}} or config.apiKey when auth.apiKeys is empty."
+      "legacyAuthNote": "Legacy fallback remains enabled for env {{env}} or config.apiKey when auth.apiKeys is empty.",
+      "anthropicApiKeyLabel": "Anthropic API key",
+      "anthropicApiKeyPlaceholder": "sk-ant-...",
+      "anthropicApiKeyHint": "Optional. Used for exact Claude /v1/messages/count_tokens calls; without it, the server falls back to local token estimation.",
+      "anthropicApiKeyEnvNote": "Runtime fallback remains available through env {{env}}. Leaving this field empty does not override a server-side environment variable.",
+      "showAnthropicApiKey": "Show",
+      "hideAnthropicApiKey": "Hide"
     },
     "loadBalancing": {
       "title": "Load balancing",

@@ -54,6 +54,48 @@ test("POST /api/admin/config updates useMessagesApi", async () => {
   })
 })
 
+test("POST /api/admin/config updates anthropicApiKey", async () => {
+  await withConfig({}, async () => {
+    const { server } = await import("../src/server")
+
+    const res = await server.fetch(
+      new Request("http://localhost/api/admin/config", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ anthropicApiKey: "  sk-ant-test  " }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as { anthropicApiKey?: string }
+    expect(body.anthropicApiKey).toBe("sk-ant-test")
+  })
+})
+
+test("POST /api/admin/config clears anthropicApiKey", async () => {
+  await withConfig({ anthropicApiKey: "sk-ant-test" }, async () => {
+    const { server } = await import("../src/server")
+
+    const res = await server.fetch(
+      new Request("http://localhost/api/admin/config", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ anthropicApiKey: "" }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as { anthropicApiKey?: string }
+    expect(body.anthropicApiKey).toBeUndefined()
+  })
+})
+
 test("POST /api/admin/config updates responsesApiContextManagementModels", async () => {
   await withConfig({}, async () => {
     const { server } = await import("../src/server")

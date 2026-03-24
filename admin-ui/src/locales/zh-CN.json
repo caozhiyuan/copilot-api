@@ -286,7 +286,13 @@
       "apiKeysLabel": "API 密钥列表",
       "apiKeysPlaceholder": "每行一个密钥",
       "apiKeysHint": "支持每行一个或逗号分隔；留空表示关闭请求鉴权。",
-      "legacyAuthNote": "当 auth.apiKeys 为空时，仍会回退使用环境变量 {{env}} 或 config.apiKey（兼容旧配置）。"
+      "legacyAuthNote": "当 auth.apiKeys 为空时，仍会回退使用环境变量 {{env}} 或 config.apiKey（兼容旧配置）。",
+      "anthropicApiKeyLabel": "Anthropic API Key",
+      "anthropicApiKeyPlaceholder": "sk-ant-...",
+      "anthropicApiKeyHint": "可选。用于 Claude `/v1/messages/count_tokens` 的精确计数；未配置时，服务端会回退到本地 token 估算。",
+      "anthropicApiKeyEnvNote": "运行时仍可通过环境变量 {{env}} 回退提供。将此输入框留空并不会覆盖服务端已设置的环境变量。",
+      "showAnthropicApiKey": "显示",
+      "hideAnthropicApiKey": "隐藏"
     },
     "loadBalancing": {
       "title": "负载均衡",

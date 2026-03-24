@@ -153,6 +153,7 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "smallModel",
   "freeModelLoadBalancing",
   "apiKey",
+  "anthropicApiKey",
   "providers",
   "responsesApiContextManagementModels",
   "modelReasoningEfforts",
@@ -745,7 +746,7 @@ function parseModelAliases(
 
 function applyOptionalString(
   next: AppConfig,
-  key: "smallModel" | "apiKey",
+  key: "smallModel" | "apiKey" | "anthropicApiKey",
   value: unknown,
 ): string | undefined {
   const parsed = parseOptionalString(value, key)
@@ -892,6 +893,8 @@ const CONFIG_PATCH_HANDLERS: Partial<Record<string, ConfigPatchHandler>> = {
   freeModelLoadBalancing: (next, value) =>
     applyOptionalBoolean(next, "freeModelLoadBalancing", value),
   apiKey: (next, value) => applyOptionalString(next, "apiKey", value),
+  anthropicApiKey: (next, value) =>
+    applyOptionalString(next, "anthropicApiKey", value),
   providers: applyProvidersConfig,
   responsesApiContextManagementModels: applyResponsesApiContextManagementModels,
   modelReasoningEfforts: applyReasoningEfforts,
