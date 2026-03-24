@@ -10,6 +10,7 @@ import {
   prepareInteractionHeaders,
 } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
+import { fetchWithRetry } from "~/lib/fetch-retry"
 import { state } from "~/lib/state"
 
 export const createChatCompletions = async (
@@ -54,11 +55,14 @@ export const createChatCompletions = async (
 
   prepareForCompact(headers, options.isCompact)
 
-  const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  })
+  const response = await fetchWithRetry(
+    `${copilotBaseUrl(state)}/chat/completions`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    },
+  )
 
   if (!response.ok) {
     consola.error("Failed to create chat completions", response)

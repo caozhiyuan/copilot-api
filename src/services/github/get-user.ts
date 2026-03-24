@@ -1,9 +1,10 @@
 import { getGitHubApiBaseUrl, standardHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
+import { fetchWithRetry } from "~/lib/fetch-retry"
 import { state } from "~/lib/state"
 
 export async function getGitHubUser() {
-  const response = await fetch(`${getGitHubApiBaseUrl()}/user`, {
+  const response = await fetchWithRetry(`${getGitHubApiBaseUrl()}/user`, {
     headers: {
       authorization: `token ${state.githubToken}`,
       ...standardHeaders(),

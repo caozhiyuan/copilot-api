@@ -10,6 +10,7 @@ import {
   prepareInteractionHeaders,
 } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
+import { fetchWithRetry } from "~/lib/fetch-retry"
 import { state } from "~/lib/state"
 
 export interface ResponsesPayload {
@@ -386,7 +387,7 @@ export const createResponses = async (
   // service_tier is not supported by github copilot
   payload.service_tier = null
 
-  const response = await fetch(`${copilotBaseUrl(state)}/responses`, {
+  const response = await fetchWithRetry(`${copilotBaseUrl(state)}/responses`, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),

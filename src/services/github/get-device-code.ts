@@ -1,11 +1,12 @@
 import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
+import { fetchWithRetry } from "~/lib/fetch-retry"
 
 export async function getDeviceCode(): Promise<DeviceCodeResponse> {
   const { clientId, headers, scope } = getOauthAppConfig()
   const { deviceCodeUrl } = getOauthUrls()
 
-  const response = await fetch(deviceCodeUrl, {
+  const response = await fetchWithRetry(deviceCodeUrl, {
     method: "POST",
     headers,
     body: JSON.stringify({

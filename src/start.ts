@@ -8,7 +8,7 @@ import invariant from "tiny-invariant"
 
 import { mergeConfigWithDefaults } from "./lib/config"
 import { ensurePaths } from "./lib/paths"
-import { initProxyFromEnv } from "./lib/proxy"
+import { initDefaultAgent, initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { setupCopilotToken, setupGitHubToken } from "./lib/token"
@@ -35,6 +35,8 @@ interface RunServerOptions {
 export async function runServer(options: RunServerOptions): Promise<void> {
   // Ensure config is merged with defaults at startup
   mergeConfigWithDefaults()
+
+  initDefaultAgent()
 
   if (options.proxyEnv) {
     initProxyFromEnv()
