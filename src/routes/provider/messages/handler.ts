@@ -75,6 +75,10 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
             continue
           }
 
+          if (chunk.data === "[DONE]") {
+            break
+          }
+
           try {
             const parsed = JSON.parse(data) as AnthropicStreamEventData
             if (parsed.type === "message_start") {
