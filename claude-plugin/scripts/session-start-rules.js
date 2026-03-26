@@ -8,16 +8,8 @@ async function readStdin() {
 
 await readStdin();
 
-const rules = `Prohibited from directly asking questions to users, MUST use AskUserQuestion tool.
-Once you can confirm that the task is complete, MUST use AskUserQuestion tool to make user confirm. The user may respond with feedback if they are not satisfied with the result, which you can use to make improvements and try again.
-
-## Subagent Execution Rules
-
-**CRITICAL — This project uses a third-party API proxy (copilot-api). Background agents WILL FAIL with "No task found" errors due to proxy latency causing TaskOutput timeouts.**
-
-### Mandatory Rules
-- **NEVER** set \`run_in_background: true\` when spawning agents via the Agent tool
-- **ALWAYS** run agents in foreground and wait for their results before proceeding`;
+const rules = `MUST use AskUserQuestion tool (never ask users directly). Confirm task completion via AskUserQuestion.
+NEVER set \`run_in_background: true\` on Agent tool — proxy latency causes "No task found" errors. ALWAYS run agents foreground.`;
 
 const payload = {
   hookSpecificOutput: {
