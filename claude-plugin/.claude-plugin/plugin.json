@@ -1,7 +1,7 @@
 {
   "name": "claude-plugin",
-  "description": "Inject SubagentStart marker context for copilot-api initiator override",
-  "version": "1.0.0",
+  "description": "Inject copilot-api proxy rules (AskUserQuestion, no-background-agents) via SessionStart and SubagentStart marker context",
+  "version": "1.1.0",
   "author": {
     "name": "copilot-api maintainers"
   }
