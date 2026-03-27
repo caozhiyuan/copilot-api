@@ -56,7 +56,7 @@ Compared with routing everything through plain Chat Completions compatibility, t
 - **Fewer Unnecessary Premium Requests**: Reduces wasted premium usage by routing warmup requests to `smallModel`, merging `tool_result` follow-ups back into the tool flow, and treating resumed tool turns as continuation traffic instead of fresh premium interactions.
 - **Phase-Aware `gpt-5.4` and `gpt-5.3-codex`**: These models can emit user-friendly commentary before deeper reasoning or tool use, so long-running coding actions are easier to understand instead of appearing as a sudden tool burst.
 - **Claude Native Beta Support**: On the Messages API path, supports Anthropic-native capabilities such as `interleaved-thinking`, `advanced-tool-use`, and `context-management`, which are difficult or unavailable through plain Chat Completions compatibility.
-- **Subagent Marker Integration**: Optional Claude Code and opencode plugins can inject `__SUBAGENT_MARKER__...` and propagate `x-session-id` so subagent traffic keeps the correct root session and agent/user semantics.
+- **Subagent Marker Integration**: Claude Code and opencode plugins can inject `__SUBAGENT_MARKER__...` and propagate `x-session-id` so subagent traffic keeps the correct root session and agent/user semantics.
 - **OpenCode via `@ai-sdk/anthropic`**: Point OpenCode at this proxy as an Anthropic provider so Anthropic Messages semantics, premium-request optimizations, and Claude-native behavior are preserved end to end.
 - **Claude Code Integration**: Easily configure and launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) to use Copilot as its backend with a simple command-line flag (`--claude-code`).
 - **Usage Dashboard**: A web-based dashboard to monitor your Copilot API usage, view quotas, and see detailed statistics.
@@ -110,7 +110,7 @@ For subagent-based clients, this project can preserve root session context and c
 
 The marker flow uses `__SUBAGENT_MARKER__...` inside a `<system-reminder>` block together with root `x-session-id` propagation. When a marker is detected, the proxy can keep the parent session identity, infer `x-initiator: agent`, and tag the interaction as subagent traffic instead of a fresh top-level request.
 
-Optional marker producers are included for both Claude Code and opencode; see [Subagent Marker Integration](#subagent-marker-integration-optional) below for setup details.
+Plugin integrations are included for both Claude Code and opencode; see [Plugin Integrations](#plugin-integrations) below for setup details.
 
 ### Accurate Claude token counting
 
@@ -792,7 +792,6 @@ Here is an example `.claude/settings.json` file:
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5-mini",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "BASH_MAX_TIMEOUT_MS": "600000",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
     "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false"
   },
@@ -817,13 +816,13 @@ You can find more options here: [Claude Code settings](https://docs.anthropic.co
 
 You can also read more about IDE integration here: [Add Claude Code to your IDE](https://docs.anthropic.com/en/docs/claude-code/ide-integrations)
 
-## Subagent Marker Integration (Optional)
+## Plugin Integrations
 
-This project supports `x-initiator: agent` for subagent-originated requests and can preserve the root session identity with `x-session-id` when a subagent marker is present.
+Plugin integrations are available for Claude Code and opencode.
 
-#### Claude Code plugin producer (marketplace-based)
+#### Claude Code plugin integration (marketplace-based)
 
-The marker producer is packaged as a Claude Code plugin named `claude-plugin`.
+The Claude Code integration is packaged as a plugin named `claude-plugin`.
 
 - Marketplace catalog in this repository: `.claude-plugin/marketplace.json`
 - Plugin source in this repository: `claude-plugin`
@@ -842,9 +841,14 @@ Install the plugin from the marketplace:
 
 After installation, the plugin injects `__SUBAGENT_MARKER__...` on `SubagentStart`, and this proxy uses it to infer `x-initiator: agent`.
 
-#### Opencode plugin producer
+The plugin also registers a `UserPromptSubmit` hook that returns `{"continue": true}`, and it can inject `SessionStart` reminder rules through environment variables:
 
-The marker producer is packaged as an opencode plugin located at `.opencode/plugins/subagent-marker.js`.
+- `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES=1` enables the two `question`-tool reminders.
+- `CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE=1` enables the `run_in_background: true` avoidance reminder for agent hooks.
+
+#### Opencode plugin
+
+The subagent marker producer is packaged as an opencode plugin located at `.opencode/plugins/subagent-marker.js`.
 
 **Installation:**
 
