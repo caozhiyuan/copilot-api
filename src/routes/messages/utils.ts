@@ -9,6 +9,7 @@ import { getRequestHistoryStore } from "~/lib/request-history"
 import { getTokenCount } from "~/lib/tokenizer"
 
 import type {
+  AnthropicMessage,
   AnthropicMessagesPayload,
   AnthropicResponse,
   AnthropicTextBlock,
@@ -257,4 +258,53 @@ export const maybeBlockOriginalModelName = (
     ...context,
     selection: { ok: false, reason: "MODEL_NOT_SUPPORTED" },
   })
+}
+
+const compactSystemPromptStart =
+  "You are a helpful AI assistant tasked with summarizing conversations"
+
+const compactUserMessageStart =
+  "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools."
+
+const hasCompactUserMessage = (messages: Array<AnthropicMessage>): boolean => {
+  const lastMsg = messages.at(-1)
+  if (!lastMsg || lastMsg.role !== "user") return false
+
+  if (typeof lastMsg.content === "string") {
+    return lastMsg.content.startsWith(compactUserMessageStart)
+  }
+  if (!Array.isArray(lastMsg.content)) return false
+
+  return lastMsg.content.some(
+    (block) =>
+      block.type === "text"
+      && typeof block.text === "string"
+      && block.text.startsWith(compactUserMessageStart),
+  )
+}
+
+export const isCompactRequest = (
+  anthropicPayload: AnthropicMessagesPayload,
+): boolean => {
+  // Legacy: system prompt detection (old Claude Code)
+  const system = anthropicPayload.system
+  if (
+    typeof system === "string"
+    && system.startsWith(compactSystemPromptStart)
+  ) {
+    return true
+  }
+  if (
+    Array.isArray(system)
+    && system.some(
+      (msg) =>
+        typeof msg.text === "string"
+        && msg.text.startsWith(compactSystemPromptStart),
+    )
+  ) {
+    return true
+  }
+
+  // New: last user message detection (new Claude Code)
+  return hasCompactUserMessage(anthropicPayload.messages)
 }

@@ -87,6 +87,7 @@ import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 import {
   estimateInputTokens,
   handleSelectionFailure,
+  isCompactRequest,
   isWarmupProbeRequest,
   maybeBlockOriginalModelName,
   mergeToolResultForClaude,
@@ -97,9 +98,6 @@ const logger = createHandlerLogger("messages-handler")
 const CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
 const RESPONSES_ENDPOINT = "/responses"
 const MESSAGES_ENDPOINT = "/v1/messages"
-
-const compactSystemPromptStart =
-  "You are a helpful AI assistant tasked with summarizing conversations"
 
 type AccountSelection = Awaited<
   ReturnType<(typeof accountsManager)["selectAccountForRequest"]>
@@ -1373,20 +1371,4 @@ const getAnthropicEffortForModel = (
   if (reasoningEffort === "none" || reasoningEffort === "minimal") return "low"
 
   return reasoningEffort
-}
-
-const isCompactRequest = (
-  anthropicPayload: AnthropicMessagesPayload,
-): boolean => {
-  const system = anthropicPayload.system
-  if (typeof system === "string") {
-    return system.startsWith(compactSystemPromptStart)
-  }
-  if (!Array.isArray(system)) return false
-
-  return system.some(
-    (msg) =>
-      typeof msg.text === "string"
-      && msg.text.startsWith(compactSystemPromptStart),
-  )
 }
