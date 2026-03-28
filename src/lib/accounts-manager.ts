@@ -8,6 +8,13 @@ import type {
   AccountType,
 } from "~/lib/types/account"
 
+import {
+  AccountAffinityCache,
+  buildAffinityCacheKey,
+  extractAffinityKey,
+  isAffinityAccountUsable,
+  type AffinityContext,
+} from "~/lib/account-affinity"
 import { resolveModelAlias } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { getModels, type Model } from "~/services/copilot/get-models"
@@ -15,13 +22,6 @@ import { getCopilotToken } from "~/services/github/get-copilot-token"
 import { getCopilotUsage } from "~/services/github/get-copilot-usage"
 import { getGitHubUser } from "~/services/github/get-user"
 
-import {
-  AccountAffinityCache,
-  buildAffinityCacheKey,
-  extractAffinityKey,
-  isAffinityAccountUsable,
-  type AffinityContext,
-} from "./account-affinity"
 import {
   applyCopilotTokenIfCurrent,
   applyModelsIfCurrent,
@@ -70,8 +70,8 @@ export interface AccountRequestCandidate {
   endpoint: string
 }
 
-export type { AffinityContext } from "./account-affinity"
 export type { QuotaReservation } from "./accounts-manager-quota"
+export type { AffinityContext } from "~/lib/account-affinity"
 
 export type SelectAccountForRequestFailureReason =
   | "NO_ACCOUNTS"
