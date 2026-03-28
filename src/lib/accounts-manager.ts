@@ -104,6 +104,7 @@ export class AccountsManager {
   private vsCodeVersion?: string
   private accountAffinityEnabled = true
   private affinityCache = new AccountAffinityCache()
+  private loadBalanceCursor = 0
 
   private quotaRefreshSnapshotByAccount = new WeakMap<
     AccountRuntime,
@@ -853,11 +854,20 @@ export class AccountsManager {
       }
     }
 
-    // Step 2: Normal selection (with alias fallback).
+    // Step 2: Cache miss — rotate accounts for load balancing when affinity is enabled.
+    const accountsForSelection =
+      this.accountAffinityEnabled && orderedAccounts.length > 1 ?
+        this.rotateAccounts(orderedAccounts)
+      : orderedAccounts
+
     const result = await this.selectWithAliasFallback(
-      orderedAccounts,
+      accountsForSelection,
       candidates,
     )
+
+    if (result.ok) {
+      this.loadBalanceCursor++
+    }
 
     // Attach confirmAffinity callback so the handler can persist the mapping on success.
     if (result.ok && cacheKey) {
@@ -869,6 +879,18 @@ export class AccountsManager {
     }
 
     return result
+  }
+
+  /**
+   * Rotate the accounts array by the current load-balance cursor for round-robin distribution.
+   * This ensures cache-miss requests are spread across accounts instead of always hitting the first.
+   */
+  private rotateAccounts(
+    accounts: Array<AccountRuntime>,
+  ): Array<AccountRuntime> {
+    const start = this.loadBalanceCursor % accounts.length
+    if (start === 0) return accounts
+    return [...accounts.slice(start), ...accounts.slice(0, start)]
   }
 
   /**
@@ -1192,6 +1214,9 @@ export class AccountsManager {
         .map((m) => m.id)
         .filter((id) => this.accounts.has(id))
 
+      // Reset load-balance cursor on account list/order changes.
+      this.loadBalanceCursor = 0
+
       this.logRegistryReloadChanges(added, removed, updated)
     } catch (error) {
       consola.error("Failed to reload registry:", error)
@@ -1359,6 +1384,7 @@ export class AccountsManager {
     this.stopAllTokenRefresh()
     this.stopModelsRefresh()
     this.affinityCache.clear()
+    this.loadBalanceCursor = 0
     this.accounts.clear()
     this.accountOrder = []
     this.temporaryAccount = undefined

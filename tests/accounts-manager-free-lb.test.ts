@@ -64,10 +64,10 @@ const setupManager = (
 }
 
 // ---------------------------------------------------------------------------
-// Sequential selection (no affinity context = always first available)
+// Load-balanced selection (affinity enabled, cache miss → round-robin)
 // ---------------------------------------------------------------------------
 
-test("selectAccountForRequest selects first available account for free models (sequential)", async () => {
+test("selectAccountForRequest round-robins free models on cache miss", async () => {
   const model = makeModel({
     id: "free-model",
     billing: {
@@ -114,11 +114,11 @@ test("selectAccountForRequest selects first available account for free models (s
     expect(selection.reservation).toBeUndefined()
   }
 
-  // Without affinity context, always picks the first available account.
-  expect(seen).toEqual(["a", "a", "a", "a", "a", "a"])
+  // Round-robin across accounts on cache miss.
+  expect(seen).toEqual(["a", "b", "c", "a", "b", "c"])
 })
 
-test("selectAccountForRequest prefers temporaryAccount for free models (sequential)", async () => {
+test("selectAccountForRequest starts with temporaryAccount then round-robins", async () => {
   const model = makeModel({ id: "free-model" })
 
   const temp: AccountRuntime = {
@@ -159,8 +159,8 @@ test("selectAccountForRequest prefers temporaryAccount for free models (sequenti
     seen.push(selection.account.id)
   }
 
-  // temporaryAccount is first in orderedAccounts, always selected.
-  expect(seen).toEqual(["temp", "temp", "temp"])
+  // temporaryAccount is first; round-robin rotates through all.
+  expect(seen).toEqual(["temp", "a", "b"])
 })
 
 test("selectAccountForRequest skips failed accounts for free models", async () => {
@@ -204,11 +204,11 @@ test("selectAccountForRequest skips failed accounts for free models", async () =
     seen.push(selection.account.id)
   }
 
-  // Account "a" is failed, so "b" (next available) is always selected.
-  expect(seen).toEqual(["b", "b", "b"])
+  // Account "a" is failed; round-robin rotates across "b" and "c".
+  expect(seen).toEqual(["b", "b", "c"])
 })
 
-test("selectAccountForRequest keeps premium model selection sequential", async () => {
+test("selectAccountForRequest round-robins premium models on cache miss", async () => {
   const premium = makeModel({
     id: "gpt-5",
     billing: {
@@ -253,10 +253,11 @@ test("selectAccountForRequest keeps premium model selection sequential", async (
     expect(selection.reservation).toBeDefined()
   }
 
-  expect(seen).toEqual(["a", "a", "a"])
+  // Round-robin distributes premium requests across accounts with quota.
+  expect(seen).toEqual(["a", "b", "a"])
 })
 
-test("free and premium selection both use sequential routing", async () => {
+test("free and premium selection both use round-robin routing", async () => {
   const free = makeModel({ id: "free-model" })
   const premium = makeModel({
     id: "gpt-5",
@@ -306,9 +307,9 @@ test("free and premium selection both use sequential routing", async () => {
   expect(premiumSelection.ok).toBe(true)
   if (!premiumSelection.ok) return
 
-  // Both free and premium use sequential: always first available.
+  // Round-robin: free1 → a (cursor 0), free2 → b (cursor 1), premium → a (cursor 2).
   expect(free1.account.id).toBe("a")
-  expect(free2.account.id).toBe("a")
+  expect(free2.account.id).toBe("b")
   expect(premiumSelection.account.id).toBe("a")
 })
 
@@ -433,15 +434,15 @@ test("affinity: without confirmAffinity, cache is not populated", async () => {
   expect(first.confirmAffinity).toBeDefined()
   // intentionally not calling confirmAffinity
 
-  // Second request: cache miss → sequential → still "a".
+  // Second request: cache miss → round-robin advances cursor → "b".
   const second = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
     { promptCacheKey: "session-2" },
   )
   expect(second.ok).toBe(true)
   if (!second.ok) return
-  // Without cache, falls back to sequential (account "a").
-  expect(second.account.id).toBe("a")
+  // Without confirmAffinity, no cache entry; round-robin picks next account.
+  expect(second.account.id).toBe("b")
 })
 
 test("affinity: different models with same key can route to different accounts", async () => {
@@ -536,7 +537,7 @@ test("affinity: skips failed preferred account and falls back to sequential", as
   expect(second.account.id).toBe("b")
 })
 
-test("affinity: no affinity context falls back to sequential", async () => {
+test("affinity: no affinity context uses round-robin", async () => {
   const model = makeModel({ id: "free-model" })
 
   const a: AccountRuntime = {
@@ -556,16 +557,18 @@ test("affinity: no affinity context falls back to sequential", async () => {
 
   const manager = setupManager([a, b])
 
-  // No affinity context → always sequential → always "a".
+  // No affinity context → round-robin across accounts.
+  const seen: Array<string> = []
   for (let i = 0; i < 3; i++) {
     const selection = await manager.selectAccountForRequest([
       { modelId: "free-model", endpoint: "/chat/completions" },
     ])
     expect(selection.ok).toBe(true)
     if (!selection.ok) return
-    expect(selection.account.id).toBe("a")
+    seen.push(selection.account.id)
     expect(selection.confirmAffinity).toBeUndefined()
   }
+  expect(seen).toEqual(["a", "b", "a"])
 })
 
 test("affinity: disabled → no confirmAffinity callback even with context", async () => {
