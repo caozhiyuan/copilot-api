@@ -16,6 +16,15 @@ export async function forwardError(c: Context, error: unknown) {
   consola.error("Error occurred:", error)
 
   if (error instanceof HTTPError) {
+    if (error.response.status === 429) {
+      for (const [name, value] of error.response.headers) {
+        const lowerName = name.toLowerCase()
+        if (lowerName === "retry-after" || lowerName.startsWith("x-")) {
+          c.header(name, value)
+        }
+      }
+    }
+
     const errorText = await error.response.text()
     let errorJson: unknown
     try {

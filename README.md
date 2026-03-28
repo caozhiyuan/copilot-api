@@ -805,7 +805,7 @@ Here is an example `.claude/settings.json` file:
 
 ### CLAUDE.md or AGENTS.md Recommended Content
 
-Please include the following in `CLAUDE.md` or `AGENTS.md`:
+To add these reminders manually, include the following in `CLAUDE.md` for Claude Code, or `AGENTS.md` for opencode/codex:
 
 ```
 - Prohibited from directly asking questions to users, MUST use question tool.
@@ -843,7 +843,7 @@ After installation, the plugin injects `__SUBAGENT_MARKER__...` on `SubagentStar
 
 The plugin also registers a `UserPromptSubmit` hook that returns `{"continue": true}`, and it can inject `SessionStart` reminder rules through environment variables:
 
-- `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES=1` enables the two `question`-tool reminders.
+- `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES=1` enables the two reminders about using the `question` tool automatically for Claude Code. Alternatively, you can add the same reminders manually in `CLAUDE.md`; see [CLAUDE.md or AGENTS.md Recommended Content](#claudemd-or-agentsmd-recommended-content).
 - `CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE=1` enables the `run_in_background: true` avoidance reminder for agent hooks.
 
 #### Opencode plugin
