@@ -78,12 +78,18 @@ export async function handleCompletion(c: Context) {
 
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
-  const selection = await accountsManager.selectAccountForRequest([
+  const selection = await accountsManager.selectAccountForRequest(
+    [
+      {
+        modelId: clientModel,
+        endpoint: CHAT_COMPLETIONS_ENDPOINT,
+      },
+    ],
     {
-      modelId: clientModel,
-      endpoint: CHAT_COMPLETIONS_ENDPOINT,
+      promptCacheKey: normalizedPromptCacheKey,
+      safetyIdentifier: normalizedSafetyIdentifier,
     },
-  ])
+  )
 
   if (!selection.ok) {
     recordSelectionFailure(store, {
@@ -100,6 +106,9 @@ export async function handleCompletion(c: Context) {
   }
 
   const { account, selectedModel } = selection
+
+  request.affinityHit = selection.affinityHit
+  request.affinityCacheKey = selection.affinityCacheKey
 
   const upstreamPayload = { ...payload, model: selectedModel.id }
 
@@ -173,6 +182,9 @@ type RequestContext = {
   initiator?: "agent" | "user"
   upstreamRequestId?: string
   upstreamSessionId?: string
+
+  affinityHit?: boolean
+  affinityCacheKey?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -236,6 +248,8 @@ function insertRequestLog(
     promptCacheKey: request.promptCacheKey,
     initiator: request.initiator,
     upstreamRequestId: request.upstreamRequestId,
+    affinityHit: request.affinityHit,
+    affinityCacheKey: request.affinityCacheKey,
     ...record,
   })
 }
@@ -357,6 +371,7 @@ async function handleStreamingRequest(params: {
       upstreamRequestId: request.upstreamRequestId,
       sessionId: request.upstreamSessionId,
     })
+    selection.confirmAffinity?.()
   } catch (error) {
     return handleUpstreamCreateError({
       store,
@@ -678,6 +693,7 @@ async function handleNonStreamingRequest(params: {
       upstreamRequestId: request.upstreamRequestId,
       sessionId: request.upstreamSessionId,
     })
+    selection.confirmAffinity?.()
     finishedAtMs = Date.now()
 
     if (!isNonStreaming(response)) {

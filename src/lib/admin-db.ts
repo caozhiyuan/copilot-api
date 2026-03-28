@@ -81,75 +81,78 @@ export function getAdminDbUserVersion(db: Database = getAdminDb()): number {
   }
 }
 
+function migrateV1(db: Database): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS request_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id TEXT NOT NULL UNIQUE,
+
+      started_at_ms INTEGER NOT NULL,
+      finished_at_ms INTEGER,
+      duration_ms INTEGER,
+      ttfb_ms INTEGER,
+
+      method TEXT NOT NULL,
+      path TEXT NOT NULL,
+      upstream_endpoint TEXT,
+      stream INTEGER NOT NULL DEFAULT 0,
+
+      account_id TEXT,
+      account_type TEXT,
+      cost_units REAL,
+      client_model TEXT,
+      upstream_model TEXT,
+
+      client_ip TEXT,
+      client_ip_source TEXT,
+      user_agent TEXT,
+
+      tokens_input INTEGER,
+      tokens_output INTEGER,
+      tokens_total INTEGER,
+      tokens_cached_input INTEGER,
+      usage_json TEXT,
+
+      premium_remaining_before REAL,
+      premium_remaining_after REAL,
+      premium_remaining_diff REAL,
+      premium_unlimited_before INTEGER,
+      premium_unlimited_after INTEGER,
+
+      http_status INTEGER,
+      error_name TEXT,
+      error_status INTEGER,
+      error_message TEXT,
+      selection_failure_reason TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_request_log_started_at
+      ON request_log(started_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_request_log_account_started_at
+      ON request_log(account_id, started_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_request_log_model_started_at
+      ON request_log(upstream_model, started_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_request_log_endpoint_started_at
+      ON request_log(upstream_endpoint, started_at_ms DESC);
+    CREATE INDEX IF NOT EXISTS idx_request_log_status_started_at
+      ON request_log(http_status, started_at_ms DESC);
+
+    PRAGMA user_version = 1;
+  `)
+}
+
 function migrateAdminDb(db: Database): void {
   const row = db.query("PRAGMA user_version;").get() as {
     user_version?: number
   } | null
   const current = row?.user_version ?? 0
 
-  if (current >= 4) {
+  if (current >= 5) {
     return
   }
 
   if (current < 1) {
-    // v1: request_log table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS request_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        request_id TEXT NOT NULL UNIQUE,
-
-        started_at_ms INTEGER NOT NULL,
-        finished_at_ms INTEGER,
-        duration_ms INTEGER,
-        ttfb_ms INTEGER,
-
-        method TEXT NOT NULL,
-        path TEXT NOT NULL,
-        upstream_endpoint TEXT,
-        stream INTEGER NOT NULL DEFAULT 0,
-
-        account_id TEXT,
-        account_type TEXT,
-        cost_units REAL,
-        client_model TEXT,
-        upstream_model TEXT,
-
-        client_ip TEXT,
-        client_ip_source TEXT,
-        user_agent TEXT,
-
-        tokens_input INTEGER,
-        tokens_output INTEGER,
-        tokens_total INTEGER,
-        tokens_cached_input INTEGER,
-        usage_json TEXT,
-
-        premium_remaining_before REAL,
-        premium_remaining_after REAL,
-        premium_remaining_diff REAL,
-        premium_unlimited_before INTEGER,
-        premium_unlimited_after INTEGER,
-
-        http_status INTEGER,
-        error_name TEXT,
-        error_status INTEGER,
-        error_message TEXT,
-        selection_failure_reason TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_request_log_started_at
-        ON request_log(started_at_ms DESC);
-      CREATE INDEX IF NOT EXISTS idx_request_log_account_started_at
-        ON request_log(account_id, started_at_ms DESC);
-      CREATE INDEX IF NOT EXISTS idx_request_log_model_started_at
-        ON request_log(upstream_model, started_at_ms DESC);
-      CREATE INDEX IF NOT EXISTS idx_request_log_endpoint_started_at
-        ON request_log(upstream_endpoint, started_at_ms DESC);
-      CREATE INDEX IF NOT EXISTS idx_request_log_status_started_at
-        ON request_log(http_status, started_at_ms DESC);
-
-      PRAGMA user_version = 1;
-    `)
+    migrateV1(db)
   }
 
   if (current < 2) {
@@ -195,6 +198,16 @@ function migrateAdminDb(db: Database): void {
           AND tokens_input IS NOT NULL;
 
       PRAGMA user_version = 4;
+    `)
+  }
+
+  if (current < 5) {
+    // v5: account affinity tracking columns
+    db.run(`
+      ALTER TABLE request_log ADD COLUMN affinity_hit INTEGER;
+      ALTER TABLE request_log ADD COLUMN affinity_cache_key TEXT;
+
+      PRAGMA user_version = 5;
     `)
   }
 }

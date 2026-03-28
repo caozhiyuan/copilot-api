@@ -348,7 +348,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
       "gpt-5.4": "<built-in commentary prompt>"
     },
     "smallModel": "gpt-5-mini",
-    "freeModelLoadBalancing": true,
+    "accountAffinity": true,
     "responsesApiContextManagementModels": [],
     "modelReasoningEfforts": {
       "gpt-5-mini": "low",
@@ -377,7 +377,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     - `topK` (optional): Default top_k value used when the request does not specify one.
 - **responsesApiContextManagementModels:** List of model IDs that should receive Responses API `context_management` compaction instructions. Use this when a model supports server-side context management and you want the proxy to keep only the latest compaction carrier on follow-up turns.
 - **smallModel:** Fallback model used for tool-less warmup messages, compact/background requests, and other short housekeeping turns (for example from Claude Code or OpenCode) to avoid spending premium requests; defaults to `gpt-5-mini`. If original names are blocked and this points to an aliased target, it resolves to the preferred alias.
-- **freeModelLoadBalancing:** Enable round-robin routing for free-model requests across multiple accounts. Defaults to `true`. Set to `false` to route free-model requests sequentially (same ordering strategy as premium models).
+- **accountAffinity:** Enable sticky account routing based on session identity. When enabled, requests from the same session for the same model are routed to the account that last handled them successfully. Applies to both free and premium models. Defaults to `true`. Set to `false` to use sequential routing for all models.
 - **apiKey (deprecated):** Legacy single-key field kept for migration compatibility. Prefer `auth.apiKeys`. When `auth.apiKeys` is empty, the server falls back to `COPILOT_API_KEY` and then `apiKey`.
 - **modelReasoningEfforts:** Per-model `reasoning.effort` sent to the Copilot Responses API. Allowed values are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. If a model isn’t listed, `high` is used by default.
 - **modelAliases:** Map of `alias -> { target, allowOriginal? }` (legacy string values are still accepted). Alias keys are normalized (trim + lowercase) and must be non-empty; aliases cannot map to themselves (case-insensitive), and conflicting normalized aliases are rejected. `allowOriginal` overrides the global default per alias. If multiple aliases map to the same target, original names are allowed when any alias sets `allowOriginal: true` (allow-wins). Admin UI/API rejects blocked keys (`__proto__`, `constructor`, `prototype`). Aliases can be used in downstream requests.
@@ -895,5 +895,5 @@ bun run start
 - If you have a GitHub business or enterprise plan account with Copilot, use the `--account-type` flag (e.g., `--account-type business`). See the [official documentation](https://docs.github.com/en/enterprise-cloud@latest/copilot/managing-copilot/managing-github-copilot-in-your-organization/managing-access-to-github-copilot-in-your-organization/managing-github-copilot-access-to-your-organizations-network#configuring-copilot-subscription-based-network-routing-for-your-enterprise-or-organization) for more details.
 - **Multi-account request routing**: Add multiple GitHub Copilot accounts using `auth add`.
   - **Premium models**: Accounts are tried in the order they were added. When an account's premium request quota (`remaining=0`) is exhausted (or insufficient for the selected model), the proxy automatically switches to the next eligible account.
-  - **Free models**: By default, requests are distributed round-robin across all eligible accounts (including the temporary account created via `start --github-token ...`). Set `freeModelLoadBalancing=false` in `config.json` to disable this and route free-model requests sequentially.
+  - **Free models**: When `accountAffinity=true`, requests with the same affinity key and model stick to the account that last handled them successfully. Affinity misses fall back to the first available eligible account. Set `accountAffinity=false` in `config.json` to disable affinity and route all requests sequentially.
   - **Model classification**: Based on Copilot model metadata (`billing.is_premium` / `billing.multiplier`). Missing billing info or `billing.is_premium !== true` is treated as free.

@@ -10,7 +10,7 @@ import {
   getModelAliases,
   getModelAliasesInfo,
   getModelRefreshIntervalMs,
-  isFreeModelLoadBalancingEnabled,
+  isAccountAffinityEnabled,
   mergeConfigWithDefaults,
   PROVIDER_TYPE_ANTHROPIC,
   type AppConfig,
@@ -151,7 +151,7 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "auth",
   "extraPrompts",
   "smallModel",
-  "freeModelLoadBalancing",
+  "accountAffinity",
   "apiKey",
   "anthropicApiKey",
   "providers",
@@ -774,7 +774,7 @@ function applyAuthConfig(next: AppConfig, value: unknown): string | undefined {
 function applyOptionalBoolean(
   next: AppConfig,
   key:
-    | "freeModelLoadBalancing"
+    | "accountAffinity"
     | "useFunctionApplyPatch"
     | "forceAgent"
     | "useMessagesApi"
@@ -890,8 +890,8 @@ const CONFIG_PATCH_HANDLERS: Partial<Record<string, ConfigPatchHandler>> = {
   auth: applyAuthConfig,
   extraPrompts: applyExtraPrompts,
   smallModel: (next, value) => applyOptionalString(next, "smallModel", value),
-  freeModelLoadBalancing: (next, value) =>
-    applyOptionalBoolean(next, "freeModelLoadBalancing", value),
+  accountAffinity: (next, value) =>
+    applyOptionalBoolean(next, "accountAffinity", value),
   apiKey: (next, value) => applyOptionalString(next, "apiKey", value),
   anthropicApiKey: (next, value) =>
     applyOptionalString(next, "anthropicApiKey", value),
@@ -1023,9 +1023,7 @@ adminApiRoutes.post("/config", async (c) => {
   try {
     await writeConfigFile(result.config)
     const merged = mergeConfigWithDefaults()
-    accountsManager.setFreeModelLoadBalancingEnabled(
-      isFreeModelLoadBalancingEnabled(),
-    )
+    accountsManager.setAccountAffinityEnabled(isAccountAffinityEnabled())
     accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
     return c.json({ ...merged, _configPath: PATHS.CONFIG_PATH })
   } catch {

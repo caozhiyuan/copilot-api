@@ -247,8 +247,23 @@ export function RequestDetailPage(): React.JSX.Element {
                     ) : (
                       ""
                     )}
+                    {item.affinity_hit ? (
+                      <Badge variant="outline" className="ml-2">
+                        {t("requestDetailPage.fields.affinityHit")}
+                      </Badge>
+                    ) : null}
                   </TableCell>
                 </TableRow>
+                {item.affinity_cache_key ? (
+                  <TableRow>
+                    <TableCell className="text-muted-foreground">
+                      {t("requestDetailPage.fields.affinityCacheKey")}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs whitespace-normal break-words">
+                      {item.affinity_cache_key}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
                 <TableRow>
                   <TableCell className="text-muted-foreground">
                     {t("requestDetailPage.fields.userId")}

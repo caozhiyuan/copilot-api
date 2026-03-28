@@ -89,12 +89,18 @@ export const handleResponses = async (c: Context) => {
     })
   }
 
-  const selection = await accountsManager.selectAccountForRequest([
+  const selection = await accountsManager.selectAccountForRequest(
+    [
+      {
+        modelId: clientModel,
+        endpoint: RESPONSES_ENDPOINT,
+      },
+    ],
     {
-      modelId: clientModel,
-      endpoint: RESPONSES_ENDPOINT,
+      promptCacheKey: normalizedPromptCacheKey,
+      safetyIdentifier: normalizedSafetyIdentifier,
     },
-  ])
+  )
 
   if (!selection.ok) {
     recordSelectionFailure(store, {
@@ -110,6 +116,9 @@ export const handleResponses = async (c: Context) => {
   }
 
   const { account, selectedModel } = selection
+
+  request.affinityHit = selection.affinityHit
+  request.affinityCacheKey = selection.affinityCacheKey
 
   const upstreamPayload = { ...payload, model: selectedModel.id }
   useFunctionApplyPatch(upstreamPayload)
@@ -190,6 +199,9 @@ type RequestContext = {
   initiator?: "agent" | "user"
   upstreamRequestId?: string
   upstreamSessionId?: string
+
+  affinityHit?: boolean
+  affinityCacheKey?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -246,6 +258,8 @@ function insertRequestLog(
     promptCacheKey: request.promptCacheKey,
     initiator: request.initiator,
     upstreamRequestId: request.upstreamRequestId,
+    affinityHit: request.affinityHit,
+    affinityCacheKey: request.affinityCacheKey,
     ...record,
   })
 }
@@ -378,6 +392,7 @@ async function handleStreamingResponses(params: {
       },
       accountCtx,
     )
+    selection.confirmAffinity?.()
   } catch (error) {
     return handleUpstreamCreateError({
       store,
@@ -697,6 +712,7 @@ async function handleNonStreamingResponses(params: {
       },
       accountCtx,
     )
+    selection.confirmAffinity?.()
     finishedAtMs = Date.now()
     const streamResponse = handleUnexpectedResponsesStream(c, response)
     if (streamResponse) {

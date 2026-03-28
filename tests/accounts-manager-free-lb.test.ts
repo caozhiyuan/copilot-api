@@ -63,7 +63,11 @@ const setupManager = (
   return manager
 }
 
-test("selectAccountForRequest round-robins free models across accounts", async () => {
+// ---------------------------------------------------------------------------
+// Load-balanced selection (affinity enabled, cache miss → round-robin)
+// ---------------------------------------------------------------------------
+
+test("selectAccountForRequest round-robins free models on cache miss", async () => {
   const model = makeModel({
     id: "free-model",
     billing: {
@@ -110,10 +114,11 @@ test("selectAccountForRequest round-robins free models across accounts", async (
     expect(selection.reservation).toBeUndefined()
   }
 
+  // Round-robin across accounts on cache miss.
   expect(seen).toEqual(["a", "b", "c", "a", "b", "c"])
 })
 
-test("selectAccountForRequest includes temporaryAccount in free-model RR", async () => {
+test("selectAccountForRequest starts with temporaryAccount then round-robins", async () => {
   const model = makeModel({ id: "free-model" })
 
   const temp: AccountRuntime = {
@@ -143,7 +148,7 @@ test("selectAccountForRequest includes temporaryAccount in free-model RR", async
   const manager = setupManager([a, b], { temporaryAccount: temp })
 
   const seen: Array<string> = []
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 3; i++) {
     const selection = await manager.selectAccountForRequest([
       { modelId: "free-model", endpoint: "/chat/completions" },
     ])
@@ -154,10 +159,11 @@ test("selectAccountForRequest includes temporaryAccount in free-model RR", async
     seen.push(selection.account.id)
   }
 
-  expect(seen).toEqual(["temp", "a", "b", "temp", "a", "b"])
+  // temporaryAccount is first; round-robin rotates through all.
+  expect(seen).toEqual(["temp", "a", "b"])
 })
 
-test("selectAccountForRequest skips failed accounts in free-model RR", async () => {
+test("selectAccountForRequest skips failed accounts for free models", async () => {
   const model = makeModel({ id: "free-model" })
 
   const a: AccountRuntime = {
@@ -166,6 +172,8 @@ test("selectAccountForRequest skips failed accounts in free-model RR", async () 
     addedAt: Date.now(),
     githubToken: "ghp_a",
     models: makeModelsResponse([model]),
+    failed: true,
+    failureReason: "test",
   }
   const b: AccountRuntime = {
     id: "b",
@@ -173,8 +181,6 @@ test("selectAccountForRequest skips failed accounts in free-model RR", async () 
     addedAt: Date.now(),
     githubToken: "ghp_b",
     models: makeModelsResponse([model]),
-    failed: true,
-    failureReason: "test",
   }
   const c: AccountRuntime = {
     id: "c",
@@ -187,7 +193,7 @@ test("selectAccountForRequest skips failed accounts in free-model RR", async () 
   const manager = setupManager([a, b, c])
 
   const seen: Array<string> = []
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     const selection = await manager.selectAccountForRequest([
       { modelId: "free-model", endpoint: "/chat/completions" },
     ])
@@ -198,10 +204,11 @@ test("selectAccountForRequest skips failed accounts in free-model RR", async () 
     seen.push(selection.account.id)
   }
 
-  expect(seen).toEqual(["a", "c", "a", "c"])
+  // Account "a" is failed; round-robin rotates across "b" and "c".
+  expect(seen).toEqual(["b", "b", "c"])
 })
 
-test("selectAccountForRequest keeps premium model selection sequential (no RR)", async () => {
+test("selectAccountForRequest round-robins premium models on cache miss", async () => {
   const premium = makeModel({
     id: "gpt-5",
     billing: {
@@ -246,10 +253,11 @@ test("selectAccountForRequest keeps premium model selection sequential (no RR)",
     expect(selection.reservation).toBeDefined()
   }
 
-  expect(seen).toEqual(["a", "a", "a"])
+  // Round-robin distributes premium requests across accounts with quota.
+  expect(seen).toEqual(["a", "b", "a"])
 })
 
-test("free RR does not affect premium selection", async () => {
+test("free and premium selection both use round-robin routing", async () => {
   const free = makeModel({ id: "free-model" })
   const premium = makeModel({
     id: "gpt-5",
@@ -299,11 +307,13 @@ test("free RR does not affect premium selection", async () => {
   expect(premiumSelection.ok).toBe(true)
   if (!premiumSelection.ok) return
 
-  expect([free1.account.id, free2.account.id]).toEqual(["a", "b"])
+  // Round-robin: free1 → a (cursor 0), free2 → b (cursor 1), premium → a (cursor 2).
+  expect(free1.account.id).toBe("a")
+  expect(free2.account.id).toBe("b")
   expect(premiumSelection.account.id).toBe("a")
 })
 
-test("selectAccountForRequest routes free models sequentially when freeModelLoadBalancing is disabled", async () => {
+test("selectAccountForRequest routes free models sequentially when accountAffinity is disabled", async () => {
   const model = makeModel({ id: "free-model" })
 
   const a: AccountRuntime = {
@@ -331,7 +341,7 @@ test("selectAccountForRequest routes free models sequentially when freeModelLoad
   }
 
   const manager = setupManager([a, b, c])
-  manager.setFreeModelLoadBalancingEnabled(false)
+  manager.setAccountAffinityEnabled(false)
 
   const seen: Array<string> = []
   for (let i = 0; i < 3; i++) {
@@ -348,4 +358,238 @@ test("selectAccountForRequest routes free models sequentially when freeModelLoad
   }
 
   expect(seen).toEqual(["a", "a", "a"])
+})
+
+// ---------------------------------------------------------------------------
+// Affinity: confirmAffinity causes sticky routing
+// ---------------------------------------------------------------------------
+
+test("affinity: confirmAffinity routes subsequent requests to the same account", async () => {
+  const model = makeModel({ id: "free-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([model]),
+  }
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([model]),
+  }
+
+  const manager = setupManager([a, b])
+
+  // First request: sequential → account "a". Confirm affinity.
+  const first = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { promptCacheKey: "session-1" },
+  )
+  expect(first.ok).toBe(true)
+  if (!first.ok) return
+  expect(first.account.id).toBe("a")
+  first.confirmAffinity?.()
+
+  // Second request with same key: affinity cache hit → same account.
+  const second = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { promptCacheKey: "session-1" },
+  )
+  expect(second.ok).toBe(true)
+  if (!second.ok) return
+  expect(second.account.id).toBe("a")
+})
+
+test("affinity: without confirmAffinity, cache is not populated", async () => {
+  const model = makeModel({ id: "free-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([model]),
+  }
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([model]),
+  }
+
+  const manager = setupManager([a, b])
+
+  // First request — do NOT call confirmAffinity.
+  const first = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { promptCacheKey: "session-2" },
+  )
+  expect(first.ok).toBe(true)
+  if (!first.ok) return
+  expect(first.confirmAffinity).toBeDefined()
+  // intentionally not calling confirmAffinity
+
+  // Second request: cache miss → round-robin advances cursor → "b".
+  const second = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { promptCacheKey: "session-2" },
+  )
+  expect(second.ok).toBe(true)
+  if (!second.ok) return
+  // Without confirmAffinity, no cache entry; round-robin picks next account.
+  expect(second.account.id).toBe("b")
+})
+
+test("affinity: different models with same key can route to different accounts", async () => {
+  const modelA = makeModel({
+    id: "model-a",
+    supported_endpoints: ["/chat/completions"],
+  })
+  const modelB = makeModel({
+    id: "model-b",
+    supported_endpoints: ["/chat/completions"],
+  })
+
+  const x: AccountRuntime = {
+    id: "x",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_x",
+    models: makeModelsResponse([modelA]),
+  }
+  const y: AccountRuntime = {
+    id: "y",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_y",
+    models: makeModelsResponse([modelB]),
+  }
+
+  const manager = setupManager([x, y])
+
+  const selA = await manager.selectAccountForRequest(
+    [{ modelId: "model-a", endpoint: "/chat/completions" }],
+    { promptCacheKey: "shared-key" },
+  )
+  expect(selA.ok).toBe(true)
+  if (!selA.ok) return
+  selA.confirmAffinity?.()
+
+  const selB = await manager.selectAccountForRequest(
+    [{ modelId: "model-b", endpoint: "/chat/completions" }],
+    { promptCacheKey: "shared-key" },
+  )
+  expect(selB.ok).toBe(true)
+  if (!selB.ok) return
+  selB.confirmAffinity?.()
+
+  // Different models → different cache keys → independent routing.
+  expect(selA.account.id).toBe("x")
+  expect(selB.account.id).toBe("y")
+})
+
+test("affinity: skips failed preferred account and falls back to sequential", async () => {
+  const model = makeModel({ id: "free-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([model]),
+  }
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([model]),
+  }
+
+  const manager = setupManager([a, b])
+
+  // Establish affinity to account "a".
+  const first = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { promptCacheKey: "session-3" },
+  )
+  expect(first.ok).toBe(true)
+  if (!first.ok) return
+  first.confirmAffinity?.()
+  expect(first.account.id).toBe("a")
+
+  // Mark "a" as failed.
+  a.failed = true
+  a.failureReason = "test"
+
+  // Next request: affinity points to "a" but it's failed → fallback to "b".
+  const second = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { promptCacheKey: "session-3" },
+  )
+  expect(second.ok).toBe(true)
+  if (!second.ok) return
+  expect(second.account.id).toBe("b")
+})
+
+test("affinity: no affinity context uses round-robin", async () => {
+  const model = makeModel({ id: "free-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([model]),
+  }
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([model]),
+  }
+
+  const manager = setupManager([a, b])
+
+  // No affinity context → round-robin across accounts.
+  const seen: Array<string> = []
+  for (let i = 0; i < 3; i++) {
+    const selection = await manager.selectAccountForRequest([
+      { modelId: "free-model", endpoint: "/chat/completions" },
+    ])
+    expect(selection.ok).toBe(true)
+    if (!selection.ok) return
+    seen.push(selection.account.id)
+    expect(selection.confirmAffinity).toBeUndefined()
+  }
+  expect(seen).toEqual(["a", "b", "a"])
+})
+
+test("affinity: disabled → no confirmAffinity callback even with context", async () => {
+  const model = makeModel({ id: "free-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([model]),
+  }
+
+  const manager = setupManager([a])
+  manager.setAccountAffinityEnabled(false)
+
+  const selection = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { promptCacheKey: "session-x" },
+  )
+  expect(selection.ok).toBe(true)
+  if (!selection.ok) return
+  expect(selection.confirmAffinity).toBeUndefined()
 })

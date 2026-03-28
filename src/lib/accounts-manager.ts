@@ -8,6 +8,13 @@ import type {
   AccountType,
 } from "~/lib/types/account"
 
+import {
+  AccountAffinityCache,
+  buildAffinityCacheKey,
+  extractAffinityKey,
+  isAffinityAccountUsable,
+  type AffinityContext,
+} from "~/lib/account-affinity"
 import { resolveModelAlias } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { getModels, type Model } from "~/services/copilot/get-models"
@@ -64,6 +71,7 @@ export interface AccountRequestCandidate {
 }
 
 export type { QuotaReservation } from "./accounts-manager-quota"
+export type { AffinityContext } from "~/lib/account-affinity"
 
 export type SelectAccountForRequestFailureReason =
   | "NO_ACCOUNTS"
@@ -77,6 +85,12 @@ type SelectAccountForRequestSuccess = {
   endpoint: string
   costUnits: number
   reservation?: QuotaReservation
+  /** Call after a successful upstream response to persist the affinity mapping. */
+  confirmAffinity?: () => void
+  /** Whether this selection was served from the affinity cache. */
+  affinityHit?: boolean
+  /** The cache key used for affinity lookup (e.g. `"session-1:claude-sonnet-4"`). */
+  affinityCacheKey?: string
 }
 
 export type SelectAccountForRequestResult =
@@ -92,8 +106,9 @@ export class AccountsManager {
   private accountOrder: Array<string> = []
   private temporaryAccount?: AccountRuntime
   private vsCodeVersion?: string
-  private freeModelCursor = 0
-  private freeModelLoadBalancingEnabled = true
+  private accountAffinityEnabled = true
+  private affinityCache = new AccountAffinityCache()
+  private loadBalanceCursor = 0
 
   private quotaRefreshSnapshotByAccount = new WeakMap<
     AccountRuntime,
@@ -163,8 +178,11 @@ export class AccountsManager {
     this.startRegistryWatcher()
   }
 
-  setFreeModelLoadBalancingEnabled(enabled: boolean): void {
-    this.freeModelLoadBalancingEnabled = enabled
+  setAccountAffinityEnabled(enabled: boolean): void {
+    this.accountAffinityEnabled = enabled
+    if (!enabled) {
+      this.affinityCache.clear()
+    }
   }
 
   setModelsRefreshIntervalMs(intervalMs: number): void {
@@ -583,56 +601,6 @@ export class AccountsManager {
     return null
   }
 
-  private selectFreeAccountForRequest(
-    orderedAccounts: Array<AccountRuntime>,
-    candidates: Array<AccountRequestCandidate>,
-  ): SelectAccountForRequestResult {
-    const count = orderedAccounts.length
-    const start = this.freeModelCursor % count
-
-    let supportedCandidateFound = false
-
-    for (let i = 0; i < count; i++) {
-      const idx = (start + i) % count
-      const account = orderedAccounts[idx]
-      if (this.isAccountFailed(account)) {
-        continue
-      }
-
-      const supported = this.pickSupportedCandidate(account, candidates)
-      if (!supported) {
-        continue
-      }
-
-      supportedCandidateFound = true
-
-      const { candidate, model } = supported
-      const costUnits = getCostUnits(model)
-
-      // Defensive: free path should only be used for free models.
-      if (costUnits > 0) {
-        continue
-      }
-
-      this.freeModelCursor = (idx + 1) % count
-
-      return {
-        ok: true,
-        account,
-        selectedModel: model,
-        endpoint: candidate.endpoint,
-        costUnits,
-      }
-    }
-
-    if (!supportedCandidateFound) {
-      return { ok: false, reason: "MODEL_NOT_SUPPORTED" }
-    }
-
-    return { ok: false, reason: "NO_QUOTA" }
-  }
-
-  // eslint-disable-next-line complexity -- overage fallback adds necessary branching
   private async selectAccountForCandidates(
     orderedAccounts: Array<AccountRuntime>,
     candidates: Array<AccountRequestCandidate>,
@@ -667,12 +635,9 @@ export class AccountsManager {
       const costUnits = getCostUnits(model)
 
       if (costUnits <= 0) {
-        if (this.freeModelLoadBalancingEnabled) {
-          // Free model: RR load balancing across accounts (including temporaryAccount).
-          return this.selectFreeAccountForRequest(orderedAccounts, candidates)
-        }
-
-        // Free model: sequential routing (same ordering strategy as premium models).
+        // Free model: sequential routing (first available account).
+        // When account affinity is enabled, the caller (selectAccountForRequest)
+        // handles cache lookup/write-back; this path only runs on cache miss.
         return {
           ok: true,
           account,
@@ -739,11 +704,119 @@ export class AccountsManager {
   }
 
   /**
+   * Try to use a preferred (affinity) account for the request.
+   * Returns a successful selection if the account is usable; null otherwise.
+   */
+
+  private async tryAffinityAccount(
+    preferredAccountId: string,
+    orderedAccounts: Array<AccountRuntime>,
+    candidates: Array<AccountRequestCandidate>,
+  ): Promise<SelectAccountForRequestSuccess | null> {
+    const account = isAffinityAccountUsable(preferredAccountId, orderedAccounts)
+    if (!account) {
+      return null
+    }
+
+    // Try original candidates first, then alias-resolved candidates.
+    const supported =
+      this.pickSupportedCandidate(account, candidates)
+      ?? this.pickAliasFallbackCandidate(account, candidates)
+    if (!supported) {
+      return null
+    }
+
+    return this.validateAffinityQuota(account, supported)
+  }
+
+  /**
+   * Resolve model aliases and try to pick a supported candidate.
+   * Returns null if no alias differs or the account doesn't support the alias.
+   */
+  private pickAliasFallbackCandidate(
+    account: AccountRuntime,
+    candidates: Array<AccountRequestCandidate>,
+  ): { candidate: AccountRequestCandidate; model: Model } | null {
+    const aliasCandidates = candidates.map((candidate) => {
+      const modelId = resolveModelAlias(candidate.modelId)
+      if (modelId === candidate.modelId) return candidate
+      return { ...candidate, modelId }
+    })
+    const aliasChanged = aliasCandidates.some(
+      (candidate, index) => candidate.modelId !== candidates[index].modelId,
+    )
+    if (!aliasChanged) return null
+
+    return this.pickSupportedCandidate(account, aliasCandidates)
+  }
+
+  /**
+   * Validate quota for an affinity candidate. Free models pass immediately;
+   * premium models go through quota refresh / reservation.
+   */
+  private async validateAffinityQuota(
+    account: AccountRuntime,
+    supported: { candidate: AccountRequestCandidate; model: Model },
+  ): Promise<SelectAccountForRequestSuccess | null> {
+    const { candidate, model } = supported
+    const costUnits = getCostUnits(model)
+
+    // Free model — no quota checks needed.
+    if (costUnits <= 0) {
+      return {
+        ok: true,
+        account,
+        selectedModel: model,
+        endpoint: candidate.endpoint,
+        costUnits,
+      }
+    }
+
+    // Premium model — validate quota.
+    if (!account.unlimited && this.isQuotaCacheExpired(account)) {
+      await this.refreshQuota(account)
+    }
+
+    if (this.isAccountFailed(account)) {
+      return null
+    }
+
+    if (account.unlimited) {
+      return {
+        ok: true,
+        account,
+        selectedModel: model,
+        endpoint: candidate.endpoint,
+        costUnits,
+      }
+    }
+
+    const effectiveRemaining = getEffectivePremiumRemaining(account)
+    if (effectiveRemaining !== undefined && effectiveRemaining < costUnits) {
+      return null
+    }
+
+    const reservation = reservePremiumUnits(account, costUnits)
+
+    return {
+      ok: true,
+      account,
+      selectedModel: model,
+      endpoint: candidate.endpoint,
+      costUnits,
+      reservation,
+    }
+  }
+
+  /**
    * Select an available account for a specific request (model + endpoint).
+   * When account affinity is enabled, routes to the previously successful account
+   * for the same affinity key + model combination.
    * Uses reservation to avoid oversubscribing premium quota under concurrency.
    */
   async selectAccountForRequest(
     candidates: Array<AccountRequestCandidate>,
+    affinityContext?: AffinityContext,
   ): Promise<SelectAccountForRequestResult> {
     if (candidates.length === 0) {
       throw new Error("selectAccountForRequest requires at least one candidate")
@@ -755,6 +828,85 @@ export class AccountsManager {
         .map((id) => this.accounts.get(id))
         .filter((account): account is AccountRuntime => account !== undefined),
     ]
+
+    // Resolve the affinity key once — reused for both lookup and write-back.
+    const affinityKey =
+      this.accountAffinityEnabled && affinityContext ?
+        extractAffinityKey(affinityContext)
+      : undefined
+
+    const modelKey = candidates[0].modelId
+    const cacheKey =
+      affinityKey ? buildAffinityCacheKey(affinityKey, modelKey) : undefined
+
+    // Step 1: Try the preferred (affinity) account.
+    if (cacheKey) {
+      const preferredId = this.affinityCache.get(cacheKey)
+      if (preferredId) {
+        const affinityResult = await this.tryAffinityAccount(
+          preferredId,
+          orderedAccounts,
+          candidates,
+        )
+        if (affinityResult) {
+          affinityResult.affinityHit = true
+          affinityResult.affinityCacheKey = cacheKey
+          affinityResult.confirmAffinity = () => {
+            if (!this.accountAffinityEnabled) return
+            this.affinityCache.set(cacheKey, affinityResult.account.id)
+          }
+          return affinityResult
+        }
+      }
+    }
+
+    // Step 2: Cache miss — rotate accounts for load balancing when affinity is enabled.
+    const accountsForSelection =
+      this.accountAffinityEnabled && orderedAccounts.length > 1 ?
+        this.rotateAccounts(orderedAccounts)
+      : orderedAccounts
+
+    const result = await this.selectWithAliasFallback(
+      accountsForSelection,
+      candidates,
+    )
+
+    if (result.ok) {
+      this.loadBalanceCursor++
+    }
+
+    // Attach confirmAffinity callback so the handler can persist the mapping on success.
+    if (result.ok && cacheKey) {
+      const successResult = result
+      successResult.confirmAffinity = () => {
+        if (!this.accountAffinityEnabled) return
+        this.affinityCache.set(cacheKey, successResult.account.id)
+      }
+    }
+
+    return result
+  }
+
+  /**
+   * Rotate the accounts array by the current load-balance cursor for round-robin distribution.
+   * This ensures cache-miss requests are spread across accounts instead of always hitting the first.
+   */
+  private rotateAccounts(
+    accounts: Array<AccountRuntime>,
+  ): Array<AccountRuntime> {
+    const start = this.loadBalanceCursor % accounts.length
+    if (start === 0) return accounts
+    return [...accounts.slice(start), ...accounts.slice(0, start)]
+  }
+
+  /**
+   * Normal account selection with alias fallback.
+   * Extracted to keep selectAccountForRequest readable after adding affinity logic.
+   */
+  private async selectWithAliasFallback(
+    orderedAccounts: Array<AccountRuntime>,
+    candidates: Array<AccountRequestCandidate>,
+  ): Promise<SelectAccountForRequestResult> {
     const primary = await this.selectAccountForCandidates(
       orderedAccounts,
       candidates,
@@ -1068,8 +1220,8 @@ export class AccountsManager {
         .map((m) => m.id)
         .filter((id) => this.accounts.has(id))
 
-      // Reset free-model RR cursor on account list/order changes.
-      this.freeModelCursor = 0
+      // Reset load-balance cursor on account list/order changes.
+      this.loadBalanceCursor = 0
 
       this.logRegistryReloadChanges(added, removed, updated)
     } catch (error) {
@@ -1237,6 +1389,8 @@ export class AccountsManager {
     this.stopRegistryWatcher()
     this.stopAllTokenRefresh()
     this.stopModelsRefresh()
+    this.affinityCache.clear()
+    this.loadBalanceCursor = 0
     this.accounts.clear()
     this.accountOrder = []
     this.temporaryAccount = undefined

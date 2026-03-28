@@ -119,7 +119,7 @@ All stored in `~/.local/share/copilot-api/`:
 ### Account Selection Logic
 
 - **Premium models**: Accounts tried in order; switches on quota exhaustion
-- **Free models**: Round-robin across accounts (configurable via `freeModelLoadBalancing`)
+- **Free models**: Round-robin across accounts on initial distribution (configurable via `accountAffinity`); with affinity enabled, subsequent requests from the same session stick to the previously successful account
 - Quota reservation system prevents overspend during concurrent requests
 
 ---

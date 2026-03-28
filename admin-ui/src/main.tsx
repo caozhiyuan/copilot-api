@@ -7,6 +7,7 @@ import "@/index.css"
 import "@/lib/i18n"
 import App from "@/App"
 import { Toaster } from "@/components/ui/sonner"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { AdminTokenProvider } from "@/lib/admin-token"
 import { LocalePreferenceProvider } from "@/lib/locale-preference"
 import { MotionPreferenceProvider } from "@/lib/motion-preference"
@@ -20,9 +21,11 @@ createRoot(rootElement).render(
       <LocalePreferenceProvider>
         <AdminTokenProvider>
           <MotionPreferenceProvider>
-            <HashRouter>
-              <App />
-            </HashRouter>
+            <TooltipProvider>
+              <HashRouter>
+                <App />
+              </HashRouter>
+            </TooltipProvider>
             <Toaster />
           </MotionPreferenceProvider>
         </AdminTokenProvider>

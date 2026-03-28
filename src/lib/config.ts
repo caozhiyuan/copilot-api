@@ -10,7 +10,7 @@ export interface AppConfig {
   providers?: Record<string, ProviderConfig>
   extraPrompts?: Record<string, string>
   smallModel?: string
-  freeModelLoadBalancing?: boolean
+  accountAffinity?: boolean
   /** @deprecated */
   apiKey?: string
   responsesApiContextManagementModels?: Array<string>
@@ -96,7 +96,7 @@ const defaultConfig: AppConfig = {
     "gpt-5.4": gpt5CommentaryPrompt,
   },
   smallModel: "gpt-5-mini",
-  freeModelLoadBalancing: true,
+  accountAffinity: true,
   responsesApiContextManagementModels: [],
   modelReasoningEfforts: {
     "gpt-5-mini": "low",
@@ -247,18 +247,32 @@ function mergeDefaultAuth(config: AppConfig): {
   }
 }
 
-function mergeDefaultFreeModelLoadBalancing(config: AppConfig): {
+function mergeDefaultAccountAffinity(config: AppConfig): {
   mergedConfig: AppConfig
   changed: boolean
 } {
-  if (typeof config.freeModelLoadBalancing === "boolean") {
+  // Migration: map old freeModelLoadBalancing to accountAffinity
+  const raw = config as Record<string, unknown>
+  const hasOld = typeof raw.freeModelLoadBalancing === "boolean"
+  const hasNew = typeof config.accountAffinity === "boolean"
+
+  if (hasOld) {
+    const next = { ...config } as Record<string, unknown>
+    if (!hasNew) {
+      next.accountAffinity = raw.freeModelLoadBalancing
+    }
+    delete next.freeModelLoadBalancing
+    return { mergedConfig: next as AppConfig, changed: true }
+  }
+
+  if (hasNew) {
     return { mergedConfig: config, changed: false }
   }
 
   return {
     mergedConfig: {
       ...config,
-      freeModelLoadBalancing: defaultConfig.freeModelLoadBalancing ?? true,
+      accountAffinity: defaultConfig.accountAffinity ?? true,
     },
     changed: true,
   }
@@ -314,7 +328,7 @@ export function mergeConfigWithDefaults(): AppConfig {
   const { mergedConfig, changed } = applyConfigMerges(config, [
     mergeDefaultAuth,
     mergeDefaultConfig,
-    mergeDefaultFreeModelLoadBalancing,
+    mergeDefaultAccountAffinity,
     mergeDefaultModelRefreshInterval,
   ])
 
@@ -529,9 +543,9 @@ export function getSmallModel(): string {
   return getPreferredAliasForTarget(model) ?? model
 }
 
-export function isFreeModelLoadBalancingEnabled(): boolean {
+export function isAccountAffinityEnabled(): boolean {
   const config = getConfig()
-  return config.freeModelLoadBalancing ?? true
+  return config.accountAffinity ?? true
 }
 
 export function getModelRefreshIntervalHours(): number {

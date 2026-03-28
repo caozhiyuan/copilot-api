@@ -319,7 +319,7 @@ Admin API 规则独立于业务 API：
     "gpt-5.4": "<built-in prompt>"
   },
   "smallModel": "gpt-5-mini",
-  "freeModelLoadBalancing": true,
+  "accountAffinity": true,
   "responsesApiContextManagementModels": [],
   "modelReasoningEfforts": {
     "gpt-5-mini": "low",
@@ -345,7 +345,7 @@ Admin API 规则独立于业务 API：
 | `providers` | 上游 provider 映射（Anthropic 兼容代理路由）：每个 key 会生成 `/:provider/v1/messages`、`/:provider/v1/models` 等路由前缀；目前仅支持 `type: "anthropic"`；可选 `models` 定义 `temperature/topP/topK` 默认值；可选 `adjustInputTokens` 用于从 usage 的 `input_tokens` 中扣除缓存读写 token。 |
 | `extraPrompts` | 按模型附加 system prompt（在 Anthropic 请求翻译时注入；内置默认项包含 `gpt-5.3-codex`、`gpt-5.4-mini`、`gpt-5.4`） |
 | `smallModel` | 小模型（预热/compact 场景回落） |
-| `freeModelLoadBalancing` | 免费模型是否轮询分发 |
+| `accountAffinity` | 启用账号亲和性路由（同一会话粘滞到上次成功的账号），适用于免费和付费模型 |
 | `responsesApiContextManagementModels` | 需要注入 Responses API `context_management` 压缩指令的模型 ID 列表（用于支持服务端 context management 的模型）。 |
 | `modelReasoningEfforts` | Responses API 的模型推理强度配置 |
 | `modelAliases` | 模型别名映射（支持 `allowOriginal`） |
@@ -492,7 +492,9 @@ Admin API 规则独立于业务 API：
 
 ### 2) 免费模型策略
 
-- 默认开启轮询（Round-Robin）：`freeModelLoadBalancing=true`
+- 默认开启账号亲和性：`accountAffinity=true`
+- 同一会话的请求会粘滞到上次成功的账号
+- 亲和性未命中时回退到顺序选择（首个可用账号）
 - 关闭后改为顺序路由
 
 ### 3) 付费模型策略

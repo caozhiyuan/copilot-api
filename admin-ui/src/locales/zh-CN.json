@@ -143,7 +143,8 @@
       "noRequestsTitle": "无请求",
       "noResultsForFilters": "当前筛选条件下没有结果。",
       "noRequestsFound": "未找到请求。"
-    }
+    },
+    "affinityHit": "命中亲和性缓存"
   },
   "modelsPage": {
     "title": "模型",
@@ -207,7 +208,9 @@
       "model": "模型",
       "client": "客户端",
       "tokens": "tokens",
-      "quota": "额度"
+      "quota": "额度",
+      "affinityHit": "亲和性命中",
+      "affinityCacheKey": "affinity_cache_key"
     },
     "badges": {
       "durMs": "dur_ms",
@@ -245,7 +248,7 @@
     "errorTitle": "加载设置失败",
     "sections": {
       "general": "通用",
-      "loadBalancing": "负载均衡",
+      "accountAffinity": "账号亲和性",
       "reasoning": "推理",
       "aliases": "别名",
       "prompts": "提示词",
@@ -294,11 +297,11 @@
       "showAnthropicApiKey": "显示",
       "hideAnthropicApiKey": "隐藏"
     },
-    "loadBalancing": {
-      "title": "负载均衡",
-      "description": "切换免费账号负载均衡。",
-      "freeModelLabel": "免费模型请求负载均衡",
-      "freeModelHint": "启用后，当下游请求免费模型时，请求会在多个可用上游账号之间分配。"
+    "accountAffinity": {
+      "title": "账号亲和性",
+      "description": "配置账号亲和性路由。",
+      "label": "启用账号亲和性",
+      "hint": "将请求路由到上次成功处理同一会话的账号。同时适用于免费和付费模型。"
     },
     "reasoning": {
       "title": "推理强度",

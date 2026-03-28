@@ -43,6 +43,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 type Filters = {
   account_id: string
@@ -664,6 +669,19 @@ export function RequestsPage(): React.JSX.Element {
                           )}
                         >
                           {r.account_id || ""}
+                          {r.affinity_hit ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="ml-1 inline-block cursor-default text-muted-foreground">&#x1F4CC;</span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{t("requestsPage.affinityHit")}</p>
+                                {r.affinity_cache_key && (
+                                  <p className="font-mono text-xs opacity-80">{r.affinity_cache_key}</p>
+                                )}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : null}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[4], "font-mono text-xs")}>
                           {r.upstream_model || ""}
