@@ -672,7 +672,7 @@ export function RequestsPage(): React.JSX.Element {
                           {r.affinity_hit ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="ml-1 inline-block cursor-default text-muted-foreground" title="">&#x1F4CC;</span>
+                                <span className="ml-1 inline-block cursor-default text-muted-foreground">&#x1F4CC;</span>
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>{t("requestsPage.affinityHit")}</p>
