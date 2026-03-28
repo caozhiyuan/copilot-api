@@ -14,12 +14,36 @@ import {
   prepareForCompact,
   prepareInteractionHeaders,
 } from "~/lib/api-config"
+import { isForceAgentEnabled } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
+
+const isAgentMessage = (
+  msg: AnthropicMessagesPayload["messages"][number],
+): boolean => {
+  if (msg.role === "assistant") return true
+
+  // user message with content that is entirely tool_result blocks
+  // is semantically agent-driven (tool call response)
+  if (Array.isArray(msg.content)) {
+    const allToolResults = msg.content.every(
+      (block) => block.type === "tool_result",
+    )
+    if (allToolResults && msg.content.length > 0) return true
+  }
+
+  return false
+}
 
 export const getMessagesInitiator = (
   payload: AnthropicMessagesPayload,
 ): "agent" | "user" => {
+  if (isForceAgentEnabled()) {
+    return payload.messages.some((msg) => isAgentMessage(msg)) ?
+        "agent"
+      : "user"
+  }
+
   const lastMessage = payload.messages.at(-1)
   if (!lastMessage || lastMessage.role !== "user") {
     return "agent"
