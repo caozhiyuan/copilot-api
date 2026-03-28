@@ -117,6 +117,9 @@ export const handleResponses = async (c: Context) => {
 
   const { account, selectedModel } = selection
 
+  request.affinityHit = selection.affinityHit
+  request.affinityCacheKey = selection.affinityCacheKey
+
   const upstreamPayload = { ...payload, model: selectedModel.id }
   useFunctionApplyPatch(upstreamPayload)
   applyResponsesApiContextManagement(
@@ -196,6 +199,9 @@ type RequestContext = {
   initiator?: "agent" | "user"
   upstreamRequestId?: string
   upstreamSessionId?: string
+
+  affinityHit?: boolean
+  affinityCacheKey?: string
 }
 
 type Store = ReturnType<typeof getRequestHistoryStore>
@@ -252,6 +258,8 @@ function insertRequestLog(
     promptCacheKey: request.promptCacheKey,
     initiator: request.initiator,
     upstreamRequestId: request.upstreamRequestId,
+    affinityHit: request.affinityHit,
+    affinityCacheKey: request.affinityCacheKey,
     ...record,
   })
 }

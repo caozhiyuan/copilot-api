@@ -127,6 +127,9 @@ type InstrumentationContext = {
   /** Call after upstream success to persist affinity mapping. */
   confirmAffinity?: () => void
 
+  affinityHit?: boolean
+  affinityCacheKey?: string
+
   clientModel: string
 
   account: AccountRuntime
@@ -296,6 +299,8 @@ export async function handleCompletion(c: Context) {
     premiumRemainingBefore,
     premiumUnlimitedBefore,
     confirmAffinity: selection.confirmAffinity,
+    affinityHit: selection.affinityHit,
+    affinityCacheKey: selection.affinityCacheKey,
   }
   if (endpoint === MESSAGES_ENDPOINT) {
     return await handleWithMessagesApi({
@@ -595,6 +600,8 @@ function insertRequestLog(
     promptCacheKey: instr.promptCacheKey,
     initiator: instr.initiator,
     upstreamRequestId: instr.upstreamRequestId,
+    affinityHit: instr.affinityHit,
+    affinityCacheKey: instr.affinityCacheKey,
     clientModel,
     upstreamEndpoint,
     accountId: account.id,

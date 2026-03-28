@@ -87,6 +87,10 @@ type SelectAccountForRequestSuccess = {
   reservation?: QuotaReservation
   /** Call after a successful upstream response to persist the affinity mapping. */
   confirmAffinity?: () => void
+  /** Whether this selection was served from the affinity cache. */
+  affinityHit?: boolean
+  /** The cache key used for affinity lookup (e.g. `"session-1:claude-sonnet-4"`). */
+  affinityCacheKey?: string
 }
 
 export type SelectAccountForRequestResult =
@@ -845,6 +849,8 @@ export class AccountsManager {
           candidates,
         )
         if (affinityResult) {
+          affinityResult.affinityHit = true
+          affinityResult.affinityCacheKey = cacheKey
           affinityResult.confirmAffinity = () => {
             if (!this.accountAffinityEnabled) return
             this.affinityCache.set(cacheKey, affinityResult.account.id)

@@ -143,7 +143,8 @@
       "noRequestsTitle": "无请求",
       "noResultsForFilters": "当前筛选条件下没有结果。",
       "noRequestsFound": "未找到请求。"
-    }
+    },
+    "affinityHit": "命中亲和性缓存"
   },
   "modelsPage": {
     "title": "模型",
@@ -207,7 +208,9 @@
       "model": "模型",
       "client": "客户端",
       "tokens": "tokens",
-      "quota": "额度"
+      "quota": "额度",
+      "affinityHit": "亲和性命中",
+      "affinityCacheKey": "affinity_cache_key"
     },
     "badges": {
       "durMs": "dur_ms",

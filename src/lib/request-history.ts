@@ -209,6 +209,9 @@ export type RequestLogInsert = {
   errorStatus?: number
   errorMessage?: string
   selectionFailureReason?: string
+
+  affinityHit?: boolean
+  affinityCacheKey?: string
 }
 
 export type RequestLogRow = {
@@ -257,6 +260,9 @@ export type RequestLogRow = {
   error_status: number | null
   error_message: string | null
   selection_failure_reason: string | null
+
+  affinity_hit: number | null
+  affinity_cache_key: string | null
 }
 
 export type RequestLogQuery = {
@@ -345,13 +351,15 @@ export class RequestHistoryStore {
         error_name,
         error_status,
         error_message,
-        selection_failure_reason
+        selection_failure_reason,
+        affinity_hit,
+        affinity_cache_key
       ) VALUES (
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
-        ?,?,?,?,?
+        ?,?,?,?,?,?,?
       );
     `)
 
@@ -422,6 +430,9 @@ export class RequestHistoryStore {
         toDbNull(record.errorStatus),
         toDbNull(record.errorMessage),
         toDbNull(record.selectionFailureReason),
+
+        toDbBool(record.affinityHit),
+        toDbNull(record.affinityCacheKey),
       ] as const
 
       this.insertStmt.run(...args)

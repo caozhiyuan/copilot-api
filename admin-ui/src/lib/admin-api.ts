@@ -68,6 +68,10 @@ export type AdminRequestItem = {
   initiator?: string
   upstream_request_id?: string
 
+  // Affinity
+  affinity_hit?: number | null
+  affinity_cache_key?: string | null
+
   // Optional error info (depends on store)
   error?: unknown
 }
