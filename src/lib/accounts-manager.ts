@@ -713,11 +713,46 @@ export class AccountsManager {
       return null
     }
 
-    const supported = this.pickSupportedCandidate(account, candidates)
+    // Try original candidates first, then alias-resolved candidates.
+    const supported =
+      this.pickSupportedCandidate(account, candidates)
+      ?? this.pickAliasFallbackCandidate(account, candidates)
     if (!supported) {
       return null
     }
 
+    return this.validateAffinityQuota(account, supported)
+  }
+
+  /**
+   * Resolve model aliases and try to pick a supported candidate.
+   * Returns null if no alias differs or the account doesn't support the alias.
+   */
+  private pickAliasFallbackCandidate(
+    account: AccountRuntime,
+    candidates: Array<AccountRequestCandidate>,
+  ): { candidate: AccountRequestCandidate; model: Model } | null {
+    const aliasCandidates = candidates.map((candidate) => {
+      const modelId = resolveModelAlias(candidate.modelId)
+      if (modelId === candidate.modelId) return candidate
+      return { ...candidate, modelId }
+    })
+    const aliasChanged = aliasCandidates.some(
+      (candidate, index) => candidate.modelId !== candidates[index].modelId,
+    )
+    if (!aliasChanged) return null
+
+    return this.pickSupportedCandidate(account, aliasCandidates)
+  }
+
+  /**
+   * Validate quota for an affinity candidate. Free models pass immediately;
+   * premium models go through quota refresh / reservation.
+   */
+  private async validateAffinityQuota(
+    account: AccountRuntime,
+    supported: { candidate: AccountRequestCandidate; model: Model },
+  ): Promise<SelectAccountForRequestSuccess | null> {
     const { candidate, model } = supported
     const costUnits = getCostUnits(model)
 
@@ -810,6 +845,7 @@ export class AccountsManager {
         )
         if (affinityResult) {
           affinityResult.confirmAffinity = () => {
+            if (!this.accountAffinityEnabled) return
             this.affinityCache.set(cacheKey, affinityResult.account.id)
           }
           return affinityResult
@@ -827,6 +863,7 @@ export class AccountsManager {
     if (result.ok && cacheKey) {
       const successResult = result
       successResult.confirmAffinity = () => {
+        if (!this.accountAffinityEnabled) return
         this.affinityCache.set(cacheKey, successResult.account.id)
       }
     }

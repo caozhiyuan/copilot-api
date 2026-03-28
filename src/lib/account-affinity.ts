@@ -86,7 +86,15 @@ export class AccountAffinityCache {
 export function extractAffinityKey(
   context: AffinityContext,
 ): string | undefined {
-  return context.promptCacheKey ?? context.sessionId ?? context.safetyIdentifier
+  for (const candidate of [
+    context.promptCacheKey,
+    context.sessionId,
+    context.safetyIdentifier,
+  ]) {
+    const normalized = candidate?.trim()
+    if (normalized) return normalized
+  }
+  return undefined
 }
 
 /**
