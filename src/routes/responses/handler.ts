@@ -89,12 +89,18 @@ export const handleResponses = async (c: Context) => {
     })
   }
 
-  const selection = await accountsManager.selectAccountForRequest([
+  const selection = await accountsManager.selectAccountForRequest(
+    [
+      {
+        modelId: clientModel,
+        endpoint: RESPONSES_ENDPOINT,
+      },
+    ],
     {
-      modelId: clientModel,
-      endpoint: RESPONSES_ENDPOINT,
+      promptCacheKey: normalizedPromptCacheKey,
+      safetyIdentifier: normalizedSafetyIdentifier,
     },
-  ])
+  )
 
   if (!selection.ok) {
     recordSelectionFailure(store, {
@@ -378,6 +384,7 @@ async function handleStreamingResponses(params: {
       },
       accountCtx,
     )
+    selection.confirmAffinity?.()
   } catch (error) {
     return handleUpstreamCreateError({
       store,
@@ -697,6 +704,7 @@ async function handleNonStreamingResponses(params: {
       },
       accountCtx,
     )
+    selection.confirmAffinity?.()
     finishedAtMs = Date.now()
     const streamResponse = handleUnexpectedResponsesStream(c, response)
     if (streamResponse) {

@@ -124,6 +124,9 @@ type InstrumentationContext = {
   initiator?: "agent" | "user"
   upstreamRequestId?: string
 
+  /** Call after upstream success to persist affinity mapping. */
+  confirmAffinity?: () => void
+
   clientModel: string
 
   account: AccountRuntime
@@ -238,7 +241,11 @@ export async function handleCompletion(c: Context) {
     },
   )
 
-  const selection = await accountsManager.selectAccountForRequest(candidates)
+  const selection = await accountsManager.selectAccountForRequest(candidates, {
+    promptCacheKey: normalizedPromptCacheKey,
+    sessionId,
+    safetyIdentifier: normalizedSafetyIdentifier,
+  })
   if (!selection.ok) {
     return handleSelectionFailure({
       c,
@@ -288,6 +295,7 @@ export async function handleCompletion(c: Context) {
     upstreamRequestId,
     premiumRemainingBefore,
     premiumUnlimitedBefore,
+    confirmAffinity: selection.confirmAffinity,
   }
   if (endpoint === MESSAGES_ENDPOINT) {
     return await handleWithMessagesApi({
@@ -369,6 +377,7 @@ const handleWithChatCompletions = async (params: {
       sessionId,
       isCompact,
     })
+    instr.confirmAffinity?.()
   } catch (error) {
     return await handleChatCompletionsCreateError({
       error,
@@ -473,6 +482,7 @@ const handleWithResponsesApi = async (params: {
       },
       ctx,
     )
+    instr.confirmAffinity?.()
   } catch (error) {
     return await handleResponsesCreateError({
       error,
@@ -1312,6 +1322,7 @@ const handleWithMessagesApi = async (params: {
       sessionId,
       isCompact,
     })
+    instr.confirmAffinity?.()
   } catch (error) {
     return await handleMessagesCreateError({
       error,

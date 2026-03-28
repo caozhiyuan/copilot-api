@@ -10,7 +10,7 @@ import { accountsManager } from "./lib/accounts-manager"
 import { addAccountToRegistry, saveAccountToken } from "./lib/accounts-registry"
 import {
   getModelRefreshIntervalMs,
-  isFreeModelLoadBalancingEnabled,
+  isAccountAffinityEnabled,
   mergeConfigWithDefaults,
 } from "./lib/config"
 import { ensurePaths } from "./lib/paths"
@@ -138,9 +138,7 @@ async function setupClaudeCode(
 export async function runServer(options: RunServerOptions): Promise<void> {
   // Ensure config is merged with defaults at startup
   mergeConfigWithDefaults()
-  accountsManager.setFreeModelLoadBalancingEnabled(
-    isFreeModelLoadBalancingEnabled(),
-  )
+  accountsManager.setAccountAffinityEnabled(isAccountAffinityEnabled())
   accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
 
   if (options.proxyEnv) {

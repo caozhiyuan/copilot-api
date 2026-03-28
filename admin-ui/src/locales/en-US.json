@@ -245,7 +245,7 @@
     "errorTitle": "Failed to load settings",
     "sections": {
       "general": "General",
-      "loadBalancing": "Load balancing",
+      "accountAffinity": "Account Affinity",
       "reasoning": "Reasoning",
       "aliases": "Aliases",
       "prompts": "Prompts",
@@ -294,11 +294,11 @@
       "showAnthropicApiKey": "Show",
       "hideAnthropicApiKey": "Hide"
     },
-    "loadBalancing": {
-      "title": "Load balancing",
-      "description": "Toggle free account load balancing.",
-      "freeModelLabel": "Free model request load balancing",
-      "freeModelHint": "When enabled, downstream requests for free models are distributed across multiple upstream accounts."
+    "accountAffinity": {
+      "title": "Account Affinity",
+      "description": "Configure account affinity routing.",
+      "label": "Enable account affinity",
+      "hint": "Routes requests to the account that last successfully handled the same session. Applies to both free and premium models."
     },
     "reasoning": {
       "title": "Reasoning efforts",

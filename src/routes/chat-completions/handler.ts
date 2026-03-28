@@ -78,12 +78,18 @@ export async function handleCompletion(c: Context) {
 
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
-  const selection = await accountsManager.selectAccountForRequest([
+  const selection = await accountsManager.selectAccountForRequest(
+    [
+      {
+        modelId: clientModel,
+        endpoint: CHAT_COMPLETIONS_ENDPOINT,
+      },
+    ],
     {
-      modelId: clientModel,
-      endpoint: CHAT_COMPLETIONS_ENDPOINT,
+      promptCacheKey: normalizedPromptCacheKey,
+      safetyIdentifier: normalizedSafetyIdentifier,
     },
-  ])
+  )
 
   if (!selection.ok) {
     recordSelectionFailure(store, {
@@ -357,6 +363,7 @@ async function handleStreamingRequest(params: {
       upstreamRequestId: request.upstreamRequestId,
       sessionId: request.upstreamSessionId,
     })
+    selection.confirmAffinity?.()
   } catch (error) {
     return handleUpstreamCreateError({
       store,
@@ -678,6 +685,7 @@ async function handleNonStreamingRequest(params: {
       upstreamRequestId: request.upstreamRequestId,
       sessionId: request.upstreamSessionId,
     })
+    selection.confirmAffinity?.()
     finishedAtMs = Date.now()
 
     if (!isNonStreaming(response)) {

@@ -1752,7 +1752,7 @@ function ModelAliasesCard({
 }
 
 type AdvancedSettingsCardProps = {
-  loadBalancingEnabled: boolean
+  accountAffinityEnabled: boolean
   modelRefreshIntervalInput: string
   modelRefreshIntervalIssue: string | null
   allowOriginalModelNamesForAliases: boolean
@@ -1762,7 +1762,7 @@ type AdvancedSettingsCardProps = {
   messageStartInputTokensFallback: boolean
   useMessagesApi: boolean
   responsesApiContextManagementModelsValue: string
-  onToggleLoadBalancing: (value: boolean) => void
+  onToggleAccountAffinity: (value: boolean) => void
   onModelRefreshIntervalChange: (value: string) => void
   onToggleAllowOriginalModelNamesForAliases: (value: boolean) => void
   onToggleUseFunctionApplyPatch: (value: boolean) => void
@@ -1774,7 +1774,7 @@ type AdvancedSettingsCardProps = {
 }
 
 function AdvancedSettingsCard({
-  loadBalancingEnabled,
+  accountAffinityEnabled,
   modelRefreshIntervalInput,
   modelRefreshIntervalIssue,
   allowOriginalModelNamesForAliases,
@@ -1784,7 +1784,7 @@ function AdvancedSettingsCard({
   messageStartInputTokensFallback,
   useMessagesApi,
   responsesApiContextManagementModelsValue,
-  onToggleLoadBalancing,
+  onToggleAccountAffinity,
   onModelRefreshIntervalChange,
   onToggleAllowOriginalModelNamesForAliases,
   onToggleUseFunctionApplyPatch,
@@ -1808,15 +1808,15 @@ function AdvancedSettingsCard({
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="text-sm font-medium">
-              {t("settingsPage.loadBalancing.freeModelLabel")}
+              {t("settingsPage.accountAffinity.label")}
             </div>
             <div className="text-muted-foreground text-xs">
-              {t("settingsPage.loadBalancing.freeModelHint")}
+              {t("settingsPage.accountAffinity.hint")}
             </div>
           </div>
           <Switch
-            checked={loadBalancingEnabled}
-            onCheckedChange={onToggleLoadBalancing}
+            checked={accountAffinityEnabled}
+            onCheckedChange={onToggleAccountAffinity}
           />
         </div>
 
@@ -2219,8 +2219,8 @@ type SettingsPageViewProps = {
   onSmallModelInput: (value: string) => void
   onAuthApiKeysChange: (value: string) => void
   onAnthropicApiKeyChange: (value: string) => void
-  loadBalancingEnabled: boolean
-  onLoadBalancingToggle: (value: boolean) => void
+  accountAffinityEnabled: boolean
+  onAccountAffinityToggle: (value: boolean) => void
   modelRefreshIntervalInput: string
   modelRefreshIntervalIssue: string | null
   onModelRefreshIntervalChange: (value: string) => void
@@ -2503,9 +2503,9 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
-  const handleLoadBalancingToggle = useCallback(
+  const handleAccountAffinityToggle = useCallback(
     (value: boolean) => {
-      setDraft((prev) => ({ ...prev, freeModelLoadBalancing: value }))
+      setDraft((prev) => ({ ...prev, accountAffinity: value }))
     },
     [setDraft],
   )
@@ -2621,7 +2621,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     { env: "ANTHROPIC_API_KEY" },
   )
 
-  const loadBalancingEnabled = draft.freeModelLoadBalancing ?? true
+  const accountAffinityEnabled = draft.accountAffinity ?? true
   const allowOriginalModelNamesForAliases =
     draft.allowOriginalModelNamesForAliases ?? false
   const useFunctionApplyPatch = draft.useFunctionApplyPatch ?? true
@@ -2652,8 +2652,8 @@ function useSettingsPageState(): SettingsPageViewProps {
     onSmallModelInput: handleSmallModelInput,
     onAuthApiKeysChange: handleAuthApiKeysChange,
     onAnthropicApiKeyChange: handleAnthropicApiKeyChange,
-    loadBalancingEnabled,
-    onLoadBalancingToggle: handleLoadBalancingToggle,
+    accountAffinityEnabled,
+    onAccountAffinityToggle: handleAccountAffinityToggle,
     modelRefreshIntervalInput,
     modelRefreshIntervalIssue,
     onModelRefreshIntervalChange: handleModelRefreshIntervalChange,
@@ -2733,8 +2733,8 @@ function SettingsPageView({
   onSmallModelInput,
   onAuthApiKeysChange,
   onAnthropicApiKeyChange,
-  loadBalancingEnabled,
-  onLoadBalancingToggle,
+  accountAffinityEnabled,
+  onAccountAffinityToggle,
   modelRefreshIntervalInput,
   modelRefreshIntervalIssue,
   onModelRefreshIntervalChange,
@@ -2952,7 +2952,7 @@ function SettingsPageView({
           >
             <div className="space-y-6">
               <AdvancedSettingsCard
-                loadBalancingEnabled={loadBalancingEnabled}
+                accountAffinityEnabled={accountAffinityEnabled}
                 modelRefreshIntervalInput={modelRefreshIntervalInput}
                 modelRefreshIntervalIssue={modelRefreshIntervalIssue}
                 allowOriginalModelNamesForAliases={
@@ -2966,7 +2966,7 @@ function SettingsPageView({
                 responsesApiContextManagementModelsValue={
                   responsesApiContextManagementModelsValue
                 }
-                onToggleLoadBalancing={onLoadBalancingToggle}
+                onToggleAccountAffinity={onAccountAffinityToggle}
                 onModelRefreshIntervalChange={onModelRefreshIntervalChange}
                 onToggleAllowOriginalModelNamesForAliases={
                   onAllowOriginalModelNamesForAliasesToggle

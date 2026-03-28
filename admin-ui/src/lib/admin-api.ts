@@ -110,7 +110,7 @@ export type AdminConfig = {
   providers?: Record<string, ProviderConfig>
   extraPrompts?: Record<string, string>
   smallModel?: string
-  freeModelLoadBalancing?: boolean
+  accountAffinity?: boolean
   /** @deprecated */
   apiKey?: string
   anthropicApiKey?: string
