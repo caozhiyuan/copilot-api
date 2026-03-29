@@ -24,7 +24,7 @@ type UseActiveSectionReturn = {
 export function useActiveSection({
   sectionIds,
   rootMargin = "-20% 0px -60% 0px",
-  threshold = 0.5,
+  threshold = 0,
 }: UseActiveSectionOptions): UseActiveSectionReturn {
   const [activeSection, setActiveSection] = useState(sectionIds[0] ?? "")
   const sectionRefs = useRef(new Map<string, HTMLElement>())
