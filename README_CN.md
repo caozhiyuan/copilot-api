@@ -335,7 +335,8 @@ Admin API 规则独立于业务 API：
   "compactUseSmallModel": true,
   "messageStartInputTokensFallback": false,
   "modelRefreshIntervalHours": 24,
-  "useMessagesApi": true
+  "useMessagesApi": true,
+  "useResponsesApiWebSearch": true
 }
 ```
 
@@ -357,6 +358,7 @@ Admin API 规则独立于业务 API：
 | `forceAgent` | Responses 中 assistant 角色判定策略 |
 | `compactUseSmallModel` | compact 请求自动使用 smallModel |
 | `useMessagesApi` | 是否允许 `/v1/messages` 优先尝试 Copilot 原生 Messages API；关闭时将跳过该候选并从 `/responses`（如支持）或 `/chat/completions` 回退。 |
+| `useResponsesApiWebSearch` | 是否在 `/v1/responses` 中保留并转发 `type: "web_search"` 的工具；关闭时会在代理层剥离。 |
 | `anthropicApiKey` | 可选 Anthropic API key；用于 Claude 模型 `count_tokens` 精确计数，也可通过环境变量 `ANTHROPIC_API_KEY` 提供 |
 | `messageStartInputTokensFallback` | Anthropic 流式首包 token 估算回退 |
 | `modelRefreshIntervalHours` | 模型刷新周期（小时，`0` 关闭） |
@@ -569,7 +571,26 @@ Admin API 规则独立于业务 API：
 - 对 `gpt-5.4` / `gpt-5.3-codex` 内置阶段化说明 prompt，可在工具调用前先输出简短 commentary，减少“突然开始大量 tool calls”的观感
 - 子代理流量可通过 `__SUBAGENT_MARKER__...` 与 `x-session-id` 传递根会话身份，帮助代理区分顶层请求与 subagent 请求
 - Claude 模型在配置 Anthropic API key 时，会优先把 `/v1/messages/count_tokens` 转发到 Anthropic 官方接口做精确计数
-- Responses 路由会去除 `web_search` 工具；可选将 `apply_patch` 自定义工具改写为 function tool
+- Responses 路由可通过配置决定是否保留 `web_search` 工具；同时可选将 `apply_patch` 自定义工具改写为 function tool
+
+### Opencode OAuth 认证
+
+如果你希望使用 opencode 的 GitHub Copilot OAuth app，而不是默认 OAuth app，可在启动前设置：
+
+```sh
+# 先设置环境变量
+export COPILOT_API_OAUTH_APP=opencode
+
+# 再执行 start 或 auth
+npx @nick3/copilot-api@latest start
+npx @nick3/copilot-api@latest auth
+```
+
+也可以直接内联：
+
+```sh
+COPILOT_API_OAUTH_APP=opencode npx @nick3/copilot-api@latest start
+```
 
 ### OpenCode 最小接入
 
@@ -578,7 +599,7 @@ Admin API 规则独立于业务 API：
 先用 opencode OAuth app 启动代理：
 
 ```sh
-COPILOT_API_OAUTH_APP=opencode npx @nick3/copilot-api@latest start
+npx @nick3/copilot-api@latest --oauth-app=opencode start
 ```
 
 然后在 `~/.config/opencode/opencode.json` 中把 Anthropic provider 指向本代理：
@@ -646,6 +667,13 @@ COPILOT_API_OAUTH_APP=opencode npx @nick3/copilot-api@latest start
 ```
 
 > 如果启用了业务 API 鉴权，请把 `ANTHROPIC_AUTH_TOKEN` 设置为真实 API key；否则任意占位值即可。
+
+补充建议：
+
+- 将 `CLAUDE_CODE_ATTRIBUTION_HEADER` 设为 `0`，可以避免 Claude Code 在 system prompt 中附加计费和版本信息，从而减少 prompt cache 失效。
+- 关闭 `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION`，可以避免不必要的额度消耗。
+- 如果你想禁用 Claude Code 的 WebSearch，可在 permissions 中拒绝 `WebSearch`，或在 `config.json` 中将 `useResponsesApiWebSearch` 设为 `false`。开启后，`/v1/responses` 会继续向上游转发 `web_search` 工具，但实际是否可用仍取决于所选模型与 Copilot 上游行为。
+- 不要启用 `ENABLE_TOOL_SEARCH`。Claude Code 当前使用的是客户端工具搜索模式，会增加额外请求、影响缓存命中率，而且与本项目仍存在兼容性问题。
 
 ### 插件集成
 
