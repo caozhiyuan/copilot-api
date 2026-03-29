@@ -387,7 +387,7 @@ test("affinity: confirmAffinity routes subsequent requests to the same account",
   // First request: sequential → account "a". Confirm affinity.
   const first = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
-    { promptCacheKey: "session-1" },
+    { requestId: "session-1" },
   )
   expect(first.ok).toBe(true)
   if (!first.ok) return
@@ -397,7 +397,7 @@ test("affinity: confirmAffinity routes subsequent requests to the same account",
   // Second request with same key: affinity cache hit → same account.
   const second = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
-    { promptCacheKey: "session-1" },
+    { requestId: "session-1" },
   )
   expect(second.ok).toBe(true)
   if (!second.ok) return
@@ -427,7 +427,7 @@ test("affinity: without confirmAffinity, cache is not populated", async () => {
   // First request — do NOT call confirmAffinity.
   const first = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
-    { promptCacheKey: "session-2" },
+    { requestId: "session-2" },
   )
   expect(first.ok).toBe(true)
   if (!first.ok) return
@@ -437,7 +437,7 @@ test("affinity: without confirmAffinity, cache is not populated", async () => {
   // Second request: cache miss → round-robin advances cursor → "b".
   const second = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
-    { promptCacheKey: "session-2" },
+    { requestId: "session-2" },
   )
   expect(second.ok).toBe(true)
   if (!second.ok) return
@@ -474,7 +474,7 @@ test("affinity: different models with same key can route to different accounts",
 
   const selA = await manager.selectAccountForRequest(
     [{ modelId: "model-a", endpoint: "/chat/completions" }],
-    { promptCacheKey: "shared-key" },
+    { requestId: "shared-key" },
   )
   expect(selA.ok).toBe(true)
   if (!selA.ok) return
@@ -482,7 +482,7 @@ test("affinity: different models with same key can route to different accounts",
 
   const selB = await manager.selectAccountForRequest(
     [{ modelId: "model-b", endpoint: "/chat/completions" }],
-    { promptCacheKey: "shared-key" },
+    { requestId: "shared-key" },
   )
   expect(selB.ok).toBe(true)
   if (!selB.ok) return
@@ -516,7 +516,7 @@ test("affinity: skips failed preferred account and falls back to sequential", as
   // Establish affinity to account "a".
   const first = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
-    { promptCacheKey: "session-3" },
+    { requestId: "session-3" },
   )
   expect(first.ok).toBe(true)
   if (!first.ok) return
@@ -530,7 +530,7 @@ test("affinity: skips failed preferred account and falls back to sequential", as
   // Next request: affinity points to "a" but it's failed → fallback to "b".
   const second = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
-    { promptCacheKey: "session-3" },
+    { requestId: "session-3" },
   )
   expect(second.ok).toBe(true)
   if (!second.ok) return
@@ -587,7 +587,7 @@ test("affinity: disabled → no confirmAffinity callback even with context", asy
 
   const selection = await manager.selectAccountForRequest(
     [{ modelId: "free-model", endpoint: "/chat/completions" }],
-    { promptCacheKey: "session-x" },
+    { requestId: "session-x" },
   )
   expect(selection.ok).toBe(true)
   if (!selection.ok) return

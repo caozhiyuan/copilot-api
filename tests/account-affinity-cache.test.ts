@@ -121,34 +121,23 @@ test("size reflects current entry count", () => {
 // extractAffinityKey
 // ---------------------------------------------------------------------------
 
-test("extractAffinityKey returns promptCacheKey first", () => {
+test("extractAffinityKey returns requestId", () => {
   expect(
     extractAffinityKey({
-      promptCacheKey: "pck",
-      sessionId: "sid",
-      safetyIdentifier: "safe",
+      requestId: "req-123",
     }),
-  ).toBe("pck")
+  ).toBe("req-123")
 })
 
-test("extractAffinityKey falls back to sessionId", () => {
+test("extractAffinityKey returns undefined when requestId is empty", () => {
   expect(
     extractAffinityKey({
-      sessionId: "sid",
-      safetyIdentifier: "safe",
+      requestId: "  ",
     }),
-  ).toBe("sid")
+  ).toBeUndefined()
 })
 
-test("extractAffinityKey falls back to safetyIdentifier", () => {
-  expect(
-    extractAffinityKey({
-      safetyIdentifier: "safe",
-    }),
-  ).toBe("safe")
-})
-
-test("extractAffinityKey returns undefined when nothing available", () => {
+test("extractAffinityKey returns undefined when requestId is missing", () => {
   expect(extractAffinityKey({})).toBeUndefined()
 })
 

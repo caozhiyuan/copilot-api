@@ -78,6 +78,8 @@ export async function handleCompletion(c: Context) {
 
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
+  const upstreamRequestId = generateRequestIdFromPayload(payload)
+
   const selection = await accountsManager.selectAccountForRequest(
     [
       {
@@ -86,8 +88,7 @@ export async function handleCompletion(c: Context) {
       },
     ],
     {
-      promptCacheKey: normalizedPromptCacheKey,
-      safetyIdentifier: normalizedSafetyIdentifier,
+      requestId: upstreamRequestId,
     },
   )
 
@@ -125,7 +126,6 @@ export async function handleCompletion(c: Context) {
   )
 
   const accountCtx = toAccountContext(account)
-  const upstreamRequestId = generateRequestIdFromPayload(payloadWithMaxTokens)
   const upstreamSessionId = getUUID(upstreamRequestId)
   request.upstreamRequestId = upstreamRequestId
   request.upstreamSessionId = upstreamSessionId
