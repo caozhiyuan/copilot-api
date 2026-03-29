@@ -26,12 +26,14 @@
 >
 > 1. **Claude Code 模型 ID 配置：** 与 Claude Code 搭配使用时，请将模型 ID 配置为 `claude-opus-4-6` 或 `claude-opus-4.6`（不要带 `[1m]` 后缀）。如果显著超出 GitHub Copilot 的上下文窗口限制，存在被风控的风险。
 >
-> 2. **Opencode 推荐用法：** 与 opencode 搭配时，建议优先使用 opencode OAuth app 启动。这一方式与 opencode 内置 GitHub Copilot provider 的行为保持一致，也没有额外的 Terms of Service 风险：
+> 2. **当前 Claude Code 兼容性提醒：** 暂时不要启用 `ENABLE_TOOL_SEARCH`。Claude Code 当前的客户端工具搜索模式会增加额外请求、降低缓存命中效率，并且与本代理的兼容性仍不稳定。
+>
+> 3. **Opencode 推荐用法：** 与 opencode 搭配时，建议优先使用 opencode OAuth app 启动。这一方式与 opencode 内置 GitHub Copilot provider 的行为保持一致，也没有额外的 Terms of Service 风险：
 >    ```sh
 >    npx @nick3/copilot-api@latest --oauth-app=opencode start
 >    ```
 >
-> 3. **通过 Copilot 使用 codex 时建议关闭 multi agent：** 当前 codex 经由 GitHub Copilot 使用时，GitHub Copilot 的计费仍与“最后一条消息是否为 user 角色”相关，而这部分计费逻辑尚未完成适配。
+> 4. **通过 Copilot 使用 codex 时建议关闭 multi agent：** 当前 codex 经由 GitHub Copilot 使用时，GitHub Copilot 的计费仍与“最后一条消息是否为 user 角色”相关，而这部分计费逻辑尚未完成适配。
 
 ---
 
@@ -48,7 +50,7 @@
 ## 代码已实现能力（当前版本）
 
 - 支持多账号运行与自动路由（含临时账号优先级）
-- 支持免费模型轮询负载均衡（可关闭）
+- 支持免费模型账号亲和性路由：命中亲和缓存时复用上次成功账号，未命中且多账号时轮转分布（可关闭）
 - 支持付费模型按顺序选账号 + 配额预留机制
 - 支持模型别名与原名访问控制（阻止直接使用目标模型名）
 - 支持请求级限速（`--rate-limit`）与等待模式（`--wait`）
@@ -250,6 +252,7 @@ services:
 | 路径 | 用途 |
 | --- | --- |
 | `config.json` | 运行配置 |
+| `models.json` | 缓存的模型列表 |
 | `accounts-registry.json` | 多账号注册信息 |
 | `tokens/github_<accountId>` | 各账号 GitHub token |
 | `github_token` | 旧版单账号 token（兼容） |
@@ -345,7 +348,7 @@ Admin API 规则独立于业务 API：
 | `providers` | 上游 provider 映射（Anthropic 兼容代理路由）：每个 key 会生成 `/:provider/v1/messages`、`/:provider/v1/models` 等路由前缀；目前仅支持 `type: "anthropic"`；可选 `models` 定义 `temperature/topP/topK` 默认值；可选 `adjustInputTokens` 用于从 usage 的 `input_tokens` 中扣除缓存读写 token。 |
 | `extraPrompts` | 按模型附加 system prompt（在 Anthropic 请求翻译时注入；内置默认项包含 `gpt-5.3-codex`、`gpt-5.4-mini`、`gpt-5.4`） |
 | `smallModel` | 小模型（预热/compact 场景回落） |
-| `accountAffinity` | 启用账号亲和性路由（同一会话粘滞到上次成功的账号），适用于免费和付费模型 |
+| `accountAffinity` | 启用账号亲和性路由：命中亲和缓存时复用上次成功账号，未命中且存在多个可用账号时轮转分布；适用于免费和付费模型 |
 | `responsesApiContextManagementModels` | 需要注入 Responses API `context_management` 压缩指令的模型 ID 列表（用于支持服务端 context management 的模型）。 |
 | `modelReasoningEfforts` | Responses API 的模型推理强度配置 |
 | `modelAliases` | 模型别名映射（支持 `allowOriginal`） |
@@ -493,8 +496,8 @@ Admin API 规则独立于业务 API：
 ### 2) 免费模型策略
 
 - 默认开启账号亲和性：`accountAffinity=true`
-- 同一会话的请求会粘滞到上次成功的账号
-- 亲和性未命中时回退到顺序选择（首个可用账号）
+- 亲和性命中时，同一会话 + 模型会复用上次成功账号
+- 亲和性未命中且存在多个可用账号时，会按轮转顺序分布请求
 - 关闭后改为顺序路由
 
 ### 3) 付费模型策略
@@ -559,11 +562,118 @@ Admin API 规则独立于业务 API：
 
 ## Claude Code 与 Agent 相关能力
 
-- `start --claude-code`：交互选择主模型与小模型，并生成可直接运行的环境变量命令（尝试复制到剪贴板）
-- `/v1/messages` 支持从首条 user 消息解析子代理 marker（`__SUBAGENT_MARKER__`）
-- Messages 路由支持 compact/warmup 识别并回退到 `smallModel`（由配置控制）
+### 更好的 Agent 语义（Better Agent Semantics）
+
+- 当模型支持 Copilot 原生 `/v1/messages` 时，优先走 Messages API，仅在必要时回退到 `/responses` 或 `/chat/completions`
+- 对 Claude 家族模型保留更多 Anthropic 原生语义，包括 `tool_use` / `tool_result`、部分 `anthropic-beta` 能力，以及更接近 Claude 原生的消息行为
+- 对 `gpt-5.4` / `gpt-5.3-codex` 内置阶段化说明 prompt，可在工具调用前先输出简短 commentary，减少“突然开始大量 tool calls”的观感
+- 子代理流量可通过 `__SUBAGENT_MARKER__...` 与 `x-session-id` 传递根会话身份，帮助代理区分顶层请求与 subagent 请求
 - Claude 模型在配置 Anthropic API key 时，会优先把 `/v1/messages/count_tokens` 转发到 Anthropic 官方接口做精确计数
 - Responses 路由会去除 `web_search` 工具；可选将 `apply_patch` 自定义工具改写为 function tool
+
+### OpenCode 最小接入
+
+基础场景下，opencode 已内置 GitHub Copilot provider；当你希望通过 `@ai-sdk/anthropic` 保留 Anthropic Messages 语义时，可改走本代理。
+
+先用 opencode OAuth app 启动代理：
+
+```sh
+COPILOT_API_OAUTH_APP=opencode npx @nick3/copilot-api@latest start
+```
+
+然后在 `~/.config/opencode/opencode.json` 中把 Anthropic provider 指向本代理：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "local/gpt-5.4",
+  "small_model": "local/gpt-5-mini",
+  "agent": {
+    "build": {
+      "model": "local/gpt-5.4"
+    },
+    "plan": {
+      "model": "local/gpt-5.4"
+    },
+    "explore": {
+      "model": "local/gpt-5-mini"
+    }
+  },
+  "provider": {
+    "local": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Copilot API Proxy",
+      "options": {
+        "baseURL": "http://localhost:4141/v1",
+        "apiKey": "dummy"
+      },
+      "models": {
+        "gpt-5.4": {
+          "name": "gpt-5.4"
+        },
+        "gpt-5-mini": {
+          "name": "gpt-5-mini"
+        }
+      }
+    }
+  }
+}
+```
+
+- `npm: "@ai-sdk/anthropic"` 是关键，它会让 OpenCode 以 Anthropic Messages 语义与本代理通信
+- `options.baseURL` 应写为 `http://localhost:4141/v1`，Anthropic SDK 会自动拼接 `/messages`、`/models` 与 `/messages/count_tokens`
+- 如果启用了 `auth.apiKeys`，请把 `apiKey` 改为真实 key；否则占位值即可
+
+### Claude Code 配置
+
+- `start --claude-code`：交互选择主模型与小模型，并生成可直接运行的环境变量命令（尝试复制到剪贴板）
+- 若不想每次交互生成，也可手动写 `.claude/settings.json`：
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4141",
+    "ANTHROPIC_AUTH_TOKEN": "dummy",
+    "ANTHROPIC_MODEL": "gpt-5.4",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.4",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gpt-5-mini",
+    "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false"
+  }
+}
+```
+
+> 如果启用了业务 API 鉴权，请把 `ANTHROPIC_AUTH_TOKEN` 设置为真实 API key；否则任意占位值即可。
+
+### 插件集成
+
+#### Claude Code marketplace plugin
+
+- marketplace catalog：`.claude-plugin/marketplace.json`
+- plugin source：`claude-plugin`
+
+安装：
+
+```sh
+/plugin marketplace add https://github.com/nick3/copilot-api.git#all
+/plugin install claude-plugin@copilot-api-marketplace
+```
+
+安装后，插件会在 `SubagentStart` 时注入 `__SUBAGENT_MARKER__...`，帮助代理推断 `x-initiator: agent`。
+
+#### opencode subagent marker plugin
+
+- 插件文件：`.opencode/plugins/subagent-marker.js`
+
+安装：
+
+```sh
+cp .opencode/plugins/subagent-marker.js ~/.config/opencode/plugins/
+```
+
+该插件会跟踪子会话、在子代理消息前自动附加 marker，并设置 `x-session-id` 以保留根会话上下文。
 
 ## 常见问题与排障
 
