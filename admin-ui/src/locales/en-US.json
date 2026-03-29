@@ -355,6 +355,8 @@
       "messageStartInputTokensFallbackHint": "When enabled, estimates message_start input tokens when upstream usage is unavailable.",
       "useMessagesApiLabel": "Enable Messages API",
       "useMessagesApiHint": "When enabled, Claude-family models may use Copilot's native /v1/messages endpoint.",
+      "useResponsesApiWebSearchLabel": "Enable Responses API WebSearch",
+      "useResponsesApiWebSearchHint": "When enabled, /v1/responses keeps web_search tools and forwards them upstream.",
       "responsesApiContextManagementModelsLabel": "Responses API context_management models",
       "responsesApiContextManagementModelsPlaceholder": "one model id per line",
       "responsesApiContextManagementModelsHint": "List of model IDs that should receive Responses API context_management compaction instructions.",

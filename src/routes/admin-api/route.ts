@@ -165,6 +165,7 @@ const CONFIG_KEYS = new Set<keyof AppConfig>([
   "messageStartInputTokensFallback",
   "modelRefreshIntervalHours",
   "useMessagesApi",
+  "useResponsesApiWebSearch",
 ])
 
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
@@ -778,6 +779,7 @@ function applyOptionalBoolean(
     | "useFunctionApplyPatch"
     | "forceAgent"
     | "useMessagesApi"
+    | "useResponsesApiWebSearch"
     | "compactUseSmallModel"
     | "messageStartInputTokensFallback"
     | "allowOriginalModelNamesForAliases",
@@ -912,6 +914,8 @@ const CONFIG_PATCH_HANDLERS: Partial<Record<string, ConfigPatchHandler>> = {
     applyOptionalNumber(next, "modelRefreshIntervalHours", value),
   useMessagesApi: (next, value) =>
     applyOptionalBoolean(next, "useMessagesApi", value),
+  useResponsesApiWebSearch: (next, value) =>
+    applyOptionalBoolean(next, "useResponsesApiWebSearch", value),
 }
 
 function applyConfigPatch(

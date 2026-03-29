@@ -37,7 +37,7 @@ export const getOpencodeOauthHeaders = (): Record<string, string> => {
     Accept: "application/json",
     "Content-Type": "application/json",
     "User-Agent":
-      "opencode/1.2.16 ai-sdk/provider-utils/3.0.21 runtime/bun/1.3.10, opencode/1.2.16",
+      "opencode/1.3.5 ai-sdk/provider-utils/4.0.21 runtime/bun/1.3.11, opencode/1.3.5",
   }
 }
 

@@ -32,7 +32,7 @@ English | [中文](./README_CN.md)
 > [!IMPORTANT]
 > **Before using, please be aware of the following:**
 >
-> 1. **Claude Code configuration:** When using with Claude Code, please configure the model ID as `claude-opus-4-6` or `claude-opus-4.6` (without the `[1m]` suffix, exceeding GitHub Copilot's context window limit too much may lead to being banned). If you prefer editing config manually, see [Manual Configuration with `settings.json`](#manual-configuration-with-settingsjson). Please do not enable `ENABLE_TOOL_SEARCH`, as the current Claude Code uses the client tool search mode. In this mode, loading defer tools requires an additional request each time, and cache hit rates are affected, so it does not necessarily save tokens. Only server tool search mode can save tokens. The current project has compatibility issues with client tool search mode, which can also cause errors when used.
+> 1. **Claude Code configuration:** When using with Claude Code, please configure the model ID as `claude-opus-4-6` or `claude-opus-4.6` (without the `[1m]` suffix, exceeding GitHub Copilot's context window limit too much may lead to being banned). Example claude `settings.json` see [Manual Configuration with `settings.json`](#manual-configuration-with-settingsjson). 
 >
 > 2. **Recommend for Opencode:** When using with opencode, we recommend starting with the opencode OAuth app. This approach behaves identically to opencode's built-in GitHub Copilot provider with no Terms of Service risk:
 >    ```sh
@@ -361,7 +361,8 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
     "compactUseSmallModel": true,
     "messageStartInputTokensFallback": false,
     "modelRefreshIntervalHours": 24,
-    "useMessagesApi": true
+    "useMessagesApi": true,
+    "useResponsesApiWebSearch": true
   }
   ```
 - **auth.apiKeys:** API keys used for request authentication. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication is disabled.
@@ -388,6 +389,7 @@ The `<target>` can be either the account ID (GitHub username) or a 1-based index
 - **messageStartInputTokensFallback:** When `true`, the Anthropic streaming translation layer estimates `message_start.input_tokens` when upstream stream events do not provide it. Defaults to `false`.
 - **modelRefreshIntervalHours:** Interval for refreshing account model lists in the background. Set to `0` to disable refresh. Defaults to `24`.
 - **useMessagesApi:** When `true` (default), Claude-family models that support Copilot's native `/v1/messages` endpoint may use the Messages API path. Set to `false` to skip the Messages API candidate and fall back to `/responses` (if supported) or `/chat/completions`.
+- **useResponsesApiWebSearch:** When `true` (default), `/v1/responses` keeps tools with `type: "web_search"` and forwards them upstream. Set to `false` to strip them before the Copilot request is sent.
 - **anthropicApiKey:** Optional Anthropic API key used for accurate Claude token counting (see [Accurate Claude Token Counting](#accurate-claude-token-counting) below). Can also be set via the `ANTHROPIC_API_KEY` environment variable. If not set, token counting falls back to GPT tokenizer estimation.
 
 Edit this file to customize prompts or swap in your own fast model. If you edit it manually, restart the server (or call `GET /api/admin/config`) so the cached config is refreshed. Changes made through the Admin UI/API are validated, written to disk, and applied immediately; unknown keys are rejected.
@@ -607,7 +609,7 @@ OpenCode already has a direct GitHub Copilot provider. Use this section when you
 Start the proxy with the OpenCode OAuth app:
 
 ```sh
-COPILOT_API_OAUTH_APP=opencode npx @nick3/copilot-api@latest start
+npx @nick3/copilot-api@latest --oauth-app=opencode start
 ```
 
 Then point OpenCode at the proxy with `@ai-sdk/anthropic`.
@@ -803,7 +805,11 @@ Here is an example `.claude/settings.json` file:
 }
 ```
 
-Replace `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` according to your needs. It is recommended to use gpt-5-mini for ANTHROPIC_DEFAULT_HAIKU_MODEL, as gpt-5-mini does not consume quota. ANTHROPIC_DEFAULT_HAIKU_MODEL is typically used for title generation, explore agents, etc.
+- Replace `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` according to your needs. It is recommended to use gpt-5-mini for ANTHROPIC_DEFAULT_HAIKU_MODEL, as gpt-5-mini does not consume quota. ANTHROPIC_DEFAULT_HAIKU_MODEL is typically used for title generation, explore agents, etc.
+- Setting CLAUDE_CODE_ATTRIBUTION_HEADER to 0 can prevent Claude code from adding billing and version information in system prompts, thereby avoiding prompt cache invalidation.
+- Turning off CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION can prevent quota from being consumed unnecessarily.
+- If you want to disable Claude Code WebSearch, deny `WebSearch` in permissions or set `useResponsesApiWebSearch` to `false` in `config.json`. When enabled, `/v1/responses` can forward `web_search` tools upstream, but actual support still depends on the selected model and Copilot behavior.
+- Please do not enable `ENABLE_TOOL_SEARCH`, as the current Claude Code uses the client tool search mode. In this mode, loading defer tools requires an additional request each time, and cache hit rates are affected, so it does not necessarily save tokens. Only server tool search mode can save tokens. The current project has compatibility issues with client tool search mode, which can also cause errors when used.
 
 ### CLAUDE.md or AGENTS.md Recommended Content
 

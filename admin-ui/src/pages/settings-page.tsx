@@ -1761,6 +1761,7 @@ type AdvancedSettingsCardProps = {
   compactUseSmallModel: boolean
   messageStartInputTokensFallback: boolean
   useMessagesApi: boolean
+  useResponsesApiWebSearch: boolean
   responsesApiContextManagementModelsValue: string
   onToggleAccountAffinity: (value: boolean) => void
   onModelRefreshIntervalChange: (value: string) => void
@@ -1770,6 +1771,7 @@ type AdvancedSettingsCardProps = {
   onToggleCompactUseSmallModel: (value: boolean) => void
   onToggleMessageStartInputTokensFallback: (value: boolean) => void
   onToggleUseMessagesApi: (value: boolean) => void
+  onToggleUseResponsesApiWebSearch: (value: boolean) => void
   onResponsesApiContextManagementModelsChange: (value: string) => void
 }
 
@@ -1783,6 +1785,7 @@ function AdvancedSettingsCard({
   compactUseSmallModel,
   messageStartInputTokensFallback,
   useMessagesApi,
+  useResponsesApiWebSearch,
   responsesApiContextManagementModelsValue,
   onToggleAccountAffinity,
   onModelRefreshIntervalChange,
@@ -1792,6 +1795,7 @@ function AdvancedSettingsCard({
   onToggleCompactUseSmallModel,
   onToggleMessageStartInputTokensFallback,
   onToggleUseMessagesApi,
+  onToggleUseResponsesApiWebSearch,
   onResponsesApiContextManagementModelsChange,
 }: AdvancedSettingsCardProps): React.JSX.Element {
   const { t } = useTranslation()
@@ -1921,6 +1925,21 @@ function AdvancedSettingsCard({
             </div>
           </div>
           <Switch checked={useMessagesApi} onCheckedChange={onToggleUseMessagesApi} />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.useResponsesApiWebSearchLabel")}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {t("settingsPage.advanced.useResponsesApiWebSearchHint")}
+            </div>
+          </div>
+          <Switch
+            checked={useResponsesApiWebSearch}
+            onCheckedChange={onToggleUseResponsesApiWebSearch}
+          />
         </div>
 
         <div className="grid gap-2">
@@ -2257,8 +2276,10 @@ type SettingsPageViewProps = {
   compactUseSmallModel: boolean
   messageStartInputTokensFallback: boolean
   useMessagesApi: boolean
+  useResponsesApiWebSearch: boolean
   responsesApiContextManagementModelsValue: string
   onUseMessagesApiToggle: (value: boolean) => void
+  onUseResponsesApiWebSearchToggle: (value: boolean) => void
   onResponsesApiContextManagementModelsChange: (value: string) => void
   providersItems: Array<ProviderItem>
   providersIssue: string | null
@@ -2583,6 +2604,13 @@ function useSettingsPageState(): SettingsPageViewProps {
     [setDraft],
   )
 
+  const handleUseResponsesApiWebSearchToggle = useCallback(
+    (value: boolean) => {
+      setDraft((prev) => ({ ...prev, useResponsesApiWebSearch: value }))
+    },
+    [setDraft],
+  )
+
   const handleResponsesApiContextManagementModelsChange = useCallback(
     (value: string) => {
       setResponsesApiContextManagementModelsValue(value)
@@ -2630,6 +2658,7 @@ function useSettingsPageState(): SettingsPageViewProps {
   const messageStartInputTokensFallback =
     draft.messageStartInputTokensFallback ?? false
   const useMessagesApi = draft.useMessagesApi ?? true
+  const useResponsesApiWebSearch = draft.useResponsesApiWebSearch ?? true
 
   return {
     loading,
@@ -2690,8 +2719,10 @@ function useSettingsPageState(): SettingsPageViewProps {
     compactUseSmallModel,
     messageStartInputTokensFallback,
     useMessagesApi,
+    useResponsesApiWebSearch,
     responsesApiContextManagementModelsValue,
     onUseMessagesApiToggle: handleUseMessagesApiToggle,
+    onUseResponsesApiWebSearchToggle: handleUseResponsesApiWebSearchToggle,
     onResponsesApiContextManagementModelsChange:
       handleResponsesApiContextManagementModelsChange,
     providersItems,
@@ -2771,8 +2802,10 @@ function SettingsPageView({
   compactUseSmallModel,
   messageStartInputTokensFallback,
   useMessagesApi,
+  useResponsesApiWebSearch,
   responsesApiContextManagementModelsValue,
   onUseMessagesApiToggle,
+  onUseResponsesApiWebSearchToggle,
   onResponsesApiContextManagementModelsChange,
   providersItems,
   providersIssue,
@@ -2963,6 +2996,7 @@ function SettingsPageView({
                 compactUseSmallModel={compactUseSmallModel}
                 messageStartInputTokensFallback={messageStartInputTokensFallback}
                 useMessagesApi={useMessagesApi}
+                useResponsesApiWebSearch={useResponsesApiWebSearch}
                 responsesApiContextManagementModelsValue={
                   responsesApiContextManagementModelsValue
                 }
@@ -2978,6 +3012,9 @@ function SettingsPageView({
                   onMessageStartInputTokensFallbackToggle
                 }
                 onToggleUseMessagesApi={onUseMessagesApiToggle}
+                onToggleUseResponsesApiWebSearch={
+                  onUseResponsesApiWebSearchToggle
+                }
                 onResponsesApiContextManagementModelsChange={
                   onResponsesApiContextManagementModelsChange
                 }

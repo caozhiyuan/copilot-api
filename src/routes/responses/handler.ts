@@ -5,7 +5,11 @@ import { randomUUID } from "node:crypto"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
-import { getAliasTargetSet, getConfig } from "~/lib/config"
+import {
+  getAliasTargetSet,
+  getConfig,
+  isResponsesApiWebSearchEnabled,
+} from "~/lib/config"
 import {
   computeDiff,
   extractErrorDetails,
@@ -55,8 +59,9 @@ export const handleResponses = async (c: Context) => {
   const clientModel = payload.model
   logger.debug("Responses request payload:", JSON.stringify(payload))
 
-  // Remove web_search tool as it's not supported by GitHub Copilot
-  removeWebSearchTool(payload)
+  if (!isResponsesApiWebSearchEnabled()) {
+    removeWebSearchTool(payload)
+  }
   compactInputByLatestCompaction(payload)
 
   const streamRequested = Boolean(payload.stream)

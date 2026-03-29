@@ -27,6 +27,7 @@ export interface AppConfig {
   modelRefreshIntervalHours?: number
   useMessagesApi?: boolean
   anthropicApiKey?: string
+  useResponsesApiWebSearch?: boolean
 }
 
 export interface ModelConfig {
@@ -110,6 +111,7 @@ const defaultConfig: AppConfig = {
   messageStartInputTokensFallback: false,
   modelRefreshIntervalHours: 24,
   useMessagesApi: true,
+  useResponsesApiWebSearch: true,
 }
 
 let cachedConfig: AppConfig | null = null
@@ -667,4 +669,9 @@ export function isMessagesApiEnabled(): boolean {
 export function getAnthropicApiKey(): string | undefined {
   const config = getConfig()
   return config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined
+}
+
+export function isResponsesApiWebSearchEnabled(): boolean {
+  const config = getConfig()
+  return config.useResponsesApiWebSearch ?? true
 }

@@ -128,6 +128,7 @@ export type AdminConfig = {
   messageStartInputTokensFallback?: boolean
   modelRefreshIntervalHours?: number
   useMessagesApi?: boolean
+  useResponsesApiWebSearch?: boolean
 }
 
 export type AdminConfigResponse = AdminConfig & {

@@ -54,6 +54,29 @@ test("POST /api/admin/config updates useMessagesApi", async () => {
   })
 })
 
+test("POST /api/admin/config updates useResponsesApiWebSearch", async () => {
+  await withConfig({}, async () => {
+    const { server } = await import("../src/server")
+
+    const res = await server.fetch(
+      new Request("http://localhost/api/admin/config", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ useResponsesApiWebSearch: false }),
+      }),
+    )
+
+    expect(res.status).toBe(200)
+
+    const body = (await res.json()) as {
+      useResponsesApiWebSearch?: boolean
+    }
+    expect(body.useResponsesApiWebSearch).toBe(false)
+  })
+})
+
 test("POST /api/admin/config updates anthropicApiKey", async () => {
   await withConfig({}, async () => {
     const { server } = await import("../src/server")

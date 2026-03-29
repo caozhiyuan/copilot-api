@@ -355,6 +355,8 @@
       "messageStartInputTokensFallbackHint": "启用后，当上游 usage 不可用时，会估算 message_start 的 input tokens。",
       "useMessagesApiLabel": "启用 Messages API",
       "useMessagesApiHint": "启用后，支持 Copilot 原生 /v1/messages 的 Claude 系列模型将优先走 Messages API。",
+      "useResponsesApiWebSearchLabel": "启用 Responses API WebSearch",
+      "useResponsesApiWebSearchHint": "启用后，/v1/responses 会保留 web_search 工具并继续向上游转发。",
       "responsesApiContextManagementModelsLabel": "Responses API context_management 模型列表",
       "responsesApiContextManagementModelsPlaceholder": "每行一个 model id",
       "responsesApiContextManagementModelsHint": "这些模型将收到 Responses API 的 context_management 压缩指令。",
