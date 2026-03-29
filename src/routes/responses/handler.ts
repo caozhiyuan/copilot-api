@@ -94,6 +94,11 @@ export const handleResponses = async (c: Context) => {
     })
   }
 
+  const upstreamRequestId = generateRequestIdFromPayload(
+    { messages: payload.input },
+    normalizedPromptCacheKey,
+  )
+
   const selection = await accountsManager.selectAccountForRequest(
     [
       {
@@ -102,8 +107,7 @@ export const handleResponses = async (c: Context) => {
       },
     ],
     {
-      promptCacheKey: normalizedPromptCacheKey,
-      safetyIdentifier: normalizedSafetyIdentifier,
+      requestId: upstreamRequestId,
     },
   )
 
@@ -141,9 +145,6 @@ export const handleResponses = async (c: Context) => {
   if (state.manualApprove) await awaitApproval()
 
   const accountCtx = toAccountContext(account)
-  const upstreamRequestId = generateRequestIdFromPayload({
-    messages: upstreamPayload.input,
-  })
   const upstreamSessionId = getUUID(upstreamRequestId)
   request.upstreamRequestId = upstreamRequestId
   request.upstreamSessionId = upstreamSessionId

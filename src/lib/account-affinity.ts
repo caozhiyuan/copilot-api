@@ -1,9 +1,7 @@
 import type { AccountRuntime } from "~/lib/types/account"
 
 export interface AffinityContext {
-  promptCacheKey?: string
-  sessionId?: string
-  safetyIdentifier?: string
+  requestId?: string
 }
 
 interface AffinityCacheEntry {
@@ -80,21 +78,13 @@ export class AccountAffinityCache {
 }
 
 /**
- * Extract the best available affinity key from the request context.
- * Priority: promptCacheKey > sessionId > safetyIdentifier.
+ * Extract the affinity key from the request context.
+ * Uses the upstream request ID which is deterministic for the same user message.
  */
 export function extractAffinityKey(
   context: AffinityContext,
 ): string | undefined {
-  for (const candidate of [
-    context.promptCacheKey,
-    context.sessionId,
-    context.safetyIdentifier,
-  ]) {
-    const normalized = candidate?.trim()
-    if (normalized) return normalized
-  }
-  return undefined
+  return context.requestId?.trim() || undefined
 }
 
 /**

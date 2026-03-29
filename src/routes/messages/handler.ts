@@ -243,9 +243,7 @@ export async function handleCompletion(c: Context) {
   )
 
   const selection = await accountsManager.selectAccountForRequest(candidates, {
-    promptCacheKey: normalizedPromptCacheKey,
-    sessionId,
-    safetyIdentifier: normalizedSafetyIdentifier,
+    requestId: upstreamRequestId,
   })
   if (!selection.ok) {
     return handleSelectionFailure({
