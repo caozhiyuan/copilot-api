@@ -78,7 +78,10 @@ export async function handleCompletion(c: Context) {
 
   logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
 
-  const upstreamRequestId = generateRequestIdFromPayload(payload)
+  const upstreamRequestId = generateRequestIdFromPayload(
+    payload,
+    normalizedPromptCacheKey,
+  )
 
   const selection = await accountsManager.selectAccountForRequest(
     [

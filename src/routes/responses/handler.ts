@@ -89,9 +89,10 @@ export const handleResponses = async (c: Context) => {
     })
   }
 
-  const upstreamRequestId = generateRequestIdFromPayload({
-    messages: payload.input,
-  })
+  const upstreamRequestId = generateRequestIdFromPayload(
+    { messages: payload.input },
+    normalizedPromptCacheKey,
+  )
 
   const selection = await accountsManager.selectAccountForRequest(
     [
