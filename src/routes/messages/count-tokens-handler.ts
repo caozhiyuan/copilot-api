@@ -2,7 +2,7 @@ import type { Context } from "hono"
 
 import consola from "consola"
 
-import { getAnthropicApiKey } from "~/lib/config"
+import { getAnthropicApiKey, getClaudeTokenMultiplier } from "~/lib/config"
 import { getTokenCount } from "~/lib/tokenizer"
 
 import { findEndpointModel } from "../../lib/models"
@@ -108,7 +108,7 @@ export async function handleCountTokens(c: Context) {
 
     let finalTokenCount = tokenCount.input + tokenCount.output
     if (anthropicPayload.model.startsWith("claude")) {
-      finalTokenCount = Math.round(finalTokenCount * 1.15)
+      finalTokenCount = Math.round(finalTokenCount * getClaudeTokenMultiplier())
     }
 
     consola.info("Token count:", finalTokenCount)
