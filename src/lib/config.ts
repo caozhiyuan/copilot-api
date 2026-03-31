@@ -28,6 +28,7 @@ export interface AppConfig {
   useMessagesApi?: boolean
   anthropicApiKey?: string
   useResponsesApiWebSearch?: boolean
+  claudeTokenMultiplier?: number
 }
 
 export interface ModelConfig {
@@ -674,4 +675,9 @@ export function getAnthropicApiKey(): string | undefined {
 export function isResponsesApiWebSearchEnabled(): boolean {
   const config = getConfig()
   return config.useResponsesApiWebSearch ?? true
+}
+
+export function getClaudeTokenMultiplier(): number {
+  const config = getConfig()
+  return config.claudeTokenMultiplier ?? 1.15
 }
