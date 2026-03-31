@@ -106,6 +106,60 @@ export const mergeToolResultForClaude = (
   }
 }
 
+const stripUnsupportedCacheControl = (block: Record<string, unknown>): void => {
+  const cacheControl = block.cache_control
+  if (
+    !cacheControl
+    || typeof cacheControl !== "object"
+    || Array.isArray(cacheControl)
+  ) {
+    return
+  }
+
+  const type = (cacheControl as { type?: unknown }).type
+  if (typeof type === "string") {
+    block.cache_control = { type }
+    return
+  }
+
+  delete block.cache_control
+}
+
+const stripTextBlockCacheControl = (block: unknown): void => {
+  if (!block || typeof block !== "object" || Array.isArray(block)) {
+    return
+  }
+
+  const record = block as Record<string, unknown>
+  if (record.type !== "text") return
+
+  stripUnsupportedCacheControl(record)
+}
+
+export const stripCacheControl = (
+  anthropicPayload: AnthropicMessagesPayload,
+): void => {
+  if (Array.isArray(anthropicPayload.system)) {
+    for (const block of anthropicPayload.system) {
+      stripTextBlockCacheControl(block)
+    }
+  }
+
+  for (const msg of anthropicPayload.messages) {
+    if (!Array.isArray(msg.content)) continue
+
+    for (const block of msg.content) {
+      stripTextBlockCacheControl(block)
+
+      if (block.type === "tool_result" && Array.isArray(block.content)) {
+        for (const nestedBlock of block.content) {
+          stripTextBlockCacheControl(nestedBlock)
+        }
+      }
+    }
+  }
+}
+
 export const estimateInputTokens = async (
   payload: ChatCompletionsPayload,
   selectedModel: Model,

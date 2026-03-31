@@ -91,6 +91,7 @@ import {
   isWarmupProbeRequest,
   maybeBlockOriginalModelName,
   mergeToolResultForClaude,
+  stripCacheControl,
 } from "./utils"
 
 const logger = createHandlerLogger("messages-handler")
@@ -1274,6 +1275,10 @@ const handleWithMessagesApi = async (params: {
     selectedModel,
     isCompact,
   } = params
+
+  // Copilot Messages API rejects extra cache_control fields such as scope.
+  stripCacheControl(anthropicPayload)
+
   // Pre-request processing: filter thinking blocks for Claude models so only
   // valid thinking blocks are sent to the Copilot Messages API.
   for (const msg of anthropicPayload.messages) {
