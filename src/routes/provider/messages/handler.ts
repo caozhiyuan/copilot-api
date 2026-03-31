@@ -17,7 +17,7 @@ import { forwardProviderMessages } from "~/services/providers/anthropic-proxy"
 const logger = createHandlerLogger("provider-messages-handler")
 
 export async function handleProviderMessages(c: Context): Promise<Response> {
-  const provider = c.req.param("provider")
+  const provider = c.req.param("provider") ?? ""
   const providerConfig = getProviderConfig(provider)
   if (!providerConfig) {
     return c.json(

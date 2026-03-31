@@ -34,6 +34,13 @@ type AdminAccessDecision =
       errorType: "unauthorized" | "forbidden"
     }
 
+type AdminAccessRequest = {
+  req: {
+    url: string
+    header(name: string): string | undefined
+  }
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   return (
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
@@ -47,7 +54,7 @@ function getBearerToken(value: string): string | undefined {
   return token || undefined
 }
 
-function getRequestAdminToken(c: Context): string | undefined {
+function getRequestAdminToken(c: AdminAccessRequest): string | undefined {
   const headerToken = c.req.header("x-admin-token")?.trim()
   if (headerToken) return headerToken
 
@@ -67,7 +74,7 @@ function isSameOrigin(requestUrl: URL, originHeader: string): boolean {
   }
 }
 
-function decideAdminAccess(c: Context): AdminAccessDecision {
+function decideAdminAccess(c: AdminAccessRequest): AdminAccessDecision {
   const url = new URL(c.req.url, "http://local")
 
   const token = getRequestAdminToken(c)

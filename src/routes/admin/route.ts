@@ -651,7 +651,7 @@ adminRoutes.get("*", async (c) => {
       fileBuf.buffer.slice(
         fileBuf.byteOffset,
         fileBuf.byteOffset + fileBuf.byteLength,
-      ) as ArrayBuffer,
+      ),
     )
     const headers: Record<string, string> = {}
 
@@ -678,7 +678,7 @@ adminRoutes.get("*", async (c) => {
             indexBuf.buffer.slice(
               indexBuf.byteOffset,
               indexBuf.byteOffset + indexBuf.byteLength,
-            ) as ArrayBuffer,
+            ),
           )
           return c.body(indexData, 200, {
             "content-type": "text/html; charset=utf-8",
