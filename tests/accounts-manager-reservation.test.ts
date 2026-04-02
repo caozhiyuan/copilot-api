@@ -524,7 +524,9 @@ test("applyQuotaRefreshSuccessIfCurrent sets overagePermitted from quota respons
     unlimited: false,
   }
 
-  const applied = applyQuotaRefreshSuccessIfCurrent(account, snapshot, premium)
+  const applied = applyQuotaRefreshSuccessIfCurrent(account, snapshot, {
+    premium,
+  })
 
   expect(applied).toBe(true)
   expect(account.overagePermitted).toBe(true)

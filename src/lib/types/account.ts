@@ -59,6 +59,8 @@ export interface AccountRuntime extends AccountMeta {
   githubToken: string
   /** Copilot API token (obtained from GitHub) */
   copilotToken?: string
+  /** Account-specific Copilot API base URL returned by GitHub */
+  copilotApiUrl?: string
   /** VS Code version for API headers */
   vsCodeVersion?: string
   /** Cached available models for this account */
@@ -104,6 +106,8 @@ export interface AccountContext {
   githubToken: string
   /** Copilot API token */
   copilotToken?: string
+  /** Account-specific Copilot API base URL */
+  copilotApiUrl?: string
   /** Account subscription type */
   accountType: AccountType
   /** VS Code version for API headers */

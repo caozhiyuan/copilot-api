@@ -27,6 +27,9 @@ export function toAccountContext(account: AccountRuntime): AccountContext {
   return {
     githubToken: account.githubToken,
     copilotToken: account.copilotToken,
+    ...(account.copilotApiUrl !== undefined ?
+      { copilotApiUrl: account.copilotApiUrl }
+    : {}),
     accountType: account.accountType,
     vsCodeVersion: account.vsCodeVersion,
   }

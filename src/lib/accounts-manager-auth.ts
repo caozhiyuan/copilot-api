@@ -39,6 +39,9 @@ export const toAccountContextFromSnapshot = (
 ): AccountContext => ({
   githubToken: snapshot.githubToken,
   copilotToken,
+  ...(account.copilotApiUrl !== undefined ?
+    { copilotApiUrl: account.copilotApiUrl }
+  : {}),
   accountType: snapshot.accountType,
   vsCodeVersion: account.vsCodeVersion,
 })
@@ -101,16 +104,24 @@ export const applyTokenRefreshFailureIfCurrent = (
 export const applyQuotaRefreshSuccessIfCurrent = (
   account: AccountRuntime,
   snapshot: AuthSnapshot,
-  premium: QuotaDetail,
+  result: {
+    premium: QuotaDetail
+    copilotApiUrl?: string
+  },
 ): boolean => {
   if (!isAuthSnapshotCurrent(account, snapshot)) {
     return false
   }
 
+  const { premium, copilotApiUrl } = result
+
   account.premiumEntitlement = premium.entitlement
   account.premiumRemaining = premium.remaining
   account.unlimited = premium.unlimited
   account.overagePermitted = premium.overage_permitted
+  if (copilotApiUrl) {
+    account.copilotApiUrl = copilotApiUrl
+  }
   account.lastQuotaFetch = Date.now()
   account.failed = false
   account.failureReason = undefined

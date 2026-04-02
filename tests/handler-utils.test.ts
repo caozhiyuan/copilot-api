@@ -35,12 +35,14 @@ test("toAccountContext projects AccountRuntime to AccountContext", () => {
     addedAt: 0,
     githubToken: "ghp_test",
     copilotToken: "copilot_test",
+    copilotApiUrl: "https://copilot.example.com",
     vsCodeVersion: "1.0.0",
   }
 
   expect(toAccountContext(runtime)).toEqual({
     githubToken: "ghp_test",
     copilotToken: "copilot_test",
+    copilotApiUrl: "https://copilot.example.com",
     accountType: "individual",
     vsCodeVersion: "1.0.0",
   })

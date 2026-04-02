@@ -21,6 +21,8 @@ export interface State {
   rateLimitSeconds?: number
   lastRequestTimestamp?: number
   verbose: boolean
+
+  copilotApiUrl?: string
 }
 
 export const state: State = {
@@ -43,6 +45,9 @@ export function accountFromState(): AccountContext {
   return {
     githubToken: state.githubToken,
     copilotToken: state.copilotToken,
+    ...(state.copilotApiUrl !== undefined ?
+      { copilotApiUrl: state.copilotApiUrl }
+    : {}),
     accountType: state.accountType,
     vsCodeVersion: state.vsCodeVersion,
   }

@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import { isOpencodeOauthApp } from "~/lib/api-config"
 import { PATHS } from "~/lib/paths"
 import { getCopilotToken } from "~/services/github/get-copilot-token"
+import { getCopilotUsage } from "~/services/github/get-copilot-usage"
 import { getDeviceCode } from "~/services/github/get-device-code"
 import { getGitHubUser } from "~/services/github/get-user"
 import { pollAccessToken } from "~/services/github/poll-access-token"
@@ -143,7 +144,10 @@ export async function setupGitHubToken(
   }
 }
 
-async function logUser() {
+export async function logUser() {
   const user = await getGitHubUser()
   consola.info(`Logged in as ${user.login}`)
+
+  const copilotUser = await getCopilotUsage()
+  state.copilotApiUrl = copilotUser.endpoints.api
 }

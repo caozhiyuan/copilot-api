@@ -281,6 +281,9 @@ export class AccountsManager {
         return
       }
 
+      // Resolve the account-specific Copilot endpoint before the first models fetch.
+      await this.refreshQuota(account)
+
       // Start token refresh timer
       this.startTokenRefresh(account, refresh_in)
 
@@ -292,9 +295,6 @@ export class AccountsManager {
         return
       }
       account.lastModelsFetch = Date.now()
-
-      // Refresh quota
-      await this.refreshQuota(account)
 
       consola.debug(`Account ${account.id} initialized`)
     } catch (error) {
@@ -511,7 +511,10 @@ export class AccountsManager {
       try {
         const usage = await getCopilotUsage(ctx)
         const premium = usage.quota_snapshots.premium_interactions
-        applyQuotaRefreshSuccessIfCurrent(account, snapshot, premium)
+        applyQuotaRefreshSuccessIfCurrent(account, snapshot, {
+          premium,
+          copilotApiUrl: usage.endpoints.api,
+        })
       } catch (error) {
         if (error instanceof HTTPError && error.response.status === 401) {
           applyUnauthorizedIfCurrent(account, snapshot, "Unauthorized (401)")
@@ -1107,6 +1110,9 @@ export class AccountsManager {
     return {
       githubToken: account.githubToken,
       copilotToken: account.copilotToken,
+      ...(account.copilotApiUrl !== undefined ?
+        { copilotApiUrl: account.copilotApiUrl }
+      : {}),
       accountType: account.accountType,
       vsCodeVersion: account.vsCodeVersion,
     }
