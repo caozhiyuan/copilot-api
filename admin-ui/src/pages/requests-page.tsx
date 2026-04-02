@@ -180,6 +180,7 @@ const requestsTableColVisibility = [
   "hidden md:table-cell",
   "hidden md:table-cell",
   "hidden lg:table-cell",
+  "hidden lg:table-cell",
   "hidden xl:table-cell",
   "hidden xl:table-cell",
   "hidden 2xl:table-cell",
@@ -581,15 +582,18 @@ export function RequestsPage(): React.JSX.Element {
                     {t("common.model")}
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[5])}>
-                    {t("common.tokens")}
+                    {t("common.xInitiator")}
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[6])}>
-                    {t("common.cost")}
+                    {t("common.tokens")}
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[7])}>
-                    {t("common.quota")}
+                    {t("common.cost")}
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[8])}>
+                    {t("common.quota")}
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[9])}>
                     {t("common.durationAbbrev")}
                   </TableHead>
                   <TableHead>{t("common.status")}</TableHead>
@@ -687,15 +691,18 @@ export function RequestsPage(): React.JSX.Element {
                           {r.upstream_model || ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[5], "font-mono text-xs")}>
-                          {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}
+                          {r.initiator || ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[6], "font-mono text-xs")}>
-                          {r.cost_units ?? ""}
+                          {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[7], "font-mono text-xs")}>
-                          {quota}
+                          {r.cost_units ?? ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[8], "font-mono text-xs")}>
+                          {quota}
+                        </TableCell>
+                        <TableCell className={cn(requestsTableColVisibility[9], "font-mono text-xs")}>
                           {r.duration_ms != null ? fmtNum(r.duration_ms) : ""}
                         </TableCell>
                         <TableCell>{statusBadge}</TableCell>

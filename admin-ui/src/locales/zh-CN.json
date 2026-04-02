@@ -64,6 +64,7 @@
     "path": "路径",
     "endpoint": "端点",
     "model": "模型",
+    "xInitiator": "x-initiator",
     "cost": "成本",
     "quota": "额度",
     "durationAbbrev": "耗时",

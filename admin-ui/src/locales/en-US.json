@@ -64,6 +64,7 @@
     "path": "Path",
     "endpoint": "Endpoint",
     "model": "Model",
+    "xInitiator": "x-initiator",
     "cost": "Cost",
     "quota": "Quota",
     "durationAbbrev": "Dur",

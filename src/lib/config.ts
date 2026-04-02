@@ -108,6 +108,7 @@ const defaultConfig: AppConfig = {
   },
   allowOriginalModelNamesForAliases: false,
   useFunctionApplyPatch: true,
+  forceAgent: false,
   compactUseSmallModel: true,
   messageStartInputTokensFallback: false,
   modelRefreshIntervalHours: 24,
@@ -195,6 +196,8 @@ function mergeDefaultConfig(config: AppConfig): {
   const defaultExtraPrompts = defaultConfig.extraPrompts ?? {}
   const modelReasoningEfforts = config.modelReasoningEfforts ?? {}
   const defaultModelReasoningEfforts = defaultConfig.modelReasoningEfforts ?? {}
+  const hasForceAgent = typeof config.forceAgent === "boolean"
+  const defaultForceAgent = defaultConfig.forceAgent ?? false
 
   const missingExtraPromptModels = Object.keys(defaultExtraPrompts).filter(
     (model) => !Object.hasOwn(extraPrompts, model),
@@ -206,8 +209,13 @@ function mergeDefaultConfig(config: AppConfig): {
 
   const hasExtraPromptChanges = missingExtraPromptModels.length > 0
   const hasReasoningEffortChanges = missingReasoningEffortModels.length > 0
+  const hasForceAgentChanges = !hasForceAgent
 
-  if (!hasExtraPromptChanges && !hasReasoningEffortChanges) {
+  if (
+    !hasExtraPromptChanges
+    && !hasReasoningEffortChanges
+    && !hasForceAgentChanges
+  ) {
     return { mergedConfig: config, changed: false }
   }
 
@@ -222,6 +230,7 @@ function mergeDefaultConfig(config: AppConfig): {
         ...defaultModelReasoningEfforts,
         ...modelReasoningEfforts,
       },
+      forceAgent: hasForceAgent ? config.forceAgent : defaultForceAgent,
     },
     changed: true,
   }
