@@ -85,9 +85,6 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
       },
     })
 
-    expect(result.safety_identifier).toBe(
-      "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
-    )
     expect(result.prompt_cache_key).toBe("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752")
   })
 
@@ -99,9 +96,6 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
       },
     })
 
-    expect(result.safety_identifier).toBe(
-      "8b7e2c1d4f6a9b3c0d1e2f3456789abcdeffedcba9876543210fedcba1234567",
-    )
     expect(result.prompt_cache_key).toBe("7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b")
   })
 })

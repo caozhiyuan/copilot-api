@@ -68,7 +68,8 @@ export const translateAnthropicMessagesToResponsesPayload = (
   const translatedTools = convertAnthropicTools(payload.tools)
   const toolChoice = convertAnthropicToolChoice(payload.tool_choice)
 
-  const { safetyIdentifier, sessionId: promptCacheKey } = parseUserIdMetadata(
+  // Remove safetyIdentifier to align with vscode copilot
+  const { sessionId: promptCacheKey } = parseUserIdMetadata(
     payload.metadata?.user_id,
   )
 
@@ -82,7 +83,6 @@ export const translateAnthropicMessagesToResponsesPayload = (
     tools: translatedTools,
     tool_choice: toolChoice,
     metadata: payload.metadata ? { ...payload.metadata } : null,
-    safety_identifier: safetyIdentifier,
     prompt_cache_key: promptCacheKey,
     stream: payload.stream ?? null,
     store: false,
@@ -432,7 +432,7 @@ const translateSystemPrompt = (
   const text = system
     .map((block, index) => {
       if (index === 0) {
-        return block.text + extraPrompt
+        return block.text + "\n\n" + extraPrompt + "\n\n"
       }
       return block.text
     })

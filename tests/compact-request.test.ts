@@ -74,11 +74,50 @@ describe("isCompactRequest", () => {
     expect(isCompactRequest(payload)).toBe(true)
   })
 
+  test("ignores system reminders and still detects compact content blocks", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "<system-reminder>\nThe user opened a file.\n</system-reminder>",
+            },
+            {
+              type: "text",
+              text:
+                `${compactUserPrefix}\n\nYour task is to create a detailed summary of the conversation so far.\n\nPending Tasks:\n- [Task 1]\n\nCurrent Work:\n[Current work]`,
+            },
+          ],
+        },
+      ],
+      max_tokens: 4096,
+    }
+    expect(isCompactRequest(payload)).toBe(true)
+  })
+
   test("returns false for normal user message", () => {
     const payload: AnthropicMessagesPayload = {
       model: "claude-sonnet-4-20250514",
       messages: [
         { role: "user", content: "Write a function that adds two numbers" },
+      ],
+      max_tokens: 4096,
+    }
+    expect(isCompactRequest(payload)).toBe(false)
+  })
+
+  test("returns false for ordinary quotes about compact prompts", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content:
+            'Please explain this prompt: "Your task is to create a detailed summary of the conversation so far"',
+        },
       ],
       max_tokens: 4096,
     }
