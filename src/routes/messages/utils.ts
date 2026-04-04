@@ -317,29 +317,51 @@ export const maybeBlockOriginalModelName = (
 const compactSystemPromptStart =
   "You are a helpful AI assistant tasked with summarizing conversations"
 
-const compactUserMessageStart =
+const compactTextOnlyGuard =
   "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools."
+const compactSummaryPromptStart =
+  "Your task is to create a detailed summary of the conversation so far"
+const compactMessageSections = ["Pending Tasks:", "Current Work:"] as const
 
-const hasCompactUserMessage = (messages: Array<AnthropicMessage>): boolean => {
-  const lastMsg = messages.at(-1)
-  if (!lastMsg || lastMsg.role !== "user") return false
-
-  if (typeof lastMsg.content === "string") {
-    return lastMsg.content.startsWith(compactUserMessageStart)
+const getCompactCandidateText = (message: AnthropicMessage): string => {
+  if (message.role !== "user") {
+    return ""
   }
-  if (!Array.isArray(lastMsg.content)) return false
 
-  return lastMsg.content.some(
-    (block) =>
-      block.type === "text"
-      && typeof block.text === "string"
-      && block.text.startsWith(compactUserMessageStart),
+  if (typeof message.content === "string") {
+    return message.content
+  }
+
+  return message.content
+    .filter((block): block is AnthropicTextBlock => block.type === "text")
+    .map((block) =>
+      block.text.startsWith("<system-reminder>") ? "" : block.text,
+    )
+    .filter((text) => text.length > 0)
+    .join("\n\n")
+}
+
+const isCompactMessage = (lastMessage: AnthropicMessage): boolean => {
+  const text = getCompactCandidateText(lastMessage)
+  if (!text) {
+    return false
+  }
+
+  return (
+    text.includes(compactTextOnlyGuard)
+    && text.includes(compactSummaryPromptStart)
+    && compactMessageSections.some((section) => text.includes(section))
   )
 }
 
 export const isCompactRequest = (
   anthropicPayload: AnthropicMessagesPayload,
 ): boolean => {
+  const lastMessage = anthropicPayload.messages.at(-1)
+  if (lastMessage && isCompactMessage(lastMessage)) {
+    return true
+  }
+
   // Legacy: system prompt detection (old Claude Code)
   const system = anthropicPayload.system
   if (
@@ -359,6 +381,5 @@ export const isCompactRequest = (
     return true
   }
 
-  // New: last user message detection (new Claude Code)
-  return hasCompactUserMessage(anthropicPayload.messages)
+  return false
 }

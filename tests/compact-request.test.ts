@@ -7,8 +7,8 @@ import { isCompactRequest } from "~/routes/messages/utils"
 describe("isCompactRequest", () => {
   const compactSystemPrefix =
     "You are a helpful AI assistant tasked with summarizing conversations"
-  const compactUserPrefix =
-    "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools."
+  const compactPrompt =
+    "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\n\nYour task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions.\n\n7. Pending Tasks:\n   - [Task 1]\n\n8. Current Work:\n   [Current work]"
 
   test("detects legacy compact via system string", () => {
     const payload: AnthropicMessagesPayload = {
@@ -44,7 +44,7 @@ describe("isCompactRequest", () => {
         { role: "assistant", content: "ok" },
         {
           role: "user",
-          content: `${compactUserPrefix}\n\nSummarize the conversation so far.`,
+          content: compactPrompt,
         },
       ],
       max_tokens: 4096,
@@ -61,10 +61,13 @@ describe("isCompactRequest", () => {
         {
           role: "user",
           content: [
-            { type: "text", text: "some context" },
             {
               type: "text",
-              text: `${compactUserPrefix}\n\nSummarize the conversation so far.`,
+              text: "<system-reminder>\nThe user opened a file.\n</system-reminder>",
+            },
+            {
+              type: "text",
+              text: compactPrompt,
             },
           ],
         },
@@ -87,8 +90,7 @@ describe("isCompactRequest", () => {
             },
             {
               type: "text",
-              text:
-                `${compactUserPrefix}\n\nYour task is to create a detailed summary of the conversation so far.\n\nPending Tasks:\n- [Task 1]\n\nCurrent Work:\n[Current work]`,
+              text: compactPrompt,
             },
           ],
         },
@@ -117,6 +119,21 @@ describe("isCompactRequest", () => {
           role: "user",
           content:
             'Please explain this prompt: "Your task is to create a detailed summary of the conversation so far"',
+        },
+      ],
+      max_tokens: 4096,
+    }
+    expect(isCompactRequest(payload)).toBe(false)
+  })
+
+  test("returns false when only the text-only guard is present", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content:
+            "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\n\nSummarize briefly.",
         },
       ],
       max_tokens: 4096,
