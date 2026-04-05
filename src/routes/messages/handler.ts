@@ -16,7 +16,11 @@ import {
   handleWithMessagesApi,
   handleWithResponsesApi,
 } from "./api-flows"
-import { isCompactRequest, mergeToolResultForClaude } from "./preprocess"
+import {
+  isCompactRequest,
+  mergeToolResultForClaude,
+  convertToolReferenceBlocks,
+} from "./preprocess"
 import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 
 const logger = createHandlerLogger("messages-handler")
@@ -26,6 +30,9 @@ export async function handleCompletion(c: Context) {
 
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   debugJson(logger, "Anthropic request payload:", anthropicPayload)
+
+  // Convert tool_reference blocks early, before any other processing
+  convertToolReferenceBlocks(anthropicPayload)
 
   const subagentMarker = parseSubagentMarkerFromFirstUser(anthropicPayload)
   if (subagentMarker) {

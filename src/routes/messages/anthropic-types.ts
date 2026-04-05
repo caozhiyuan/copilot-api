@@ -42,6 +42,11 @@ export interface AnthropicImageBlock {
   }
 }
 
+export interface AnthropicToolReferenceBlock {
+  type: "tool_reference"
+  tool_name: string
+}
+
 export interface AnthropicToolResultBlock {
   type: "tool_result"
   tool_use_id: string

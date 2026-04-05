@@ -183,6 +183,35 @@ const filterAssistantThinkingBlocks = (
   }
 }
 
+// Convert tool_reference content blocks to text blocks.
+// The Copilot Messages API does not support tool_reference blocks
+// (used by Claude Code's ENABLE_TOOL_SEARCH / MCP tool lazy-loading).
+// Runs on the raw payload before type-narrowing, so uses runtime checks.
+export const convertToolReferenceBlocks = (
+  payload: AnthropicMessagesPayload,
+): void => {
+  for (const msg of payload.messages) {
+    if (msg.role !== "user" || !Array.isArray(msg.content)) continue
+    for (const block of msg.content) {
+      if (block.type !== "tool_result" || typeof block.content === "string")
+        continue
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      block.content = (block.content as Array<any>).map((inner: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        if (inner.type === "tool_reference") {
+          return {
+            type: "text" as const,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            text: `[tool_reference: ${inner.tool_name}]`,
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        return inner
+      }) as typeof block.content
+    }
+  }
+}
+
 export const prepareMessagesApiPayload = (
   payload: AnthropicMessagesPayload,
   selectedModel?: Model,
