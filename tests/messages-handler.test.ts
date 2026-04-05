@@ -7,10 +7,7 @@ import type { Model } from "~/services/copilot/get-models"
 import { accountsManager } from "~/lib/accounts-manager"
 import { getSmallModel } from "~/lib/config"
 import { state } from "~/lib/state"
-import {
-  generateRequestIdFromPayload,
-  getUUID,
-} from "~/lib/utils"
+import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
 import { messageRoutes } from "~/routes/messages/route"
 
 type SelectionResult = Awaited<
@@ -27,7 +24,16 @@ const originalFetch = fetchHolder.fetch
 const originalSelect =
   accountsManager.selectAccountForRequest.bind(accountsManager)
 const originalFinalize = accountsManager.finalizeQuota.bind(accountsManager)
-const originalMarkFailed = accountsManager.markAccountFailed.bind(accountsManager)
+const originalMarkFailed =
+  accountsManager.markAccountFailed.bind(accountsManager)
+
+function parseFetchBody(body: unknown): Record<string, unknown> {
+  if (typeof body !== "string") {
+    throw new TypeError("Expected fetch body to be a JSON string")
+  }
+
+  return JSON.parse(body) as Record<string, unknown>
+}
 
 function buildAccount(): AccountRuntime {
   return {
@@ -176,19 +182,16 @@ beforeEach(() => {
   state.manualApprove = false
   state.verbose = false
 
-  accountsManager.selectAccountForRequest = async () =>
-    buildSelection("/v1/messages", "messages-model")
-  accountsManager.finalizeQuota = async () => {}
+  accountsManager.selectAccountForRequest = () =>
+    Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+  accountsManager.finalizeQuota = () => Promise.resolve()
   accountsManager.markAccountFailed = () => {}
 })
 
 afterEach(() => {
   fetchHolder.fetch = originalFetch
-  // eslint-disable-next-line require-atomic-updates
   accountsManager.selectAccountForRequest = originalSelect
-  // eslint-disable-next-line require-atomic-updates
   accountsManager.finalizeQuota = originalFinalize
-  // eslint-disable-next-line require-atomic-updates
   accountsManager.markAccountFailed = originalMarkFailed
 })
 
@@ -197,15 +200,12 @@ describe("messages handler orchestration", () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    accountsManager.selectAccountForRequest = async () =>
-      buildSelection("/v1/messages", "messages-model")
+    accountsManager.selectAccountForRequest = () =>
+      Promise.resolve(buildSelection("/v1/messages", "messages-model"))
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
-      upstreamBody = JSON.parse(String(opts?.body ?? "{}")) as Record<
-        string,
-        unknown
-      >
+      upstreamBody = parseFetchBody(opts?.body)
 
       return Promise.resolve(
         new Response(
@@ -243,15 +243,12 @@ describe("messages handler orchestration", () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    accountsManager.selectAccountForRequest = async () =>
-      buildSelection("/responses", "responses-model")
+    accountsManager.selectAccountForRequest = () =>
+      Promise.resolve(buildSelection("/responses", "responses-model"))
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
-      upstreamBody = JSON.parse(String(opts?.body ?? "{}")) as Record<
-        string,
-        unknown
-      >
+      upstreamBody = parseFetchBody(opts?.body)
 
       return Promise.resolve(
         new Response(
@@ -289,15 +286,12 @@ describe("messages handler orchestration", () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    accountsManager.selectAccountForRequest = async () =>
-      buildSelection("/chat/completions", "chat-model")
+    accountsManager.selectAccountForRequest = () =>
+      Promise.resolve(buildSelection("/chat/completions", "chat-model"))
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
-      upstreamBody = JSON.parse(String(opts?.body ?? "{}")) as Record<
-        string,
-        unknown
-      >
+      upstreamBody = parseFetchBody(opts?.body)
 
       return Promise.resolve(
         new Response(
@@ -335,11 +329,11 @@ describe("messages handler orchestration", () => {
     let selectionCandidates: Array<{ modelId: string; endpoint: string }> = []
     let selectionRequestId: string | undefined
 
-    accountsManager.selectAccountForRequest = async (candidates, options) => {
+    accountsManager.selectAccountForRequest = (candidates, options) => {
       selectionCandidates = candidates
       selectionRequestId = options?.requestId
 
-      return buildSelection("/v1/messages", "messages-model")
+      return Promise.resolve(buildSelection("/v1/messages", "messages-model"))
     }
 
     const fetchMock = mock(() =>

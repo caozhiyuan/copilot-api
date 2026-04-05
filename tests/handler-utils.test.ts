@@ -31,20 +31,30 @@ test("computeDiff returns undefined if inputs are missing", () => {
 test("toAccountContext projects AccountRuntime to AccountContext", () => {
   const runtime: AccountRuntime = {
     id: "octocat",
+    accountLogin: "octocat",
     accountType: "individual",
     addedAt: 0,
     githubToken: "ghp_test",
     copilotToken: "copilot_test",
     copilotApiUrl: "https://copilot.example.com",
     vsCodeVersion: "1.0.0",
+    clientDeviceId: "11111111-1111-4111-8111-111111111111",
+    clientMachineId:
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    clientSessionId: "11111111-1111-4111-8111-1111111111111712345678901",
   }
 
   expect(toAccountContext(runtime)).toEqual({
+    accountLogin: "octocat",
     githubToken: "ghp_test",
     copilotToken: "copilot_test",
     copilotApiUrl: "https://copilot.example.com",
     accountType: "individual",
     vsCodeVersion: "1.0.0",
+    clientDeviceId: "11111111-1111-4111-8111-111111111111",
+    clientMachineId:
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    clientSessionId: "11111111-1111-4111-8111-1111111111111712345678901",
   })
 })
 

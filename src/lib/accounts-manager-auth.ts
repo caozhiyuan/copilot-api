@@ -37,6 +37,7 @@ export const toAccountContextFromSnapshot = (
   snapshot: AuthSnapshot,
   copilotToken?: string,
 ): AccountContext => ({
+  accountLogin: account.accountLogin,
   githubToken: snapshot.githubToken,
   copilotToken,
   ...(account.copilotApiUrl !== undefined ?
@@ -44,6 +45,9 @@ export const toAccountContextFromSnapshot = (
   : {}),
   accountType: snapshot.accountType,
   vsCodeVersion: account.vsCodeVersion,
+  clientDeviceId: account.clientDeviceId,
+  clientMachineId: account.clientMachineId,
+  clientSessionId: account.clientSessionId,
 })
 
 export const applyCopilotTokenIfCurrent = (
