@@ -4,7 +4,19 @@ import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 
 import { accountsManager } from "~/lib/accounts-manager"
-import { listAccountsFromRegistry } from "~/lib/accounts-registry"
+import {
+  buildIdentityKey,
+  getCurrentIdentityEnvironment,
+  DEFAULT_IDENTITY_ENTERPRISE_DOMAIN,
+} from "~/lib/account-client-identity"
+import {
+  getAccountClientIdentity,
+  listAccountsFromRegistry,
+  removeAccountFromRegistry,
+  removeAccountToken,
+} from "~/lib/accounts-registry"
+import { isAccountType } from "~/lib/types/account"
+import { authSessionManager } from "./auth-sessions"
 import {
   getConfig,
   getModelAliases,
@@ -147,7 +159,7 @@ function parseTriStateBool(value: string | null): boolean | undefined {
 
 type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
 
-type ConfigErrorType = "bad_request" | "internal_error"
+type ConfigErrorType = "bad_request" | "internal_error" | "not_found"
 
 type ConfigErrorPayload = {
   message: string
@@ -188,7 +200,7 @@ const BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"])
 
 function jsonError(
   c: Context,
-  status: 400 | 500,
+  status: 400 | 404 | 500,
   error: ConfigErrorPayload,
 ): Response {
   return c.json(
@@ -988,6 +1000,9 @@ adminApiRoutes.use("*", async (c, next) => {
   await next()
 })
 
+// Start auth session cleanup timer
+authSessionManager.start()
+
 adminApiRoutes.get("/meta", (c) => {
   const store = getRequestHistoryStore()
   return c.json(store.meta())
@@ -1328,4 +1343,172 @@ adminApiRoutes.get("/requests/:requestId", (c) => {
   const store = getRequestHistoryStore()
   const item = store.getByRequestId(requestId)
   return c.json({ item })
+})
+
+adminApiRoutes.post("/accounts/auth/start", async (c) => {
+  let payload: unknown
+  try {
+    payload = await c.req.json()
+  } catch {
+    return jsonError(c, 400, {
+      message: "Request body must be valid JSON.",
+      type: "bad_request",
+    })
+  }
+
+  if (!isPlainObject(payload)) {
+    return jsonError(c, 400, {
+      message: "Request body must be an object.",
+      type: "bad_request",
+    })
+  }
+
+  const accountType = payload.accountType
+  if (!isAccountType(accountType)) {
+    return jsonError(c, 400, {
+      message: "accountType must be one of: individual, business, enterprise",
+      type: "bad_request",
+    })
+  }
+
+  // Only enterprise accounts use a custom domain; ignore for other types
+  const enterpriseDomain =
+    accountType === "enterprise" && typeof payload.enterpriseDomain === "string"
+      ? payload.enterpriseDomain.trim()
+      : undefined
+
+  if (accountType === "enterprise" && !enterpriseDomain) {
+    return jsonError(c, 400, {
+      message: "enterpriseDomain is required for enterprise accounts.",
+      type: "bad_request",
+    })
+  }
+
+  try {
+    const result = await authSessionManager.startAuth({
+      accountType,
+      enterpriseDomain,
+    })
+    return c.json(result)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return jsonError(c, 500, {
+      message: `Failed to start auth: ${msg}`,
+      type: "internal_error",
+    })
+  }
+})
+
+adminApiRoutes.get("/accounts/auth/status/:sessionId", (c) => {
+  const sessionId = c.req.param("sessionId")
+  const status = authSessionManager.getStatus(sessionId)
+
+  if (!status) {
+    return jsonError(c, 404, {
+      message: "Session not found.",
+      type: "not_found",
+    })
+  }
+
+  return c.json(status)
+})
+
+adminApiRoutes.post("/accounts/auth/cancel/:sessionId", (c) => {
+  const sessionId = c.req.param("sessionId")
+  const cancelled = authSessionManager.cancel(sessionId)
+
+  if (!cancelled) {
+    return jsonError(c, 404, {
+      message: "Session not found.",
+      type: "not_found",
+    })
+  }
+
+  return c.json({ cancelled: true })
+})
+
+adminApiRoutes.delete("/accounts/:id", async (c) => {
+  const accountId = c.req.param("id")
+
+  try {
+    const accounts = await listAccountsFromRegistry()
+    const exists = accounts.some((a) => a.id === accountId)
+
+    if (!exists) {
+      return jsonError(c, 404, {
+        message: "Account not found.",
+        type: "not_found",
+      })
+    }
+
+    // Remove registry entry first (authoritative state), then token file.
+    // If registry removal succeeds but token removal fails, the orphaned
+    // token file is harmless and will be ignored on next startup.
+    await removeAccountFromRegistry(accountId)
+    await removeAccountToken(accountId)
+
+    return c.json({ deleted: true, accountId })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return jsonError(c, 500, {
+      message: `Failed to delete account: ${msg}`,
+      type: "internal_error",
+    })
+  }
+})
+
+adminApiRoutes.post("/accounts/:id/reauth", async (c) => {
+  const accountId = c.req.param("id")
+
+  try {
+    const accounts = await listAccountsFromRegistry()
+    const account = accounts.find((a) => a.id === accountId)
+
+    if (!account) {
+      return jsonError(c, 404, {
+        message: "Account not found.",
+        type: "not_found",
+      })
+    }
+
+    // Build the identity key to look up client identity
+    const { oauthApp, enterpriseDomain: envDomain } =
+      getCurrentIdentityEnvironment()
+    const identityKey = buildIdentityKey({
+      login: accountId,
+      oauthApp,
+      enterpriseDomain: envDomain,
+    })
+    const clientIdentity = await getAccountClientIdentity(identityKey)
+
+    // Use the stored enterprise domain if it's not the default "public"
+    const enterpriseDomain =
+      clientIdentity?.enterpriseDomain &&
+      clientIdentity.enterpriseDomain !== DEFAULT_IDENTITY_ENTERPRISE_DOMAIN
+        ? clientIdentity.enterpriseDomain
+        : undefined
+
+    // Enterprise accounts must have a resolvable enterprise domain
+    if (account.accountType === "enterprise" && !enterpriseDomain) {
+      return jsonError(c, 400, {
+        message:
+          "Cannot re-authenticate enterprise account: enterprise domain could not be resolved from stored identity.",
+        type: "bad_request",
+      })
+    }
+
+    const result = await authSessionManager.startAuth({
+      accountType: account.accountType,
+      enterpriseDomain,
+      reauthAccountId: accountId,
+    })
+
+    return c.json(result)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return jsonError(c, 500, {
+      message: `Failed to start reauth: ${msg}`,
+      type: "internal_error",
+    })
+  }
 })

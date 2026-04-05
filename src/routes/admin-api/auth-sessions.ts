@@ -59,6 +59,7 @@ export class AuthSessionManager {
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
 
   start(): void {
+    if (this.cleanupTimer) return
     this.cleanupTimer = setInterval(() => this.cleanupExpired(), CLEANUP_INTERVAL_MS)
   }
 
