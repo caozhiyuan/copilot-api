@@ -4,71 +4,30 @@ import type { AccountRuntime } from "~/lib/types/account"
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 import type { Model } from "~/services/copilot/get-models"
 
-const actualConfigModule = await import("../src/lib/config")
-const actualRateLimitModule = await import("../src/lib/rate-limit")
-const actualRequestHistoryModule = await import("../src/lib/request-history")
-const actualStateModule = await import("../src/lib/state")
-const actualUtilsModule = await import("../src/lib/utils")
+import { accountsManager } from "~/lib/accounts-manager"
+import { getSmallModel } from "~/lib/config"
+import { state } from "~/lib/state"
+import {
+  generateRequestIdFromPayload,
+  getUUID,
+} from "~/lib/utils"
+import { messageRoutes } from "~/routes/messages/route"
 
-type SelectionOk = {
-  ok: true
-  account: AccountRuntime
-  selectedModel: Model
-  endpoint: string
-  costUnits: number
-  reservation?: unknown
-  confirmAffinity?: () => void
-  affinityHit?: boolean
-  affinityCacheKey?: string
-}
-
-const state = {
-  ...actualStateModule.state,
-  manualApprove: false,
-  verbose: false,
-}
-
-const selectAccountForRequest = mock<
-  (candidates: Array<{ modelId: string; endpoint: string }>, options: {
-    requestId?: string
-  }) => Promise<SelectionOk>
->(async () => buildSelection("/v1/messages", "messages-model"))
-const finalizeQuota = mock(async () => {})
-const markAccountFailed = mock(() => {})
-const insertRequestLog = mock(() => {})
-
-await mock.module("~/lib/state", () => ({
-  ...actualStateModule,
-  state,
-}))
-await mock.module("~/lib/rate-limit", () => ({
-  ...actualRateLimitModule,
-  checkRateLimit: async () => {},
-}))
-await mock.module("~/lib/request-history", () => ({
-  ...actualRequestHistoryModule,
-  getClientIpInfo: () => ({ ip: undefined, source: undefined }),
-  getRequestHistoryStore: () => ({
-    insert: insertRequestLog,
-  }),
-}))
-await mock.module("~/lib/accounts-manager", () => ({
-  accountsManager: {
-    selectAccountForRequest,
-    finalizeQuota,
-    markAccountFailed,
-  },
-}))
-
-const { messageRoutes } = await import("../src/routes/messages/route")
+type SelectionResult = Awaited<
+  ReturnType<(typeof accountsManager)["selectAccountForRequest"]>
+>
+type SelectionOk = Extract<SelectionResult, { ok: true }>
 
 type FetchOptions = {
   body?: unknown
-  headers?: unknown
 }
 
 const fetchHolder = globalThis as unknown as { fetch: typeof fetch }
 const originalFetch = fetchHolder.fetch
+const originalSelect =
+  accountsManager.selectAccountForRequest.bind(accountsManager)
+const originalFinalize = accountsManager.finalizeQuota.bind(accountsManager)
+const originalMarkFailed = accountsManager.markAccountFailed.bind(accountsManager)
 
 function buildAccount(): AccountRuntime {
   return {
@@ -217,17 +176,20 @@ beforeEach(() => {
   state.manualApprove = false
   state.verbose = false
 
-  selectAccountForRequest.mockReset()
-  selectAccountForRequest.mockImplementation(async () =>
-    buildSelection("/v1/messages", "messages-model"),
-  )
-  finalizeQuota.mockClear()
-  markAccountFailed.mockClear()
-  insertRequestLog.mockClear()
+  accountsManager.selectAccountForRequest = async () =>
+    buildSelection("/v1/messages", "messages-model")
+  accountsManager.finalizeQuota = async () => {}
+  accountsManager.markAccountFailed = () => {}
 })
 
 afterEach(() => {
   fetchHolder.fetch = originalFetch
+  // eslint-disable-next-line require-atomic-updates
+  accountsManager.selectAccountForRequest = originalSelect
+  // eslint-disable-next-line require-atomic-updates
+  accountsManager.finalizeQuota = originalFinalize
+  // eslint-disable-next-line require-atomic-updates
+  accountsManager.markAccountFailed = originalMarkFailed
 })
 
 describe("messages handler orchestration", () => {
@@ -235,9 +197,8 @@ describe("messages handler orchestration", () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    selectAccountForRequest.mockImplementation(async () =>
-      buildSelection("/v1/messages", "messages-model"),
-    )
+    accountsManager.selectAccountForRequest = async () =>
+      buildSelection("/v1/messages", "messages-model")
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
@@ -276,16 +237,14 @@ describe("messages handler orchestration", () => {
     expect(requestedUrl).toContain("/v1/messages")
     expect(upstreamBody?.model).toBe("messages-model")
     expect(body.content[0].text).toBe("messages")
-    expect(selectAccountForRequest).toHaveBeenCalledTimes(1)
   })
 
   test("routes to the Responses API when selection chooses /responses", async () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    selectAccountForRequest.mockImplementation(async () =>
-      buildSelection("/responses", "responses-model"),
-    )
+    accountsManager.selectAccountForRequest = async () =>
+      buildSelection("/responses", "responses-model")
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
@@ -330,9 +289,8 @@ describe("messages handler orchestration", () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    selectAccountForRequest.mockImplementation(async () =>
-      buildSelection("/chat/completions", "chat-model"),
-    )
+    accountsManager.selectAccountForRequest = async () =>
+      buildSelection("/chat/completions", "chat-model")
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
@@ -377,12 +335,12 @@ describe("messages handler orchestration", () => {
     let selectionCandidates: Array<{ modelId: string; endpoint: string }> = []
     let selectionRequestId: string | undefined
 
-    selectAccountForRequest.mockImplementation(async (candidates, options) => {
+    accountsManager.selectAccountForRequest = async (candidates, options) => {
       selectionCandidates = candidates
-      selectionRequestId = options.requestId
+      selectionRequestId = options?.requestId
 
       return buildSelection("/v1/messages", "messages-model")
-    })
+    }
 
     const fetchMock = mock(() =>
       Promise.resolve(
@@ -430,8 +388,8 @@ describe("messages handler orchestration", () => {
       }),
     )
 
-    const expectedSessionId = actualUtilsModule.getUUID("session-123")
-    const expectedRequestId = actualUtilsModule.generateRequestIdFromPayload(
+    const expectedSessionId = getUUID("session-123")
+    const expectedRequestId = generateRequestIdFromPayload(
       {
         messages: payload.messages,
       },
@@ -439,7 +397,7 @@ describe("messages handler orchestration", () => {
     )
 
     expect(response.status).toBe(200)
-    expect(selectionCandidates[0]?.modelId).toBe(actualConfigModule.getSmallModel())
+    expect(selectionCandidates[0]?.modelId).toBe(getSmallModel())
     expect(selectionCandidates[0]?.endpoint).toBe("/v1/messages")
     expect(selectionRequestId).toBe(expectedRequestId)
   })

@@ -145,19 +145,53 @@ export const mergeToolResultForClaude = (
   }
 }
 
-// Strip cache_control from system content blocks as the
-// Copilot Messages API does not support them (rejects extra fields like scope).
-// commit by nicktogo
+const stripUnsupportedCacheControl = (block: Record<string, unknown>): void => {
+  const cacheControl = block.cache_control
+  if (
+    !cacheControl
+    || typeof cacheControl !== "object"
+    || Array.isArray(cacheControl)
+  ) {
+    return
+  }
+
+  const type = (cacheControl as { type?: unknown }).type
+  if (typeof type === "string") {
+    block.cache_control = { type }
+    return
+  }
+
+  delete block.cache_control
+}
+
+const stripTextBlockCacheControl = (block: unknown): void => {
+  if (!block || typeof block !== "object" || Array.isArray(block)) {
+    return
+  }
+
+  const record = block as Record<string, unknown>
+  if (record.type !== "text") return
+
+  stripUnsupportedCacheControl(record)
+}
+
 export const stripCacheControl = (payload: AnthropicMessagesPayload): void => {
   if (Array.isArray(payload.system)) {
     for (const block of payload.system) {
-      const systemBlock = block as AnthropicTextBlock & {
-        cache_control?: Record<string, unknown>
-      }
-      const cacheControl = systemBlock.cache_control
-      if (cacheControl && typeof cacheControl === "object") {
-        const { scope, ...rest } = cacheControl
-        systemBlock.cache_control = rest
+      stripTextBlockCacheControl(block)
+    }
+  }
+
+  for (const msg of payload.messages) {
+    if (!Array.isArray(msg.content)) continue
+
+    for (const block of msg.content) {
+      stripTextBlockCacheControl(block)
+
+      if (block.type === "tool_result" && Array.isArray(block.content)) {
+        for (const nestedBlock of block.content) {
+          stripTextBlockCacheControl(nestedBlock)
+        }
       }
     }
   }
