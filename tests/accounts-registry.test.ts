@@ -67,6 +67,18 @@ const toWrittenString = (data: Parameters<WriteFile>[1]): string => {
   return data instanceof Uint8Array ? new TextDecoder().decode(data) : ""
 }
 
+const createDeferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+
+  return { promise, reject, resolve }
+}
+
 test("validateAccountId follows GitHub login rules", () => {
   // valid
   expect(validateAccountId("octocat")).toBe(true)
@@ -244,6 +256,76 @@ test("ensureAccountClientIdentity reuses existing identity for the same key", as
       expect(reused).toEqual(created)
       expect(readBack).toEqual(created)
       expect(writeCount).toBe(1)
+    },
+  )
+})
+
+test("ensureAccountClientIdentity deduplicates concurrent creation for the same key", async () => {
+  const identityKey = buildIdentityKey({
+    login: "octocat",
+    oauthApp: "default",
+    enterpriseDomain: "public",
+  })
+  let storedContent = JSON.stringify({
+    version: 2,
+    accounts: [],
+    clientIdentities: {},
+  })
+  let readCount = 0
+  let writeCount = 0
+  const readDeferred = createDeferred<string>()
+
+  await withMockedFs(
+    {
+      readFile: (() => {
+        readCount++
+        return readDeferred.promise
+      }) as unknown as ReadFile,
+      writeFile: ((
+        _path: Parameters<WriteFile>[0],
+        data: Parameters<WriteFile>[1],
+      ) => {
+        storedContent = toWrittenString(data)
+        writeCount++
+        return Promise.resolve()
+      }) as unknown as WriteFile,
+    },
+    async () => {
+      const first = ensureAccountClientIdentity({
+        identityKey,
+        login: "octocat",
+        oauthApp: "default",
+        enterpriseDomain: "public",
+      })
+      const second = ensureAccountClientIdentity({
+        identityKey,
+        login: "octocat",
+        oauthApp: "default",
+        enterpriseDomain: "public",
+      })
+
+      readDeferred.resolve(
+        JSON.stringify({
+          version: 2,
+          accounts: [],
+          clientIdentities: {},
+        }),
+      )
+
+      const [created, reused] = await Promise.all([first, second])
+
+      expect(created).toEqual(reused)
+      expect(readCount).toBe(1)
+      expect(writeCount).toBe(1)
+      expect(
+        JSON.parse(storedContent) as {
+          clientIdentities: Record<string, unknown>
+        },
+      ).toMatchObject({
+        clientIdentities: {
+          [identityKey]: created,
+        },
+      })
     },
   )
 })

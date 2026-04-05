@@ -73,6 +73,8 @@ const accountRegistryV2Schema = z.object({
   clientIdentities: z.record(z.string(), accountClientIdentitySchema),
 })
 
+const identityLocks = new Map<string, Promise<AccountClientIdentity>>()
+
 /**
  * Create an empty registry with the current schema version.
  */
@@ -257,20 +259,37 @@ export async function ensureAccountClientIdentity({
     throw new Error(`Invalid account ID: ${login}`)
   }
 
-  const registry = await loadRegistry()
-  const existing = registry.clientIdentities[identityKey]
-  if (existing) {
-    return existing
+  const existingLock = identityLocks.get(identityKey)
+  if (existingLock) {
+    return existingLock
   }
 
-  const created = createClientIdentity({
-    login,
-    oauthApp,
-    enterpriseDomain,
-  })
-  registry.clientIdentities[identityKey] = created
-  await saveRegistry(registry)
-  return created
+  const identityPromise = (async (): Promise<AccountClientIdentity> => {
+    const registry = await loadRegistry()
+    const existing = registry.clientIdentities[identityKey]
+    if (existing) {
+      return existing
+    }
+
+    const created = createClientIdentity({
+      login,
+      oauthApp,
+      enterpriseDomain,
+    })
+    registry.clientIdentities[identityKey] = created
+    await saveRegistry(registry)
+    return created
+  })()
+
+  identityLocks.set(identityKey, identityPromise)
+
+  try {
+    return await identityPromise
+  } finally {
+    if (identityLocks.get(identityKey) === identityPromise) {
+      identityLocks.delete(identityKey)
+    }
+  }
 }
 
 /**
