@@ -303,3 +303,72 @@ export async function getAdminModels(): Promise<AdminModelsResponse> {
 export async function getAdminModelDetails(): Promise<AdminModelsDetailsResponse> {
   return fetchAdminJson<AdminModelsDetailsResponse>("/api/admin/models/details")
 }
+
+// --- Account Management Types ---
+
+export type AccountType = "individual" | "business" | "enterprise"
+
+export type AuthStartRequest = {
+  accountType: AccountType
+  enterpriseDomain?: string
+}
+
+export type AuthStartResponse = {
+  sessionId: string
+  userCode: string
+  verificationUri: string
+  expiresIn: number
+  interval: number
+}
+
+export type AuthStatusResponse = {
+  status: "pending" | "completed" | "failed" | "expired"
+  accountId?: string
+  error?: string
+}
+
+// --- Account Management API Functions ---
+
+export async function startAccountAuth(
+  params: AuthStartRequest,
+): Promise<AuthStartResponse> {
+  return fetchAdminJson<AuthStartResponse>("/api/admin/accounts/auth/start", {
+    method: "POST",
+    body: JSON.stringify(params),
+  })
+}
+
+export async function getAuthStatus(
+  sessionId: string,
+): Promise<AuthStatusResponse> {
+  return fetchAdminJson<AuthStatusResponse>(
+    `/api/admin/accounts/auth/status/${encodeURIComponent(sessionId)}`,
+  )
+}
+
+export async function cancelAuth(
+  sessionId: string,
+): Promise<{ cancelled: boolean }> {
+  return fetchAdminJson<{ cancelled: boolean }>(
+    `/api/admin/accounts/auth/cancel/${encodeURIComponent(sessionId)}`,
+    { method: "POST" },
+  )
+}
+
+export async function deleteAccount(
+  accountId: string,
+): Promise<{ deleted: boolean; accountId: string }> {
+  return fetchAdminJson<{ deleted: boolean; accountId: string }>(
+    `/api/admin/accounts/${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  )
+}
+
+export async function reauthAccount(
+  accountId: string,
+): Promise<AuthStartResponse> {
+  return fetchAdminJson<AuthStartResponse>(
+    `/api/admin/accounts/${encodeURIComponent(accountId)}/reauth`,
+    { method: "POST" },
+  )
+}
