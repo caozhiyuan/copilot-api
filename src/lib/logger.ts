@@ -17,6 +17,10 @@ const MAX_BUFFER_SIZE = 100
 const logStreams = new Map<string, fs.WriteStream>()
 const logBuffers = new Map<string, Array<string>>()
 
+let runtimeInitialized = false
+let flushInterval: ReturnType<typeof setInterval> | undefined
+let cleanupInterval: ReturnType<typeof setInterval> | undefined
+
 const ensureLogDirectory = () => {
   if (!fs.existsSync(LOG_DIR)) {
     fs.mkdirSync(LOG_DIR, { recursive: true })
@@ -72,18 +76,8 @@ const sanitizeName = (name: string) => {
   return normalized === "" ? "handler" : normalized
 }
 
-const getLogStream = (filePath: string): fs.WriteStream => {
-  let stream = logStreams.get(filePath)
-  if (!stream || stream.destroyed) {
-    stream = fs.createWriteStream(filePath, { flags: "a" })
-    logStreams.set(filePath, stream)
-
-    stream.on("error", (error: unknown) => {
-      console.warn("Log stream error", error)
-      logStreams.delete(filePath)
-    })
-  }
-  return stream
+const maybeUnref = (timer: ReturnType<typeof setInterval>) => {
+  timer.unref()
 }
 
 const flushBuffer = (filePath: string) => {
@@ -109,6 +103,67 @@ const flushAllBuffers = () => {
   }
 }
 
+const cleanup = () => {
+  if (flushInterval) {
+    clearInterval(flushInterval)
+    flushInterval = undefined
+  }
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval)
+    cleanupInterval = undefined
+  }
+
+  flushAllBuffers()
+  for (const stream of logStreams.values()) {
+    stream.end()
+  }
+  logStreams.clear()
+  logBuffers.clear()
+}
+
+const initializeLoggerRuntime = () => {
+  if (runtimeInitialized) {
+    return
+  }
+
+  runtimeInitialized = true
+
+  ensureLogDirectory()
+  cleanupOldLogs()
+
+  flushInterval = setInterval(flushAllBuffers, FLUSH_INTERVAL_MS)
+  maybeUnref(flushInterval)
+
+  cleanupInterval = setInterval(cleanupOldLogs, CLEANUP_INTERVAL_MS)
+  maybeUnref(cleanupInterval)
+
+  process.once("exit", cleanup)
+  process.once("SIGINT", () => {
+    cleanup()
+    process.exit(0)
+  })
+  process.once("SIGTERM", () => {
+    cleanup()
+    process.exit(0)
+  })
+}
+
+const getLogStream = (filePath: string): fs.WriteStream => {
+  initializeLoggerRuntime()
+
+  let stream = logStreams.get(filePath)
+  if (!stream || stream.destroyed) {
+    stream = fs.createWriteStream(filePath, { flags: "a" })
+    logStreams.set(filePath, stream)
+
+    stream.on("error", (error: unknown) => {
+      console.warn("Log stream error", error)
+      logStreams.delete(filePath)
+    })
+  }
+  return stream
+}
+
 const appendLine = (filePath: string, line: string) => {
   let buffer = logBuffers.get(filePath)
   if (!buffer) {
@@ -123,32 +178,36 @@ const appendLine = (filePath: string, line: string) => {
   }
 }
 
-setInterval(flushAllBuffers, FLUSH_INTERVAL_MS)
+type DebugLogger = Pick<ConsolaInstance, "debug">
 
-const cleanup = () => {
-  flushAllBuffers()
-  for (const stream of logStreams.values()) {
-    stream.end()
+export const debugLazy = (
+  logger: DebugLogger,
+  factory: () => [unknown, ...Array<unknown>],
+): void => {
+  if (!state.verbose) {
+    return
   }
-  logStreams.clear()
-  logBuffers.clear()
+
+  logger.debug(...factory())
 }
 
-process.on("exit", cleanup)
-process.on("SIGINT", () => {
-  cleanup()
-  process.exit(0)
-})
-process.on("SIGTERM", () => {
-  cleanup()
-  process.exit(0)
-})
+export const debugJson = (
+  logger: DebugLogger,
+  label: string,
+  value: unknown,
+): void => {
+  debugLazy(logger, () => [label, JSON.stringify(value)])
+}
 
-let lastCleanup = 0
+export const debugJsonTail = (
+  logger: DebugLogger,
+  label: string,
+  { value, tailLength = 400 }: { value: unknown; tailLength?: number },
+): void => {
+  debugLazy(logger, () => [label, JSON.stringify(value).slice(-tailLength)])
+}
 
 export const createHandlerLogger = (name: string): ConsolaInstance => {
-  ensureLogDirectory()
-
   const sanitizedName = sanitizeName(name)
   const instance = consola.withTag(name)
 
@@ -159,12 +218,7 @@ export const createHandlerLogger = (name: string): ConsolaInstance => {
 
   instance.addReporter({
     log(logObj) {
-      ensureLogDirectory()
-
-      if (Date.now() - lastCleanup > CLEANUP_INTERVAL_MS) {
-        cleanupOldLogs()
-        lastCleanup = Date.now()
-      }
+      initializeLoggerRuntime()
 
       const context = requestContext.getStore()
       const traceId = context?.traceId

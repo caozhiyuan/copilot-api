@@ -9,12 +9,14 @@ import { getRequestHistoryStore } from "~/lib/request-history"
 import { getTokenCount } from "~/lib/tokenizer"
 
 import type {
-  AnthropicMessage,
   AnthropicMessagesPayload,
   AnthropicResponse,
-  AnthropicTextBlock,
-  AnthropicToolResultBlock,
 } from "./anthropic-types"
+export {
+  isCompactRequest,
+  mergeToolResultForClaude,
+  stripCacheControl,
+} from "./preprocess"
 
 export function mapOpenAIStopReasonToAnthropic(
   finishReason: "stop" | "length" | "tool_calls" | "content_filter" | null,
@@ -29,135 +31,6 @@ export function mapOpenAIStopReasonToAnthropic(
     content_filter: "end_turn",
   } as const
   return stopReasonMap[finishReason]
-}
-
-const mergeContentWithText = (
-  toolResult: AnthropicToolResultBlock,
-  textBlock: AnthropicTextBlock,
-): AnthropicToolResultBlock => {
-  if (typeof toolResult.content === "string") {
-    return {
-      ...toolResult,
-      content: `${toolResult.content}\n\n${textBlock.text}`,
-    }
-  }
-  return {
-    ...toolResult,
-    content: [...toolResult.content, textBlock],
-  }
-}
-
-const mergeContentWithTexts = (
-  toolResult: AnthropicToolResultBlock,
-  textBlocks: Array<AnthropicTextBlock>,
-): AnthropicToolResultBlock => {
-  if (typeof toolResult.content === "string") {
-    const appendedTexts = textBlocks.map((tb) => tb.text).join("\n\n")
-    return {
-      ...toolResult,
-      content: `${toolResult.content}\n\n${appendedTexts}`,
-    }
-  }
-  return { ...toolResult, content: [...toolResult.content, ...textBlocks] }
-}
-
-const mergeToolResult = (
-  toolResults: Array<AnthropicToolResultBlock>,
-  textBlocks: Array<AnthropicTextBlock>,
-): Array<AnthropicToolResultBlock> => {
-  if (toolResults.length === textBlocks.length) {
-    return toolResults.map((toolResult, index) =>
-      mergeContentWithText(toolResult, textBlocks[index]),
-    )
-  }
-
-  const lastIndex = toolResults.length - 1
-  return toolResults.map((toolResult, index) =>
-    index === lastIndex ?
-      mergeContentWithTexts(toolResult, textBlocks)
-    : toolResult,
-  )
-}
-
-export const mergeToolResultForClaude = (
-  anthropicPayload: AnthropicMessagesPayload,
-): void => {
-  for (const msg of anthropicPayload.messages) {
-    if (msg.role !== "user" || !Array.isArray(msg.content)) continue
-
-    const toolResults: Array<AnthropicToolResultBlock> = []
-    const textBlocks: Array<AnthropicTextBlock> = []
-    let valid = true
-
-    for (const block of msg.content) {
-      if (block.type === "tool_result") {
-        toolResults.push(block)
-      } else if (block.type === "text") {
-        textBlocks.push(block)
-      } else {
-        valid = false
-        break
-      }
-    }
-
-    if (!valid || toolResults.length === 0 || textBlocks.length === 0) continue
-
-    msg.content = mergeToolResult(toolResults, textBlocks)
-  }
-}
-
-const stripUnsupportedCacheControl = (block: Record<string, unknown>): void => {
-  const cacheControl = block.cache_control
-  if (
-    !cacheControl
-    || typeof cacheControl !== "object"
-    || Array.isArray(cacheControl)
-  ) {
-    return
-  }
-
-  const type = (cacheControl as { type?: unknown }).type
-  if (typeof type === "string") {
-    block.cache_control = { type }
-    return
-  }
-
-  delete block.cache_control
-}
-
-const stripTextBlockCacheControl = (block: unknown): void => {
-  if (!block || typeof block !== "object" || Array.isArray(block)) {
-    return
-  }
-
-  const record = block as Record<string, unknown>
-  if (record.type !== "text") return
-
-  stripUnsupportedCacheControl(record)
-}
-
-export const stripCacheControl = (
-  anthropicPayload: AnthropicMessagesPayload,
-): void => {
-  if (Array.isArray(anthropicPayload.system)) {
-    for (const block of anthropicPayload.system) {
-      stripTextBlockCacheControl(block)
-    }
-  }
-
-  for (const msg of anthropicPayload.messages) {
-    if (!Array.isArray(msg.content)) continue
-
-    for (const block of msg.content) {
-      stripTextBlockCacheControl(block)
-
-      if (block.type === "tool_result" && Array.isArray(block.content)) {
-        for (const nestedBlock of block.content) {
-          stripTextBlockCacheControl(nestedBlock)
-        }
-      }
-    }
-  }
 }
 
 export const estimateInputTokens = async (
@@ -312,74 +185,4 @@ export const maybeBlockOriginalModelName = (
     ...context,
     selection: { ok: false, reason: "MODEL_NOT_SUPPORTED" },
   })
-}
-
-const compactSystemPromptStart =
-  "You are a helpful AI assistant tasked with summarizing conversations"
-
-const compactTextOnlyGuard =
-  "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools."
-const compactSummaryPromptStart =
-  "Your task is to create a detailed summary of the conversation so far"
-const compactMessageSections = ["Pending Tasks:", "Current Work:"] as const
-
-const getCompactCandidateText = (message: AnthropicMessage): string => {
-  if (message.role !== "user") {
-    return ""
-  }
-
-  if (typeof message.content === "string") {
-    return message.content
-  }
-
-  return message.content
-    .filter((block): block is AnthropicTextBlock => block.type === "text")
-    .map((block) =>
-      block.text.startsWith("<system-reminder>") ? "" : block.text,
-    )
-    .filter((text) => text.length > 0)
-    .join("\n\n")
-}
-
-const isCompactMessage = (lastMessage: AnthropicMessage): boolean => {
-  const text = getCompactCandidateText(lastMessage)
-  if (!text) {
-    return false
-  }
-
-  return (
-    text.includes(compactTextOnlyGuard)
-    && text.includes(compactSummaryPromptStart)
-    && compactMessageSections.some((section) => text.includes(section))
-  )
-}
-
-export const isCompactRequest = (
-  anthropicPayload: AnthropicMessagesPayload,
-): boolean => {
-  const lastMessage = anthropicPayload.messages.at(-1)
-  if (lastMessage && isCompactMessage(lastMessage)) {
-    return true
-  }
-
-  // Legacy: system prompt detection (old Claude Code)
-  const system = anthropicPayload.system
-  if (
-    typeof system === "string"
-    && system.startsWith(compactSystemPromptStart)
-  ) {
-    return true
-  }
-  if (
-    Array.isArray(system)
-    && system.some(
-      (msg) =>
-        typeof msg.text === "string"
-        && msg.text.startsWith(compactSystemPromptStart),
-    )
-  ) {
-    return true
-  }
-
-  return false
 }

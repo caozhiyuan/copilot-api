@@ -256,7 +256,14 @@ export async function getVSCodeDeviceId(): Promise<string> {
 
   const newDeviceId = createVSCodeDeviceId()
 
-  await setStoredVSCodeDeviceId(newDeviceId)
+  try {
+    await setStoredVSCodeDeviceId(newDeviceId)
+  } catch (error) {
+    consola.warn(
+      "Failed to persist VSCode device id, using ephemeral id",
+      error,
+    )
+  }
 
   return newDeviceId
 }

@@ -11,7 +11,7 @@ import {
   extractErrorDetails,
   toAccountContext,
 } from "~/lib/handler-utils"
-import { createHandlerLogger } from "~/lib/logger"
+import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import {
   getClientIpInfo,
@@ -76,7 +76,7 @@ export async function handleCompletion(c: Context) {
     })
   }
 
-  logger.debug("Request payload:", JSON.stringify(payload).slice(-400))
+  debugJsonTail(logger, "Request payload:", { value: payload, tailLength: 400 })
 
   const upstreamRequestId = generateRequestIdFromPayload(
     payload,
@@ -339,7 +339,7 @@ function applyDefaultMaxTokens(
     max_tokens: selectedModel.capabilities.limits.max_output_tokens,
   }
 
-  logger.debug("Set max_tokens to:", JSON.stringify(updated.max_tokens))
+  debugJson(logger, "Set max_tokens to:", updated.max_tokens)
 
   return updated
 }
@@ -509,7 +509,7 @@ async function handleNonStreamingUpstreamResponse(params: {
   const finishedAtMs = Date.now()
 
   try {
-    logger.debug("Non-streaming response:", JSON.stringify(response))
+    debugJson(logger, "Non-streaming response:", response)
     return c.json(response)
   } catch (error) {
     const details = extractErrorDetails(error)
@@ -594,7 +594,7 @@ async function streamChatCompletionsAndLog(params: {
         lastUsage = usage
       }
 
-      logger.debug("Streaming chunk:", JSON.stringify(chunk))
+      debugJson(logger, "Streaming chunk:", chunk)
       await stream.writeSSE(chunk)
     }
   } catch (error) {
@@ -712,7 +712,7 @@ async function handleNonStreamingRequest(params: {
 
     usage = normalizeChatCompletionsUsage(response.usage)
 
-    logger.debug("Non-streaming response:", JSON.stringify(response))
+    debugJson(logger, "Non-streaming response:", response)
     return c.json(response)
   } catch (error) {
     finishedAtMs = Date.now()

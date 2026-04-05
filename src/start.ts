@@ -22,6 +22,7 @@ import {
   cacheMacMachineId,
   cacheVSCodeVersion,
   cacheVsCodeSessionId,
+  cacheVsCodeDeviceId,
 } from "./lib/utils"
 import { getDeviceCode } from "./services/github/get-device-code"
 import { getGitHubUser } from "./services/github/get-user"
@@ -120,6 +121,8 @@ async function setupClaudeCode(
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
       CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: "false",
+      CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "true",
+      CLAUDE_PLUGIN_ENABLE_QUESTION_RULES: "true",
     },
     "claude",
   )
@@ -165,6 +168,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   await cacheVSCodeVersion()
   cacheMacMachineId()
   cacheVsCodeSessionId()
+  await cacheVsCodeDeviceId()
 
   // Initialize accounts manager with VS Code version
   await accountsManager.initialize(state.vsCodeVersion)
@@ -205,7 +209,8 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   if (options.claudeCode) {
     logClaudeCodeTip()
     invariant(models, "Models should be loaded by now")
-    await setupClaudeCode(models, serverUrl)
+    const availableModels = models
+    await setupClaudeCode(availableModels, serverUrl)
   }
 
   consola.box(`🌐 Admin UI: ${serverUrl}/admin`)

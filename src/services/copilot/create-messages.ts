@@ -13,10 +13,12 @@ import {
   copilotHeaders,
   prepareForCompact,
   prepareInteractionHeaders,
+  prepareMessageProxyHeaders,
 } from "~/lib/api-config"
 import { isForceAgentEnabled } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { accountFromState } from "~/lib/state"
+import { parseUserIdMetadata } from "~/lib/utils"
 
 const isAgentMessage = (
   msg: AnthropicMessagesPayload["messages"][number],
@@ -136,6 +138,14 @@ export const createMessages = async (
   )
 
   prepareForCompact(headers, options?.isCompact)
+
+  const { safetyIdentifier, sessionId } = parseUserIdMetadata(
+    payload.metadata?.user_id,
+  )
+  // from claude code
+  if (safetyIdentifier && sessionId) {
+    prepareMessageProxyHeaders(headers)
+  }
 
   // align with vscode copilot extension anthropic-beta
   const anthropicBeta = buildAnthropicBetaHeader(

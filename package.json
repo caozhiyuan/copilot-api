@@ -1,6 +1,6 @@
 {
   "name": "@nick3/copilot-api",
-  "version": "1.5.2",
+  "version": "1.5.3-beta.2",
   "description": "Turn GitHub Copilot into OpenAI/Anthropic API compatible server. Usable with Claude Code Or Codex Or Opencode!",
   "keywords": [
     "proxy",

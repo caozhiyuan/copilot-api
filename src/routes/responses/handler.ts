@@ -15,7 +15,7 @@ import {
   extractErrorDetails,
   toAccountContext,
 } from "~/lib/handler-utils"
-import { createHandlerLogger } from "~/lib/logger"
+import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import {
   extractResponsesUsageFromResult,
@@ -57,7 +57,7 @@ export const handleResponses = async (c: Context) => {
 
   const payload = await c.req.json<ResponsesPayload>()
   const clientModel = payload.model
-  logger.debug("Responses request payload:", JSON.stringify(payload))
+  debugJson(logger, "Responses request payload:", payload)
 
   if (!isResponsesApiWebSearchEnabled()) {
     removeWebSearchTool(payload)
@@ -532,10 +532,10 @@ async function handleNonStreamingUpstreamResult(params: {
   const finishedAtMs = Date.now()
 
   try {
-    logger.debug(
-      "Forwarding native Responses result:",
-      JSON.stringify(result).slice(-400),
-    )
+    debugJsonTail(logger, "Forwarding native Responses result:", {
+      value: result,
+      tailLength: 400,
+    })
     return c.json(result)
   } catch (error) {
     const details = extractErrorDetails(error)
@@ -623,7 +623,7 @@ async function streamResponsesAndLog(params: {
         lastUsage = usage
       }
 
-      logger.debug("Responses stream chunk:", JSON.stringify(chunk))
+      debugJson(logger, "Responses stream chunk:", chunk)
 
       await stream.writeSSE({
         id,
@@ -726,10 +726,10 @@ async function handleNonStreamingResponses(params: {
     }
     const result = response as ResponsesResult
     usage = extractResponsesUsageFromResult(result)
-    logger.debug(
-      "Forwarding native Responses result:",
-      JSON.stringify(result).slice(-400),
-    )
+    debugJsonTail(logger, "Forwarding native Responses result:", {
+      value: result,
+      tailLength: 400,
+    })
     return c.json(result)
   } catch (error) {
     finishedAtMs = Date.now()
@@ -794,6 +794,7 @@ function handleUnexpectedResponsesStream(
     for await (const chunk of response) {
       const { id, event, data } = getStreamChunkFields(chunk)
       const processedData = fixStreamIds(data ?? "", event, idTracker)
+      debugJson(logger, "Responses stream chunk:", chunk)
       await stream.writeSSE({
         id,
         event,

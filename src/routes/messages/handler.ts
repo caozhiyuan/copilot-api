@@ -10,7 +10,6 @@ import type { Model } from "~/services/copilot/get-models"
 import { accountsManager } from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import {
-  getReasoningEffortForModel,
   getSmallModel,
   isMessageStartInputTokensFallbackEnabled,
   isMessagesApiEnabled,
@@ -21,7 +20,7 @@ import {
   extractErrorDetails,
   toAccountContext,
 } from "~/lib/handler-utils"
-import { createHandlerLogger } from "~/lib/logger"
+import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
 import { checkRateLimit } from "~/lib/rate-limit"
 import {
@@ -82,16 +81,18 @@ import {
   translateToAnthropic,
   translateToOpenAI,
 } from "./non-stream-translation"
+import {
+  isCompactRequest,
+  mergeToolResultForClaude,
+  prepareMessagesApiPayload,
+} from "./preprocess"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
 import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 import {
   estimateInputTokens,
   handleSelectionFailure,
-  isCompactRequest,
   isWarmupProbeRequest,
   maybeBlockOriginalModelName,
-  mergeToolResultForClaude,
-  stripCacheControl,
 } from "./utils"
 
 const logger = createHandlerLogger("messages-handler")
@@ -152,12 +153,12 @@ export async function handleCompletion(c: Context) {
   const { ip: clientIp, source: clientIpSource } = getClientIpInfo(c)
   const userAgent = c.req.header("user-agent") ?? undefined
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
-  logger.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
+  debugJson(logger, "Anthropic request payload:", anthropicPayload)
 
   const subagentMarker = parseSubagentMarkerFromFirstUser(anthropicPayload)
   const initiatorOverride = subagentMarker ? "agent" : undefined
   if (subagentMarker) {
-    logger.debug("Detected Subagent marker:", JSON.stringify(subagentMarker))
+    debugJson(logger, "Detected Subagent marker:", subagentMarker)
   }
 
   const sessionId = getRootSessionId(anthropicPayload, c)
@@ -358,10 +359,7 @@ const handleWithChatCompletions = async (params: {
     instr,
     isCompact,
   } = params
-  logger.debug(
-    "Translated OpenAI request payload:",
-    JSON.stringify(openAIPayload),
-  )
+  debugJson(logger, "Translated OpenAI request payload:", openAIPayload)
 
   const ctx = toAccountContext(instr.account)
   const initiator =
@@ -458,10 +456,7 @@ const handleWithResponsesApi = async (params: {
   )
   compactInputByLatestCompaction(responsesPayload)
 
-  logger.debug(
-    "Translated Responses payload:",
-    JSON.stringify(responsesPayload),
-  )
+  debugJson(logger, "Translated Responses payload:", responsesPayload)
 
   const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
   const resolvedInitiator = initiatorOverride ?? initiator
@@ -689,10 +684,7 @@ async function handleChatCompletionsNonStreaming(params: {
     )
 
     const anthropicResponse = translateToAnthropic(response)
-    logger.debug(
-      "Translated Anthropic response:",
-      JSON.stringify(anthropicResponse),
-    )
+    debugJson(logger, "Translated Anthropic response:", anthropicResponse)
 
     return c.json(anthropicResponse)
   } catch (error) {
@@ -893,10 +885,7 @@ async function handleResponsesNonStreaming(params: {
     )
 
     const anthropicResponse = translateResponsesResultToAnthropic(result)
-    logger.debug(
-      "Translated Anthropic response:",
-      JSON.stringify(anthropicResponse),
-    )
+    debugJson(logger, "Translated Anthropic response:", anthropicResponse)
 
     return c.json(anthropicResponse)
   } catch (error) {
@@ -1276,43 +1265,9 @@ const handleWithMessagesApi = async (params: {
     isCompact,
   } = params
 
-  // Copilot Messages API rejects extra cache_control fields such as scope.
-  stripCacheControl(anthropicPayload)
+  prepareMessagesApiPayload(anthropicPayload, selectedModel)
 
-  // Pre-request processing: filter thinking blocks for Claude models so only
-  // valid thinking blocks are sent to the Copilot Messages API.
-  for (const msg of anthropicPayload.messages) {
-    if (msg.role === "assistant" && Array.isArray(msg.content)) {
-      msg.content = msg.content.filter((block) => {
-        if (block.type !== "thinking") return true
-        return (
-          block.thinking
-          && block.thinking !== "Thinking..."
-          && block.signature
-          && !block.signature.includes("@")
-        )
-      })
-    }
-  }
-
-  // https://platform.claude.com/docs/en/build-with-claude/extended-thinking#extended-thinking-with-tool-use
-  // Using tool_choice: {"type": "any"} or tool_choice: {"type": "tool", "name": "..."} will result in an error because these options force tool use, which is incompatible with extended thinking.
-  const toolChoice = anthropicPayload.tool_choice
-  const disableThink = toolChoice?.type === "any" || toolChoice?.type === "tool"
-
-  if (disableThink) {
-    delete anthropicPayload.thinking
-    delete anthropicPayload.output_config
-  } else if (selectedModel.capabilities.supports.adaptive_thinking) {
-    anthropicPayload.thinking = {
-      type: "adaptive",
-    }
-    anthropicPayload.output_config = {
-      effort: getAnthropicEffortForModel(anthropicPayload.model),
-    }
-  }
-
-  logger.debug("Translated Messages payload:", JSON.stringify(anthropicPayload))
+  debugJson(logger, "Translated Messages payload:", anthropicPayload)
 
   const ctx = toAccountContext(instr.account)
   const initiator = initiatorOverride ?? getMessagesInitiator(anthropicPayload)
@@ -1364,14 +1319,3 @@ const isNonStreaming = (
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
   Boolean(value)
   && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
-
-const getAnthropicEffortForModel = (
-  model: string,
-): "low" | "medium" | "high" | "max" => {
-  const reasoningEffort = getReasoningEffortForModel(model)
-
-  if (reasoningEffort === "xhigh") return "max"
-  if (reasoningEffort === "none" || reasoningEffort === "minimal") return "low"
-
-  return reasoningEffort
-}

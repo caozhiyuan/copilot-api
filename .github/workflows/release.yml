@@ -45,10 +45,36 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Detect pre-release
+        id: prerelease
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" == *"-"* ]]; then
+            PRERELEASE_PART="${TAG#*-}"
+            PRERELEASE_PART="${PRERELEASE_PART%%+*}"
+            NPM_TAG="${PRERELEASE_PART%%.*}"
+
+            if [[ ! "$NPM_TAG" =~ ^[A-Za-z][A-Za-z0-9._-]*$ ]]; then
+              echo "Unsupported prerelease channel in tag: $TAG"
+              exit 1
+            fi
+
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=${NPM_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Generate GitHub Release notes
-        run: bunx changelogithub
+        run: |
+          if [[ "${{ steps.prerelease.outputs.is_prerelease }}" == "true" ]]; then
+            bunx changelogithub --prerelease
+          else
+            bunx changelogithub
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to npm (Trusted Publisher / OIDC)
-        run: npm publish --access public
+        run: npm publish --access public --tag ${{ steps.prerelease.outputs.npm_tag }}
