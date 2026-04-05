@@ -1,6 +1,8 @@
 import { afterEach, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 
+import type { AccountClientIdentity } from "../src/lib/types/account"
+
 import { buildIdentityKey } from "../src/lib/account-client-identity"
 import {
   ensureAccountClientIdentity,
@@ -240,13 +242,11 @@ test("ensureAccountClientIdentity reuses existing identity for the same key", as
     },
     async () => {
       const created = await ensureAccountClientIdentity({
-        identityKey,
         login: "octocat",
         oauthApp: "default",
         enterpriseDomain: "public",
       })
       const reused = await ensureAccountClientIdentity({
-        identityKey,
         login: "octocat",
         oauthApp: "default",
         enterpriseDomain: "public",
@@ -292,13 +292,11 @@ test("ensureAccountClientIdentity deduplicates concurrent creation for the same 
     },
     async () => {
       const first = ensureAccountClientIdentity({
-        identityKey,
         login: "octocat",
         oauthApp: "default",
         enterpriseDomain: "public",
       })
       const second = ensureAccountClientIdentity({
-        identityKey,
         login: "octocat",
         oauthApp: "default",
         enterpriseDomain: "public",
@@ -325,6 +323,61 @@ test("ensureAccountClientIdentity deduplicates concurrent creation for the same 
         clientIdentities: {
           [identityKey]: created,
         },
+      })
+    },
+  )
+})
+
+test("ensureAccountClientIdentity persists migration backfill and new identity in a single write", async () => {
+  const identityKey = buildIdentityKey({
+    login: "tempcat",
+    oauthApp: "default",
+    enterpriseDomain: "public",
+  })
+  let storedContent = JSON.stringify({
+    version: 1,
+    accounts: [{ id: "octocat", accountType: "individual", addedAt: 1 }],
+  })
+  let writeCount = 0
+
+  await withMockedFs(
+    {
+      readFile: (() => Promise.resolve(storedContent)) as unknown as ReadFile,
+      writeFile: ((
+        _path: Parameters<WriteFile>[0],
+        data: Parameters<WriteFile>[1],
+      ) => {
+        storedContent = toWrittenString(data)
+        writeCount++
+        return Promise.resolve()
+      }) as unknown as WriteFile,
+    },
+    async () => {
+      const created = await ensureAccountClientIdentity({
+        login: "tempcat",
+        oauthApp: "default",
+        enterpriseDomain: "public",
+      })
+
+      expect(writeCount).toBe(1)
+      expect(created).toEqual(
+        (
+          JSON.parse(storedContent) as {
+            clientIdentities: Record<string, AccountClientIdentity>
+          }
+        ).clientIdentities[identityKey],
+      )
+      expect(
+        (
+          JSON.parse(storedContent) as {
+            clientIdentities: Record<string, AccountClientIdentity>
+          }
+        ).clientIdentities,
+      ).toMatchObject({
+        "public:default:octocat": {
+          login: "octocat",
+        },
+        [identityKey]: created,
       })
     },
   )

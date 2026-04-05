@@ -244,7 +244,6 @@ export class AccountsManager {
       enterpriseDomain,
     })
     const identity = await ensureAccountClientIdentity({
-      identityKey,
       login,
       oauthApp,
       enterpriseDomain,

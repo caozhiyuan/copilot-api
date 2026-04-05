@@ -74,6 +74,25 @@ const accountRegistryV2Schema = z.object({
 })
 
 const identityLocks = new Map<string, Promise<AccountClientIdentity>>()
+let registryLock: Promise<void> = Promise.resolve()
+
+const runWithRegistryLock = async <T>(
+  operation: () => Promise<T>,
+): Promise<T> => {
+  const previousLock = registryLock
+  let releaseLock!: () => void
+  registryLock = new Promise<void>((resolve) => {
+    releaseLock = resolve
+  })
+
+  await previousLock
+
+  try {
+    return await operation()
+  } finally {
+    releaseLock()
+  }
+}
 
 /**
  * Create an empty registry with the current schema version.
@@ -161,15 +180,17 @@ const assertNoDuplicateAccounts = (registry: {
   }
 }
 
-/**
- * Load the accounts registry from disk.
- * Returns an empty registry if the file doesn't exist.
- */
-export async function loadRegistry(): Promise<AccountRegistry> {
+const loadRegistrySnapshot = async (): Promise<{
+  registry: AccountRegistry
+  shouldPersist: boolean
+}> => {
   try {
     const content = await fs.readFile(PATHS.ACCOUNTS_REGISTRY_PATH, "utf8")
     if (!content.trim()) {
-      return createEmptyRegistry()
+      return {
+        registry: createEmptyRegistry(),
+        shouldPersist: false,
+      }
     }
 
     let parsed: unknown
@@ -215,26 +236,50 @@ export async function loadRegistry(): Promise<AccountRegistry> {
     assertNoDuplicateAccounts(registry)
 
     const identitiesBackfilled = ensureClientIdentitiesForAccounts(registry)
-    const shouldPersist = parsedRegistry.version !== 2 || identitiesBackfilled
-    if (shouldPersist) {
-      await saveRegistry(registry)
-    }
 
-    return registry
+    return {
+      registry,
+      shouldPersist: parsedRegistry.version !== 2 || identitiesBackfilled,
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return createEmptyRegistry()
+      return {
+        registry: createEmptyRegistry(),
+        shouldPersist: false,
+      }
     }
     throw error
   }
+}
+
+const saveRegistryUnlocked = async (
+  registry: AccountRegistry,
+): Promise<void> => {
+  const content = JSON.stringify(registry, null, 2)
+  await fs.writeFile(PATHS.ACCOUNTS_REGISTRY_PATH, content, { mode: 0o600 })
+}
+
+/**
+ * Load the accounts registry from disk.
+ * Returns an empty registry if the file doesn't exist.
+ */
+export async function loadRegistry(): Promise<AccountRegistry> {
+  return runWithRegistryLock(async () => {
+    const { registry, shouldPersist } = await loadRegistrySnapshot()
+    if (shouldPersist) {
+      await saveRegistryUnlocked(registry)
+    }
+    return registry
+  })
 }
 
 /**
  * Save the accounts registry to disk with secure permissions.
  */
 export async function saveRegistry(registry: AccountRegistry): Promise<void> {
-  const content = JSON.stringify(registry, null, 2)
-  await fs.writeFile(PATHS.ACCOUNTS_REGISTRY_PATH, content, { mode: 0o600 })
+  await runWithRegistryLock(async () => {
+    await saveRegistryUnlocked(registry)
+  })
 }
 
 export async function getAccountClientIdentity(
@@ -245,12 +290,10 @@ export async function getAccountClientIdentity(
 }
 
 export async function ensureAccountClientIdentity({
-  identityKey,
   login,
   oauthApp,
   enterpriseDomain,
 }: {
-  identityKey: string
   login: string
   oauthApp: string
   enterpriseDomain: string
@@ -259,27 +302,47 @@ export async function ensureAccountClientIdentity({
     throw new Error(`Invalid account ID: ${login}`)
   }
 
+  const normalizedOauthApp = oauthApp.trim()
+  if (!normalizedOauthApp) {
+    throw new Error("OAuth app namespace must not be empty")
+  }
+
+  const normalizedEnterpriseDomain = enterpriseDomain.trim()
+  if (!normalizedEnterpriseDomain) {
+    throw new Error("Enterprise domain namespace must not be empty")
+  }
+
+  const identityKey = buildIdentityKey({
+    login,
+    oauthApp: normalizedOauthApp,
+    enterpriseDomain: normalizedEnterpriseDomain,
+  })
   const existingLock = identityLocks.get(identityKey)
   if (existingLock) {
     return existingLock
   }
 
-  const identityPromise = (async (): Promise<AccountClientIdentity> => {
-    const registry = await loadRegistry()
-    const existing = registry.clientIdentities[identityKey]
-    if (existing) {
-      return existing
-    }
+  const identityPromise = runWithRegistryLock(
+    async (): Promise<AccountClientIdentity> => {
+      const { registry, shouldPersist } = await loadRegistrySnapshot()
+      const existing = registry.clientIdentities[identityKey]
+      if (existing) {
+        if (shouldPersist) {
+          await saveRegistryUnlocked(registry)
+        }
+        return existing
+      }
 
-    const created = createClientIdentity({
-      login,
-      oauthApp,
-      enterpriseDomain,
-    })
-    registry.clientIdentities[identityKey] = created
-    await saveRegistry(registry)
-    return created
-  })()
+      const created = createClientIdentity({
+        login,
+        oauthApp: normalizedOauthApp,
+        enterpriseDomain: normalizedEnterpriseDomain,
+      })
+      registry.clientIdentities[identityKey] = created
+      await saveRegistryUnlocked(registry)
+      return created
+    },
+  )
 
   identityLocks.set(identityKey, identityPromise)
 
@@ -301,21 +364,23 @@ export async function addAccountToRegistry(meta: AccountMeta): Promise<void> {
     throw new Error(`Invalid account ID: ${meta.id}`)
   }
 
-  const registry = await loadRegistry()
+  await runWithRegistryLock(async () => {
+    const { registry } = await loadRegistrySnapshot()
 
-  // Check for duplicate
-  if (registry.accounts.some((a) => a.id === meta.id)) {
-    throw new Error(`Account already exists: ${meta.id}`)
-  }
+    // Check for duplicate
+    if (registry.accounts.some((a) => a.id === meta.id)) {
+      throw new Error(`Account already exists: ${meta.id}`)
+    }
 
-  registry.accounts.push(meta)
-  const { oauthApp, enterpriseDomain } = getCurrentIdentityEnvironment()
-  ensureRegistryIdentity(registry, {
-    login: meta.id,
-    oauthApp,
-    enterpriseDomain,
+    registry.accounts.push(meta)
+    const { oauthApp, enterpriseDomain } = getCurrentIdentityEnvironment()
+    ensureRegistryIdentity(registry, {
+      login: meta.id,
+      oauthApp,
+      enterpriseDomain,
+    })
+    await saveRegistryUnlocked(registry)
   })
-  await saveRegistry(registry)
 }
 
 /**
@@ -325,25 +390,27 @@ export async function addAccountToRegistry(meta: AccountMeta): Promise<void> {
 export async function removeAccountFromRegistry(
   idOrIndex: string | number,
 ): Promise<AccountMeta> {
-  const registry = await loadRegistry()
-  let index: number
+  return runWithRegistryLock(async () => {
+    const { registry } = await loadRegistrySnapshot()
+    let index: number
 
-  if (typeof idOrIndex === "number") {
-    // 1-based index
-    index = idOrIndex - 1
-    if (index < 0 || index >= registry.accounts.length) {
-      throw new Error(`Invalid account index: ${idOrIndex}`)
+    if (typeof idOrIndex === "number") {
+      // 1-based index
+      index = idOrIndex - 1
+      if (index < 0 || index >= registry.accounts.length) {
+        throw new Error(`Invalid account index: ${idOrIndex}`)
+      }
+    } else {
+      index = registry.accounts.findIndex((a) => a.id === idOrIndex)
+      if (index === -1) {
+        throw new Error(`Account not found: ${idOrIndex}`)
+      }
     }
-  } else {
-    index = registry.accounts.findIndex((a) => a.id === idOrIndex)
-    if (index === -1) {
-      throw new Error(`Account not found: ${idOrIndex}`)
-    }
-  }
 
-  const [removed] = registry.accounts.splice(index, 1)
-  await saveRegistry(registry)
-  return removed
+    const [removed] = registry.accounts.splice(index, 1)
+    await saveRegistryUnlocked(registry)
+    return removed
+  })
 }
 
 /**
