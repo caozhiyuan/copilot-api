@@ -4,9 +4,11 @@ import type { AccountContext } from "../src/lib/types/account"
 
 import {
   copilotBaseUrl,
+  copilotHeaders,
   githubHeaders,
   prepareMessageProxyHeaders,
 } from "../src/lib/api-config"
+import { state } from "../src/lib/state"
 
 const initialOauthApp = process.env.COPILOT_API_OAUTH_APP
 const initialEnterpriseUrl = process.env.COPILOT_API_ENTERPRISE_URL
@@ -75,6 +77,33 @@ test("githubHeaders uses opencode bearer auth when configured", () => {
 
   expect(headers.Authorization).toBe("Bearer ghu_test")
   expect(headers["User-Agent"]).toContain("opencode/1.3.9")
+})
+
+test("copilotHeaders prefers account-scoped identity values over global state", () => {
+  delete process.env.COPILOT_API_OAUTH_APP
+
+  state.vsCodeDeviceId = "global-device-id"
+  state.macMachineId =
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  state.vsCodeSessionId = "global-session-id"
+
+  const headers = copilotHeaders({
+    ...accountContext,
+    clientDeviceId: "11111111-1111-4111-8111-111111111111",
+    clientMachineId:
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    clientSessionId: "11111111-1111-4111-8111-1111111111111712345678901",
+  })
+
+  expect(headers["editor-device-id"]).toBe(
+    "11111111-1111-4111-8111-111111111111",
+  )
+  expect(headers["vscode-machineid"]).toBe(
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  )
+  expect(headers["vscode-sessionid"]).toBe(
+    "11111111-1111-4111-8111-1111111111111712345678901",
+  )
 })
 
 test("prepareMessageProxyHeaders applies message proxy headers by default", () => {

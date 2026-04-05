@@ -103,6 +103,73 @@ const buildAnthropicBetaHeader = (
   return undefined
 }
 
+const hasVisionInput = (payload: AnthropicMessagesPayload): boolean =>
+  payload.messages.some(
+    (message) =>
+      Array.isArray(message.content)
+      && message.content.some((block) => block.type === "image"),
+  )
+
+const shouldUseMessageProxyHeaders = (
+  payload: AnthropicMessagesPayload,
+): boolean => {
+  const { safetyIdentifier, sessionId } = parseUserIdMetadata(
+    payload.metadata?.user_id,
+  )
+
+  return Boolean(safetyIdentifier && sessionId)
+}
+
+const buildMessagesHeaders = ({
+  ctx,
+  enableVision,
+  initiator,
+  options,
+  payload,
+}: {
+  ctx: AccountContext
+  enableVision: boolean
+  initiator: "agent" | "user"
+  options:
+    | {
+        anthropicBetaHeader?: string
+        upstreamRequestId?: string
+        initiator?: "agent" | "user"
+        subagentMarker?: SubagentMarker | null
+        sessionId?: string
+        isCompact?: boolean
+      }
+    | undefined
+  payload: AnthropicMessagesPayload
+}): Record<string, string> => {
+  const headers: Record<string, string> = {
+    ...copilotHeaders(ctx, enableVision, options?.upstreamRequestId),
+    "x-initiator": options?.subagentMarker ? "agent" : initiator,
+  }
+
+  prepareInteractionHeaders(
+    options?.sessionId,
+    Boolean(options?.subagentMarker),
+    headers,
+  )
+
+  prepareForCompact(headers, options?.isCompact)
+
+  if (shouldUseMessageProxyHeaders(payload)) {
+    prepareMessageProxyHeaders(headers)
+  }
+
+  const anthropicBeta = buildAnthropicBetaHeader(
+    options?.anthropicBetaHeader,
+    payload.thinking,
+  )
+  if (anthropicBeta) {
+    headers["anthropic-beta"] = anthropicBeta
+  }
+
+  return headers
+}
+
 export const createMessages = async (
   payload: AnthropicMessagesPayload,
   account?: AccountContext,
@@ -118,43 +185,15 @@ export const createMessages = async (
   const ctx = account ?? accountFromState()
   if (!ctx.copilotToken) throw new Error("Copilot token not found")
 
-  const enableVision = payload.messages.some(
-    (message) =>
-      Array.isArray(message.content)
-      && message.content.some((block) => block.type === "image"),
-  )
-
+  const enableVision = hasVisionInput(payload)
   const initiator = options?.initiator ?? getMessagesInitiator(payload)
-
-  const headers: Record<string, string> = {
-    ...copilotHeaders(ctx, enableVision, options?.upstreamRequestId),
-    "x-initiator": options?.subagentMarker ? "agent" : initiator,
-  }
-
-  prepareInteractionHeaders(
-    options?.sessionId,
-    Boolean(options?.subagentMarker),
-    headers,
-  )
-
-  prepareForCompact(headers, options?.isCompact)
-
-  const { safetyIdentifier, sessionId } = parseUserIdMetadata(
-    payload.metadata?.user_id,
-  )
-  // from claude code
-  if (safetyIdentifier && sessionId) {
-    prepareMessageProxyHeaders(headers)
-  }
-
-  // align with vscode copilot extension anthropic-beta
-  const anthropicBeta = buildAnthropicBetaHeader(
-    options?.anthropicBetaHeader,
-    payload.thinking,
-  )
-  if (anthropicBeta) {
-    headers["anthropic-beta"] = anthropicBeta
-  }
+  const headers = buildMessagesHeaders({
+    ctx,
+    enableVision,
+    initiator,
+    options,
+    payload,
+  })
 
   const response = await fetch(`${copilotBaseUrl(ctx)}/v1/messages`, {
     method: "POST",

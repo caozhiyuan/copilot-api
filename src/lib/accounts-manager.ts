@@ -23,6 +23,11 @@ import { getCopilotUsage } from "~/services/github/get-copilot-usage"
 import { getGitHubUser } from "~/services/github/get-user"
 
 import {
+  buildIdentityKey,
+  createAccountSessionId,
+  getCurrentIdentityEnvironment,
+} from "./account-client-identity"
+import {
   applyCopilotTokenIfCurrent,
   applyModelsIfCurrent,
   applyQuotaRefreshSuccessIfCurrent,
@@ -46,6 +51,7 @@ import {
 import {
   hasLegacyToken,
   hasRegistry,
+  ensureAccountClientIdentity,
   listAccountsFromRegistry,
   loadAccountToken,
   readLegacyToken,
@@ -64,6 +70,10 @@ const RELOAD_DEBOUNCE_MS = 500
 const WATCHER_RESTART_INITIAL_DELAY_MS = 1000
 /** Registry watcher restart max delay in milliseconds */
 const WATCHER_RESTART_MAX_DELAY_MS = 60 * 1000
+/** Session refresh base interval in milliseconds. */
+const SESSION_REFRESH_BASE_MS = 60 * 60 * 1000
+/** Session refresh jitter window in milliseconds. */
+const SESSION_REFRESH_JITTER_MS = 20 * 60 * 1000
 
 export interface AccountRequestCandidate {
   modelId: string
@@ -153,6 +163,7 @@ export class AccountsManager {
 
       const runtime: AccountRuntime = {
         ...meta,
+        accountLogin: meta.id,
         githubToken: token,
         vsCodeVersion: this.vsCodeVersion,
       }
@@ -193,6 +204,67 @@ export class AccountsManager {
 
   private computeTokenRefreshDelayMs(refreshInSeconds: number): number {
     return Math.max((refreshInSeconds - 60) * 1000, 1000)
+  }
+
+  private computeSessionRefreshDelayMs(): number {
+    const randomDelay = Math.floor(Math.random() * SESSION_REFRESH_JITTER_MS)
+    return SESSION_REFRESH_BASE_MS + randomDelay
+  }
+
+  private resolveAccountLogin(account: AccountRuntime): string {
+    return account.accountLogin ?? account.id
+  }
+
+  private commitAccountIdentity(
+    account: AccountRuntime,
+    {
+      identityKey,
+      login,
+      deviceId,
+      machineId,
+    }: {
+      identityKey: string
+      login: string
+      deviceId: string
+      machineId: string
+    },
+  ): void {
+    account.accountLogin = login
+    account.identityKey = identityKey
+    account.clientDeviceId = deviceId
+    account.clientMachineId = machineId
+  }
+
+  private async applyAccountIdentity(account: AccountRuntime): Promise<void> {
+    const login = this.resolveAccountLogin(account)
+    const { oauthApp, enterpriseDomain } = getCurrentIdentityEnvironment()
+    const identityKey = buildIdentityKey({
+      login,
+      oauthApp,
+      enterpriseDomain,
+    })
+    const identity = await ensureAccountClientIdentity({
+      identityKey,
+      login,
+      oauthApp,
+      enterpriseDomain,
+    })
+
+    this.commitAccountIdentity(account, {
+      identityKey,
+      login,
+      deviceId: identity.deviceId,
+      machineId: identity.machineId,
+    })
+
+    if (!account.clientSessionId) {
+      account.clientSessionId = createAccountSessionId()
+      consola.debug(
+        `Generated VSCode session ID for account ${account.id}: ${account.clientSessionId}`,
+      )
+    }
+
+    this.startSessionRefresh(account)
   }
 
   private shouldContinueTokenRefresh(
@@ -270,6 +342,7 @@ export class AccountsManager {
 
   /** Initialize a single account. */
   private async initializeAccount(account: AccountRuntime): Promise<void> {
+    await this.applyAccountIdentity(account)
     const snapshot = takeAuthSnapshot(account)
 
     try {
@@ -371,6 +444,50 @@ export class AccountsManager {
     }
     if (this.temporaryAccount) {
       this.stopTokenRefresh(this.temporaryAccount)
+    }
+  }
+
+  private startSessionRefresh(account: AccountRuntime): void {
+    this.stopSessionRefresh(account)
+
+    const delayMs = this.computeSessionRefreshDelayMs()
+    consola.debug(
+      `Scheduling next VSCode session ID refresh for ${account.id} in ${Math.round(
+        delayMs / 1000,
+      )} seconds`,
+    )
+
+    account.sessionRefreshTimer = setTimeout(() => {
+      try {
+        account.clientSessionId = createAccountSessionId()
+        consola.debug(
+          `Refreshed VSCode session ID for account ${account.id}: ${account.clientSessionId}`,
+        )
+      } catch (error) {
+        consola.error(
+          `Failed to refresh VSCode session ID for ${account.id}, rescheduling...`,
+          error,
+        )
+      } finally {
+        this.startSessionRefresh(account)
+      }
+    }, delayMs)
+  }
+
+  private stopSessionRefresh(account: AccountRuntime): void {
+    if (account.sessionRefreshTimer) {
+      clearTimeout(account.sessionRefreshTimer)
+      account.sessionRefreshTimer = undefined
+    }
+  }
+
+  private stopAllSessionRefresh(): void {
+    for (const account of this.accounts.values()) {
+      this.stopSessionRefresh(account)
+    }
+
+    if (this.temporaryAccount) {
+      this.stopSessionRefresh(this.temporaryAccount)
     }
   }
 
@@ -1025,8 +1142,16 @@ export class AccountsManager {
     githubToken: string,
     accountType: AccountType,
   ): Promise<void> {
+    const user = await getGitHubUser({ githubToken, accountType })
+
+    if (this.temporaryAccount) {
+      this.stopTokenRefresh(this.temporaryAccount)
+      this.stopSessionRefresh(this.temporaryAccount)
+    }
+
     const runtime: AccountRuntime = {
       id: "(temporary)",
+      accountLogin: user.login,
       accountType,
       addedAt: Date.now(),
       githubToken,
@@ -1108,6 +1233,7 @@ export class AccountsManager {
    */
   private toAccountContext(account: AccountRuntime): AccountContext {
     return {
+      accountLogin: account.accountLogin,
       githubToken: account.githubToken,
       copilotToken: account.copilotToken,
       ...(account.copilotApiUrl !== undefined ?
@@ -1115,6 +1241,9 @@ export class AccountsManager {
       : {}),
       accountType: account.accountType,
       vsCodeVersion: account.vsCodeVersion,
+      clientDeviceId: account.clientDeviceId,
+      clientMachineId: account.clientMachineId,
+      clientSessionId: account.clientSessionId,
     }
   }
 
@@ -1252,6 +1381,7 @@ export class AccountsManager {
         }
 
         this.stopTokenRefresh(account)
+        this.stopSessionRefresh(account)
         this.accounts.delete(id)
         removed.push(id)
       }
@@ -1290,6 +1420,7 @@ export class AccountsManager {
       if (addedAtChanged) {
         account.addedAt = meta.addedAt
       }
+      account.accountLogin = meta.id
       if (tokenChanged) {
         account.githubToken = token
       }
@@ -1353,6 +1484,7 @@ export class AccountsManager {
 
     const runtime: AccountRuntime = {
       ...meta,
+      accountLogin: meta.id,
       githubToken: token,
       vsCodeVersion: this.vsCodeVersion,
     }
@@ -1394,6 +1526,7 @@ export class AccountsManager {
   shutdown(): void {
     this.stopRegistryWatcher()
     this.stopAllTokenRefresh()
+    this.stopAllSessionRefresh()
     this.stopModelsRefresh()
     this.affinityCache.clear()
     this.loadBalanceCursor = 0

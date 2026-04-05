@@ -25,6 +25,7 @@ export function computeDiff(
 
 export function toAccountContext(account: AccountRuntime): AccountContext {
   return {
+    accountLogin: account.accountLogin,
     githubToken: account.githubToken,
     copilotToken: account.copilotToken,
     ...(account.copilotApiUrl !== undefined ?
@@ -32,6 +33,9 @@ export function toAccountContext(account: AccountRuntime): AccountContext {
     : {}),
     accountType: account.accountType,
     vsCodeVersion: account.vsCodeVersion,
+    clientDeviceId: account.clientDeviceId,
+    clientMachineId: account.clientMachineId,
+    clientSessionId: account.clientSessionId,
   }
 }
 

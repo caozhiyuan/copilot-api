@@ -1,8 +1,18 @@
 import fs from "node:fs/promises"
 import { z } from "zod"
 
-import type { AccountMeta, AccountRegistry } from "~/lib/types/account"
+import type {
+  AccountClientIdentity,
+  AccountMeta,
+  AccountRegistry,
+} from "~/lib/types/account"
 
+import {
+  buildIdentityKey,
+  createAccountDeviceId,
+  createAccountMachineId,
+  getCurrentIdentityEnvironment,
+} from "./account-client-identity"
 import { accountTokenPath, PATHS } from "./paths"
 
 /**
@@ -30,9 +40,37 @@ const accountMetaSchema = z.object({
   addedAt: z.number(),
 })
 
-const accountRegistrySchema = z.object({
+const accountClientIdentitySchema = z.object({
+  login: z.string().refine(validateAccountId, {
+    message:
+      "Invalid client identity login. Expected a GitHub login (1-39 chars, alphanumeric or single hyphens, no leading/trailing hyphen, no consecutive hyphens).",
+  }),
+  oauthApp: z.string().min(1),
+  enterpriseDomain: z.string().min(1),
+  deviceId: z
+    .string()
+    .regex(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,
+      "Invalid device ID format. Expected a lowercase UUID.",
+    ),
+  machineId: z
+    .string()
+    .regex(
+      /^[0-9a-f]{64}$/u,
+      "Invalid machine ID format. Expected 64 lowercase hexadecimal characters.",
+    ),
+  createdAt: z.number(),
+})
+
+const accountRegistryV1Schema = z.object({
   version: z.literal(1),
   accounts: z.array(accountMetaSchema),
+})
+
+const accountRegistryV2Schema = z.object({
+  version: z.literal(2),
+  accounts: z.array(accountMetaSchema),
+  clientIdentities: z.record(z.string(), accountClientIdentitySchema),
 })
 
 /**
@@ -40,8 +78,84 @@ const accountRegistrySchema = z.object({
  */
 function createEmptyRegistry(): AccountRegistry {
   return {
-    version: 1,
+    version: 2,
     accounts: [],
+    clientIdentities: {},
+  }
+}
+
+const createClientIdentity = ({
+  login,
+  oauthApp,
+  enterpriseDomain,
+}: {
+  login: string
+  oauthApp: string
+  enterpriseDomain: string
+}): AccountClientIdentity => ({
+  login,
+  oauthApp,
+  enterpriseDomain,
+  deviceId: createAccountDeviceId(),
+  machineId: createAccountMachineId(),
+  createdAt: Date.now(),
+})
+
+const ensureRegistryIdentity = (
+  registry: AccountRegistry,
+  {
+    login,
+    oauthApp,
+    enterpriseDomain,
+  }: {
+    login: string
+    oauthApp: string
+    enterpriseDomain: string
+  },
+): AccountClientIdentity => {
+  const identityKey = buildIdentityKey({ login, oauthApp, enterpriseDomain })
+  const existing = registry.clientIdentities[identityKey]
+  if (existing) {
+    return existing
+  }
+
+  const created = createClientIdentity({
+    login,
+    oauthApp,
+    enterpriseDomain,
+  })
+  registry.clientIdentities[identityKey] = created
+  return created
+}
+
+const ensureClientIdentitiesForAccounts = (
+  registry: AccountRegistry,
+): boolean => {
+  const { oauthApp, enterpriseDomain } = getCurrentIdentityEnvironment()
+  const countBefore = Object.keys(registry.clientIdentities).length
+
+  for (const account of registry.accounts) {
+    ensureRegistryIdentity(registry, {
+      login: account.id,
+      oauthApp,
+      enterpriseDomain,
+    })
+  }
+
+  return Object.keys(registry.clientIdentities).length !== countBefore
+}
+
+const assertNoDuplicateAccounts = (registry: {
+  accounts: Array<AccountMeta>
+}) => {
+  const seen = new Set<string>()
+  for (const account of registry.accounts) {
+    if (seen.has(account.id)) {
+      throw new Error(
+        `Invalid accounts registry at ${PATHS.ACCOUNTS_REGISTRY_PATH}: duplicate account id "${account.id}"`,
+      )
+    }
+    seen.add(account.id)
   }
 }
 
@@ -67,7 +181,15 @@ export async function loadRegistry(): Promise<AccountRegistry> {
       )
     }
 
-    const result = accountRegistrySchema.safeParse(parsed)
+    const isVersion2Record =
+      typeof parsed === "object"
+      && parsed !== null
+      && "version" in parsed
+      && parsed.version === 2
+    const result =
+      isVersion2Record ?
+        accountRegistryV2Schema.safeParse(parsed)
+      : accountRegistryV1Schema.safeParse(parsed)
     if (!result.success) {
       const issues = result.error.issues
         .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
@@ -78,16 +200,22 @@ export async function loadRegistry(): Promise<AccountRegistry> {
       )
     }
 
-    const registry = result.data
+    const parsedRegistry = result.data
+    const registry: AccountRegistry =
+      parsedRegistry.version === 2 ?
+        parsedRegistry
+      : {
+          version: 2,
+          accounts: parsedRegistry.accounts,
+          clientIdentities: {},
+        }
 
-    const seen = new Set<string>()
-    for (const account of registry.accounts) {
-      if (seen.has(account.id)) {
-        throw new Error(
-          `Invalid accounts registry at ${PATHS.ACCOUNTS_REGISTRY_PATH}: duplicate account id "${account.id}"`,
-        )
-      }
-      seen.add(account.id)
+    assertNoDuplicateAccounts(registry)
+
+    const identitiesBackfilled = ensureClientIdentitiesForAccounts(registry)
+    const shouldPersist = parsedRegistry.version !== 2 || identitiesBackfilled
+    if (shouldPersist) {
+      await saveRegistry(registry)
     }
 
     return registry
@@ -107,6 +235,44 @@ export async function saveRegistry(registry: AccountRegistry): Promise<void> {
   await fs.writeFile(PATHS.ACCOUNTS_REGISTRY_PATH, content, { mode: 0o600 })
 }
 
+export async function getAccountClientIdentity(
+  identityKey: string,
+): Promise<AccountClientIdentity | null> {
+  const registry = await loadRegistry()
+  return registry.clientIdentities[identityKey] ?? null
+}
+
+export async function ensureAccountClientIdentity({
+  identityKey,
+  login,
+  oauthApp,
+  enterpriseDomain,
+}: {
+  identityKey: string
+  login: string
+  oauthApp: string
+  enterpriseDomain: string
+}): Promise<AccountClientIdentity> {
+  if (!validateAccountId(login)) {
+    throw new Error(`Invalid account ID: ${login}`)
+  }
+
+  const registry = await loadRegistry()
+  const existing = registry.clientIdentities[identityKey]
+  if (existing) {
+    return existing
+  }
+
+  const created = createClientIdentity({
+    login,
+    oauthApp,
+    enterpriseDomain,
+  })
+  registry.clientIdentities[identityKey] = created
+  await saveRegistry(registry)
+  return created
+}
+
 /**
  * Add an account to the registry.
  * The account is appended to the end of the list (lowest priority).
@@ -124,6 +290,12 @@ export async function addAccountToRegistry(meta: AccountMeta): Promise<void> {
   }
 
   registry.accounts.push(meta)
+  const { oauthApp, enterpriseDomain } = getCurrentIdentityEnvironment()
+  ensureRegistryIdentity(registry, {
+    login: meta.id,
+    oauthApp,
+    enterpriseDomain,
+  })
   await saveRegistry(registry)
 }
 

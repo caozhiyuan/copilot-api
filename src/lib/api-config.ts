@@ -188,12 +188,15 @@ export const copilotHeaders = (
   }
 
   const resolvedRequestId = requestId ?? randomUUID()
+  const resolvedDeviceId = account.clientDeviceId ?? state.vsCodeDeviceId
+  const resolvedMachineId = account.clientMachineId ?? state.macMachineId
+  const resolvedSessionId = account.clientSessionId ?? state.vsCodeSessionId
   const headers: Record<string, string> = {
     Authorization: `Bearer ${account.copilotToken}`,
     "content-type": standardHeaders()["content-type"],
     "copilot-integration-id": "vscode-chat",
     "editor-version": `vscode/${account.vsCodeVersion}`,
-    "editor-device-id": state.vsCodeDeviceId,
+    "editor-device-id": resolvedDeviceId,
     "editor-plugin-version": EDITOR_PLUGIN_VERSION,
     "user-agent": USER_AGENT,
     "openai-intent": "conversation-agent",
@@ -206,12 +209,12 @@ export const copilotHeaders = (
 
   if (vision) headers["copilot-vision-request"] = "true"
 
-  if (state.macMachineId) {
-    headers["vscode-machineid"] = state.macMachineId
+  if (resolvedMachineId) {
+    headers["vscode-machineid"] = resolvedMachineId
   }
 
-  if (state.vsCodeSessionId) {
-    headers["vscode-sessionid"] = state.vsCodeSessionId
+  if (resolvedSessionId) {
+    headers["vscode-sessionid"] = resolvedSessionId
   }
 
   return headers

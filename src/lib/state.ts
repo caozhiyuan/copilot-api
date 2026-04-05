@@ -54,5 +54,8 @@ export function accountFromState(): AccountContext {
     : {}),
     accountType: state.accountType,
     vsCodeVersion: state.vsCodeVersion,
+    clientDeviceId: state.vsCodeDeviceId,
+    clientMachineId: state.macMachineId,
+    clientSessionId: state.vsCodeSessionId,
   }
 }
