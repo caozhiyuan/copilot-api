@@ -197,6 +197,7 @@
     "totalCount": "{{count}} models",
     "filteredCount": "{{filtered}} of {{total}} models",
     "searchPlaceholder": "Search by name or ID",
+    "searchAriaLabel": "Search models by name or ID",
     "aliasesMore": "+{{count}} more",
     "loadFailedTitle": "Failed to load models",
     "toast": {
@@ -238,6 +239,8 @@
       "streaming": "Supports streaming responses.",
       "parallelTools": "Can execute multiple tool calls in parallel."
     },
+    "contextInputLabel": "in",
+    "contextOutputLabel": "out",
     "empty": {
       "title": "No models",
       "description": "No models found.",

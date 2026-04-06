@@ -36,7 +36,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const MODELS_COL_COUNT = 6
+const modelsTableColVisibility = [
+  null,
+  "hidden lg:table-cell",
+  "hidden lg:table-cell",
+  null,
+  null,
+  null,
+] as const
+
+const MODELS_COL_COUNT = modelsTableColVisibility.length
 
 type SortDir = "asc" | "desc"
 
@@ -145,34 +154,44 @@ function SortableTableHead({
     ariaSort = sortDir === "asc" ? "ascending" : "descending"
   }
 
-  const labelContent = tooltip ? (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="cursor-help underline decoration-dashed decoration-current/30 underline-offset-2">
-          {label}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-60">
-        <p>{tooltip}</p>
-      </TooltipContent>
-    </Tooltip>
-  ) : (
-    <span>{label}</span>
-  )
-
   return (
     <TableHead aria-sort={ariaSort} className={className}>
-      <button
-        type="button"
-        onClick={() => onSort(columnKey)}
-        className={cn(
-          "flex w-full cursor-pointer select-none items-center gap-1 text-left",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        )}
-      >
-        {labelContent}
-        {isActive ? <span className="text-muted-foreground">{sortDir === "asc" ? "↑" : "↓"}</span> : null}
-      </button>
+      {tooltip ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => onSort(columnKey)}
+              className={cn(
+                "flex w-full cursor-pointer select-none items-center gap-1 text-left",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              )}
+            >
+              <span className="cursor-help underline decoration-dashed decoration-current/30 underline-offset-2">
+                {label}
+              </span>
+              {isActive ? (
+                <span className="text-muted-foreground">{sortDir === "asc" ? "↑" : "↓"}</span>
+              ) : null}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-60">
+            <p>{tooltip}</p>
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onSort(columnKey)}
+          className={cn(
+            "flex w-full cursor-pointer select-none items-center gap-1 text-left",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          )}
+        >
+          <span>{label}</span>
+          {isActive ? <span className="text-muted-foreground">{sortDir === "asc" ? "↑" : "↓"}</span> : null}
+        </button>
+      )}
     </TableHead>
   )
 }
@@ -183,7 +202,10 @@ function ModelsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
       {Array.from({ length: rows }).map((_, i) => (
         <TableRow key={i}>
           {Array.from({ length: MODELS_COL_COUNT }).map((__, j) => (
-            <TableCell key={j} className="py-3">
+            <TableCell
+              key={j}
+              className={cn("py-3", modelsTableColVisibility[j])}
+            >
               <Skeleton className={j === 0 ? "h-4 w-48" : "h-4 w-28"} />
             </TableCell>
           ))}
@@ -239,9 +261,11 @@ function FeatureBadges({
       {features.map((f) => (
         <Tooltip key={f.key}>
           <TooltipTrigger asChild>
-            <Badge variant="outline" className="cursor-help text-xs">
-              {f.label}
-            </Badge>
+            <button type="button" className="focus-visible:outline-none">
+              <Badge variant="outline" className="cursor-help text-xs">
+                {f.label}
+              </Badge>
+            </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-60">
             <p>{f.tooltip}</p>
@@ -290,12 +314,15 @@ function ContextCell({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex cursor-help items-center gap-3 tabular-nums">
-          <span className="text-muted-foreground text-xs">in</span>
+        <button
+          type="button"
+          className="flex cursor-help items-center gap-3 tabular-nums focus-visible:outline-none"
+        >
+          <span className="text-muted-foreground text-xs">{t("modelsPage.contextInputLabel")}</span>
           <span>{inputCompact || "—"}</span>
-          <span className="text-muted-foreground text-xs">out</span>
+          <span className="text-muted-foreground text-xs">{t("modelsPage.contextOutputLabel")}</span>
           <span>{outputCompact || "—"}</span>
-        </div>
+        </button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-72">
         <p>{tooltipText}</p>
@@ -552,6 +579,7 @@ export function ModelsPage(): React.JSX.Element {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("modelsPage.searchPlaceholder")}
+                aria-label={t("modelsPage.searchAriaLabel")}
                 className="pl-8"
               />
             </div>
@@ -611,7 +639,7 @@ export function ModelsPage(): React.JSX.Element {
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
-                  className="hidden lg:table-cell"
+                  className={modelsTableColVisibility[1]}
                 />
                 <SortableTableHead
                   columnKey="originalId"
@@ -620,7 +648,7 @@ export function ModelsPage(): React.JSX.Element {
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
-                  className="hidden lg:table-cell"
+                  className={modelsTableColVisibility[2]}
                 />
                 <SortableTableHead
                   columnKey="context"
@@ -682,10 +710,10 @@ export function ModelsPage(): React.JSX.Element {
                         ) : null}
                       </div>
                     </TableCell>
-                    <TableCell className="hidden max-w-[26rem] lg:table-cell">
+                    <TableCell className={cn("max-w-[26rem]", modelsTableColVisibility[1])}>
                       <EndpointBadges endpoints={model.supported_endpoints} />
                     </TableCell>
-                    <TableCell className="hidden max-w-[26rem] lg:table-cell">
+                    <TableCell className={cn("max-w-[26rem]", modelsTableColVisibility[2])}>
                       <AliasesCell id={model.id} aliases={model.aliases} />
                     </TableCell>
                     <TableCell>

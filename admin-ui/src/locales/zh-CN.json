@@ -197,6 +197,7 @@
     "totalCount": "共 {{count}} 个模型",
     "filteredCount": "显示 {{filtered}} / {{total}} 个模型",
     "searchPlaceholder": "按名称或 ID 搜索",
+    "searchAriaLabel": "按名称或 ID 搜索模型",
     "aliasesMore": "+{{count}} 个",
     "loadFailedTitle": "加载模型失败",
     "toast": {
@@ -238,6 +239,8 @@
       "streaming": "支持流式响应。",
       "parallelTools": "可以同时执行多个工具调用。"
     },
+    "contextInputLabel": "输入",
+    "contextOutputLabel": "输出",
     "empty": {
       "title": "无模型",
       "description": "未找到模型。",

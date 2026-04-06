@@ -13,8 +13,8 @@ import {
   createAccountDeviceId,
   createAccountMachineId,
   getCurrentIdentityEnvironment,
-} from "./account-client-identity"
-import { accountTokenPath, PATHS } from "./paths"
+} from "~/lib/account-client-identity"
+import { accountTokenPath, PATHS } from "~/lib/paths"
 
 /**
  * Validate account ID (GitHub login).

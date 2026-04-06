@@ -186,8 +186,16 @@ export function AccountsPage(): React.JSX.Element {
   const [deleteTargetId, setDeleteTargetId] = useState("")
   const [reauthDialogOpen, setReauthDialogOpen] = useState(false)
   const [reauthTargetId, setReauthTargetId] = useState("")
+  const autoRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadInFlightRef = useRef(false)
+  const queuedRefreshRef = useRef(false)
 
   const refresh = useCallback(async () => {
+    if (loadInFlightRef.current) {
+      queuedRefreshRef.current = true
+      return
+    }
+
     loadInFlightRef.current = true
     setLoading(true)
     setError(null)
@@ -209,6 +217,10 @@ export function AccountsPage(): React.JSX.Element {
     } finally {
       loadInFlightRef.current = false
       setLoading(false)
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false
+        void refresh()
+      }
     }
   }, [windowPreset])
 
@@ -218,8 +230,6 @@ export function AccountsPage(): React.JSX.Element {
 
   // Auto-refresh
   const [autoRefreshMs, setAutoRefreshMs] = useState<number>(0)
-  const autoRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const loadInFlightRef = useRef(false)
 
   useEffect(() => {
     let disposed = false
@@ -281,10 +291,23 @@ export function AccountsPage(): React.JSX.Element {
   }, [refresh])
 
   // CSV export
+  function escapeCsvCell(value: string): string {
+    const neutralized = /^[=+\-@]/u.test(value) ? `'${value}` : value
+    return `"${neutralized.replaceAll('"', '""')}"`
+  }
+
   const handleExportCsv = useCallback(() => {
     if (accounts.length === 0) return
 
-    const headers = ["account_id", "status", "requests", "errors", "tokens", "avg_ms", "last_request"]
+    const headers = [
+      "account_id",
+      "status",
+      "requests",
+      "errors",
+      "tokens",
+      "avg_ms",
+      "last_request",
+    ]
     const rows = accounts.map((a) => [
       a.account_id,
       a.runtime?.failed ? "failed" : "ok",
@@ -292,16 +315,21 @@ export function AccountsPage(): React.JSX.Element {
       String(a.stats?.error_count ?? 0),
       String(a.stats?.tokens_total ?? 0),
       String(
-        a.stats?.avg_duration_ms !== null && a.stats?.avg_duration_ms !== undefined
+        (
+          a.stats?.avg_duration_ms !== null
+          && a.stats?.avg_duration_ms !== undefined
+        )
           ? Math.round(a.stats.avg_duration_ms)
           : "",
       ),
-      a.stats?.last_request_at_ms ? new Date(a.stats.last_request_at_ms).toISOString() : "",
+      a.stats?.last_request_at_ms
+        ? new Date(a.stats.last_request_at_ms).toISOString()
+        : "",
     ])
 
     const csv = [
       headers.join(","),
-      ...rows.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(",")),
+      ...rows.map((r) => r.map((c) => escapeCsvCell(c)).join(",")),
     ].join("\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)

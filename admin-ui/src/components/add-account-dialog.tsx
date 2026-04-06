@@ -68,12 +68,16 @@ export function AddAccountDialog({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
+  const [startingAuth, setStartingAuth] = useState(false)
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const expiresAtRef = useRef<number>(0)
   const lastCancelledSessionIdRef = useRef<string | null>(null)
+  const pollGenerationRef = useRef(0)
+  const startInFlightRef = useRef(false)
 
   const clearPolling = useCallback(() => {
+    pollGenerationRef.current += 1
     if (pollingRef.current) {
       clearTimeout(pollingRef.current)
       pollingRef.current = null
@@ -114,21 +118,25 @@ export function AddAccountDialog({
   const startPolling = useCallback(
     (sessionId: string, interval: number) => {
       clearPolling()
+      const generation = pollGenerationRef.current
       const pollIntervalMs = (interval + 1) * 1000
 
       const poll = async () => {
         try {
           const status = await getAuthStatus(sessionId)
+          if (pollGenerationRef.current !== generation) return
           setAuthStatus(status)
 
           switch (status.status) {
             case "completed": {
+              if (pollGenerationRef.current !== generation) return
               clearPolling()
               clearCountdown()
               setStep("success")
               return
             }
             case "failed": {
+              if (pollGenerationRef.current !== generation) return
               clearPolling()
               clearCountdown()
               setError(status.error ?? t("accountManagement.authFailed"))
@@ -136,6 +144,7 @@ export function AddAccountDialog({
               return
             }
             case "expired": {
+              if (pollGenerationRef.current !== generation) return
               clearPolling()
               clearCountdown()
               setError(t("accountManagement.expired"))
@@ -143,13 +152,19 @@ export function AddAccountDialog({
               return
             }
             case "pending": {
+              if (pollGenerationRef.current !== generation) return
               pollingRef.current = setTimeout(() => {
                 void poll()
               }, pollIntervalMs)
+              return
+            }
+            default: {
+              return
             }
           }
         } catch (pollError) {
           console.warn("Failed to poll auth session status.", pollError)
+          if (pollGenerationRef.current !== generation) return
           pollingRef.current = setTimeout(() => {
             void poll()
           }, pollIntervalMs)
@@ -176,7 +191,9 @@ export function AddAccountDialog({
   }, [authSession, authStatus?.status])
 
   const startReauth = useCallback(async () => {
-    if (!reauthAccountId) return
+    if (!reauthAccountId || startInFlightRef.current) return
+    startInFlightRef.current = true
+    setStartingAuth(true)
     try {
       setError(null)
       setAuthStatus(null)
@@ -189,6 +206,9 @@ export function AddAccountDialog({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStep("error")
+    } finally {
+      startInFlightRef.current = false
+      setStartingAuth(false)
     }
   }, [reauthAccountId, startPolling, startCountdown])
 
@@ -209,13 +229,16 @@ export function AddAccountDialog({
         setAuthStatus(null)
         setError(null)
         setCopied(false)
+        setStartingAuth(false)
         setRemainingSeconds(null)
+        startInFlightRef.current = false
       }, 200)
       return () => clearTimeout(timer)
     }
   }, [open, reauthAccountId, cancelCurrentSession, clearCountdown, clearPolling])
 
   const handleContinue = useCallback(async () => {
+    if (startInFlightRef.current) return
     const domain = cleanDomain(enterpriseDomain)
 
     if (accountType === "enterprise" && !domain) {
@@ -223,6 +246,8 @@ export function AddAccountDialog({
       return
     }
 
+    startInFlightRef.current = true
+    setStartingAuth(true)
     try {
       setError(null)
       setAuthStatus(null)
@@ -238,6 +263,9 @@ export function AddAccountDialog({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStep("error")
+    } finally {
+      startInFlightRef.current = false
+      setStartingAuth(false)
     }
   }, [accountType, enterpriseDomain, t, startPolling, startCountdown])
 
@@ -364,7 +392,9 @@ export function AddAccountDialog({
               <Button variant="outline" onClick={() => void closeDialog()}>
                 {t("accountManagement.cancel")}
               </Button>
-              <Button onClick={handleContinue}>{t("accountManagement.continue")}</Button>
+              <Button onClick={handleContinue} disabled={startingAuth}>
+                {t("accountManagement.continue")}
+              </Button>
             </DialogFooter>
           </>
         )}
@@ -386,7 +416,7 @@ export function AddAccountDialog({
               <Button variant="outline" onClick={() => void closeDialog()}>
                 {t("accountManagement.cancel")}
               </Button>
-              <Button onClick={() => void startReauth()}>
+              <Button onClick={() => void startReauth()} disabled={startingAuth}>
                 {t("accountManagement.continue")}
               </Button>
             </DialogFooter>
