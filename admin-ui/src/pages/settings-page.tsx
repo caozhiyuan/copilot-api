@@ -16,6 +16,7 @@ import {
   updateAdminConfig,
 } from "@/lib/admin-api"
 import { i18n } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   FloatingSaveButton,
@@ -49,6 +50,7 @@ const SETTINGS_SECTION_IDS = [
   "aliases",
   "prompts",
   "advanced",
+  "providers",
 ] as const
 
 const REASONING_EFFORTS: Array<ReasoningEffort> = [
@@ -1809,6 +1811,11 @@ function AdvancedSettingsCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 px-4">
+        {/* — Routing — */}
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          {t("settingsPage.advanced.routingGroupTitle")}
+        </div>
+
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="text-sm font-medium">
@@ -1822,27 +1829,6 @@ function AdvancedSettingsCard({
             checked={accountAffinityEnabled}
             onCheckedChange={onToggleAccountAffinity}
           />
-        </div>
-
-        <div className="grid gap-2">
-          <Label className="text-muted-foreground text-xs">
-            {t("settingsPage.advanced.modelRefreshIntervalLabel")}
-          </Label>
-          <Input
-            type="number"
-            min="0"
-            step="0.5"
-            value={modelRefreshIntervalInput}
-            onChange={(e) => onModelRefreshIntervalChange(e.target.value)}
-          />
-          <div className="text-muted-foreground text-xs">
-            {t("settingsPage.advanced.modelRefreshIntervalHint")}
-          </div>
-          {modelRefreshIntervalIssue ? (
-            <div className="text-destructive text-xs">
-              {modelRefreshIntervalIssue}
-            </div>
-          ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-4">
@@ -1863,21 +1849,6 @@ function AdvancedSettingsCard({
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="text-sm font-medium">
-              {t("settingsPage.advanced.useFunctionApplyPatchLabel")}
-            </div>
-            <div className="text-muted-foreground text-xs">
-              {t("settingsPage.advanced.useFunctionApplyPatchHint")}
-            </div>
-          </div>
-          <Switch
-            checked={useFunctionApplyPatch}
-            onCheckedChange={onToggleUseFunctionApplyPatch}
-          />
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">
               {t("settingsPage.advanced.forceAgentLabel")}
             </div>
             <div className="text-muted-foreground text-xs">
@@ -1887,32 +1858,10 @@ function AdvancedSettingsCard({
           <Switch checked={forceAgent} onCheckedChange={onToggleForceAgent} />
         </div>
 
-        <div className="flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">{t("settingsPage.advanced.compactUseSmallModelLabel")}</div>
-            <div className="text-muted-foreground text-xs">
-              {t("settingsPage.advanced.compactUseSmallModelHint")}
-            </div>
-          </div>
-          <Switch
-            checked={compactUseSmallModel}
-            onCheckedChange={onToggleCompactUseSmallModel}
-          />
-        </div>
-
-        <div className="flex items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">
-              {t("settingsPage.advanced.messageStartInputTokensFallbackLabel")}
-            </div>
-            <div className="text-muted-foreground text-xs">
-              {t("settingsPage.advanced.messageStartInputTokensFallbackHint")}
-            </div>
-          </div>
-          <Switch
-            checked={messageStartInputTokensFallback}
-            onCheckedChange={onToggleMessageStartInputTokensFallback}
-          />
+        {/* — API Endpoints — */}
+        <hr className="border-t mt-1" />
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          {t("settingsPage.advanced.apiGroupTitle")}
         </div>
 
         <div className="flex items-center justify-between gap-4">
@@ -1925,6 +1874,21 @@ function AdvancedSettingsCard({
             </div>
           </div>
           <Switch checked={useMessagesApi} onCheckedChange={onToggleUseMessagesApi} />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.useFunctionApplyPatchLabel")}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {t("settingsPage.advanced.useFunctionApplyPatchHint")}
+            </div>
+          </div>
+          <Switch
+            checked={useFunctionApplyPatch}
+            onCheckedChange={onToggleUseFunctionApplyPatch}
+          />
         </div>
 
         <div className="flex items-center justify-between gap-4">
@@ -1960,6 +1924,61 @@ function AdvancedSettingsCard({
           <div className="text-muted-foreground text-xs">
             {t("settingsPage.advanced.responsesApiContextManagementModelsHint")}
           </div>
+        </div>
+
+        {/* — Model & Tokens — */}
+        <hr className="border-t mt-1" />
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          {t("settingsPage.advanced.modelGroupTitle")}
+        </div>
+
+        <div className="grid gap-2">
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.modelRefreshIntervalLabel")}
+          </Label>
+          <Input
+            type="number"
+            min="0"
+            step="0.5"
+            value={modelRefreshIntervalInput}
+            onChange={(e) => onModelRefreshIntervalChange(e.target.value)}
+          />
+          <div className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.modelRefreshIntervalHint")}
+          </div>
+          {modelRefreshIntervalIssue ? (
+            <div className="text-destructive text-xs">
+              {modelRefreshIntervalIssue}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">{t("settingsPage.advanced.compactUseSmallModelLabel")}</div>
+            <div className="text-muted-foreground text-xs">
+              {t("settingsPage.advanced.compactUseSmallModelHint")}
+            </div>
+          </div>
+          <Switch
+            checked={compactUseSmallModel}
+            onCheckedChange={onToggleCompactUseSmallModel}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">
+              {t("settingsPage.advanced.messageStartInputTokensFallbackLabel")}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {t("settingsPage.advanced.messageStartInputTokensFallbackHint")}
+            </div>
+          </div>
+          <Switch
+            checked={messageStartInputTokensFallback}
+            onCheckedChange={onToggleMessageStartInputTokensFallback}
+          />
         </div>
       </CardContent>
     </Card>
@@ -2223,6 +2242,7 @@ type SettingsPageViewProps = {
   error: string | null
   configPath: string | null
   canSave: boolean
+  isDirty: boolean
   onReload: () => void
   onSave: () => void
   hasModels: boolean
@@ -2310,6 +2330,7 @@ function useSettingsPageState(): SettingsPageViewProps {
 
   const [models, setModels] = useState<Array<string>>([])
   const [draft, setDraft] = useState<AdminConfig>({})
+  const [initialDraftJson, setInitialDraftJson] = useState<string>("{}")
   const [modelRefreshIntervalInput, setModelRefreshIntervalInput] =
     useState<string>("")
   const [modelRefreshIntervalIssue, setModelRefreshIntervalIssue] = useState<
@@ -2395,11 +2416,13 @@ function useSettingsPageState(): SettingsPageViewProps {
       const intervalValue = configData.modelRefreshIntervalHours
 
       setConfigPath(_configPath ?? null)
-      setDraft({
+      const normalizedDraft = {
         ...configData,
         auth: { apiKeys: normalizedAuthApiKeys },
         modelAliases: normalizedAliases,
-      })
+      }
+      setDraft(normalizedDraft)
+      setInitialDraftJson(JSON.stringify(normalizedDraft))
       setExtraFromRecord(configData.extraPrompts)
       setReasoningFromRecord(configData.modelReasoningEfforts)
       setAliasFromRecord(normalizedAliases)
@@ -2634,6 +2657,11 @@ function useSettingsPageState(): SettingsPageViewProps {
     && !modelRefreshIntervalIssue
     && !providersIssue
 
+  const isDirty = useMemo(
+    () => JSON.stringify(draft) !== initialDraftJson,
+    [draft, initialDraftJson],
+  )
+
   const legacyAuthNote = t("settingsPage.general.legacyAuthNote", {
     env: "COPILOT_API_KEY",
   })
@@ -2666,6 +2694,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     error,
     configPath,
     canSave,
+    isDirty,
     onReload,
     onSave,
     hasModels,
@@ -2749,6 +2778,7 @@ function SettingsPageView({
   error,
   configPath,
   canSave,
+  isDirty,
   onReload,
   onSave,
   hasModels,
@@ -2830,6 +2860,7 @@ function SettingsPageView({
       { id: "aliases", label: t("settingsPage.sections.aliases") },
       { id: "prompts", label: t("settingsPage.sections.prompts") },
       { id: "advanced", label: t("settingsPage.sections.advanced") },
+      { id: "providers", label: t("settingsPage.sections.providers") },
     ]
   }, [t])
 
@@ -2879,6 +2910,29 @@ function SettingsPageView({
         />
       ) : null}
 
+      {/* Mobile section navigation */}
+      <div className="flex gap-1 overflow-x-auto pb-2 lg:hidden" role="tablist">
+        {sections.map((section) => {
+          const isActive = activeSection === section.id
+          return (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => scrollToSection(section.id)}
+              className={cn(
+                "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+              )}
+            >
+              {section.label}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Main Layout: Sidebar Navigation + Content */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         {/* Sidebar Navigation (desktop only) */}
@@ -2891,12 +2945,27 @@ function SettingsPageView({
         </aside>
 
         {/* Content Area */}
-        <main className="space-y-6 lg:col-span-10">
+        {loading && !error ? (
+          <div className="space-y-6 lg:col-span-10" aria-busy="true">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="rounded-xl border bg-card p-4 space-y-3">
+                <div className="h-5 w-32 rounded bg-muted animate-pulse" />
+                <div className="h-3 w-48 rounded bg-muted animate-pulse" />
+                <div className="space-y-2 pt-2">
+                  <div className="h-9 rounded bg-muted animate-pulse" />
+                  <div className="h-9 rounded bg-muted animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <main className={cn("space-y-6 lg:col-span-10", loading && "hidden")}>
           {/* General Settings */}
           <SettingsSectionCard
             id="general"
             isActive={activeSection === "general"}
             ref={(el) => registerSection("general", el)}
+            style={{ animationDelay: "0ms" }}
           >
             <GeneralSettingsCard
               hasModels={hasModels}
@@ -2915,12 +2984,12 @@ function SettingsPageView({
             />
           </SettingsSectionCard>
 
-
           {/* Reasoning Efforts */}
           <SettingsSectionCard
             id="reasoning"
             isActive={activeSection === "reasoning"}
             ref={(el) => registerSection("reasoning", el)}
+            style={{ animationDelay: "60ms" }}
           >
             <ReasoningEffortsCard
               mode={reasoningMode}
@@ -2941,6 +3010,7 @@ function SettingsPageView({
             id="aliases"
             isActive={activeSection === "aliases"}
             ref={(el) => registerSection("aliases", el)}
+            style={{ animationDelay: "120ms" }}
           >
             <ModelAliasesCard
               allowOriginalModelNamesForAliases={allowOriginalModelNamesForAliases}
@@ -2962,6 +3032,7 @@ function SettingsPageView({
             id="prompts"
             isActive={activeSection === "prompts"}
             ref={(el) => registerSection("prompts", el)}
+            style={{ animationDelay: "180ms" }}
           >
             <ExtraPromptsCard
               mode={extraMode}
@@ -2982,65 +3053,74 @@ function SettingsPageView({
             id="advanced"
             isActive={activeSection === "advanced"}
             ref={(el) => registerSection("advanced", el)}
+            style={{ animationDelay: "240ms" }}
           >
-            <div className="space-y-6">
-              <AdvancedSettingsCard
-                accountAffinityEnabled={accountAffinityEnabled}
-                modelRefreshIntervalInput={modelRefreshIntervalInput}
-                modelRefreshIntervalIssue={modelRefreshIntervalIssue}
-                allowOriginalModelNamesForAliases={
-                  allowOriginalModelNamesForAliases
-                }
-                useFunctionApplyPatch={useFunctionApplyPatch}
-                forceAgent={forceAgent}
-                compactUseSmallModel={compactUseSmallModel}
-                messageStartInputTokensFallback={messageStartInputTokensFallback}
-                useMessagesApi={useMessagesApi}
-                useResponsesApiWebSearch={useResponsesApiWebSearch}
-                responsesApiContextManagementModelsValue={
-                  responsesApiContextManagementModelsValue
-                }
-                onToggleAccountAffinity={onAccountAffinityToggle}
-                onModelRefreshIntervalChange={onModelRefreshIntervalChange}
-                onToggleAllowOriginalModelNamesForAliases={
-                  onAllowOriginalModelNamesForAliasesToggle
-                }
-                onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
-                onToggleForceAgent={onForceAgentToggle}
-                onToggleCompactUseSmallModel={onCompactUseSmallModelToggle}
-                onToggleMessageStartInputTokensFallback={
-                  onMessageStartInputTokensFallbackToggle
-                }
-                onToggleUseMessagesApi={onUseMessagesApiToggle}
-                onToggleUseResponsesApiWebSearch={
-                  onUseResponsesApiWebSearchToggle
-                }
-                onResponsesApiContextManagementModelsChange={
-                  onResponsesApiContextManagementModelsChange
-                }
-              />
+            <AdvancedSettingsCard
+              accountAffinityEnabled={accountAffinityEnabled}
+              modelRefreshIntervalInput={modelRefreshIntervalInput}
+              modelRefreshIntervalIssue={modelRefreshIntervalIssue}
+              allowOriginalModelNamesForAliases={
+                allowOriginalModelNamesForAliases
+              }
+              useFunctionApplyPatch={useFunctionApplyPatch}
+              forceAgent={forceAgent}
+              compactUseSmallModel={compactUseSmallModel}
+              messageStartInputTokensFallback={messageStartInputTokensFallback}
+              useMessagesApi={useMessagesApi}
+              useResponsesApiWebSearch={useResponsesApiWebSearch}
+              responsesApiContextManagementModelsValue={
+                responsesApiContextManagementModelsValue
+              }
+              onToggleAccountAffinity={onAccountAffinityToggle}
+              onModelRefreshIntervalChange={onModelRefreshIntervalChange}
+              onToggleAllowOriginalModelNamesForAliases={
+                onAllowOriginalModelNamesForAliasesToggle
+              }
+              onToggleUseFunctionApplyPatch={onUseFunctionApplyPatchToggle}
+              onToggleForceAgent={onForceAgentToggle}
+              onToggleCompactUseSmallModel={onCompactUseSmallModelToggle}
+              onToggleMessageStartInputTokensFallback={
+                onMessageStartInputTokensFallbackToggle
+              }
+              onToggleUseMessagesApi={onUseMessagesApiToggle}
+              onToggleUseResponsesApiWebSearch={
+                onUseResponsesApiWebSearchToggle
+              }
+              onResponsesApiContextManagementModelsChange={
+                onResponsesApiContextManagementModelsChange
+              }
+            />
+          </SettingsSectionCard>
 
-              <ProvidersSettingsCard
-                items={providersItems}
-                issue={providersIssue}
-                onAddProvider={onProvidersAddProvider}
-                onRemoveProvider={onProvidersRemoveProvider}
-                onUpdateProvider={onProvidersUpdateProvider}
-                onAddModel={onProvidersAddModel}
-                onRemoveModel={onProvidersRemoveModel}
-                onUpdateModel={onProvidersUpdateModel}
-              />
-            </div>
+          {/* Providers */}
+          <SettingsSectionCard
+            id="providers"
+            isActive={activeSection === "providers"}
+            ref={(el) => registerSection("providers", el)}
+            style={{ animationDelay: "300ms" }}
+          >
+            <ProvidersSettingsCard
+              items={providersItems}
+              issue={providersIssue}
+              onAddProvider={onProvidersAddProvider}
+              onRemoveProvider={onProvidersRemoveProvider}
+              onUpdateProvider={onProvidersUpdateProvider}
+              onAddModel={onProvidersAddModel}
+              onRemoveModel={onProvidersRemoveModel}
+              onUpdateModel={onProvidersUpdateModel}
+            />
           </SettingsSectionCard>
         </main>
       </div>
 
       {/* Floating Save Button */}
-      <FloatingSaveButton
-        saving={saving}
-        canSave={canSave}
-        onSave={onSave}
-      />
+      {(isDirty || saving) ? (
+        <FloatingSaveButton
+          saving={saving}
+          canSave={canSave}
+          onSave={onSave}
+        />
+      ) : null}
     </div>
   )
 }

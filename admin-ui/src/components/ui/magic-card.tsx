@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 interface MagicCardProps {
   children?: React.ReactNode
   className?: string
+  style?: React.CSSProperties
   gradientSize?: number
   gradientColor?: string
   gradientOpacity?: number
@@ -18,6 +19,7 @@ interface MagicCardProps {
 export function MagicCard({
   children,
   className,
+  style,
   gradientSize = 200,
   gradientColor = "#262626",
   gradientOpacity = 0.8,
@@ -75,6 +77,7 @@ export function MagicCard({
   return (
     <div
       className={cn("group relative rounded-[inherit]", className)}
+      style={style}
       onPointerMove={handlePointerMove}
       onPointerLeave={reset}
       onPointerEnter={reset}

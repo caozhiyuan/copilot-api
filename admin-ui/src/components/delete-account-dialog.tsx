@@ -1,3 +1,4 @@
+import { LoaderCircleIcon } from "lucide-react"
 import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -57,7 +58,14 @@ export function DeleteAccountDialog({
             {t("accountManagement.cancel")}
           </Button>
           <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-            {deleting ? "..." : t("accountManagement.delete")}
+            {deleting ? (
+              <>
+                <LoaderCircleIcon className="size-4 animate-spin" />
+                {t("accountManagement.deleting")}
+              </>
+            ) : (
+              t("accountManagement.delete")
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

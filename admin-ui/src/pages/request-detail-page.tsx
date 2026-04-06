@@ -1,4 +1,9 @@
-import { ArrowLeftIcon, DownloadIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  DownloadIcon,
+  LoaderCircleIcon,
+  RefreshCwIcon,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation, useParams } from "react-router-dom"
@@ -22,9 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { BorderBeam } from "@/components/ui/border-beam"
 import { InlineAlert } from "@/components/ui/inline-alert"
-import { RainbowButton } from "@/components/ui/rainbow-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -32,6 +35,17 @@ import {
   TableCell,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                           */
+/* ------------------------------------------------------------------ */
+
+const EMPTY = "—"
 
 function StatusBadge({ status }: { status: number }): React.JSX.Element {
   return status >= 400 ? (
@@ -41,16 +55,58 @@ function StatusBadge({ status }: { status: number }): React.JSX.Element {
   )
 }
 
+function SectionHeader({ label }: { label: string }): React.JSX.Element {
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableCell
+        colSpan={2}
+        className="bg-muted/30 py-1.5 text-[11px] font-medium tracking-wider text-muted-foreground uppercase"
+      >
+        {label}
+      </TableCell>
+    </TableRow>
+  )
+}
+
+function FieldLabel({
+  label,
+  tooltip,
+}: {
+  label: string
+  tooltip?: string
+}): React.JSX.Element {
+  if (!tooltip) return <>{label}</>
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help underline decoration-dashed decoration-current/30 underline-offset-2">
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="max-w-60">
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                    */
+/* ------------------------------------------------------------------ */
+
 export function RequestDetailPage(): React.JSX.Element {
   const { t } = useTranslation()
   const { requestId = "" } = useParams()
   const location = useLocation()
 
-  const fromSearch = (location.state as { fromSearch?: string } | null)?.fromSearch
+  const fromSearch = (location.state as { fromSearch?: string } | null)
+    ?.fromSearch
   const backTo = fromSearch ? `/requests?${fromSearch}` : "/requests"
 
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [item, setItem] = useState<AdminRequestItem | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
 
   useEffect(() => {
@@ -58,14 +114,15 @@ export function RequestDetailPage(): React.JSX.Element {
 
     async function run(): Promise<void> {
       setLoading(true)
+      setFetchError(null)
       try {
         const data = await getAdminRequestDetail(requestId)
         if (cancelled) return
         setItem(data.item)
       } catch (err) {
-        const msg = err instanceof AdminApiError ? err.message : String(err)
-        toast.error(i18n.t("requestDetailPage.loadFailedTitle"), { description: msg })
         if (cancelled) return
+        const msg = err instanceof AdminApiError ? err.message : String(err)
+        setFetchError(msg)
         setItem(null)
       } finally {
         if (!cancelled) setLoading(false)
@@ -79,6 +136,37 @@ export function RequestDetailPage(): React.JSX.Element {
     }
   }, [requestId])
 
+  function refresh(): void {
+    setRefreshing(true)
+    getAdminRequestDetail(requestId)
+      .then((data) => {
+        setItem(data.item)
+        setFetchError(null)
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof AdminApiError ? err.message : String(err)
+        toast.error(i18n.t("requestDetailPage.loadFailedTitle"), {
+          description: msg,
+        })
+      })
+      .finally(() => setRefreshing(false))
+  }
+
+  function retry(): void {
+    setLoading(true)
+    setFetchError(null)
+    getAdminRequestDetail(requestId)
+      .then((data) => {
+        setItem(data.item)
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof AdminApiError ? err.message : String(err)
+        setFetchError(msg)
+        setItem(null)
+      })
+      .finally(() => setLoading(false))
+  }
+
   async function copyRaw(): Promise<void> {
     if (!item) return
 
@@ -87,7 +175,9 @@ export function RequestDetailPage(): React.JSX.Element {
       await navigator.clipboard.writeText(raw)
       toast.success(t("requestDetailPage.toast.copiedJson"))
     } catch (err) {
-      toast.error(t("requestDetailPage.toast.copyFailed"), { description: String(err) })
+      toast.error(t("requestDetailPage.toast.copyFailed"), {
+        description: String(err),
+      })
     }
   }
 
@@ -107,10 +197,13 @@ export function RequestDetailPage(): React.JSX.Element {
       URL.revokeObjectURL(url)
       toast.success(t("requestDetailPage.toast.downloadedJson"))
     } catch (err) {
-      toast.error(t("requestDetailPage.toast.downloadFailed"), { description: String(err) })
+      toast.error(t("requestDetailPage.toast.downloadFailed"), {
+        description: String(err),
+      })
     }
   }
 
+  /* Loading state */
   if (loading) {
     return (
       <Card>
@@ -131,23 +224,42 @@ export function RequestDetailPage(): React.JSX.Element {
     )
   }
 
-  if (!item) {
+  /* Error / not-found state */
+  if (fetchError || !item) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("requestDetailPage.title")}</CardTitle>
-          <CardDescription>
-            {t("requestDetailPage.notFoundDescription")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <InlineAlert
-            variant="warning"
-            title={t("requestDetailPage.notFoundTitle")}
-            description={`request_id: ${requestId}`}
-          />
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" asChild>
+            <Link to={backTo}>
+              <ArrowLeftIcon className="size-4" />
+              {t("common.back")}
+            </Link>
+          </Button>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("requestDetailPage.title")}</CardTitle>
+            <CardDescription>
+              {t("requestDetailPage.notFoundDescription")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <InlineAlert
+              variant="warning"
+              title={
+                fetchError
+                  ? t("requestDetailPage.loadFailedTitle")
+                  : t("requestDetailPage.notFoundTitle")
+              }
+              description={fetchError || `request_id: ${requestId}`}
+            />
+            <Button variant="outline" size="sm" onClick={retry}>
+              <RefreshCwIcon className="size-4" />
+              {t("common.retry")}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -158,7 +270,8 @@ export function RequestDetailPage(): React.JSX.Element {
       : ""
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-300">
+      {/* Back + Refresh toolbar */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" asChild>
           <Link to={backTo}>
@@ -166,49 +279,60 @@ export function RequestDetailPage(): React.JSX.Element {
             {t("common.back")}
           </Link>
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto"
+          disabled={refreshing}
+          onClick={refresh}
+        >
+          {refreshing ? (
+            <LoaderCircleIcon className="size-4 animate-spin" />
+          ) : (
+            <RefreshCwIcon className="size-4" />
+          )}
+          {t("common.refresh")}
+        </Button>
       </div>
 
-      <div className="relative">
-        <BorderBeam className="opacity-40" borderWidth={1} />
-        <Card className="relative">
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm">{item.request_id}</span>
-              <StatusBadge status={item.http_status} />
-              {typeof item.duration_ms === "number" ? (
-                <Badge variant="outline">
-                  {t("requestDetailPage.badges.durMs")}:{" "}
-                  {fmtNum(item.duration_ms)}
-                </Badge>
-              ) : null}
-              {typeof item.ttfb_ms === "number" ? (
-                <Badge variant="outline">
-                  {t("requestDetailPage.badges.ttfbMs")}:{" "}
-                  {fmtNum(item.ttfb_ms)}
-                </Badge>
-              ) : null}
-            </CardTitle>
-            <CardDescription className="font-mono text-xs">
-              {fmtLocalDateTime(item.started_at_ms)}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      {/* Header card */}
+      <Card
+        className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 fill-mode-backwards"
+        style={{ animationDelay: "50ms" }}
+      >
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm">{item.request_id}</span>
+            <StatusBadge status={item.http_status} />
+          </CardTitle>
+          <CardDescription className="font-mono text-xs">
+            {fmtLocalDateTime(item.started_at_ms)}
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1fr_2fr]">
-        <Card>
+        {/* Summary card */}
+        <Card
+          className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 fill-mode-backwards"
+          style={{ animationDelay: "100ms" }}
+        >
           <CardHeader>
             <CardTitle>{t("requestDetailPage.summaryTitle")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableBody>
+                {/* ── Request ── */}
+                <SectionHeader
+                  label={t("requestDetailPage.sections.request")}
+                />
                 <TableRow>
                   <TableCell className="w-36 text-muted-foreground">
                     {t("requestDetailPage.fields.time")}
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    {fmtLocalDateTime(item.started_at_ms)}
+                    {fmtLocalDateTime(item.started_at_ms) || EMPTY}
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -226,12 +350,54 @@ export function RequestDetailPage(): React.JSX.Element {
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">
-                    {t("requestDetailPage.fields.endpoint")}
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.endpoint")}
+                      tooltip={t("requestDetailPage.fieldTooltip.endpoint")}
+                    />
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {item.upstream_endpoint || ""}
+                    {item.upstream_endpoint || EMPTY}
                   </TableCell>
                 </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    {t("requestDetailPage.fields.model")}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {item.upstream_model || EMPTY}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.duration")}
+                      tooltip={t("requestDetailPage.fieldTooltip.duration")}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {typeof item.duration_ms === "number"
+                      ? fmtNum(item.duration_ms)
+                      : EMPTY}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.ttfb")}
+                      tooltip={t("requestDetailPage.fieldTooltip.ttfb")}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {typeof item.ttfb_ms === "number"
+                      ? fmtNum(item.ttfb_ms)
+                      : EMPTY}
+                  </TableCell>
+                </TableRow>
+
+                {/* ── Routing ── */}
+                <SectionHeader
+                  label={t("requestDetailPage.sections.routing")}
+                />
                 <TableRow>
                   <TableCell className="text-muted-foreground">
                     {t("requestDetailPage.fields.account")}
@@ -245,7 +411,7 @@ export function RequestDetailPage(): React.JSX.Element {
                         {item.account_id}
                       </Link>
                     ) : (
-                      ""
+                      EMPTY
                     )}
                     {item.affinity_hit ? (
                       <Badge variant="outline" className="ml-2">
@@ -257,7 +423,12 @@ export function RequestDetailPage(): React.JSX.Element {
                 {item.affinity_cache_key ? (
                   <TableRow>
                     <TableCell className="text-muted-foreground">
-                      {t("requestDetailPage.fields.affinityCacheKey")}
+                      <FieldLabel
+                        label={t("requestDetailPage.fields.affinityCacheKey")}
+                        tooltip={t(
+                          "requestDetailPage.fieldTooltip.affinityCacheKey",
+                        )}
+                      />
                     </TableCell>
                     <TableCell className="font-mono text-xs whitespace-normal break-words">
                       {item.affinity_cache_key}
@@ -266,50 +437,68 @@ export function RequestDetailPage(): React.JSX.Element {
                 ) : null}
                 <TableRow>
                   <TableCell className="text-muted-foreground">
-                    {t("requestDetailPage.fields.userId")}
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.initiator")}
+                      tooltip={t("requestDetailPage.fieldTooltip.initiator")}
+                    />
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {item.user_id || ""}
+                    {item.initiator || EMPTY}
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">
-                    {t("requestDetailPage.fields.safetyIdentifier")}
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.upstreamRequestId")}
+                      tooltip={t(
+                        "requestDetailPage.fieldTooltip.upstreamRequestId",
+                      )}
+                    />
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {item.safety_identifier || ""}
+                    {item.upstream_request_id || EMPTY}
+                  </TableCell>
+                </TableRow>
+
+                {/* ── Client ── */}
+                <SectionHeader
+                  label={t("requestDetailPage.sections.client")}
+                />
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.userId")}
+                      tooltip={t("requestDetailPage.fieldTooltip.userId")}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.user_id || EMPTY}
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">
-                    {t("requestDetailPage.fields.promptCacheKey")}
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.safetyIdentifier")}
+                      tooltip={t(
+                        "requestDetailPage.fieldTooltip.safetyIdentifier",
+                      )}
+                    />
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {item.prompt_cache_key || ""}
+                    {item.safety_identifier || EMPTY}
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">
-                    {t("requestDetailPage.fields.initiator")}
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.promptCacheKey")}
+                      tooltip={t(
+                        "requestDetailPage.fieldTooltip.promptCacheKey",
+                      )}
+                    />
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {item.initiator || ""}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">
-                    {t("requestDetailPage.fields.upstreamRequestId")}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {item.upstream_request_id || ""}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">
-                    {t("requestDetailPage.fields.model")}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {item.upstream_model || ""}
+                    {item.prompt_cache_key || EMPTY}
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -317,44 +506,88 @@ export function RequestDetailPage(): React.JSX.Element {
                     {t("requestDetailPage.fields.client")}
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    {item.client_ip || ""}
+                    {item.client_ip || EMPTY}
                     {item.user_agent ? ` (${item.user_agent})` : ""}
                   </TableCell>
                 </TableRow>
+
+                {/* ── Usage ── */}
+                <SectionHeader
+                  label={t("requestDetailPage.sections.usage")}
+                />
                 <TableRow>
                   <TableCell className="text-muted-foreground">
                     {t("requestDetailPage.fields.tokens")}
                   </TableCell>
-                  <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    <span>
-                      {t("requestDetailPage.tokens.in")}={item.tokens_input ?? ""}
-                    </span>{" "}
-                    <span>
-                      {t("requestDetailPage.tokens.out")}={item.tokens_output ?? ""}
-                    </span>{" "}
-                    <span>
-                      {t("requestDetailPage.tokens.total")}={item.tokens_total ?? ""}
-                    </span>{" "}
-                    <span>
-                      {t("requestDetailPage.tokens.cached")}={item.tokens_cached_input ?? ""}
-                    </span>
+                  <TableCell className="font-mono text-xs">
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                      <span>
+                        <span className="text-muted-foreground">
+                          {t("requestDetailPage.tokens.in")}:
+                        </span>{" "}
+                        {item.tokens_input != null
+                          ? fmtNum(item.tokens_input)
+                          : EMPTY}
+                      </span>
+                      <span>
+                        <span className="text-muted-foreground">
+                          {t("requestDetailPage.tokens.out")}:
+                        </span>{" "}
+                        {item.tokens_output != null
+                          ? fmtNum(item.tokens_output)
+                          : EMPTY}
+                      </span>
+                      <span>
+                        <span className="text-muted-foreground">
+                          {t("requestDetailPage.tokens.total")}:
+                        </span>{" "}
+                        {item.tokens_total != null
+                          ? fmtNum(item.tokens_total)
+                          : EMPTY}
+                      </span>
+                      <span>
+                        <span className="text-muted-foreground">
+                          {t("requestDetailPage.tokens.cached")}:
+                        </span>{" "}
+                        {item.tokens_cached_input != null
+                          ? fmtNum(item.tokens_cached_input)
+                          : EMPTY}
+                      </span>
+                    </div>
                   </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-muted-foreground">
                     {t("requestDetailPage.fields.quota")}
                   </TableCell>
-                  <TableCell className="font-mono text-xs whitespace-normal break-words">
-                    <span>
-                      {t("requestDetailPage.quota.before")}={item.premium_remaining_before ?? ""}
-                    </span>{" "}
-                    <span>
-                      {t("requestDetailPage.quota.after")}={item.premium_remaining_after ?? ""}
-                    </span>{" "}
-                    <span>
-                      {t("requestDetailPage.quota.diff")}={item.premium_remaining_diff ?? ""}{" "}
-                      ({quota})
-                    </span>
+                  <TableCell className="font-mono text-xs">
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                      <span>
+                        <span className="text-muted-foreground">
+                          {t("requestDetailPage.quota.before")}:
+                        </span>{" "}
+                        {item.premium_remaining_before != null
+                          ? fmtNum(item.premium_remaining_before)
+                          : EMPTY}
+                      </span>
+                      <span>
+                        <span className="text-muted-foreground">
+                          {t("requestDetailPage.quota.after")}:
+                        </span>{" "}
+                        {item.premium_remaining_after != null
+                          ? fmtNum(item.premium_remaining_after)
+                          : EMPTY}
+                      </span>
+                      <span>
+                        <span className="text-muted-foreground">
+                          {t("requestDetailPage.quota.diff")}:
+                        </span>{" "}
+                        {item.premium_remaining_diff != null
+                          ? fmtNum(item.premium_remaining_diff)
+                          : EMPTY}
+                        {quota ? ` (${quota})` : ""}
+                      </span>
+                    </div>
                   </TableCell>
                 </TableRow>
               </TableBody>
@@ -362,7 +595,11 @@ export function RequestDetailPage(): React.JSX.Element {
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Raw JSON card */}
+        <Card
+          className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 fill-mode-backwards"
+          style={{ animationDelay: "150ms" }}
+        >
           <CardHeader>
             <CardTitle>{t("requestDetailPage.rawTitle")}</CardTitle>
             <CardDescription>
@@ -387,9 +624,14 @@ export function RequestDetailPage(): React.JSX.Element {
                   <DownloadIcon className="size-4" />
                   {t("common.download")}
                 </Button>
-                <RainbowButton onClick={() => void copyRaw()} size="sm">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void copyRaw()}
+                >
                   {t("common.copyJson")}
-                </RainbowButton>
+                </Button>
               </div>
             </div>
 

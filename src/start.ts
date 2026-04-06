@@ -39,6 +39,7 @@ interface RunServerOptions {
   claudeCode: boolean
   showToken: boolean
   proxyEnv: boolean
+  skipAuth: boolean
 }
 
 /**
@@ -184,16 +185,22 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   // Check if we have any accounts, if not, start the auth flow
   if (!accountsManager.hasAccounts()) {
-    try {
-      await runAuthFlow(options.accountType)
+    if (options.skipAuth) {
+      consola.warn(
+        "No accounts found. Skipping auth flow (--skip-auth). Add accounts via the Admin UI.",
+      )
+    } else {
+      try {
+        await runAuthFlow(options.accountType)
 
-      // Re-initialize accounts manager with the new account
-      accountsManager.shutdown()
-      await accountsManager.initialize(state.vsCodeVersion)
-      accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
-    } catch (error) {
-      consola.error("Failed to add account:", error)
-      process.exit(1)
+        // Re-initialize accounts manager with the new account
+        accountsManager.shutdown()
+        await accountsManager.initialize(state.vsCodeVersion)
+        accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
+      } catch (error) {
+        consola.error("Failed to add account:", error)
+        process.exit(1)
+      }
     }
   }
 
@@ -290,6 +297,12 @@ export const start = defineCommand({
       default: false,
       description: "Initialize proxy from environment variables",
     },
+    "skip-auth": {
+      type: "boolean",
+      default: false,
+      description:
+        "Skip the initial CLI auth flow when no accounts are found. Use this to add accounts via the Admin UI instead.",
+    },
   },
   run({ args }) {
     const rateLimitRaw = args["rate-limit"]
@@ -316,6 +329,7 @@ export const start = defineCommand({
       claudeCode: args["claude-code"],
       showToken: args["show-token"],
       proxyEnv: args["proxy-env"],
+      skipAuth: args["skip-auth"],
     })
   },
 })

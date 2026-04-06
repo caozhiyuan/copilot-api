@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+import { LoaderCircleIcon, RefreshCwIcon, SearchIcon } from "lucide-react"
 
 import {
   AdminApiError,
@@ -10,8 +11,15 @@ import {
 import { i18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { InlineAlert } from "@/components/ui/inline-alert"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Card,
   CardContent,
@@ -28,7 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const modelsTableColVisibility = [null, null, null, null, null, null] as const
+const MODELS_COL_COUNT = 6
 
 type SortDir = "asc" | "desc"
 
@@ -116,6 +124,7 @@ function makeFeaturesSortKey(
 function SortableTableHead({
   columnKey,
   label,
+  tooltip,
   sortKey,
   sortDir,
   onSort,
@@ -123,6 +132,7 @@ function SortableTableHead({
 }: {
   columnKey: SortKey
   label: string
+  tooltip?: string
   sortKey: SortKey | null
   sortDir: SortDir
   onSort: (key: SortKey) => void
@@ -135,6 +145,21 @@ function SortableTableHead({
     ariaSort = sortDir === "asc" ? "ascending" : "descending"
   }
 
+  const labelContent = tooltip ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help underline decoration-dashed decoration-current/30 underline-offset-2">
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-60">
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  ) : (
+    <span>{label}</span>
+  )
+
   return (
     <TableHead aria-sort={ariaSort} className={className}>
       <button
@@ -145,7 +170,7 @@ function SortableTableHead({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         )}
       >
-        <span>{label}</span>
+        {labelContent}
         {isActive ? <span className="text-muted-foreground">{sortDir === "asc" ? "↑" : "↓"}</span> : null}
       </button>
     </TableHead>
@@ -153,14 +178,12 @@ function SortableTableHead({
 }
 
 function ModelsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
-  const cols = modelsTableColVisibility.length
-
   return (
     <>
       {Array.from({ length: rows }).map((_, i) => (
         <TableRow key={i}>
-          {Array.from({ length: cols }).map((__, j) => (
-            <TableCell key={j} className={cn("py-3", modelsTableColVisibility[j])}>
+          {Array.from({ length: MODELS_COL_COUNT }).map((__, j) => (
+            <TableCell key={j} className="py-3">
               <Skeleton className={j === 0 ? "h-4 w-48" : "h-4 w-28"} />
             </TableCell>
           ))}
@@ -177,31 +200,33 @@ function FeatureBadges({
 }): React.JSX.Element {
   const { t } = useTranslation()
 
-  const features: Array<{ key: string; label: string }> = []
+  const features: Array<{ key: string; label: string; tooltip: string }> = []
 
   if (supports.tool_calls) {
-    features.push({ key: "tool_calls", label: t("modelsPage.features.tools") })
+    features.push({ key: "tool_calls", label: t("modelsPage.features.tools"), tooltip: t("modelsPage.featureTooltip.tools") })
   }
 
   if (supports.vision) {
-    features.push({ key: "vision", label: t("modelsPage.features.vision") })
+    features.push({ key: "vision", label: t("modelsPage.features.vision"), tooltip: t("modelsPage.featureTooltip.vision") })
   }
 
   if (supports.structured_outputs) {
     features.push({
       key: "structured_outputs",
       label: t("modelsPage.features.structuredOutputs"),
+      tooltip: t("modelsPage.featureTooltip.structuredOutputs"),
     })
   }
 
   if (supports.streaming) {
-    features.push({ key: "streaming", label: t("modelsPage.features.streaming") })
+    features.push({ key: "streaming", label: t("modelsPage.features.streaming"), tooltip: t("modelsPage.featureTooltip.streaming") })
   }
 
   if (supports.parallel_tool_calls) {
     features.push({
       key: "parallel_tool_calls",
       label: t("modelsPage.features.parallelTools"),
+      tooltip: t("modelsPage.featureTooltip.parallelTools"),
     })
   }
 
@@ -212,9 +237,16 @@ function FeatureBadges({
   return (
     <div className="flex flex-wrap gap-1 whitespace-normal">
       {features.map((f) => (
-        <Badge key={f.key} variant="outline" className="text-xs">
-          {f.label}
-        </Badge>
+        <Tooltip key={f.key}>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="cursor-help text-xs">
+              {f.label}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-60">
+            <p>{f.tooltip}</p>
+          </TooltipContent>
+        </Tooltip>
       ))}
     </div>
   )
@@ -240,7 +272,6 @@ function EndpointBadges({
   )
 }
 
-
 function ContextCell({
   limits,
 }: {
@@ -251,21 +282,60 @@ function ContextCell({
   const inputCompact = fmtTokensCompact(limits.max_prompt_tokens)
   const outputCompact = fmtTokensCompact(limits.max_output_tokens)
 
-  const tooltip = t("modelsPage.contextTooltip", {
+  const tooltipText = t("modelsPage.contextTooltip", {
     input: fmtTokensRaw(limits.max_prompt_tokens),
     output: fmtTokensRaw(limits.max_output_tokens),
   })
 
   return (
-    <div
-      title={tooltip}
-      aria-label={tooltip}
-      className="flex items-center gap-3 tabular-nums cursor-help"
-    >
-      <span className="text-muted-foreground">↓</span>
-      <span>{inputCompact || "—"}</span>
-      <span className="text-muted-foreground">↑</span>
-      <span>{outputCompact || "—"}</span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="flex cursor-help items-center gap-3 tabular-nums">
+          <span className="text-muted-foreground text-xs">in</span>
+          <span>{inputCompact || "—"}</span>
+          <span className="text-muted-foreground text-xs">out</span>
+          <span>{outputCompact || "—"}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-72">
+        <p>{tooltipText}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+const ALIAS_COLLAPSE_THRESHOLD = 3
+
+function AliasesCell({
+  id,
+  aliases,
+}: {
+  id: string
+  aliases: Array<string>
+}): React.JSX.Element {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+
+  const visible = expanded ? aliases : aliases.slice(0, ALIAS_COLLAPSE_THRESHOLD)
+  const hiddenCount = aliases.length - ALIAS_COLLAPSE_THRESHOLD
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 whitespace-normal">
+      <span className="max-w-[14rem] truncate font-mono text-xs" title={id}>{id}</span>
+      {visible.map((alias) => (
+        <Badge key={alias} variant="outline" className="max-w-[10rem] truncate font-mono text-xs" title={alias}>
+          {alias}
+        </Badge>
+      ))}
+      {!expanded && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="text-muted-foreground hover:text-foreground cursor-pointer text-xs transition-colors"
+        >
+          {t("modelsPage.aliasesMore", { count: hiddenCount })}
+        </button>
+      )}
     </div>
   )
 }
@@ -294,12 +364,18 @@ function MultiplierCell({
   )
 }
 
+type FilterTag = "premium" | "preview"
+
 export function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [models, setModels] = useState<AdminModelDetailsItem[]>([])
+
+  const [search, setSearch] = useState("")
+  const [activeFilters, setActiveFilters] = useState<Set<FilterTag>>(new Set())
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const [sortState, setSortState] = useState<SortState>({
     key: null,
@@ -317,10 +393,55 @@ export function ModelsPage(): React.JSX.Element {
     })
   }, [])
 
-  const sortedModels = useMemo(() => {
-    if (!sortKey) return models
+  const toggleFilter = useCallback((tag: FilterTag) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev)
+      if (next.has(tag)) {
+        next.delete(tag)
+      } else {
+        next.add(tag)
+      }
+      return next
+    })
+  }, [])
 
-    return [...models].sort((a, b) => {
+  const stats = useMemo(() => {
+    let premium = 0
+    let preview = 0
+    for (const m of models) {
+      if (m.billing?.is_premium) premium++
+      if (m.preview) preview++
+    }
+    return { total: models.length, premium, preview }
+  }, [models])
+
+  const filteredModels = useMemo(() => {
+    let result = models
+
+    const q = search.trim().toLowerCase()
+    if (q) {
+      result = result.filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          m.id.toLowerCase().includes(q) ||
+          m.aliases.some((a) => a.toLowerCase().includes(q)),
+      )
+    }
+
+    if (activeFilters.has("premium")) {
+      result = result.filter((m) => m.billing?.is_premium)
+    }
+    if (activeFilters.has("preview")) {
+      result = result.filter((m) => m.preview)
+    }
+
+    return result
+  }, [models, search, activeFilters])
+
+  const sortedModels = useMemo(() => {
+    if (!sortKey) return filteredModels
+
+    return [...filteredModels].sort((a, b) => {
       let cmp = 0
 
       switch (sortKey) {
@@ -368,7 +489,7 @@ export function ModelsPage(): React.JSX.Element {
       if (cmp !== 0) return cmp
       return a.id.localeCompare(b.id)
     })
-  }, [models, sortDir, sortKey])
+  }, [filteredModels, sortDir, sortKey])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -404,12 +525,62 @@ export function ModelsPage(): React.JSX.Element {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("modelsPage.title")}</CardTitle>
-          <CardDescription>{t("modelsPage.description")}</CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle>{t("modelsPage.title")}</CardTitle>
+              <CardDescription>{t("modelsPage.description")}</CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              {loading ? (
+                <LoaderCircleIcon className="size-4 motion-safe:animate-spin" />
+              ) : (
+                <RefreshCwIcon className="size-4" />
+              )}
+              {t("common.refresh")}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="text-muted-foreground text-sm">
-            {t("modelsPage.totalCount", { count: models.length })}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative max-w-64 flex-1">
+              <SearchIcon className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
+              <Input
+                ref={searchRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("modelsPage.searchPlaceholder")}
+                className="pl-8"
+              />
+            </div>
+            <Badge
+              variant={activeFilters.has("premium") ? "default" : "outline"}
+              className="cursor-pointer select-none transition-colors"
+              onClick={() => toggleFilter("premium")}
+            >
+              {t("modelsPage.badges.premium")}
+              {stats.premium > 0 ? ` (${stats.premium})` : ""}
+            </Badge>
+            <Badge
+              variant={activeFilters.has("preview") ? "default" : "outline"}
+              className="cursor-pointer select-none transition-colors"
+              onClick={() => toggleFilter("preview")}
+            >
+              {t("modelsPage.badges.preview")}
+              {stats.preview > 0 ? ` (${stats.preview})` : ""}
+            </Badge>
+            <span className={cn(
+              "text-muted-foreground ml-auto text-sm tabular-nums",
+              !loading && models.length > 0 && "motion-safe:animate-in motion-safe:fade-in-0",
+            )}>
+              {filteredModels.length === stats.total
+                ? t("modelsPage.totalCount", { count: stats.total })
+                : t("modelsPage.filteredCount", { filtered: filteredModels.length, total: stats.total })}
+            </span>
           </div>
 
           <Table>
@@ -418,6 +589,7 @@ export function ModelsPage(): React.JSX.Element {
                 <SortableTableHead
                   columnKey="name"
                   label={t("modelsPage.columns.name")}
+                  tooltip={t("modelsPage.columnTooltip.name")}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
@@ -425,22 +597,25 @@ export function ModelsPage(): React.JSX.Element {
                 <SortableTableHead
                   columnKey="endpoints"
                   label={t("modelsPage.columns.endpoints")}
+                  tooltip={t("modelsPage.columnTooltip.endpoints")}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
-                  className={cn(modelsTableColVisibility[1])}
+                  className="hidden lg:table-cell"
                 />
                 <SortableTableHead
                   columnKey="originalId"
                   label={t("modelsPage.columns.originalId")}
+                  tooltip={t("modelsPage.columnTooltip.originalId")}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
-                  className={cn(modelsTableColVisibility[2])}
+                  className="hidden lg:table-cell"
                 />
                 <SortableTableHead
                   columnKey="context"
                   label={t("modelsPage.columns.context")}
+                  tooltip={t("modelsPage.columnTooltip.context")}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
@@ -448,6 +623,7 @@ export function ModelsPage(): React.JSX.Element {
                 <SortableTableHead
                   columnKey="features"
                   label={t("modelsPage.columns.features")}
+                  tooltip={t("modelsPage.columnTooltip.features")}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
@@ -455,6 +631,7 @@ export function ModelsPage(): React.JSX.Element {
                 <SortableTableHead
                   columnKey="multiplier"
                   label={t("modelsPage.columns.multiplier")}
+                  tooltip={t("modelsPage.columnTooltip.multiplier")}
                   sortKey={sortKey}
                   sortDir={sortDir}
                   onSort={onSort}
@@ -463,42 +640,43 @@ export function ModelsPage(): React.JSX.Element {
             </TableHeader>
             <TableBody>
               {loading && models.length === 0 && <ModelsTableSkeleton rows={10} />}
-              {!loading && models.length === 0 && (
+              {!loading && filteredModels.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={modelsTableColVisibility.length}>
+                  <TableCell colSpan={MODELS_COL_COUNT}>
                     <InlineAlert
                       variant="info"
                       title={t("modelsPage.empty.title")}
-                      description={t("modelsPage.empty.description")}
+                      description={
+                        models.length > 0
+                          ? t("modelsPage.empty.noMatchesDescription")
+                          : t("modelsPage.empty.description")
+                      }
                     />
                   </TableCell>
                 </TableRow>
               )}
-              {models.length > 0 &&
-                sortedModels.map((model) => (
-                  <TableRow key={model.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span>{model.name}</span>
+              {filteredModels.length > 0 &&
+                sortedModels.map((model, idx) => (
+                  <TableRow
+                    key={model.id}
+                    className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 fill-mode-backwards"
+                    style={{ animationDelay: `${Math.min(idx * 30, 600)}ms`, animationDuration: "300ms" }}
+                  >
+                    <TableCell className="max-w-[16rem]">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate" title={model.name}>{model.name}</span>
                         {model.preview ? (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="shrink-0 text-xs">
                             {t("modelsPage.badges.preview")}
                           </Badge>
                         ) : null}
                       </div>
                     </TableCell>
-                    <TableCell className={cn(modelsTableColVisibility[1], "max-w-[26rem]")}>
+                    <TableCell className="hidden max-w-[26rem] lg:table-cell">
                       <EndpointBadges endpoints={model.supported_endpoints} />
                     </TableCell>
-                    <TableCell className={cn(modelsTableColVisibility[2], "max-w-[26rem]")}>
-                      <div className="flex flex-wrap items-center gap-1 whitespace-normal">
-                        <span className="font-mono text-xs">{model.id}</span>
-                        {model.aliases.map((alias) => (
-                          <Badge key={alias} variant="outline" className="font-mono text-xs">
-                            {alias}
-                          </Badge>
-                        ))}
-                      </div>
+                    <TableCell className="hidden max-w-[26rem] lg:table-cell">
+                      <AliasesCell id={model.id} aliases={model.aliases} />
                     </TableCell>
                     <TableCell>
                       <ContextCell limits={model.capabilities.limits} />

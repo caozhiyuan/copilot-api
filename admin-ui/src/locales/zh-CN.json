@@ -64,17 +64,18 @@
     "path": "路径",
     "endpoint": "端点",
     "model": "模型",
-    "xInitiator": "x-initiator",
+    "xInitiator": "发起方",
     "cost": "成本",
     "quota": "额度",
     "durationAbbrev": "耗时",
     "loading": "加载中…",
     "loadMore": "加载更多",
-    "noMore": "没有更多",
+    "noMore": "已加载全部",
     "clearFilters": "清除筛选",
     "back": "返回",
     "download": "下载",
-    "copyJson": "复制 JSON"
+    "copyJson": "复制 JSON",
+    "actions": "操作"
   },
   "tokenDialog": {
     "trigger": "Token",
@@ -104,14 +105,40 @@
     "dbInfo": "DB v{{version}} · {{path}}",
     "tableDescription": "点击账号可筛选请求。",
     "filterAccountPlaceholder": "筛选账号",
+    "sortByLabel": "排序",
+    "autoRefreshLabel": "自动",
+    "autoRefresh": {
+      "off": "关闭",
+      "30s": "30秒",
+      "60s": "60秒",
+      "5m": "5分钟"
+    },
+    "exportCsv": "导出 CSV",
+    "exportCsvAria": "将账号导出为 CSV",
+    "exportSuccess": "账号已导出为 CSV",
     "premiumReq": "Premium 请求",
     "empty": {
-      "noAccountsTitle": "无账号",
+      "noAccountsTitle": "还没有账号",
+      "noAccountsDescription": "添加你的第一个 GitHub Copilot 账号，即可开始代理 API 请求。",
+      "noAccountsCta": "添加第一个账号",
       "noMatchesTitle": "无匹配结果",
-      "noAccountsDescription": "未找到账号。",
       "noMatchesDescription": "没有账号匹配当前筛选条件。"
     },
-    "premiumQuotaUsedAria": "Premium 交互额度使用量"
+    "premiumQuotaUsedAria": "Premium 交互额度使用量",
+    "kpiTooltip": {
+      "accounts": "已注册的 GitHub Copilot 账号总数。",
+      "failed": "认证或 Token 刷新失败的账号。",
+      "requests": "在选定时间窗口内所有账号的 API 请求总数。",
+      "errors": "在选定时间窗口内返回错误（4xx/5xx）的请求总数。",
+      "errorRate": "返回错误的请求所占百分比。",
+      "tokensPerRequest": "每次请求平均消耗的 Token 数（输入+输出）。",
+      "tokens": "在选定时间窗口内所有账号消耗的 Token 总数。",
+      "avgDuration": "所有账号的加权平均响应时间（毫秒）。"
+    },
+    "tableTooltip": {
+      "premiumReq": "Premium 交互额度：当前计费周期内的已用量与剩余量。",
+      "avgMs": "该账号的平均响应时间（毫秒）。"
+    }
   },
   "requestsPage": {
     "loadFailedTitle": "加载请求失败",
@@ -136,21 +163,41 @@
     },
     "validation": {
       "title": "时间范围无效",
-      "fromMsMustBeNumber": "from_ms 必须是数字（毫秒）",
-      "toMsMustBeNumber": "to_ms 必须是数字（毫秒）",
-      "fromMsMustBeLteToMs": "from_ms 必须 <= to_ms"
+      "fromMsMustBeNumber": "开始时间必须是有效的日期。",
+      "toMsMustBeNumber": "结束时间必须是有效的日期。",
+      "fromMsMustBeLteToMs": "开始时间必须早于结束时间。"
     },
     "empty": {
       "noRequestsTitle": "无请求",
       "noResultsForFilters": "当前筛选条件下没有结果。",
       "noRequestsFound": "未找到请求。"
     },
-    "affinityHit": "命中亲和性缓存"
+    "affinityHit": "命中亲和性缓存",
+    "resultCount": "已加载 {{count}} 条",
+    "resultCountWithMore": "已加载 {{count}}+ 条",
+    "activeFilters": "{{count}} 个筛选",
+    "autoRefreshLabel": "自动",
+    "autoRefresh": {
+      "off": "关闭",
+      "30s": "30秒",
+      "60s": "60秒",
+      "5m": "5分钟"
+    },
+    "columnTooltip": {
+      "initiator": "客户端发送的 x-initiator 请求头值（如 IDE 扩展名称）。",
+      "cost": "此请求消耗的 Copilot 成本单位。",
+      "quota": "此请求完成后剩余的 Premium 交互额度。",
+      "duration": "总响应时间（毫秒）。",
+      "tokens": "消耗的总 token 数（输入 + 输出）。"
+    }
   },
   "modelsPage": {
     "title": "模型",
     "description": "查看当前可用模型及其元数据。",
     "totalCount": "共 {{count}} 个模型",
+    "filteredCount": "显示 {{filtered}} / {{total}} 个模型",
+    "searchPlaceholder": "按名称或 ID 搜索",
+    "aliasesMore": "+{{count}} 个",
     "loadFailedTitle": "加载模型失败",
     "toast": {
       "loadFailed": "加载模型失败"
@@ -160,11 +207,19 @@
       "endpoints": "端点",
       "originalId": "模型ID",
       "aliases": "别名",
-      "context": "上下文大小",
+      "context": "Token 限制",
       "features": "功能",
-      "multiplier": "乘数"
+      "multiplier": "成本"
     },
-    "contextTooltip": "↓ 最大输入令牌数：{{input}} | ↑ 最大输出令牌数：{{output}}",
+    "columnTooltip": {
+      "name": "代理对外暴露的模型显示名称。",
+      "endpoints": "支持此模型的 API 端点（如 chat-completions、messages）。",
+      "originalId": "上游模型的原始标识符及已配置的别名。",
+      "context": "输入（prompt）和输出（completion）的最大 token 限制。",
+      "features": "该模型支持的功能。",
+      "multiplier": "Copilot 计费成本倍数——值越高，每次请求消耗的 Premium 额度越多。"
+    },
+    "contextTooltip": "最大输入：{{input}} tokens · 最大输出：{{output}} tokens",
     "badges": {
       "preview": "预览",
       "premium": "高级"
@@ -176,46 +231,69 @@
       "streaming": "流式",
       "parallelTools": "并行工具"
     },
+    "featureTooltip": {
+      "tools": "支持函数/工具调用。",
+      "vision": "可以处理图像输入。",
+      "structuredOutputs": "支持 JSON Schema 约束输出。",
+      "streaming": "支持流式响应。",
+      "parallelTools": "可以同时执行多个工具调用。"
+    },
     "empty": {
       "title": "无模型",
-      "description": "未找到模型。"
+      "description": "未找到模型。",
+      "noMatchesDescription": "没有模型匹配当前的搜索或筛选条件。"
     }
   },
   "requestDetailPage": {
     "loadFailedTitle": "加载请求详情失败",
-    "title": "请求",
+    "title": "请求详情",
     "notFoundTitle": "请求不存在",
-    "notFoundDescription": "请求不存在。",
+    "notFoundDescription": "未找到指定的请求记录。",
     "summaryTitle": "摘要",
-    "rawTitle": "原始数据",
-    "rawDescription": "完整记录（JSON）。",
-    "searchPlaceholder": "搜索键/值",
+    "rawTitle": "原始 JSON",
+    "rawDescription": "完整请求记录（JSON 格式）。",
+    "searchPlaceholder": "搜索键或值…",
     "toast": {
       "copiedJson": "已复制 JSON",
       "copyFailed": "复制失败",
       "downloadedJson": "已下载 JSON",
       "downloadFailed": "下载失败"
     },
+    "sections": {
+      "request": "请求",
+      "routing": "路由",
+      "client": "客户端",
+      "usage": "用量"
+    },
     "fields": {
       "time": "时间",
       "path": "路径",
-      "endpoint": "端点",
+      "endpoint": "上游端点",
       "account": "账号",
-      "userId": "user_id",
-      "safetyIdentifier": "safety_identifier",
-      "promptCacheKey": "prompt_cache_key",
-      "initiator": "initiator",
-      "upstreamRequestId": "upstream_request_id",
+      "userId": "用户 ID",
+      "safetyIdentifier": "安全标识",
+      "promptCacheKey": "提示词缓存键",
+      "initiator": "发起者",
+      "upstreamRequestId": "上游请求 ID",
       "model": "模型",
       "client": "客户端",
-      "tokens": "tokens",
+      "tokens": "Token",
       "quota": "额度",
       "affinityHit": "亲和性命中",
-      "affinityCacheKey": "affinity_cache_key"
+      "affinityCacheKey": "亲和性缓存键",
+      "duration": "耗时 (ms)",
+      "ttfb": "首字节 (ms)"
     },
-    "badges": {
-      "durMs": "dur_ms",
-      "ttfbMs": "ttfb_ms"
+    "fieldTooltip": {
+      "endpoint": "此请求被转发到的上游 API 端点",
+      "userId": "与此请求关联的 GitHub 用户 ID",
+      "safetyIdentifier": "用于内容审核的安全标识符",
+      "promptCacheKey": "用于提示词去重的缓存键",
+      "initiator": "发起此请求的组件或客户端",
+      "upstreamRequestId": "上游提供商返回的请求 ID",
+      "affinityCacheKey": "用于账号亲和性路由的缓存键",
+      "duration": "请求总处理时间（毫秒）",
+      "ttfb": "首字节时间 — 收到第一个响应块前的延迟"
     },
     "tokens": {
       "in": "输入",
@@ -253,7 +331,8 @@
       "reasoning": "推理",
       "aliases": "别名",
       "prompts": "提示词",
-      "advanced": "高级"
+      "advanced": "高级",
+      "providers": "Providers"
     },
     "navigation": {
       "ariaLabel": "设置分区"
@@ -341,24 +420,27 @@
     "advanced": {
       "title": "高级",
       "description": "功能开关与实验选项。",
+      "routingGroupTitle": "路由",
+      "apiGroupTitle": "API 端点",
+      "modelGroupTitle": "模型与 Token",
       "modelRefreshIntervalLabel": "模型列表刷新间隔（小时）",
       "modelRefreshIntervalHint": "设置为 0 表示关闭自动刷新。",
       "modelRefreshIntervalError": "必须是非负数字。",
       "allowOriginalModelNamesLabel": "允许原始模型名",
       "allowOriginalModelNamesHint": "当别名未覆盖时的默认行为。",
-      "useFunctionApplyPatchLabel": "启用 function apply_patch",
-      "useFunctionApplyPatchHint": "在响应路由中启用函数级补丁。",
-      "forceAgentLabel": "强制 Agent 请求头",
+      "useFunctionApplyPatchLabel": "Responses API apply_patch",
+      "useFunctionApplyPatchHint": "在 Responses API 转发请求时包含 apply_patch 函数工具。",
+      "forceAgentLabel": "按会话合并 Agent 请求计费",
       "forceAgentHint": "影响 Copilot高级请求消耗的计次：关闭时，每次与 Agent 的对话请求都会计 1 次（与 VS Code 插件一致）；开启时，同一会话内对同一模型的多次请求只计 1 次。",
-      "compactUseSmallModelLabel": "compact 使用小模型",
+      "compactUseSmallModelLabel": "compact 请求路由到小模型",
       "compactUseSmallModelHint": "启用后，compact 请求使用配置的小模型；否则使用请求的模型。",
-      "messageStartInputTokensFallbackLabel": "在流开始时估算输入 tokens",
+      "messageStartInputTokensFallbackLabel": "估算输入 tokens（回退）",
       "messageStartInputTokensFallbackHint": "启用后，当上游 usage 不可用时，会估算 message_start 的 input tokens。",
       "useMessagesApiLabel": "启用 Messages API",
       "useMessagesApiHint": "启用后，支持 Copilot 原生 /v1/messages 的 Claude 系列模型将优先走 Messages API。",
       "useResponsesApiWebSearchLabel": "启用 Responses API WebSearch",
       "useResponsesApiWebSearchHint": "启用后，/v1/responses 会保留 web_search 工具并继续向上游转发。",
-      "responsesApiContextManagementModelsLabel": "Responses API context_management 模型列表",
+      "responsesApiContextManagementModelsLabel": "上下文管理模型（Responses API）",
       "responsesApiContextManagementModelsPlaceholder": "每行一个 model id",
       "responsesApiContextManagementModelsHint": "这些模型将收到 Responses API 的 context_management 压缩指令。",
       "providersTitle": "上游 Providers",
@@ -375,7 +457,7 @@
       "providersModelsLabel": "模型默认参数",
       "providersModelsEmptyState": "未配置按模型的默认参数。",
       "providersAddModel": "添加模型",
-      "providersModelIdPlaceholder": "Model id"
+      "providersModelIdPlaceholder": "Model ID"
     }
   },
   "accountManagement": {
@@ -394,14 +476,21 @@
     "continue": "继续",
     "cancel": "取消",
     "authorizeTitle": "GitHub 授权",
+    "reauthAuthorizeTitle": "重新授权 \"{{id}}\"",
+    "reauthAuthorizeDescription": "完成授权流程以刷新此账号的凭据。",
+    "reauthConfirmDescription": "这将在新标签页中打开 GitHub 以重新授权你的账号凭据。",
+    "reauthConfirmHint": "你需要在 GitHub 上输入设备码来完成流程。现有账号数据将保留不变。",
     "enterCodePrompt": "请在 GitHub 输入以下代码以完成授权：",
     "copy": "复制",
     "copied": "已复制！",
     "autoOpenHint": "已打开新标签页。如果未自动打开：",
     "waitingForAuth": "等待授权中...",
     "expiresIn": "{{time}} 后过期",
+    "expiresWarning": "授权码即将过期",
+    "errorRecoveryHint": "请检查网络连接后重试。如问题持续存在，请确认你的 GitHub 账号已订阅 Copilot。",
+    "errorExpiredHint": "授权码已过期，请重新开始以获取新的授权码。",
     "successTitle": "账号添加成功！",
-    "successReauthTitle": "账号重新认证成功！",
+    "successReauthTitle": "\"{{id}}\" 重新认证成功！",
     "accountLabel": "账号",
     "typeLabel": "类型",
     "statusLabel": "状态",
@@ -416,7 +505,10 @@
     "deleteConfirmation": "确定要删除账号 \"{{id}}\" 吗？此操作不可撤销。",
     "deleteSuccess": "账号 \"{{id}}\" 已成功删除。",
     "authFailed": "认证失败",
-    "enterpriseDomainRequired": "Enterprise 域名不能为空"
+    "enterpriseDomainRequired": "Enterprise 域名不能为空",
+    "deleting": "删除中...",
+    "reauthAriaLabel": "重新认证账号 {{id}}",
+    "deleteAriaLabel": "删除账号 {{id}}"
   },
   "notFound": {
     "title": "未找到页面",

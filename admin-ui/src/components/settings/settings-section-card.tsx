@@ -1,8 +1,6 @@
-import type { ReactNode } from "react"
+import type { CSSProperties, ReactNode } from "react"
 import { forwardRef } from "react"
 
-import { BorderBeam } from "@/components/ui/border-beam"
-import { MagicCard } from "@/components/ui/magic-card"
 import { cn } from "@/lib/utils"
 
 export type SettingsSectionCardProps = {
@@ -10,40 +8,29 @@ export type SettingsSectionCardProps = {
   isActive: boolean
   children: ReactNode
   className?: string
+  style?: CSSProperties
 }
 
 /**
- * Settings section wrapper with MagicCard effect and BorderBeam on active state.
- * Wraps existing card components to add visual effects.
+ * Settings section wrapper card.
+ * Subtle ring highlight on the active (scrolled-to) section.
  */
 export const SettingsSectionCard = forwardRef<HTMLDivElement, SettingsSectionCardProps>(
-  ({ id, isActive, children, className }, ref) => {
+  ({ id, isActive, children, className, style }, ref) => {
     return (
       <div
         ref={ref}
         id={id}
         data-section-id={id}
-        className={cn("relative scroll-mt-6", className)}
+        className={cn(
+          "scroll-mt-6 rounded-xl transition-shadow",
+          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 fill-mode-backwards",
+          isActive && "ring-1 ring-primary/30",
+          className,
+        )}
+        style={style}
       >
-        <MagicCard
-          className="rounded-xl overflow-hidden"
-          gradientSize={200}
-          gradientOpacity={0.6}
-        >
-          {isActive && (
-            <BorderBeam
-              size={50}
-              duration={6}
-              colorFrom="#9E7AFF"
-              colorTo="#FE8BBB"
-              borderWidth={2}
-              className="opacity-70"
-            />
-          )}
-          <div className="relative">
-            {children}
-          </div>
-        </MagicCard>
+        {children}
       </div>
     )
   }

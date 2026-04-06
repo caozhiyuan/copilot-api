@@ -64,17 +64,18 @@
     "path": "Path",
     "endpoint": "Endpoint",
     "model": "Model",
-    "xInitiator": "x-initiator",
+    "xInitiator": "Initiator",
     "cost": "Cost",
     "quota": "Quota",
-    "durationAbbrev": "Dur",
+    "durationAbbrev": "Duration",
     "loading": "Loading...",
     "loadMore": "Load more",
-    "noMore": "No more",
+    "noMore": "All results loaded",
     "clearFilters": "Clear filters",
     "back": "Back",
     "download": "Download",
-    "copyJson": "Copy JSON"
+    "copyJson": "Copy JSON",
+    "actions": "Actions"
   },
   "tokenDialog": {
     "trigger": "Token",
@@ -104,14 +105,40 @@
     "dbInfo": "DB v{{version}} · {{path}}",
     "tableDescription": "Click an account to filter requests.",
     "filterAccountPlaceholder": "Filter account",
+    "sortByLabel": "Sort by",
+    "autoRefreshLabel": "Auto",
+    "autoRefresh": {
+      "off": "Off",
+      "30s": "30s",
+      "60s": "60s",
+      "5m": "5m"
+    },
+    "exportCsv": "Export CSV",
+    "exportCsvAria": "Export accounts as CSV",
+    "exportSuccess": "Accounts exported as CSV",
     "premiumReq": "Premium req",
     "empty": {
-      "noAccountsTitle": "No accounts",
+      "noAccountsTitle": "No accounts yet",
+      "noAccountsDescription": "Add your first GitHub Copilot account to start proxying API requests.",
+      "noAccountsCta": "Add Your First Account",
       "noMatchesTitle": "No matches",
-      "noAccountsDescription": "No accounts found.",
       "noMatchesDescription": "No accounts match the current filter."
     },
-    "premiumQuotaUsedAria": "Premium interactions quota used"
+    "premiumQuotaUsedAria": "Premium interactions quota used",
+    "kpiTooltip": {
+      "accounts": "Total number of registered GitHub Copilot accounts.",
+      "failed": "Accounts that failed authentication or token refresh.",
+      "requests": "Total API requests across all accounts in the selected time window.",
+      "errors": "Total failed requests (4xx/5xx responses) in the selected time window.",
+      "errorRate": "Percentage of requests that returned an error.",
+      "tokensPerRequest": "Average number of tokens (input + output) consumed per request.",
+      "tokens": "Total tokens consumed across all accounts in the selected time window.",
+      "avgDuration": "Weighted average response time across all accounts (in milliseconds)."
+    },
+    "tableTooltip": {
+      "premiumReq": "Premium interactions quota: used vs remaining for the current billing cycle.",
+      "avgMs": "Average response time in milliseconds for this account."
+    }
   },
   "requestsPage": {
     "loadFailedTitle": "Failed to load requests",
@@ -136,21 +163,41 @@
     },
     "validation": {
       "title": "Invalid time range",
-      "fromMsMustBeNumber": "from_ms must be a number (milliseconds)",
-      "toMsMustBeNumber": "to_ms must be a number (milliseconds)",
-      "fromMsMustBeLteToMs": "from_ms must be <= to_ms"
+      "fromMsMustBeNumber": "Start time must be a valid date.",
+      "toMsMustBeNumber": "End time must be a valid date.",
+      "fromMsMustBeLteToMs": "Start time must be before end time."
     },
     "empty": {
       "noRequestsTitle": "No requests",
       "noResultsForFilters": "No results for the current filters.",
       "noRequestsFound": "No requests found."
     },
-    "affinityHit": "Affinity cache hit"
+    "affinityHit": "Affinity cache hit",
+    "resultCount": "{{count}} loaded",
+    "resultCountWithMore": "{{count}}+ loaded",
+    "activeFilters": "{{count}} active",
+    "autoRefreshLabel": "Auto",
+    "autoRefresh": {
+      "off": "Off",
+      "30s": "30s",
+      "60s": "60s",
+      "5m": "5m"
+    },
+    "columnTooltip": {
+      "initiator": "Value of the x-initiator header sent by the client (e.g. IDE extension name).",
+      "cost": "Copilot cost units consumed by this request.",
+      "quota": "Premium interactions quota remaining after this request.",
+      "duration": "Total response time in milliseconds.",
+      "tokens": "Total tokens consumed (input + output)."
+    }
   },
   "modelsPage": {
     "title": "Models",
     "description": "View available models and their metadata.",
     "totalCount": "{{count}} models",
+    "filteredCount": "{{filtered}} of {{total}} models",
+    "searchPlaceholder": "Search by name or ID",
+    "aliasesMore": "+{{count}} more",
     "loadFailedTitle": "Failed to load models",
     "toast": {
       "loadFailed": "Failed to load models"
@@ -160,11 +207,19 @@
       "endpoints": "Endpoints",
       "originalId": "Model ID",
       "aliases": "Aliases",
-      "context": "Context",
+      "context": "Token Limits",
       "features": "Features",
-      "multiplier": "Multiplier"
+      "multiplier": "Cost"
     },
-    "contextTooltip": "↓ Max input tokens: {{input}} | ↑ Max output tokens: {{output}}",
+    "columnTooltip": {
+      "name": "Display name of the model as exposed by the proxy.",
+      "endpoints": "API endpoints that support this model (e.g. chat-completions, messages).",
+      "originalId": "Original upstream model identifier and any configured aliases.",
+      "context": "Maximum token limits for input (prompt) and output (completion).",
+      "features": "Capabilities supported by this model.",
+      "multiplier": "Copilot billing cost multiplier — higher values consume more premium quota per request."
+    },
+    "contextTooltip": "Max input: {{input}} tokens · Max output: {{output}} tokens",
     "badges": {
       "preview": "preview",
       "premium": "premium"
@@ -176,57 +231,80 @@
       "streaming": "streaming",
       "parallelTools": "parallel tools"
     },
+    "featureTooltip": {
+      "tools": "Supports function/tool calling.",
+      "vision": "Can process image inputs.",
+      "structuredOutputs": "Supports JSON schema-constrained output.",
+      "streaming": "Supports streaming responses.",
+      "parallelTools": "Can execute multiple tool calls in parallel."
+    },
     "empty": {
       "title": "No models",
-      "description": "No models found."
+      "description": "No models found.",
+      "noMatchesDescription": "No models match the current search or filters."
     }
   },
   "requestDetailPage": {
     "loadFailedTitle": "Failed to load request",
-    "title": "Request",
+    "title": "Request Detail",
     "notFoundTitle": "Request not found",
-    "notFoundDescription": "Request not found.",
+    "notFoundDescription": "The specified request could not be found.",
     "summaryTitle": "Summary",
-    "rawTitle": "Raw",
-    "rawDescription": "Full record as JSON.",
-    "searchPlaceholder": "Search key/value",
+    "rawTitle": "Raw JSON",
+    "rawDescription": "Full request record in JSON format.",
+    "searchPlaceholder": "Search key or value…",
     "toast": {
       "copiedJson": "Copied JSON",
       "copyFailed": "Copy failed",
       "downloadedJson": "Downloaded JSON",
       "downloadFailed": "Download failed"
     },
-    "fields": {
-      "time": "time",
-      "path": "path",
-      "endpoint": "endpoint",
-      "account": "account",
-      "userId": "user_id",
-      "safetyIdentifier": "safety_identifier",
-      "promptCacheKey": "prompt_cache_key",
-      "initiator": "initiator",
-      "upstreamRequestId": "upstream_request_id",
-      "model": "model",
-      "client": "client",
-      "tokens": "tokens",
-      "quota": "quota",
-      "affinityHit": "affinity hit",
-      "affinityCacheKey": "affinity_cache_key"
+    "sections": {
+      "request": "Request",
+      "routing": "Routing",
+      "client": "Client",
+      "usage": "Usage"
     },
-    "badges": {
-      "durMs": "dur_ms",
-      "ttfbMs": "ttfb_ms"
+    "fields": {
+      "time": "Time",
+      "path": "Path",
+      "endpoint": "Endpoint",
+      "account": "Account",
+      "userId": "User ID",
+      "safetyIdentifier": "Safety ID",
+      "promptCacheKey": "Prompt Cache Key",
+      "initiator": "Initiator",
+      "upstreamRequestId": "Upstream Request ID",
+      "model": "Model",
+      "client": "Client",
+      "tokens": "Tokens",
+      "quota": "Quota",
+      "affinityHit": "Affinity Hit",
+      "affinityCacheKey": "Affinity Key",
+      "duration": "Duration (ms)",
+      "ttfb": "TTFB (ms)"
+    },
+    "fieldTooltip": {
+      "endpoint": "The upstream API endpoint this request was forwarded to",
+      "userId": "GitHub user ID associated with this request",
+      "safetyIdentifier": "Safety identifier used for content moderation",
+      "promptCacheKey": "Cache key for prompt deduplication",
+      "initiator": "The component or client that initiated this request",
+      "upstreamRequestId": "Request ID returned by the upstream provider",
+      "affinityCacheKey": "Cache key used for account affinity routing",
+      "duration": "Total request processing time in milliseconds",
+      "ttfb": "Time to first byte — latency before the first response chunk"
     },
     "tokens": {
-      "in": "in",
-      "out": "out",
-      "total": "total",
-      "cached": "cached"
+      "in": "Input",
+      "out": "Output",
+      "total": "Total",
+      "cached": "Cached"
     },
     "quota": {
-      "before": "before",
-      "after": "after",
-      "diff": "diff"
+      "before": "Before",
+      "after": "After",
+      "diff": "Change"
     }
   },
   "jsonViewer": {
@@ -253,7 +331,8 @@
       "reasoning": "Reasoning",
       "aliases": "Aliases",
       "prompts": "Prompts",
-      "advanced": "Advanced"
+      "advanced": "Advanced",
+      "providers": "Providers"
     },
     "navigation": {
       "ariaLabel": "Settings sections"
@@ -341,24 +420,27 @@
     "advanced": {
       "title": "Advanced",
       "description": "Feature flags and experimental toggles.",
+      "routingGroupTitle": "Routing",
+      "apiGroupTitle": "API endpoints",
+      "modelGroupTitle": "Model & tokens",
       "modelRefreshIntervalLabel": "Model refresh interval (hours)",
       "modelRefreshIntervalHint": "Set to 0 to disable automatic refresh.",
       "modelRefreshIntervalError": "Must be a non-negative number.",
       "allowOriginalModelNamesLabel": "Allow original model names",
       "allowOriginalModelNamesHint": "Default behavior when aliases do not override original model IDs.",
-      "useFunctionApplyPatchLabel": "Use function apply_patch",
-      "useFunctionApplyPatchHint": "Enables function-level patches in responses routing.",
-      "forceAgentLabel": "Force agent header",
+      "useFunctionApplyPatchLabel": "Responses API apply_patch",
+      "useFunctionApplyPatchHint": "Include the apply_patch function tool when forwarding requests through the Responses API.",
+      "forceAgentLabel": "Batch agent requests per session",
       "forceAgentHint": "Affects Copilot Premium request consumption counting: when off, every agent conversation request counts as 1 (same as the VS Code extension); when on, multiple requests in the same session count only once per model.",
-      "compactUseSmallModelLabel": "Compact uses small model",
+      "compactUseSmallModelLabel": "Route compact requests to small model",
       "compactUseSmallModelHint": "When enabled, compact requests use the configured smallModel; otherwise they use the requested model.",
-      "messageStartInputTokensFallbackLabel": "Estimate input tokens at stream start",
+      "messageStartInputTokensFallbackLabel": "Estimate input tokens (fallback)",
       "messageStartInputTokensFallbackHint": "When enabled, estimates message_start input tokens when upstream usage is unavailable.",
       "useMessagesApiLabel": "Enable Messages API",
       "useMessagesApiHint": "When enabled, Claude-family models may use Copilot's native /v1/messages endpoint.",
       "useResponsesApiWebSearchLabel": "Enable Responses API WebSearch",
       "useResponsesApiWebSearchHint": "When enabled, /v1/responses keeps web_search tools and forwards them upstream.",
-      "responsesApiContextManagementModelsLabel": "Responses API context_management models",
+      "responsesApiContextManagementModelsLabel": "Context management models (Responses API)",
       "responsesApiContextManagementModelsPlaceholder": "one model id per line",
       "responsesApiContextManagementModelsHint": "List of model IDs that should receive Responses API context_management compaction instructions.",
       "providersTitle": "Providers",
@@ -375,7 +457,7 @@
       "providersModelsLabel": "Model defaults",
       "providersModelsEmptyState": "No per-model defaults.",
       "providersAddModel": "Add model",
-      "providersModelIdPlaceholder": "Model id"
+      "providersModelIdPlaceholder": "Model ID"
     }
   },
   "accountManagement": {
@@ -394,14 +476,21 @@
     "continue": "Continue",
     "cancel": "Cancel",
     "authorizeTitle": "Authorize with GitHub",
+    "reauthAuthorizeTitle": "Re-authorize \"{{id}}\"",
+    "reauthAuthorizeDescription": "Complete the authorization flow to refresh this account's credentials.",
+    "reauthConfirmDescription": "This will open GitHub in a new tab to re-authorize your account credentials.",
+    "reauthConfirmHint": "You will need to enter a device code on GitHub to complete the process. Your existing account data will be preserved.",
     "enterCodePrompt": "Enter the code below at GitHub to authorize:",
     "copy": "Copy",
     "copied": "Copied!",
     "autoOpenHint": "A new tab has been opened. If it didn't open automatically:",
     "waitingForAuth": "Waiting for authorization...",
     "expiresIn": "expires in {{time}}",
+    "expiresWarning": "Code expiring soon",
+    "errorRecoveryHint": "Check your network connection and try again. If the issue persists, make sure your GitHub account has an active Copilot subscription.",
+    "errorExpiredHint": "The authorization code has expired. Start over to get a new code.",
     "successTitle": "Account Added!",
-    "successReauthTitle": "Account Re-authenticated!",
+    "successReauthTitle": "\"{{id}}\" Re-authenticated!",
     "accountLabel": "Account",
     "typeLabel": "Type",
     "statusLabel": "Status",
@@ -416,7 +505,10 @@
     "deleteConfirmation": "Are you sure you want to delete account \"{{id}}\"? This action cannot be undone.",
     "deleteSuccess": "Account \"{{id}}\" deleted successfully.",
     "authFailed": "Authentication failed",
-    "enterpriseDomainRequired": "Enterprise domain is required"
+    "enterpriseDomainRequired": "Enterprise domain is required",
+    "deleting": "Deleting...",
+    "reauthAriaLabel": "Re-authenticate account {{id}}",
+    "deleteAriaLabel": "Delete account {{id}}"
   },
   "notFound": {
     "title": "Not found",
