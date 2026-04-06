@@ -3,20 +3,18 @@ import { Hono, type Context } from "hono"
 import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 
-import { accountsManager } from "~/lib/accounts-manager"
 import {
   buildIdentityKey,
-  getCurrentIdentityEnvironment,
   DEFAULT_IDENTITY_ENTERPRISE_DOMAIN,
+  getCurrentIdentityEnvironment,
 } from "~/lib/account-client-identity"
+import { accountsManager } from "~/lib/accounts-manager"
 import {
   getAccountClientIdentity,
   listAccountsFromRegistry,
   removeAccountFromRegistry,
   removeAccountToken,
 } from "~/lib/accounts-registry"
-import { isAccountType } from "~/lib/types/account"
-import { authSessionManager } from "./auth-sessions"
 import {
   getConfig,
   getModelAliases,
@@ -34,6 +32,9 @@ import {
   getRequestHistoryStore,
   type AccountStatsRow,
 } from "~/lib/request-history"
+import { isAccountType } from "~/lib/types/account"
+
+import { authSessionManager } from "./auth-sessions"
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN?.trim() || undefined
 
@@ -1372,10 +1373,11 @@ adminApiRoutes.post("/accounts/auth/start", async (c) => {
   }
 
   // Only enterprise accounts use a custom domain; ignore for other types
-  const enterpriseDomain =
-    accountType === "enterprise" && typeof payload.enterpriseDomain === "string"
-      ? payload.enterpriseDomain.trim()
-      : undefined
+  const enterpriseDomainRaw = payload.enterpriseDomain
+  let enterpriseDomain: string | undefined
+  if (accountType === "enterprise" && typeof enterpriseDomainRaw === "string") {
+    enterpriseDomain = enterpriseDomainRaw.trim()
+  }
 
   if (accountType === "enterprise" && !enterpriseDomain) {
     return jsonError(c, 400, {
@@ -1482,11 +1484,14 @@ adminApiRoutes.post("/accounts/:id/reauth", async (c) => {
     const clientIdentity = await getAccountClientIdentity(identityKey)
 
     // Use the stored enterprise domain if it's not the default "public"
-    const enterpriseDomain =
-      clientIdentity?.enterpriseDomain &&
-      clientIdentity.enterpriseDomain !== DEFAULT_IDENTITY_ENTERPRISE_DOMAIN
-        ? clientIdentity.enterpriseDomain
-        : undefined
+    const resolvedEnterpriseDomain = clientIdentity?.enterpriseDomain
+    let enterpriseDomain: string | undefined
+    if (
+      resolvedEnterpriseDomain
+      && resolvedEnterpriseDomain !== DEFAULT_IDENTITY_ENTERPRISE_DOMAIN
+    ) {
+      enterpriseDomain = resolvedEnterpriseDomain
+    }
 
     // Enterprise accounts must have a resolvable enterprise domain
     if (account.accountType === "enterprise" && !enterpriseDomain) {

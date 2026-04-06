@@ -1,6 +1,8 @@
 // src/routes/admin-api/auth-sessions.ts
-import { randomUUID } from "node:crypto"
 import consola from "consola"
+import { randomUUID } from "node:crypto"
+
+import type { AccountType } from "~/lib/types/account"
 
 import {
   addAccountToRegistry,
@@ -11,8 +13,10 @@ import {
 } from "~/lib/accounts-registry"
 import { normalizeDomain } from "~/lib/api-config"
 import { ensurePaths } from "~/lib/paths"
-import type { AccountType } from "~/lib/types/account"
-import { getDeviceCode, type DeviceCodeResponse } from "~/services/github/get-device-code"
+import {
+  getDeviceCode,
+  type DeviceCodeResponse,
+} from "~/services/github/get-device-code"
 import { getGitHubUser } from "~/services/github/get-user"
 import { pollAccessToken } from "~/services/github/poll-access-token"
 
@@ -60,7 +64,10 @@ export class AuthSessionManager {
 
   start(): void {
     if (this.cleanupTimer) return
-    this.cleanupTimer = setInterval(() => this.cleanupExpired(), CLEANUP_INTERVAL_MS)
+    this.cleanupTimer = setInterval(
+      () => this.cleanupExpired(),
+      CLEANUP_INTERVAL_MS,
+    )
   }
 
   stop(): void {
@@ -79,9 +86,8 @@ export class AuthSessionManager {
     enterpriseDomain?: string
     reauthAccountId?: string
   }): Promise<StartAuthResult> {
-    const enterpriseDomain = params.enterpriseDomain
-      ? normalizeDomain(params.enterpriseDomain)
-      : null
+    const enterpriseDomain =
+      params.enterpriseDomain ? normalizeDomain(params.enterpriseDomain) : null
 
     const overrideUrls = buildOauthUrls(enterpriseDomain)
 
@@ -169,8 +175,10 @@ export class AuthSessionManager {
 
       // For reauth: check if the authenticated user matches
       if (session.reauthAccountId && session.reauthAccountId !== accountId) {
-        session.status = "failed"
-        session.error = `Authenticated as "${accountId}" but expected "${session.reauthAccountId}". Use "Add Account" to add a different account.`
+        this.failSession(
+          session.sessionId,
+          `Authenticated as "${accountId}" but expected "${session.reauthAccountId}". Use "Add Account" to add a different account.`,
+        )
         return
       }
 
@@ -181,29 +189,46 @@ export class AuthSessionManager {
       const existingAccounts = await listAccountsFromRegistry()
       const alreadyExists = existingAccounts.some((acc) => acc.id === accountId)
 
-      if (alreadyExists) {
-        // Touch registry to trigger hot-reload
-        await saveRegistry(await loadRegistry())
-      } else {
-        await addAccountToRegistry({
-          id: accountId,
-          accountType: session.accountType,
-          addedAt: Date.now(),
-        })
-      }
+      // Touch registry to trigger hot-reload when the account already exists.
+      const registryUpdate =
+        alreadyExists ?
+          saveRegistry(await loadRegistry())
+        : addAccountToRegistry({
+            id: accountId,
+            accountType: session.accountType,
+            addedAt: Date.now(),
+          })
+      await registryUpdate
 
-      session.status = "completed"
-      session.accountId = accountId
+      this.completeSession(session.sessionId, accountId)
     } catch (error) {
       if (session.abortController.signal.aborted) {
         // Cancelled — don't update status (session may already be removed)
         return
       }
 
-      session.status = "failed"
-      session.error = error instanceof Error ? error.message : String(error)
+      this.failSession(
+        session.sessionId,
+        error instanceof Error ? error.message : String(error),
+      )
       consola.error(`Auth session ${session.sessionId} failed:`, error)
     }
+  }
+
+  private completeSession(sessionId: string, accountId: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+
+    session.status = "completed"
+    session.accountId = accountId
+  }
+
+  private failSession(sessionId: string, error: string): void {
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+
+    session.status = "failed"
+    session.error = error
   }
 
   private cleanupExpired(): void {
@@ -212,7 +237,10 @@ export class AuthSessionManager {
     const cleanupThreshold = 5 * 60_000
 
     for (const [id, session] of this.sessions) {
-      if (session.status !== "pending" && now - session.expiresAt > cleanupThreshold) {
+      if (
+        session.status !== "pending"
+        && now - session.expiresAt > cleanupThreshold
+      ) {
         session.abortController.abort()
         this.sessions.delete(id)
       }
