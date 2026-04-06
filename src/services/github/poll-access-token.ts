@@ -1,15 +1,25 @@
 import consola from "consola"
 
 import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
+import { CancelledError } from "~/lib/error"
 import { sleep } from "~/lib/utils"
 
 import type { DeviceCodeResponse } from "./get-device-code"
 
+export interface PollAccessTokenOptions {
+  overrideUrls?: {
+    deviceCodeUrl: string
+    accessTokenUrl: string
+  }
+  signal?: AbortSignal
+}
+
 export async function pollAccessToken(
   deviceCode: DeviceCodeResponse,
+  options?: PollAccessTokenOptions,
 ): Promise<string> {
   const { clientId, headers } = getOauthAppConfig()
-  const { accessTokenUrl } = getOauthUrls()
+  const { accessTokenUrl } = options?.overrideUrls ?? getOauthUrls()
 
   // Interval is in seconds, we need to multiply by 1000 to get milliseconds
   // I'm also adding another second, just to be safe
@@ -17,6 +27,10 @@ export async function pollAccessToken(
   consola.debug(`Polling access token with interval of ${sleepDuration}ms`)
 
   while (true) {
+    if (options?.signal?.aborted) {
+      throw new CancelledError("Authentication cancelled")
+    }
+
     const response = await fetch(accessTokenUrl, {
       method: "POST",
       headers,
@@ -25,6 +39,7 @@ export async function pollAccessToken(
         device_code: deviceCode.device_code,
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
       }),
+      signal: options?.signal,
     })
 
     if (!response.ok) {

@@ -155,6 +155,7 @@ docker run -p 4141:4141 \
 
 - 容器数据目录为 `/root/.local/share/copilot-api`
 - 必须挂载卷，否则重启后账号与配置会丢失
+- 挂载目录中还会保存 Admin 请求历史数据库 `admin.sqlite`
 
 ### 4) 本地构建镜像：使用环境变量注入 GitHub Token
 
@@ -183,6 +184,12 @@ docker run -it \
   -v "$(pwd)/copilot-data:/root/.local/share/copilot-api" \
   nick3/copilot-api:latest --auth ls -q
 ```
+
+说明：
+
+- 多账号的 token 与注册表都会存放在挂载的 `copilot-data` 目录中
+- Premium 模型会按账号注册顺序依次尝试，并在配额耗尽时自动切换
+- 免费模型默认按轮转方式分散到多个账号上，可通过 `config.json` 配置调整
 
 ### 6) Docker Compose 示例（DockerHub）
 
@@ -648,6 +655,7 @@ npx @nick3/copilot-api@latest --oauth-app=opencode start
 ### Claude Code 配置
 
 - `start --claude-code`：交互选择主模型与小模型，并生成可直接运行的环境变量命令（尝试复制到剪贴板）
+- 如果启用了请求鉴权，建议优先使用 `auth.apiKeys`，并将 `ANTHROPIC_AUTH_TOKEN` 设置为其中一个可用 key
 - 若不想每次交互生成，也可手动写 `.claude/settings.json`：
 
 ```json
@@ -661,7 +669,14 @@ npx @nick3/copilot-api@latest --oauth-app=opencode start
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
-    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false"
+    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false",
+    "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "true",
+    "CLAUDE_PLUGIN_ENABLE_QUESTION_RULES": "true"
+  },
+  "permissions": {
+    "deny": [
+      "WebSearch"
+    ]
   }
 }
 ```
@@ -674,6 +689,20 @@ npx @nick3/copilot-api@latest --oauth-app=opencode start
 - 关闭 `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION`，可以避免不必要的额度消耗。
 - 如果你想禁用 Claude Code 的 WebSearch，可在 permissions 中拒绝 `WebSearch`，或在 `config.json` 中将 `useResponsesApiWebSearch` 设为 `false`。开启后，`/v1/responses` 会继续向上游转发 `web_search` 工具，但实际是否可用仍取决于所选模型与 Copilot 上游行为。
 - 不要启用 `ENABLE_TOOL_SEARCH`。Claude Code 当前使用的是客户端工具搜索模式，会增加额外请求、影响缓存命中率，而且与本项目仍存在兼容性问题。
+
+#### 推荐写入 `CLAUDE.md` 或 `AGENTS.md` 的提醒
+
+如果你希望手动把相同规则写进 `CLAUDE.md` 或 `AGENTS.md`，可以加入以下内容：
+
+```text
+- Prohibited from directly asking questions to users, MUST use question tool.
+- Once you can confirm that the task is complete, MUST use question tool to make user confirm. The user may respond with feedback if they are not satisfied with the result, which you can use to make improvements and try again, after try again, MUST use question tool to make user confirm again.
+```
+
+更多配置项可参考：
+
+- [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings#environment-variables)
+- [Add Claude Code to your IDE](https://docs.anthropic.com/en/docs/claude-code/ide-integrations)
 
 ### 插件集成
 
@@ -690,6 +719,11 @@ npx @nick3/copilot-api@latest --oauth-app=opencode start
 ```
 
 安装后，插件会在 `SubagentStart` 时注入 `__SUBAGENT_MARKER__...`，帮助代理推断 `x-initiator: agent`。
+
+插件还会注册一个返回 `{"continue": true}` 的 `UserPromptSubmit` hook，并支持通过环境变量注入提醒规则：
+
+- `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES=1`：自动注入关于使用 `question` 工具的两条提醒；也可以手动写入上面的 `CLAUDE.md` / `AGENTS.md` 推荐内容
+- `CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE=1`：自动注入避免使用 `run_in_background: true` 的提醒
 
 #### opencode subagent marker plugin
 

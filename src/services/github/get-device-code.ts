@@ -1,9 +1,18 @@
 import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 
-export async function getDeviceCode(): Promise<DeviceCodeResponse> {
+export interface DeviceCodeOptions {
+  overrideUrls?: {
+    deviceCodeUrl: string
+    accessTokenUrl: string
+  }
+}
+
+export async function getDeviceCode(
+  options?: DeviceCodeOptions,
+): Promise<DeviceCodeResponse> {
   const { clientId, headers, scope } = getOauthAppConfig()
-  const { deviceCodeUrl } = getOauthUrls()
+  const { deviceCodeUrl } = options?.overrideUrls ?? getOauthUrls()
 
   const response = await fetch(deviceCodeUrl, {
     method: "POST",

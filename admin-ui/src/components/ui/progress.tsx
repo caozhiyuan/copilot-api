@@ -1,4 +1,5 @@
 import * as React from "react"
+import { motion, useSpring, useTransform } from "motion/react"
 
 import { useMotionPreference } from "@/lib/motion-preference"
 import { cn } from "@/lib/utils"
@@ -33,6 +34,19 @@ function Progress({
   const shimmer = effective === "magic"
   const speed = effective === "subtle" ? "4s" : "2.2s"
 
+  // Spring-animated width for fluid fill
+  const springValue = useSpring(safeValue, {
+    damping: 30,
+    stiffness: 120,
+    mass: 0.8,
+  })
+  const widthPercent = useTransform(springValue, (v) => `${v}%`)
+
+  // Update spring target when value changes
+  React.useEffect(() => {
+    springValue.set(safeValue)
+  }, [safeValue, springValue])
+
   return (
     <div
       data-slot="progress"
@@ -50,12 +64,11 @@ function Progress({
       } as React.CSSProperties}
       {...props}
     >
-      <div
+      <motion.div
         data-slot="progress-indicator"
         className={cn(
           "relative h-full rounded-full",
           "[container-type:inline-size] overflow-hidden",
-          "transition-[width] duration-700 ease-out",
           // Magic UI vibe: animated multi-stop gradient (same tokens used by RainbowButton)
           "bg-[linear-gradient(90deg,var(--color-1),var(--color-5),var(--color-3),var(--color-4),var(--color-2))] bg-[length:200%_100%]",
           animated ? "animate-rainbow" : undefined,
@@ -66,7 +79,9 @@ function Progress({
           "dark:shadow-[0_0_12px_rgba(255,255,255,0.12)] shadow-[0_0_8px_rgba(0,0,0,0.06)]",
           indicatorClassName
         )}
-        style={{ width: `${safeValue}%` }}
+        style={{
+          width: animated ? widthPercent : `${safeValue}%`,
+        }}
       />
     </div>
   )

@@ -8,12 +8,13 @@ import type {
 } from "~/lib/types/account"
 
 import {
+  DEFAULT_IDENTITY_ENTERPRISE_DOMAIN,
   buildIdentityKey,
   createAccountDeviceId,
   createAccountMachineId,
   getCurrentIdentityEnvironment,
-} from "./account-client-identity"
-import { accountTokenPath, PATHS } from "./paths"
+} from "~/lib/account-client-identity"
+import { accountTokenPath, PATHS } from "~/lib/paths"
 
 /**
  * Validate account ID (GitHub login).
@@ -287,6 +288,35 @@ export async function getAccountClientIdentity(
 ): Promise<AccountClientIdentity | null> {
   const registry = await loadRegistry()
   return registry.clientIdentities[identityKey] ?? null
+}
+
+export async function getAccountClientIdentityByLoginAndApp(
+  login: string,
+  oauthApp: string,
+): Promise<AccountClientIdentity | null> {
+  const registry = await loadRegistry()
+
+  const candidates = Object.values(registry.clientIdentities).filter(
+    (identity): identity is AccountClientIdentity =>
+      identity !== undefined
+      && identity.login === login
+      && identity.oauthApp === oauthApp,
+  )
+
+  const preferredCandidates = candidates.filter(
+    (identity) =>
+      identity.enterpriseDomain !== DEFAULT_IDENTITY_ENTERPRISE_DOMAIN,
+  )
+  const selectionPool =
+    preferredCandidates.length > 0 ? preferredCandidates : candidates
+
+  return selectionPool.reduce<AccountClientIdentity | null>(
+    (latest, current) => {
+      if (!latest || current.createdAt > latest.createdAt) return current
+      return latest
+    },
+    null,
+  )
 }
 
 export async function ensureAccountClientIdentity({

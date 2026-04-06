@@ -45,10 +45,20 @@ export interface AnthropicImageBlock {
   }
 }
 
+export interface AnthropicToolReferenceBlock {
+  type: "tool_reference"
+  tool_name: string
+}
+
+export type AnthropicToolResultContentBlock =
+  | AnthropicTextBlock
+  | AnthropicImageBlock
+  | AnthropicToolReferenceBlock
+
 export interface AnthropicToolResultBlock {
   type: "tool_result"
   tool_use_id: string
-  content: string | Array<AnthropicTextBlock | AnthropicImageBlock>
+  content: string | Array<AnthropicToolResultContentBlock>
   is_error?: boolean
 }
 

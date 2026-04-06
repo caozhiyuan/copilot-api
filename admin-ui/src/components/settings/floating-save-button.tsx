@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next"
 
-import { RainbowButton } from "@/components/ui/rainbow-button"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 export type FloatingSaveButtonProps = {
@@ -12,7 +12,7 @@ export type FloatingSaveButtonProps = {
 
 /**
  * Fixed position save button in the bottom right corner.
- * Uses RainbowButton for visual emphasis.
+ * Only rendered when there are unsaved changes.
  */
 export function FloatingSaveButton({
   saving,
@@ -26,21 +26,24 @@ export function FloatingSaveButton({
     <div
       className={cn(
         "fixed bottom-6 right-6 z-50",
-        "shadow-lg rounded-full",
-        className
+        "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4 motion-safe:duration-300",
+        className,
       )}
     >
-      <RainbowButton
+      <Button
         type="button"
         size="lg"
-        onClick={onSave}
-        disabled={!canSave}
-        className="shadow-2xl"
+        onClick={() => {
+          if (saving || !canSave) return
+          onSave()
+        }}
+        disabled={!canSave || saving}
+        className="shadow-lg"
       >
         {saving
           ? t("settingsPage.saveButton.saving")
           : t("settingsPage.saveButton.saveChanges")}
-      </RainbowButton>
+      </Button>
     </div>
   )
 }

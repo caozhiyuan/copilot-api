@@ -16,6 +16,7 @@ const compactTextOnlyGuard =
 const compactSummaryPromptStart =
   "Your task is to create a detailed summary of the conversation so far"
 const compactMessageSections = ["Pending Tasks:", "Current Work:"] as const
+export const TOOL_REFERENCE_TURN_BOUNDARY = "Tool loaded."
 
 const getAnthropicEffortForModel = (
   model: string,
@@ -116,6 +117,30 @@ const mergeToolResult = (
   return toolResults.map((tr, i) =>
     i === lastIndex ? mergeContentWithTexts(tr, textBlocks) : tr,
   )
+}
+
+export const stripToolReferenceTurnBoundary = (
+  anthropicPayload: AnthropicMessagesPayload,
+): void => {
+  for (const msg of anthropicPayload.messages) {
+    if (msg.role !== "user" || !Array.isArray(msg.content)) continue
+
+    const hasToolReference = msg.content.some(
+      (block) =>
+        block.type === "tool_result"
+        && Array.isArray(block.content)
+        && block.content.some(
+          (contentBlock) => contentBlock.type === "tool_reference",
+        ),
+    )
+    if (!hasToolReference) continue
+
+    msg.content = msg.content.filter(
+      (block) =>
+        block.type !== "text"
+        || block.text.trim() !== TOOL_REFERENCE_TURN_BOUNDARY,
+    )
+  }
 }
 
 export const mergeToolResultForClaude = (

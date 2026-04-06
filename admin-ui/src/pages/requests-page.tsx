@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
+import { LoaderCircleIcon } from "lucide-react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
@@ -21,7 +22,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { BorderBeam } from "@/components/ui/border-beam"
 import { InlineAlert } from "@/components/ui/inline-alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,7 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { RainbowButton } from "@/components/ui/rainbow-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -188,6 +187,23 @@ const requestsTableColVisibility = [
   null,
 ] as const
 
+/** Table column header with optional tooltip. */
+function ColHead({ label, tooltip }: { label: string; tooltip?: string }): React.JSX.Element {
+  if (!tooltip) return <>{label}</>
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help underline decoration-dashed decoration-current/30 underline-offset-2">
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-60">
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function TableSkeleton({ rows }: { rows: number }): React.JSX.Element {
   const cols = requestsTableColVisibility.length
 
@@ -250,6 +266,7 @@ export function RequestsPage(): React.JSX.Element {
       reset: boolean
       cursor: number | null
     }): Promise<void> => {
+      loadInFlightRef.current = true
       setLoading(true)
       setError(null)
 
@@ -272,6 +289,7 @@ export function RequestsPage(): React.JSX.Element {
         setHasMore(false)
         setNextCursor(null)
       } finally {
+        loadInFlightRef.current = false
         setLoading(false)
       }
     },
@@ -321,6 +339,82 @@ export function RequestsPage(): React.JSX.Element {
   const colSpan = requestsTableColVisibility.length
   const hasQuery = searchParams.toString().length > 0
 
+  const activeFilterCount = useMemo(() => {
+    let count = 0
+    for (const [, v] of searchParams) {
+      if (v.trim()) count++
+    }
+    return count
+  }, [searchParams])
+
+  // --- Auto-refresh ---
+  const [autoRefreshMs, setAutoRefreshMs] = useState<number>(0)
+  const autoRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadInFlightRef = useRef(false)
+
+  useEffect(() => {
+    let disposed = false
+
+    if (autoRefreshRef.current) {
+      clearTimeout(autoRefreshRef.current)
+      autoRefreshRef.current = null
+    }
+
+    if (autoRefreshMs > 0) {
+      const scheduleNextRefresh = () => {
+        if (disposed) return
+        autoRefreshRef.current = setTimeout(async () => {
+          if (loadInFlightRef.current) {
+            scheduleNextRefresh()
+            return
+          }
+
+          try {
+            await load({ reset: true, cursor: null })
+          } finally {
+            scheduleNextRefresh()
+          }
+        }, autoRefreshMs)
+      }
+
+      scheduleNextRefresh()
+    }
+
+    return () => {
+      disposed = true
+      if (autoRefreshRef.current) {
+        clearTimeout(autoRefreshRef.current)
+        autoRefreshRef.current = null
+      }
+    }
+  }, [autoRefreshMs, load])
+
+  // --- Enter to apply filters ---
+  const applyRef = useRef(apply)
+  applyRef.current = apply
+  const filterAreaRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Enter") return
+      const target = e.target as HTMLElement | null
+      if (!target || !filterAreaRef.current?.contains(target)) return
+
+      const tag = target.tagName
+      if (tag === "TEXTAREA" || tag === "BUTTON" || tag === "A" || tag === "SELECT") return
+      if (target.isContentEditable) return
+      if (target.closest("[role=dialog]")) return
+      if (target.closest("[role=listbox]")) return
+      if (target.closest("[role=button]")) return
+
+      e.preventDefault()
+      applyRef.current()
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [])
+
   let loadMoreLabel = t("common.noMore")
   if (hasMore) {
     loadMoreLabel = loading ? t("common.loading") : t("common.loadMore")
@@ -333,6 +427,11 @@ export function RequestsPage(): React.JSX.Element {
           <CardTitle>{t("nav.requests")}</CardTitle>
           <CardDescription className="hidden sm:block">{t("requestsPage.description")}</CardDescription>
           <CardAction className="flex items-center gap-2">
+            {activeFilterCount > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {t("requestsPage.activeFilters", { count: activeFilterCount })}
+              </Badge>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -342,12 +441,13 @@ export function RequestsPage(): React.JSX.Element {
             >
               {t("common.clear")}
             </Button>
-            <RainbowButton onClick={apply} disabled={!canApply} size="sm">
+            <Button onClick={apply} disabled={!canApply} size="sm">
+              {loading && <LoaderCircleIcon className="size-4 motion-safe:animate-spin" />}
               {t("common.apply")}
-            </RainbowButton>
+            </Button>
           </CardAction>
         </CardHeader>
-        <CardContent className="space-y-3 px-4">
+        <CardContent ref={filterAreaRef} className="space-y-3 px-4">
           <Tabs defaultValue="quick" className="gap-1.5">
             <TabsList className="h-8 p-[2px]">
               <TabsTrigger value="quick">{t("requestsPage.tabs.quick")}</TabsTrigger>
@@ -552,10 +652,37 @@ export function RequestsPage(): React.JSX.Element {
         </CardContent>
       </Card>
 
-      <div className="relative">
-        {/* subtle highlight for the table container */}
-        <BorderBeam className="opacity-30" borderWidth={1} />
-        <Card className="relative gap-4 py-4">
+      <div className="flex items-center justify-between motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-300">
+        <span className="text-muted-foreground text-sm">
+          {items.length > 0
+            ? hasMore
+              ? t("requestsPage.resultCountWithMore", { count: items.length })
+              : t("requestsPage.resultCount", { count: items.length })
+            : null}
+        </span>
+        <div className="flex items-center gap-2">
+          {autoRefreshMs > 0 && (
+            <span className="relative flex h-2 w-2">
+              <span className="bg-primary absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full opacity-75" />
+              <span className="bg-primary relative inline-flex h-2 w-2 rounded-full" />
+            </span>
+          )}
+          <span className="text-muted-foreground text-sm">{t("requestsPage.autoRefreshLabel")}</span>
+          <Select value={String(autoRefreshMs)} onValueChange={(v) => setAutoRefreshMs(Number(v))}>
+            <SelectTrigger size="sm" className="w-20">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="0">{t("requestsPage.autoRefresh.off")}</SelectItem>
+              <SelectItem value="30000">{t("requestsPage.autoRefresh.30s")}</SelectItem>
+              <SelectItem value="60000">{t("requestsPage.autoRefresh.60s")}</SelectItem>
+              <SelectItem value="300000">{t("requestsPage.autoRefresh.5m")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Card className="gap-4 py-4">
           <CardContent className="space-y-4 px-4">
             {error && items.length > 0 ? (
               <InlineAlert
@@ -567,7 +694,7 @@ export function RequestsPage(): React.JSX.Element {
               />
             ) : null}
 
-            <Table className="[&_th]:h-9 [&_td]:py-1.5">
+            <Table glow className="[&_th]:h-9 [&_td]:py-1.5">
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("common.time")}</TableHead>
@@ -582,19 +709,19 @@ export function RequestsPage(): React.JSX.Element {
                     {t("common.model")}
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[5])}>
-                    {t("common.xInitiator")}
+                    <ColHead label={t("common.xInitiator")} tooltip={t("requestsPage.columnTooltip.initiator")} />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[6])}>
-                    {t("common.tokens")}
+                    <ColHead label={t("common.tokens")} tooltip={t("requestsPage.columnTooltip.tokens")} />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[7])}>
-                    {t("common.cost")}
+                    <ColHead label={t("common.cost")} tooltip={t("requestsPage.columnTooltip.cost")} />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[8])}>
-                    {t("common.quota")}
+                    <ColHead label={t("common.quota")} tooltip={t("requestsPage.columnTooltip.quota")} />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[9])}>
-                    {t("common.durationAbbrev")}
+                    <ColHead label={t("common.durationAbbrev")} tooltip={t("requestsPage.columnTooltip.duration")} />
                   </TableHead>
                   <TableHead>{t("common.status")}</TableHead>
                 </TableRow>
@@ -639,7 +766,9 @@ export function RequestsPage(): React.JSX.Element {
                         : ""
 
                     const statusBadge = r.http_status >= 400 ? (
-                      <Badge variant="destructive">{r.http_status}</Badge>
+                      <Badge variant="destructive" aria-label={`Error ${r.http_status}`}>
+                        <span aria-hidden="true" className="mr-0.5">!</span>{r.http_status}
+                      </Badge>
                     ) : (
                       <Badge variant="secondary">{r.http_status}</Badge>
                     )
@@ -676,7 +805,9 @@ export function RequestsPage(): React.JSX.Element {
                           {r.affinity_hit ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="ml-1 inline-block cursor-default text-muted-foreground">&#x1F4CC;</span>
+                                <Badge variant="outline" className="ml-1 px-1 py-0 text-[10px] leading-tight align-middle" aria-label={t("requestsPage.affinityHit")}>
+                                  affinity
+                                </Badge>
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>{t("requestsPage.affinityHit")}</p>
@@ -714,17 +845,18 @@ export function RequestsPage(): React.JSX.Element {
             </Table>
 
             <div className="flex items-center justify-end gap-2">
-              <RainbowButton
+              <Button
+                variant="outline"
                 onClick={() => void load({ reset: false, cursor: nextCursor })}
                 disabled={loading || !hasMore}
                 size="sm"
               >
+                {loading && <LoaderCircleIcon className="size-4 motion-safe:animate-spin" />}
                 {loadMoreLabel}
-              </RainbowButton>
+              </Button>
             </div>
           </CardContent>
         </Card>
-      </div>
     </div>
   )
 }

@@ -40,6 +40,7 @@ import {
   type AnthropicTextBlock,
   type AnthropicThinkingBlock,
   type AnthropicTool,
+  type AnthropicToolResultContentBlock,
   type AnthropicToolResultBlock,
   type AnthropicToolUseBlock,
   type AnthropicUserContentBlock,
@@ -756,7 +757,7 @@ const isResponseOutputRefusal = (
   && (block as { type?: unknown }).type === "refusal"
 
 const convertToolResultContent = (
-  content: string | Array<AnthropicTextBlock | AnthropicImageBlock>,
+  content: string | Array<AnthropicToolResultContentBlock>,
 ): string | Array<ResponseInputContent> => {
   if (typeof content === "string") {
     return content
@@ -772,6 +773,10 @@ const convertToolResultContent = (
         }
         case "image": {
           result.push(createImageContent(block))
+          break
+        }
+        case "tool_reference": {
+          result.push(createTextContent(`Tool ${block.tool_name} loaded`))
           break
         }
         default: {

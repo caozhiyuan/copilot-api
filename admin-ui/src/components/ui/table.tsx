@@ -1,8 +1,25 @@
 import * as React from "react"
+import { useCallback } from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  glow,
+  ...props
+}: React.ComponentProps<"table"> & { glow?: boolean }) {
+  const onMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLTableElement>) => {
+      if (!glow) return
+      const row = (e.target as HTMLElement).closest("tr")
+      if (!row) return
+      const rect = row.getBoundingClientRect()
+      row.style.setProperty("--glow-x", `${e.clientX - rect.left}px`)
+      row.style.setProperty("--glow-y", `${e.clientY - rect.top}px`)
+    },
+    [glow],
+  )
+
   return (
     <div
       data-slot="table-container"
@@ -10,7 +27,9 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     >
       <table
         data-slot="table"
+        data-glow-table={glow ? "" : undefined}
         className={cn("w-full caption-bottom text-sm", className)}
+        onMouseMove={glow ? onMouseMove : undefined}
         {...props}
       />
     </div>

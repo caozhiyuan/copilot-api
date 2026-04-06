@@ -5,9 +5,97 @@ import type { AnthropicMessagesPayload } from "../src/routes/messages/anthropic-
 import {
   mergeToolResultForClaude,
   prepareMessagesApiPayload,
+  stripToolReferenceTurnBoundary,
 } from "../src/routes/messages/preprocess"
 
 describe("mergeToolResultForClaude", () => {
+  test("removes tool reference turn boundaries before merging", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.6",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: [
+                {
+                  type: "tool_reference",
+                  tool_name: "AskUserQuestion",
+                },
+              ],
+            },
+            {
+              type: "text",
+              text: "Tool loaded.",
+            },
+          ],
+        },
+      ],
+    }
+
+    stripToolReferenceTurnBoundary(payload)
+    mergeToolResultForClaude(payload)
+
+    expect(payload.messages[0]).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "tool-1",
+          content: [
+            {
+              type: "tool_reference",
+              tool_name: "AskUserQuestion",
+            },
+          ],
+        },
+      ],
+    })
+  })
+
+  test("keeps Tool loaded text when the message has no tool_reference", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.6",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "Launching skill: foo",
+            },
+            {
+              type: "text",
+              text: "Tool loaded.",
+            },
+          ],
+        },
+      ],
+    }
+
+    stripToolReferenceTurnBoundary(payload)
+
+    expect(payload.messages[0]).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "tool-1",
+          content: "Launching skill: foo",
+        },
+        {
+          type: "text",
+          text: "Tool loaded.",
+        },
+      ],
+    })
+  })
+
   test("merges text blocks into matching tool_result blocks", () => {
     const payload: AnthropicMessagesPayload = {
       model: "claude-opus-4.6",
