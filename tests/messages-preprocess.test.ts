@@ -8,7 +8,7 @@ import {
   stripToolReferenceTurnBoundary,
 } from "../src/routes/messages/preprocess"
 
-describe("mergeToolResultForClaude", () => {
+describe("mergeToolResultForClaude turn boundaries", () => {
   test("removes tool reference turn boundaries before merging", () => {
     const payload: AnthropicMessagesPayload = {
       model: "claude-opus-4.6",
@@ -95,7 +95,9 @@ describe("mergeToolResultForClaude", () => {
       ],
     })
   })
+})
 
+describe("mergeToolResultForClaude content merging", () => {
   test("merges text blocks into matching tool_result blocks", () => {
     const payload: AnthropicMessagesPayload = {
       model: "claude-opus-4.6",
