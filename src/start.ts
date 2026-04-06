@@ -12,6 +12,7 @@ import {
   isAccountAffinityEnabled,
   mergeConfigWithDefaults,
 } from "./lib/config"
+import { initOpencodeVersion } from "./lib/opencode"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
@@ -143,6 +144,8 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   mergeConfigWithDefaults()
   accountsManager.setAccountAffinityEnabled(isAccountAffinityEnabled())
   accountsManager.setModelsRefreshIntervalMs(getModelRefreshIntervalMs())
+
+  await initOpencodeVersion()
 
   if (options.proxyEnv) {
     initProxyFromEnv()

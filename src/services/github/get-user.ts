@@ -1,21 +1,26 @@
 import type { AccountContext } from "~/lib/types/account"
 
-import { getGitHubApiBaseUrl, standardHeaders } from "~/lib/api-config"
+import { getGitHubApiBaseUrl, githubUserHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
-import { state } from "~/lib/state"
+import { accountFromState, state } from "~/lib/state"
 
-export async function getGitHubUser(account?: AccountContext) {
-  // Use provided account or fall back to state (for legacy compatibility)
-  const token = account?.githubToken ?? state.githubToken
-  if (!token) {
+const resolveGitHubUserAccount = (account?: AccountContext): AccountContext => {
+  if (account) {
+    return account
+  }
+
+  if (!state.githubToken) {
     throw new Error("GitHub token not set")
   }
 
+  return accountFromState()
+}
+
+export async function getGitHubUser(account?: AccountContext) {
+  const resolvedAccount = resolveGitHubUserAccount(account)
+
   const response = await fetch(`${getGitHubApiBaseUrl()}/user`, {
-    headers: {
-      authorization: `token ${token}`,
-      ...standardHeaders(),
-    },
+    headers: githubUserHeaders(resolvedAccount),
   })
 
   if (!response.ok) throw new HTTPError("Failed to get GitHub user", response)

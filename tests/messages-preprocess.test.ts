@@ -185,6 +185,52 @@ describe("mergeToolResultForClaude", () => {
       ],
     })
   })
+
+  test("does not merge text into tool_result blocks that contain tool_reference", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.6",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: [
+                {
+                  type: "tool_reference",
+                  tool_name: "AskUserQuestion",
+                },
+              ],
+            },
+            {
+              type: "text",
+              text: "Follow-up details",
+            },
+          ],
+        },
+      ],
+    }
+
+    mergeToolResultForClaude(payload)
+
+    expect(payload.messages[0]).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "tool-1",
+          content: [
+            {
+              type: "tool_reference",
+              tool_name: "AskUserQuestion",
+            },
+          ],
+        },
+      ],
+    })
+  })
 })
 
 describe("prepareMessagesApiPayload", () => {

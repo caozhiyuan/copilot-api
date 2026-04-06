@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 
 import type { AccountContext } from "~/lib/types/account"
 
-import { copilotBaseUrl, copilotHeaders } from "~/lib/api-config"
+import { copilotBaseUrl, copilotModelsHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { PATHS } from "~/lib/paths"
 import { accountFromState } from "~/lib/state"
@@ -10,7 +10,7 @@ import { accountFromState } from "~/lib/state"
 export const getModels = async (account?: AccountContext) => {
   const ctx = account ?? accountFromState()
   const response = await fetch(`${copilotBaseUrl(ctx)}/models`, {
-    headers: copilotHeaders(ctx),
+    headers: copilotModelsHeaders(ctx),
   })
 
   if (!response.ok) throw new HTTPError("Failed to get models", response)

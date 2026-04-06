@@ -88,6 +88,10 @@ const mergeContentWithText = (
   if (typeof tr.content === "string") {
     return { ...tr, content: `${tr.content}\n\n${textBlock.text}` }
   }
+  // Unable to merge, discard other text blocks, wait for the next round of re-request
+  if (hasToolRef(tr)) {
+    return tr
+  }
   return {
     ...tr,
     content: [...tr.content, textBlock],
@@ -101,6 +105,10 @@ const mergeContentWithTexts = (
   if (typeof tr.content === "string") {
     const appendedTexts = textBlocks.map((tb) => tb.text).join("\n\n")
     return { ...tr, content: `${tr.content}\n\n${appendedTexts}` }
+  }
+  // Unable to merge, discard other text blocks, wait for the next round of re-request
+  if (hasToolRef(tr)) {
+    return tr
   }
   return { ...tr, content: [...tr.content, ...textBlocks] }
 }
@@ -126,12 +134,7 @@ export const stripToolReferenceTurnBoundary = (
     if (msg.role !== "user" || !Array.isArray(msg.content)) continue
 
     const hasToolReference = msg.content.some(
-      (block) =>
-        block.type === "tool_result"
-        && Array.isArray(block.content)
-        && block.content.some(
-          (contentBlock) => contentBlock.type === "tool_reference",
-        ),
+      (block) => block.type === "tool_result" && hasToolRef(block),
     )
     if (!hasToolReference) continue
 
@@ -168,6 +171,13 @@ export const mergeToolResultForClaude = (
 
     msg.content = mergeToolResult(toolResults, textBlocks)
   }
+}
+
+const hasToolRef = (block: AnthropicToolResultBlock) => {
+  return (
+    Array.isArray(block.content)
+    && block.content.some((c) => c.type === "tool_reference")
+  )
 }
 
 const stripUnsupportedCacheControl = (block: Record<string, unknown>): void => {

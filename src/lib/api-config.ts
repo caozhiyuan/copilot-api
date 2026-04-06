@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import type { AccountContext } from "./types/account"
 
+import { getCachedOpencodeVersion } from "./opencode"
 import { requestContext } from "./request-context"
 import { state } from "./state"
 
@@ -37,8 +38,15 @@ const getOpencodeOauthHeaders = (): Record<string, string> => {
   return {
     Accept: "application/json",
     "Content-Type": "application/json",
-    "User-Agent":
-      "opencode/1.3.9 ai-sdk/provider-utils/4.0.21 runtime/bun/1.3.11, opencode/1.3.9",
+    "User-Agent": getOpencodeVersion(),
+  }
+}
+
+const getOpencodeLLMHeaders = (): Record<string, string> => {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "User-Agent": OPENCODE_LLM_USER_AGENT,
   }
 }
 
@@ -120,6 +128,18 @@ export const standardHeaders = () => ({
   accept: "application/json",
 })
 
+export const getOpencodeVersion = () => {
+  const version = getCachedOpencodeVersion()
+  if (version) {
+    return "opencode/" + version
+  }
+  return OPENCODE_VERSION
+}
+
+const OPENCODE_VERSION = "opencode/1.3.15"
+const OPENCODE_LLM_USER_AGENT =
+  "opencode/1.3.15 ai-sdk/provider-utils/4.0.21 runtime/bun/1.3.11, opencode/1.3.15"
+
 const COPILOT_VERSION = "0.42.3"
 const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
 const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
@@ -164,22 +184,66 @@ export const prepareMessageProxyHeaders = (headers: Record<string, string>) => {
   headers["user-agent"] = CLAUDE_AGENT_USER_AGENT
 }
 
+export const githubUserHeaders = (
+  account: AccountContext,
+): Record<string, string> => {
+  if (isOpencodeOauthApp()) {
+    return {
+      Authorization: `Bearer ${account.githubToken}`,
+      "User-Agent": getOpencodeVersion(),
+    }
+  }
+
+  return {
+    accept: "application/vnd.github+json",
+    authorization: `token ${account.githubToken}`,
+    "user-agent": USER_AGENT,
+    "x-github-api-version": "2022-11-28",
+    "x-vscode-user-agent-library-version": "electron-fetch",
+  }
+}
+
+export const copilotModelsHeaders = (
+  account: AccountContext,
+): Record<string, string> => {
+  if (isOpencodeOauthApp()) {
+    const token = account.copilotToken ?? account.githubToken
+    return {
+      Authorization: `Bearer ${token}`,
+      "User-Agent": getOpencodeVersion(),
+    }
+  }
+
+  return githubCopilotHeaders(account)
+}
+
 export const copilotHeaders = (
   account: AccountContext,
   vision: boolean = false,
   requestId?: string,
-) => {
+): Record<string, string> => {
   if (isOpencodeOauthApp()) {
     const token = account.copilotToken ?? account.githubToken
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
-      ...getOpencodeOauthHeaders(),
+      ...getOpencodeLLMHeaders(),
       "Openai-Intent": "conversation-edits",
     }
 
-    const userAgent = requestContext.getStore()?.userAgent.trim()
+    const store = requestContext.getStore()
+    const userAgent = store?.userAgent.trim()
+    // Real opencode traffic already carries a versioned opencode/* UA,
+    // so prefer the inbound header to keep upstream behavior aligned.
     if (userAgent?.startsWith("opencode/")) {
       headers["User-Agent"] = normalizeOpencodeUserAgent(userAgent)
+    }
+
+    if (store?.sessionAffinity) {
+      headers["x-session-affinity"] = store.sessionAffinity
+    }
+
+    if (store?.parentSessionId) {
+      headers["x-parent-session-id"] = store.parentSessionId
     }
 
     if (vision) headers["Copilot-Vision-Request"] = "true"
@@ -187,6 +251,14 @@ export const copilotHeaders = (
     return headers
   }
 
+  return githubCopilotHeaders(account, requestId, vision)
+}
+
+const githubCopilotHeaders = (
+  account: AccountContext,
+  requestId?: string,
+  vision: boolean = false,
+): Record<string, string> => {
   const resolvedRequestId = requestId ?? randomUUID()
   const resolvedDeviceId = account.clientDeviceId ?? state.vsCodeDeviceId
   const resolvedMachineId = account.clientMachineId ?? state.macMachineId

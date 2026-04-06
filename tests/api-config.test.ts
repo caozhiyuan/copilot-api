@@ -5,9 +5,12 @@ import type { AccountContext } from "../src/lib/types/account"
 import {
   copilotBaseUrl,
   copilotHeaders,
+  copilotModelsHeaders,
   githubHeaders,
+  githubUserHeaders,
   prepareMessageProxyHeaders,
 } from "../src/lib/api-config"
+import { requestContext } from "../src/lib/request-context"
 import { state } from "../src/lib/state"
 
 const initialOauthApp = process.env.COPILOT_API_OAUTH_APP
@@ -76,7 +79,16 @@ test("githubHeaders uses opencode bearer auth when configured", () => {
   const headers = githubHeaders(accountContext) as Record<string, string>
 
   expect(headers.Authorization).toBe("Bearer ghu_test")
-  expect(headers["User-Agent"]).toContain("opencode/1.3.9")
+  expect(headers["User-Agent"]).toContain("opencode/")
+})
+
+test("githubUserHeaders uses opencode bearer auth and versioned user-agent", () => {
+  process.env.COPILOT_API_OAUTH_APP = "opencode"
+
+  const headers = githubUserHeaders(accountContext)
+
+  expect(headers.Authorization).toBe("Bearer ghu_test")
+  expect(headers["User-Agent"]).toContain("opencode/")
 })
 
 test("copilotHeaders prefers account-scoped identity values over global state", () => {
@@ -104,6 +116,39 @@ test("copilotHeaders prefers account-scoped identity values over global state", 
   expect(headers["vscode-sessionid"]).toBe(
     "11111111-1111-4111-8111-1111111111111712345678901",
   )
+})
+
+test("copilot headers keep opencode model discovery and llm user-agents separate", () => {
+  process.env.COPILOT_API_OAUTH_APP = "opencode"
+
+  const modelHeaders = copilotModelsHeaders(accountContext)
+  const llmHeaders = copilotHeaders(accountContext)
+
+  expect(modelHeaders.Authorization).toBe("Bearer copilot_test")
+  expect(modelHeaders["User-Agent"]).toMatch(/^opencode\//)
+  expect(llmHeaders["User-Agent"]).toContain("ai-sdk/provider-utils")
+})
+
+test("copilotHeaders forwards opencode session affinity metadata from request context", () => {
+  process.env.COPILOT_API_OAUTH_APP = "opencode"
+  const inboundUserAgent =
+    "opencode/9.9.9 ai-sdk/provider-utils/4.0.21 runtime/bun/1.3.11, opencode/9.9.9"
+
+  const headers = requestContext.run(
+    {
+      traceId: "trace-1",
+      startTime: Date.now(),
+      userAgent: inboundUserAgent,
+      sessionAffinity: "affinity-1",
+      parentSessionId: "parent-1",
+    },
+    () => copilotHeaders(accountContext),
+  )
+
+  expect(headers.Authorization).toBe("Bearer copilot_test")
+  expect(headers["User-Agent"]).toBe(inboundUserAgent)
+  expect(headers["x-session-affinity"]).toBe("affinity-1")
+  expect(headers["x-parent-session-id"]).toBe("parent-1")
 })
 
 test("prepareMessageProxyHeaders applies message proxy headers by default", () => {
