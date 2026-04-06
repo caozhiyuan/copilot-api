@@ -113,3 +113,26 @@ test("sets interaction headers for subagent session", async () => {
   expect(headers["x-interaction-type"]).toBe("conversation-subagent")
   expect(headers["x-initiator"]).toBe("agent")
 })
+
+test("enables vision headers for images nested inside tool results", async () => {
+  const payload = basePayload([
+    {
+      type: "tool_result",
+      tool_use_id: "tool_vision",
+      content: [
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: "ZmFrZQ==",
+          },
+        },
+      ],
+    },
+  ])
+
+  await createMessages(payload, accountContext)
+
+  expect(getLastHeaders()["copilot-vision-request"]).toBe("true")
+})

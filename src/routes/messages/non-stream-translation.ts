@@ -19,6 +19,7 @@ import {
   type AnthropicTextBlock,
   type AnthropicThinkingBlock,
   type AnthropicTool,
+  type AnthropicToolResultContentBlock,
   type AnthropicToolResultBlock,
   type AnthropicToolUseBlock,
   type AnthropicUserContentBlock,
@@ -28,6 +29,11 @@ import { mapOpenAIStopReasonToAnthropic } from "./utils"
 
 // Compatible with opencode, it will filter out blocks where the thinking text is empty, so we need add a default thinking text
 export const THINKING_TEXT = "Thinking..."
+
+type MappableContentBlock =
+  | AnthropicUserContentBlock
+  | AnthropicAssistantContentBlock
+  | AnthropicToolResultContentBlock
 
 // Payload translation
 export function translateToOpenAI(
@@ -216,23 +222,13 @@ function handleAssistantMessage(
 }
 
 function mapContent(
-  content:
-    | string
-    | Array<AnthropicUserContentBlock | AnthropicAssistantContentBlock>,
+  content: string | Array<MappableContentBlock>,
 ): string | Array<ContentPart> | null {
   if (typeof content === "string") {
     return content
   }
   if (!Array.isArray(content)) {
     return null
-  }
-
-  const hasImage = content.some((block) => block.type === "image")
-  if (!hasImage) {
-    return content
-      .filter((block): block is AnthropicTextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("\n\n")
   }
 
   const contentParts: Array<ContentPart> = []
@@ -248,6 +244,13 @@ function mapContent(
           image_url: {
             url: `data:${block.source.media_type};base64,${block.source.data}`,
           },
+        })
+        break
+      }
+      case "tool_reference": {
+        contentParts.push({
+          type: "text",
+          text: `Tool ${block.tool_name} loaded`,
         })
         break
       }

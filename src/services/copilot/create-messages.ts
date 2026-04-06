@@ -107,7 +107,13 @@ const hasVisionInput = (payload: AnthropicMessagesPayload): boolean =>
   payload.messages.some(
     (message) =>
       Array.isArray(message.content)
-      && message.content.some((block) => block.type === "image"),
+      && message.content.some(
+        (block) =>
+          block.type === "image"
+          || (block.type === "tool_result"
+            && Array.isArray(block.content)
+            && block.content.some((inner) => inner.type === "image")),
+      ),
   )
 
 const shouldUseMessageProxyHeaders = (

@@ -85,6 +85,7 @@ import {
   isCompactRequest,
   mergeToolResultForClaude,
   prepareMessagesApiPayload,
+  stripToolReferenceTurnBoundary,
 } from "./preprocess"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
 import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
@@ -178,6 +179,8 @@ export async function handleCompletion(c: Context) {
       anthropicPayload.model = getSmallModel()
     }
   } else {
+    stripToolReferenceTurnBoundary(anthropicPayload)
+
     // Merge tool_result and text blocks into tool_result to avoid consuming premium requests
     // (caused by skill invocations, edit hooks, plan or to do reminders)
     // e.g. {"role":"user","content":[{"type":"tool_result","content":"Launching skill: xxx"},{"type":"text","text":"xxx"}]}

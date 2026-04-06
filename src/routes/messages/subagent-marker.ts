@@ -11,7 +11,9 @@ export interface SubagentMarker {
 export const parseSubagentMarkerFromFirstUser = (
   payload: AnthropicMessagesPayload,
 ): SubagentMarker | null => {
-  const firstUserMessage = payload.messages.find((msg) => msg.role === "user")
+  const firstUserMessage = payload.messages.find(
+    (msg) => msg.role === "user" && Array.isArray(msg.content),
+  )
   if (!firstUserMessage || !Array.isArray(firstUserMessage.content)) {
     return null
   }

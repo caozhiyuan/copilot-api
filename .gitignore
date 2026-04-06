@@ -16,3 +16,8 @@ dist/
 .DS_Store
 /.claude
 /.worktrees/
+
+.opencode/plans
+.opencode/package-lock.json
+
+*.vsix

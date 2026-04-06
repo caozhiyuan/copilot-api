@@ -62,6 +62,18 @@ function isValidChatCompletionRequest(payload: unknown): boolean {
   return result.success
 }
 
+function getTextParts(
+  content: string | Array<{ type: string; text?: string }> | null | undefined,
+): Array<string> {
+  if (!Array.isArray(content)) {
+    return typeof content === "string" ? [content] : []
+  }
+
+  return content.flatMap((part) =>
+    part.type === "text" && typeof part.text === "string" ? [part.text] : [],
+  )
+}
+
 describe("Anthropic to OpenAI translation logic", () => {
   test("should translate minimal Anthropic payload to valid OpenAI payload", () => {
     const anthropicPayload: AnthropicMessagesPayload = {
@@ -154,7 +166,7 @@ describe("Anthropic to OpenAI translation logic", () => {
     expect(assistantMessage?.reasoning_text).toContain(
       "Let me think about this simple math problem...",
     )
-    expect(assistantMessage?.content).toContain("2+2 equals 4.")
+    expect(getTextParts(assistantMessage?.content)).toContain("2+2 equals 4.")
   })
 
   test("should handle thinking blocks with tool calls", () => {
@@ -193,11 +205,50 @@ describe("Anthropic to OpenAI translation logic", () => {
     expect(assistantMessage?.reasoning_text).toContain(
       "I need to call the weather API",
     )
-    expect(assistantMessage?.content).toContain(
+    expect(getTextParts(assistantMessage?.content)).toContain(
       "I'll check the weather for you.",
     )
     expect(assistantMessage?.tool_calls).toHaveLength(1)
     expect(assistantMessage?.tool_calls?.[0].function.name).toBe("get_weather")
+  })
+
+  test("should map tool_reference tool results into chat tool messages", () => {
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool_123",
+              content: [
+                {
+                  type: "tool_reference",
+                  tool_name: "AskUserQuestion",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      max_tokens: 100,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.messages).toEqual([
+      {
+        role: "tool",
+        tool_call_id: "tool_123",
+        content: [
+          {
+            type: "text",
+            text: "Tool AskUserQuestion loaded",
+          },
+        ],
+      },
+    ])
   })
 })
 
