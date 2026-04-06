@@ -558,20 +558,32 @@ export function ModelsPage(): React.JSX.Element {
               />
             </div>
             <Badge
+              asChild
               variant={activeFilters.has("premium") ? "default" : "outline"}
-              className="cursor-pointer select-none transition-colors"
-              onClick={() => toggleFilter("premium")}
             >
-              {t("modelsPage.badges.premium")}
-              {stats.premium > 0 ? ` (${stats.premium})` : ""}
+              <button
+                type="button"
+                aria-pressed={activeFilters.has("premium")}
+                className="cursor-pointer select-none transition-colors"
+                onClick={() => toggleFilter("premium")}
+              >
+                {t("modelsPage.badges.premium")}
+                {stats.premium > 0 ? ` (${stats.premium})` : ""}
+              </button>
             </Badge>
             <Badge
+              asChild
               variant={activeFilters.has("preview") ? "default" : "outline"}
-              className="cursor-pointer select-none transition-colors"
-              onClick={() => toggleFilter("preview")}
             >
-              {t("modelsPage.badges.preview")}
-              {stats.preview > 0 ? ` (${stats.preview})` : ""}
+              <button
+                type="button"
+                aria-pressed={activeFilters.has("preview")}
+                className="cursor-pointer select-none transition-colors"
+                onClick={() => toggleFilter("preview")}
+              >
+                {t("modelsPage.badges.preview")}
+                {stats.preview > 0 ? ` (${stats.preview})` : ""}
+              </button>
             </Badge>
             <span className={cn(
               "text-muted-foreground ml-auto text-sm tabular-nums",

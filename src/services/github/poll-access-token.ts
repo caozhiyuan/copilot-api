@@ -1,6 +1,7 @@
 import consola from "consola"
 
 import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
+import { CancelledError } from "~/lib/error"
 import { sleep } from "~/lib/utils"
 
 import type { DeviceCodeResponse } from "./get-device-code"
@@ -27,7 +28,7 @@ export async function pollAccessToken(
 
   while (true) {
     if (options?.signal?.aborted) {
-      throw new Error("Authentication cancelled")
+      throw new CancelledError("Authentication cancelled")
     }
 
     const response = await fetch(accessTokenUrl, {

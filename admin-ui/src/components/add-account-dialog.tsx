@@ -68,9 +68,17 @@ export function AddAccountDialog({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const expiresAtRef = useRef<number>(0)
+  const lastCancelledSessionIdRef = useRef<string | null>(null)
+
+  const clearPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearTimeout(pollingRef.current)
+      pollingRef.current = null
+    }
+  }, [])
 
   const clearCountdown = useCallback(() => {
     if (countdownRef.current) {
@@ -87,55 +95,91 @@ export function AddAccountDialog({
       setRemainingSeconds(expiresInSeconds)
 
       countdownRef.current = setInterval(() => {
-        const remaining = Math.max(0, Math.ceil((expiresAtRef.current - Date.now()) / 1000))
+        const remaining = Math.max(
+          0,
+          Math.ceil((expiresAtRef.current - Date.now()) / 1000),
+        )
         setRemainingSeconds(remaining)
         if (remaining <= 0) {
           clearCountdown()
+          clearPolling()
+          setError(t("accountManagement.expired"))
+          setStep("error")
         }
       }, 1000)
     },
-    [clearCountdown],
+    [clearCountdown, clearPolling, t],
   )
 
   const startPolling = useCallback(
     (sessionId: string, interval: number) => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
+      clearPolling()
+      const pollIntervalMs = (interval + 1) * 1000
 
-      pollingRef.current = setInterval(async () => {
+      const poll = async () => {
         try {
           const status = await getAuthStatus(sessionId)
           setAuthStatus(status)
 
-          if (status.status === "completed") {
-            if (pollingRef.current) clearInterval(pollingRef.current)
-            pollingRef.current = null
-            clearCountdown()
-            setStep("success")
-          } else if (status.status === "failed") {
-            if (pollingRef.current) clearInterval(pollingRef.current)
-            pollingRef.current = null
-            clearCountdown()
-            setError(status.error ?? t("accountManagement.authFailed"))
-            setStep("error")
-          } else if (status.status === "expired") {
-            if (pollingRef.current) clearInterval(pollingRef.current)
-            pollingRef.current = null
-            clearCountdown()
-            setError(t("accountManagement.expired"))
-            setStep("error")
+          switch (status.status) {
+            case "completed": {
+              clearPolling()
+              clearCountdown()
+              setStep("success")
+              return
+            }
+            case "failed": {
+              clearPolling()
+              clearCountdown()
+              setError(status.error ?? t("accountManagement.authFailed"))
+              setStep("error")
+              return
+            }
+            case "expired": {
+              clearPolling()
+              clearCountdown()
+              setError(t("accountManagement.expired"))
+              setStep("error")
+              return
+            }
+            case "pending": {
+              pollingRef.current = setTimeout(() => {
+                void poll()
+              }, pollIntervalMs)
+            }
           }
-        } catch {
-          // Ignore polling errors — will retry on next tick
+        } catch (pollError) {
+          console.warn("Failed to poll auth session status.", pollError)
+          pollingRef.current = setTimeout(() => {
+            void poll()
+          }, pollIntervalMs)
         }
-      }, (interval + 1) * 1000)
+      }
+
+      pollingRef.current = setTimeout(() => {
+        void poll()
+      }, pollIntervalMs)
     },
-    [t, clearCountdown],
+    [t, clearCountdown, clearPolling],
   )
+
+  const cancelCurrentSession = useCallback(async () => {
+    if (!authSession) return
+
+    const currentStatus = authStatus?.status ?? "pending"
+    if (currentStatus !== "pending") return
+
+    if (lastCancelledSessionIdRef.current === authSession.sessionId) return
+    lastCancelledSessionIdRef.current = authSession.sessionId
+
+    await cancelAuth(authSession.sessionId).catch(() => {})
+  }, [authSession, authStatus?.status])
 
   const startReauth = useCallback(async () => {
     if (!reauthAccountId) return
     try {
       setError(null)
+      setAuthStatus(null)
       const result = await reauthAccount(reauthAccountId)
       setAuthSession(result)
       setStep("authorize")
@@ -151,10 +195,8 @@ export function AddAccountDialog({
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (!open) {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = null
-      }
+      void cancelCurrentSession()
+      clearPolling()
       if (countdownRef.current) {
         clearInterval(countdownRef.current)
         countdownRef.current = null
@@ -171,7 +213,7 @@ export function AddAccountDialog({
       }, 200)
       return () => clearTimeout(timer)
     }
-  }, [open, reauthAccountId])
+  }, [open, reauthAccountId, cancelCurrentSession, clearCountdown, clearPolling])
 
   const handleContinue = useCallback(async () => {
     const domain = cleanDomain(enterpriseDomain)
@@ -183,6 +225,7 @@ export function AddAccountDialog({
 
     try {
       setError(null)
+      setAuthStatus(null)
       const result = await startAccountAuth({
         accountType,
         enterpriseDomain: accountType === "enterprise" ? domain : undefined,
@@ -198,22 +241,23 @@ export function AddAccountDialog({
     }
   }, [accountType, enterpriseDomain, t, startPolling, startCountdown])
 
-  const handleCancel = useCallback(async () => {
-    if (authSession) {
-      await cancelAuth(authSession.sessionId).catch(() => {})
-    }
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current)
-      pollingRef.current = null
-    }
+  const closeDialog = useCallback(async () => {
+    await cancelCurrentSession()
+    clearPolling()
     clearCountdown()
     onOpenChange(false)
-  }, [authSession, onOpenChange, clearCountdown])
+  }, [cancelCurrentSession, onOpenChange, clearCountdown, clearPolling])
+
+  const handleCancel = useCallback(async () => {
+    await closeDialog()
+  }, [closeDialog])
 
   const handleDone = useCallback(() => {
+    clearPolling()
+    clearCountdown()
     onOpenChange(false)
     onSuccess()
-  }, [onOpenChange, onSuccess])
+  }, [clearCountdown, clearPolling, onOpenChange, onSuccess])
 
   const handleCopyCode = useCallback(async () => {
     if (!authSession) return
@@ -238,7 +282,16 @@ export function AddAccountDialog({
   const isExpiredError = error === t("accountManagement.expired")
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          void closeDialog()
+          return
+        }
+        onOpenChange(nextOpen)
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         {step === "select-type" && (
           <>
@@ -308,7 +361,7 @@ export function AddAccountDialog({
               </p>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => void closeDialog()}>
                 {t("accountManagement.cancel")}
               </Button>
               <Button onClick={handleContinue}>{t("accountManagement.continue")}</Button>
@@ -330,7 +383,7 @@ export function AddAccountDialog({
               <p>{t("accountManagement.reauthConfirmHint")}</p>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => void closeDialog()}>
                 {t("accountManagement.cancel")}
               </Button>
               <Button onClick={() => void startReauth()}>
@@ -438,16 +491,18 @@ export function AddAccountDialog({
                   </span>
                   <span className="font-medium">{authStatus?.accountId ?? "\u2014"}</span>
                 </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-muted-foreground">
-                    {t("accountManagement.typeLabel")}
-                  </span>
-                  <span>
-                    {t(
-                      `accountManagement.type${accountType.charAt(0).toUpperCase() + accountType.slice(1)}`,
-                    )}
-                  </span>
-                </div>
+                {!reauthAccountId && (
+                  <div className="flex justify-between py-1">
+                    <span className="text-muted-foreground">
+                      {t("accountManagement.typeLabel")}
+                    </span>
+                    <span>
+                      {t(
+                        `accountManagement.type${accountType.charAt(0).toUpperCase() + accountType.slice(1)}`,
+                      )}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between py-1">
                   <span className="text-muted-foreground">
                     {t("accountManagement.statusLabel")}

@@ -289,6 +289,24 @@ export async function getAccountClientIdentity(
   return registry.clientIdentities[identityKey] ?? null
 }
 
+export async function getAccountClientIdentityByLoginAndApp(
+  login: string,
+  oauthApp: string,
+): Promise<AccountClientIdentity | null> {
+  const registry = await loadRegistry()
+
+  const candidates = Object.values(registry.clientIdentities)
+    .filter(
+      (identity): identity is AccountClientIdentity =>
+        identity !== undefined
+        && identity.login === login
+        && identity.oauthApp === oauthApp,
+    )
+    .sort((left, right) => right.createdAt - left.createdAt)
+
+  return candidates[0] ?? null
+}
+
 export async function ensureAccountClientIdentity({
   login,
   oauthApp,

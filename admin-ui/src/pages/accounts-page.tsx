@@ -266,11 +266,18 @@ export function AccountsPage(): React.JSX.Element {
       String(a.stats?.request_count ?? 0),
       String(a.stats?.error_count ?? 0),
       String(a.stats?.tokens_total ?? 0),
-      String(a.stats?.avg_duration_ms != null ? Math.round(a.stats.avg_duration_ms) : ""),
+      String(
+        a.stats?.avg_duration_ms !== null && a.stats?.avg_duration_ms !== undefined
+          ? Math.round(a.stats.avg_duration_ms)
+          : "",
+      ),
       a.stats?.last_request_at_ms ? new Date(a.stats.last_request_at_ms).toISOString() : "",
     ])
 
-    const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(","))].join("\n")
+    const csv = [
+      headers.join(","),
+      ...rows.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(",")),
+    ].join("\n")
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")

@@ -332,7 +332,7 @@
       "aliases": "别名",
       "prompts": "提示词",
       "advanced": "高级",
-      "providers": "Providers"
+      "providers": "上游提供方"
     },
     "navigation": {
       "ariaLabel": "设置分区"

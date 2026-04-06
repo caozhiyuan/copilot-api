@@ -4,13 +4,12 @@ import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 
 import {
-  buildIdentityKey,
   DEFAULT_IDENTITY_ENTERPRISE_DOMAIN,
   getCurrentIdentityEnvironment,
 } from "~/lib/account-client-identity"
 import { accountsManager } from "~/lib/accounts-manager"
 import {
-  getAccountClientIdentity,
+  getAccountClientIdentityByLoginAndApp,
   listAccountsFromRegistry,
   removeAccountFromRegistry,
   removeAccountToken,
@@ -1447,7 +1446,14 @@ adminApiRoutes.delete("/accounts/:id", async (c) => {
     // If registry removal succeeds but token removal fails, the orphaned
     // token file is harmless and will be ignored on next startup.
     await removeAccountFromRegistry(accountId)
-    await removeAccountToken(accountId)
+    try {
+      await removeAccountToken(accountId)
+    } catch (error) {
+      console.error(
+        `Account ${accountId} deleted but token cleanup failed.`,
+        error,
+      )
+    }
 
     return c.json({ deleted: true, accountId })
   } catch (error) {
@@ -1473,15 +1479,11 @@ adminApiRoutes.post("/accounts/:id/reauth", async (c) => {
       })
     }
 
-    // Build the identity key to look up client identity
-    const { oauthApp, enterpriseDomain: envDomain } =
-      getCurrentIdentityEnvironment()
-    const identityKey = buildIdentityKey({
-      login: accountId,
+    const { oauthApp } = getCurrentIdentityEnvironment()
+    const clientIdentity = await getAccountClientIdentityByLoginAndApp(
+      accountId,
       oauthApp,
-      enterpriseDomain: envDomain,
-    })
-    const clientIdentity = await getAccountClientIdentity(identityKey)
+    )
 
     // Use the stored enterprise domain if it's not the default "public"
     const resolvedEnterpriseDomain = clientIdentity?.enterpriseDomain

@@ -266,6 +266,7 @@ export function RequestsPage(): React.JSX.Element {
       reset: boolean
       cursor: number | null
     }): Promise<void> => {
+      loadInFlightRef.current = true
       setLoading(true)
       setError(null)
 
@@ -288,6 +289,7 @@ export function RequestsPage(): React.JSX.Element {
         setHasMore(false)
         setNextCursor(null)
       } finally {
+        loadInFlightRef.current = false
         setLoading(false)
       }
     },
@@ -347,37 +349,68 @@ export function RequestsPage(): React.JSX.Element {
 
   // --- Auto-refresh ---
   const [autoRefreshMs, setAutoRefreshMs] = useState<number>(0)
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const autoRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadInFlightRef = useRef(false)
 
   useEffect(() => {
+    let disposed = false
+
     if (autoRefreshRef.current) {
-      clearInterval(autoRefreshRef.current)
+      clearTimeout(autoRefreshRef.current)
       autoRefreshRef.current = null
     }
+
     if (autoRefreshMs > 0) {
-      autoRefreshRef.current = setInterval(() => {
-        void load({ reset: true, cursor: null })
-      }, autoRefreshMs)
+      const scheduleNextRefresh = () => {
+        if (disposed) return
+        autoRefreshRef.current = setTimeout(async () => {
+          if (loadInFlightRef.current) {
+            scheduleNextRefresh()
+            return
+          }
+
+          try {
+            await load({ reset: true, cursor: null })
+          } finally {
+            scheduleNextRefresh()
+          }
+        }, autoRefreshMs)
+      }
+
+      scheduleNextRefresh()
     }
+
     return () => {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+      disposed = true
+      if (autoRefreshRef.current) {
+        clearTimeout(autoRefreshRef.current)
+        autoRefreshRef.current = null
+      }
     }
   }, [autoRefreshMs, load])
 
   // --- Enter to apply filters ---
   const applyRef = useRef(apply)
   applyRef.current = apply
+  const filterAreaRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key !== "Enter") return
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === "TEXTAREA") return
-      if ((e.target as HTMLElement)?.closest("[role=dialog]")) return
-      if ((e.target as HTMLElement)?.closest("[role=listbox]")) return
+      const target = e.target as HTMLElement | null
+      if (!target || !filterAreaRef.current?.contains(target)) return
+
+      const tag = target.tagName
+      if (tag === "TEXTAREA" || tag === "BUTTON" || tag === "A" || tag === "SELECT") return
+      if (target.isContentEditable) return
+      if (target.closest("[role=dialog]")) return
+      if (target.closest("[role=listbox]")) return
+      if (target.closest("[role=button]")) return
+
       e.preventDefault()
       applyRef.current()
     }
+
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [])
@@ -414,7 +447,7 @@ export function RequestsPage(): React.JSX.Element {
             </Button>
           </CardAction>
         </CardHeader>
-        <CardContent className="space-y-3 px-4">
+        <CardContent ref={filterAreaRef} className="space-y-3 px-4">
           <Tabs defaultValue="quick" className="gap-1.5">
             <TabsList className="h-8 p-[2px]">
               <TabsTrigger value="quick">{t("requestsPage.tabs.quick")}</TabsTrigger>

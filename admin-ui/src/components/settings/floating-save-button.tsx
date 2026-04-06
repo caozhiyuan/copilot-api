@@ -33,8 +33,11 @@ export function FloatingSaveButton({
       <Button
         type="button"
         size="lg"
-        onClick={onSave}
-        disabled={!canSave}
+        onClick={() => {
+          if (saving || !canSave) return
+          onSave()
+        }}
+        disabled={!canSave || saving}
         className="shadow-lg"
       >
         {saving

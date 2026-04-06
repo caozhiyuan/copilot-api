@@ -155,52 +155,73 @@ export class AuthSessionManager {
     return true
   }
 
+  private getLiveSession(sessionId: string): AuthSession | null {
+    const session = this.sessions.get(sessionId)
+    if (!session || session.abortController.signal.aborted) {
+      return null
+    }
+    return session
+  }
+
   private async runAuthFlow(
     session: AuthSession,
     deviceResponse: DeviceCodeResponse,
     overrideUrls: ReturnType<typeof buildOauthUrls>,
   ): Promise<void> {
     try {
+      const sessionId = session.sessionId
+      const signal = session.abortController.signal
+
       const token = await pollAccessToken(deviceResponse, {
         overrideUrls,
-        signal: session.abortController.signal,
+        signal,
       })
+      if (!this.getLiveSession(sessionId)) return
 
       const user = await getGitHubUser({
         githubToken: token,
         accountType: session.accountType,
       })
+      if (!this.getLiveSession(sessionId)) return
 
       const accountId = user.login
 
       // For reauth: check if the authenticated user matches
       if (session.reauthAccountId && session.reauthAccountId !== accountId) {
         this.failSession(
-          session.sessionId,
+          sessionId,
           `Authenticated as "${accountId}" but expected "${session.reauthAccountId}". Use "Add Account" to add a different account.`,
         )
         return
       }
 
       // Save token
+      if (!this.getLiveSession(sessionId)) return
       await saveAccountToken(accountId, token)
+      if (!this.getLiveSession(sessionId)) return
 
       // Check if account already exists in registry
+      if (!this.getLiveSession(sessionId)) return
       const existingAccounts = await listAccountsFromRegistry()
+      if (!this.getLiveSession(sessionId)) return
       const alreadyExists = existingAccounts.some((acc) => acc.id === accountId)
 
       // Touch registry to trigger hot-reload when the account already exists.
-      const registryUpdate =
-        alreadyExists ?
-          saveRegistry(await loadRegistry())
-        : addAccountToRegistry({
-            id: accountId,
-            accountType: session.accountType,
-            addedAt: Date.now(),
-          })
-      await registryUpdate
+      if (alreadyExists) {
+        const registry = await loadRegistry()
+        if (!this.getLiveSession(sessionId)) return
+        await saveRegistry(registry)
+      } else {
+        if (!this.getLiveSession(sessionId)) return
+        await addAccountToRegistry({
+          id: accountId,
+          accountType: session.accountType,
+          addedAt: Date.now(),
+        })
+      }
+      if (!this.getLiveSession(sessionId)) return
 
-      this.completeSession(session.sessionId, accountId)
+      this.completeSession(sessionId, accountId)
     } catch (error) {
       if (session.abortController.signal.aborted) {
         // Cancelled — don't update status (session may already be removed)
@@ -217,7 +238,7 @@ export class AuthSessionManager {
 
   private completeSession(sessionId: string, accountId: string): void {
     const session = this.sessions.get(sessionId)
-    if (!session) return
+    if (!session || session.abortController.signal.aborted) return
 
     session.status = "completed"
     session.accountId = accountId
@@ -225,7 +246,7 @@ export class AuthSessionManager {
 
   private failSession(sessionId: string, error: string): void {
     const session = this.sessions.get(sessionId)
-    if (!session) return
+    if (!session || session.abortController.signal.aborted) return
 
     session.status = "failed"
     session.error = error

@@ -96,6 +96,7 @@ type ProviderModelItem = {
 type ProviderItem = {
   id: string
   name: string
+  type: string
   enabled: boolean
   baseUrl: string
   apiKey: string
@@ -157,6 +158,56 @@ function updateJsonRecord<TRecord>({
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+type ComparablePrimitive = boolean | null | number | string
+
+interface ComparableObject {
+  [key: string]: ComparableValue
+}
+
+type ComparableValue = Array<ComparableValue> | ComparableObject | ComparablePrimitive
+
+function normalizeComparableValue(value: unknown): ComparableValue | undefined {
+  if (value === undefined) return undefined
+
+  if (
+    value === null
+    || typeof value === "boolean"
+    || typeof value === "number"
+    || typeof value === "string"
+  ) {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => normalizeComparableValue(item))
+      .filter((item): item is ComparableValue => item !== undefined)
+
+    if (items.length === 0) return undefined
+
+    if (items.every((item) => typeof item !== "object" || item === null)) {
+      items.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+    }
+
+    return items
+  }
+
+  if (!isPlainObject(value)) return undefined
+
+  const entries = Object.entries(value)
+    .map(([key, item]) => [key, normalizeComparableValue(item)] as const)
+    .filter(([, item]) => item !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right))
+
+  if (entries.length === 0) return undefined
+
+  return Object.fromEntries(entries) as Record<string, ComparableValue>
+}
+
+function toComparableDraftJson(value: AdminConfig): string {
+  return JSON.stringify(normalizeComparableValue(value) ?? {})
 }
 
 function createItemId(): string {
@@ -304,6 +355,7 @@ function providerItemsFromRecord(record: ProviderRecord | undefined): Array<Prov
   return Object.entries(record).map(([name, provider]) => ({
     id: createItemId(),
     name,
+    type: provider.type ?? "anthropic",
     enabled: provider.enabled ?? true,
     baseUrl: provider.baseUrl ?? "",
     apiKey: provider.apiKey ?? "",
@@ -450,7 +502,7 @@ function providerRecordFromItems(items: Array<ProviderItem>): ParseResult<Provid
     const apiKey = item.apiKey.trim()
 
     const provider: ProviderConfig = {
-      type: "anthropic",
+      type: item.type || "anthropic",
       enabled: item.enabled,
       baseUrl: baseUrl || undefined,
       apiKey: apiKey || undefined,
@@ -515,6 +567,7 @@ function useProvidersEditor(
       items.concat({
         id: createItemId(),
         name: "",
+        type: "anthropic",
         enabled: true,
         baseUrl: "",
         apiKey: "",
@@ -2422,7 +2475,7 @@ function useSettingsPageState(): SettingsPageViewProps {
         modelAliases: normalizedAliases,
       }
       setDraft(normalizedDraft)
-      setInitialDraftJson(JSON.stringify(normalizedDraft))
+      setInitialDraftJson(toComparableDraftJson(normalizedDraft))
       setExtraFromRecord(configData.extraPrompts)
       setReasoningFromRecord(configData.modelReasoningEfforts)
       setAliasFromRecord(normalizedAliases)
@@ -2658,7 +2711,7 @@ function useSettingsPageState(): SettingsPageViewProps {
     && !providersIssue
 
   const isDirty = useMemo(
-    () => JSON.stringify(draft) !== initialDraftJson,
+    () => toComparableDraftJson(draft) !== initialDraftJson,
     [draft, initialDraftJson],
   )
 
@@ -2911,13 +2964,17 @@ function SettingsPageView({
       ) : null}
 
       {/* Mobile section navigation */}
-      <div className="flex gap-1 overflow-x-auto pb-2 lg:hidden" role="tablist">
+      <nav
+        className="flex gap-1 overflow-x-auto pb-2 lg:hidden"
+        aria-label={t("settingsPage.navigation.ariaLabel")}
+      >
         {sections.map((section) => {
           const isActive = activeSection === section.id
           return (
             <button
               key={section.id}
               type="button"
+              aria-current={isActive ? "true" : undefined}
               onClick={() => scrollToSection(section.id)}
               className={cn(
                 "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -2931,7 +2988,7 @@ function SettingsPageView({
             </button>
           )
         })}
-      </div>
+      </nav>
 
       {/* Main Layout: Sidebar Navigation + Content */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">

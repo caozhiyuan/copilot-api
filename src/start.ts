@@ -4,7 +4,6 @@ import { defineCommand } from "citty"
 import clipboard from "clipboardy"
 import consola from "consola"
 import { serve, type ServerHandler } from "srvx"
-import invariant from "tiny-invariant"
 
 import { accountsManager } from "./lib/accounts-manager"
 import { addAccountToRegistry, saveAccountToken } from "./lib/accounts-registry"
@@ -215,9 +214,13 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   if (options.claudeCode) {
     logClaudeCodeTip()
-    invariant(models, "Models should be loaded by now")
-    const availableModels = models
-    await setupClaudeCode(availableModels, serverUrl)
+    if (!models?.data.length) {
+      consola.error(
+        "Claude Code requires available models. Add an account via the Admin UI or remove --claude-code.",
+      )
+      process.exit(1)
+    }
+    await setupClaudeCode(models, serverUrl)
   }
 
   consola.box(`🌐 Admin UI: ${serverUrl}/admin`)
