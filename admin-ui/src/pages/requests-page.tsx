@@ -694,7 +694,7 @@ export function RequestsPage(): React.JSX.Element {
               />
             ) : null}
 
-            <Table className="[&_th]:h-9 [&_td]:py-1.5">
+            <Table glow className="[&_th]:h-9 [&_td]:py-1.5">
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("common.time")}</TableHead>

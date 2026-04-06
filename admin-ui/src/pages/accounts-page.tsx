@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
+import { AnimatePresence, motion } from "motion/react"
 
 import {
   AdminApiError,
@@ -563,7 +564,7 @@ export function AccountsPage(): React.JSX.Element {
             </div>
           </div>
 
-          <Table className="[&_th]:h-9 [&_td]:py-1.5">
+          <Table glow className="[&_th]:h-9 [&_td]:py-1.5">
             <TableHeader>
               <TableRow>
                 <TableHead>{t("common.account")}</TableHead>
@@ -619,7 +620,8 @@ export function AccountsPage(): React.JSX.Element {
                   </TableCell>
                 </TableRow>
               ) : (
-                visibleAccounts.map((a) => {
+                <AnimatePresence initial={false}>
+                {visibleAccounts.map((a) => {
                   const failed = a.runtime?.failed
                   const statusBadge = failed ? (
                     <Badge variant="destructive">{t("common.statusFailed")}</Badge>
@@ -677,7 +679,15 @@ export function AccountsPage(): React.JSX.Element {
                     : ""
 
                   return (
-                    <TableRow key={a.account_id}>
+                    <motion.tr
+                      key={a.account_id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      data-slot="table-row"
+                      className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors"
+                    >
                       <TableCell className="font-mono">
                         <Link
                           to={`/requests?account_id=${encodeURIComponent(a.account_id)}&from_ms=${fromMs}&to_ms=${toMs}`}
@@ -742,9 +752,10 @@ export function AccountsPage(): React.JSX.Element {
                           </Button>
                         </div>
                       </TableCell>
-                    </TableRow>
+                    </motion.tr>
                   )
-                })
+                })}
+                </AnimatePresence>
               )}
             </TableBody>
           </Table>

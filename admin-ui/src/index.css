@@ -167,3 +167,66 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Overdrive: skeleton shimmer wave */
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Overdrive: table row hover glow */
+[data-glow-table] tr {
+  --glow-x: 50%;
+  --glow-y: 50%;
+}
+
+[data-glow-table] tbody tr:hover {
+  background: radial-gradient(
+    600px circle at var(--glow-x) var(--glow-y),
+    oklch(0.7 0.15 250 / 0.06),
+    transparent 50%
+  );
+}
+
+.dark [data-glow-table] tbody tr:hover {
+  background: radial-gradient(
+    600px circle at var(--glow-x) var(--glow-y),
+    oklch(0.6 0.18 250 / 0.08),
+    transparent 50%
+  );
+}
+
+/* Overdrive: view transitions */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(page-content) {
+  animation: 180ms ease-out both fade-and-scale-out;
+}
+
+::view-transition-new(page-content) {
+  animation: 180ms ease-out 60ms both fade-and-scale-in;
+}
+
+@keyframes fade-and-scale-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes fade-and-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(page-content),
+  ::view-transition-new(page-content) {
+    animation: none;
+  }
+}

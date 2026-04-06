@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { AnimatePresence, motion } from "motion/react"
 import { toast } from "sonner"
 import { LoaderCircleIcon, RefreshCwIcon, SearchIcon } from "lucide-react"
 
@@ -621,7 +622,7 @@ export function ModelsPage(): React.JSX.Element {
             </span>
           </div>
 
-          <Table>
+          <Table glow>
             <TableHeader>
               <TableRow>
                 <SortableTableHead
@@ -693,40 +694,46 @@ export function ModelsPage(): React.JSX.Element {
                   </TableCell>
                 </TableRow>
               )}
-              {filteredModels.length > 0 &&
-                sortedModels.map((model, idx) => (
-                  <TableRow
-                    key={model.id}
-                    className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 fill-mode-backwards"
-                    style={{ animationDelay: `${Math.min(idx * 30, 600)}ms`, animationDuration: "300ms" }}
-                  >
-                    <TableCell className="max-w-[16rem]">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate" title={model.name}>{model.name}</span>
-                        {model.preview ? (
-                          <Badge variant="outline" className="shrink-0 text-xs">
-                            {t("modelsPage.badges.preview")}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className={cn("max-w-[26rem]", modelsTableColVisibility[1])}>
-                      <EndpointBadges endpoints={model.supported_endpoints} />
-                    </TableCell>
-                    <TableCell className={cn("max-w-[26rem]", modelsTableColVisibility[2])}>
-                      <AliasesCell id={model.id} aliases={model.aliases} />
-                    </TableCell>
-                    <TableCell>
-                      <ContextCell limits={model.capabilities.limits} />
-                    </TableCell>
-                    <TableCell>
-                      <FeatureBadges supports={model.capabilities.supports} />
-                    </TableCell>
-                    <TableCell>
-                      <MultiplierCell billing={model.billing} />
-                    </TableCell>
-                  </TableRow>
-                ))}
+              <AnimatePresence initial={false}>
+                {filteredModels.length > 0 &&
+                  sortedModels.map((model) => (
+                    <motion.tr
+                      key={model.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      data-slot="table-row"
+                      className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors"
+                    >
+                      <TableCell className="max-w-[16rem]">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate" title={model.name}>{model.name}</span>
+                          {model.preview ? (
+                            <Badge variant="outline" className="shrink-0 text-xs">
+                              {t("modelsPage.badges.preview")}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className={cn("max-w-[26rem]", modelsTableColVisibility[1])}>
+                        <EndpointBadges endpoints={model.supported_endpoints} />
+                      </TableCell>
+                      <TableCell className={cn("max-w-[26rem]", modelsTableColVisibility[2])}>
+                        <AliasesCell id={model.id} aliases={model.aliases} />
+                      </TableCell>
+                      <TableCell>
+                        <ContextCell limits={model.capabilities.limits} />
+                      </TableCell>
+                      <TableCell>
+                        <FeatureBadges supports={model.capabilities.supports} />
+                      </TableCell>
+                      <TableCell>
+                        <MultiplierCell billing={model.billing} />
+                      </TableCell>
+                    </motion.tr>
+                  ))}
+              </AnimatePresence>
             </TableBody>
           </Table>
         </CardContent>

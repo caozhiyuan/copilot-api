@@ -28,15 +28,25 @@ export function NumberTicker({
     stiffness: 100,
   })
   const isInView = useInView(ref, { once: true, margin: "0px" })
+  const hasAnimated = useRef(false)
 
+  // Initial animation on first view
   useEffect(() => {
-    if (isInView) {
+    if (isInView && !hasAnimated.current) {
+      hasAnimated.current = true
       const timer = setTimeout(() => {
         motionValue.set(direction === "down" ? startValue : value)
       }, delay * 1000)
       return () => clearTimeout(timer)
     }
   }, [motionValue, isInView, delay, value, direction, startValue])
+
+  // Subsequent value changes: spring smoothly to new value (auto-refresh)
+  useEffect(() => {
+    if (hasAnimated.current) {
+      motionValue.set(direction === "down" ? startValue : value)
+    }
+  }, [motionValue, value, direction, startValue])
 
   useEffect(
     () =>

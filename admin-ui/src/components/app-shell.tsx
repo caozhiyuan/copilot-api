@@ -104,7 +104,10 @@ export function AppShell(): React.JSX.Element {
         </div>
       </header>
 
-      <main className="w-full px-4 py-4 lg:px-6 lg:py-6">
+      <main
+        className="w-full px-4 py-4 lg:px-6 lg:py-6"
+        style={{ viewTransitionName: "page-content" }}
+      >
         <Outlet />
       </main>
     </div>
