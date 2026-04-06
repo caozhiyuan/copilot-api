@@ -188,6 +188,7 @@ export function AccountsPage(): React.JSX.Element {
   const [reauthTargetId, setReauthTargetId] = useState("")
 
   const refresh = useCallback(async () => {
+    loadInFlightRef.current = true
     setLoading(true)
     setError(null)
     try {
@@ -206,6 +207,7 @@ export function AccountsPage(): React.JSX.Element {
       setError(msg)
       toast.error(i18n.t("accountsPage.loadFailedTitle"), { description: msg })
     } finally {
+      loadInFlightRef.current = false
       setLoading(false)
     }
   }, [windowPreset])
@@ -216,20 +218,43 @@ export function AccountsPage(): React.JSX.Element {
 
   // Auto-refresh
   const [autoRefreshMs, setAutoRefreshMs] = useState<number>(0)
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const autoRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadInFlightRef = useRef(false)
 
   useEffect(() => {
+    let disposed = false
+
     if (autoRefreshRef.current) {
-      clearInterval(autoRefreshRef.current)
+      clearTimeout(autoRefreshRef.current)
       autoRefreshRef.current = null
     }
+
     if (autoRefreshMs > 0) {
-      autoRefreshRef.current = setInterval(() => {
-        void refresh()
-      }, autoRefreshMs)
+      const scheduleNextRefresh = () => {
+        if (disposed) return
+        autoRefreshRef.current = setTimeout(async () => {
+          if (loadInFlightRef.current) {
+            scheduleNextRefresh()
+            return
+          }
+
+          try {
+            await refresh()
+          } finally {
+            scheduleNextRefresh()
+          }
+        }, autoRefreshMs)
+      }
+
+      scheduleNextRefresh()
     }
+
     return () => {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+      disposed = true
+      if (autoRefreshRef.current) {
+        clearTimeout(autoRefreshRef.current)
+        autoRefreshRef.current = null
+      }
     }
   }, [autoRefreshMs, refresh])
 

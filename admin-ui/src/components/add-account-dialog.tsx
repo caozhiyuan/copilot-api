@@ -439,7 +439,7 @@ export function AddAccountDialog({
                 <div
                   className={cn(
                     "h-2 w-2 rounded-full motion-safe:animate-pulse",
-                    remainingSeconds != null && remainingSeconds <= WARNING_THRESHOLD_S
+                    remainingSeconds !== null && remainingSeconds <= WARNING_THRESHOLD_S
                       ? "bg-amber-500"
                       : "bg-primary",
                   )}
@@ -447,19 +447,22 @@ export function AddAccountDialog({
                 <span
                   className={cn(
                     "text-sm",
-                    remainingSeconds != null && remainingSeconds <= WARNING_THRESHOLD_S
+                    remainingSeconds !== null && remainingSeconds <= WARNING_THRESHOLD_S
                       ? "text-amber-500 font-medium"
                       : "text-muted-foreground",
                   )}
                 >
-                  {remainingSeconds != null && remainingSeconds > 0
+                  {remainingSeconds !== null && remainingSeconds > 0
                     ? t("accountManagement.expiresIn", {
                         time: formatCountdown(remainingSeconds),
                       })
                     : t("accountManagement.waitingForAuth")}
                 </span>
               </div>
-              {remainingSeconds != null && remainingSeconds <= WARNING_THRESHOLD_S && remainingSeconds > 0 && (
+              {remainingSeconds !== null
+                && remainingSeconds <= WARNING_THRESHOLD_S
+                && remainingSeconds > 0
+                && (
                 <p className="text-amber-500 text-xs">{t("accountManagement.expiresWarning")}</p>
               )}
             </div>

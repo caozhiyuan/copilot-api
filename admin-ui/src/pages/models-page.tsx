@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { LoaderCircleIcon, RefreshCwIcon, SearchIcon } from "lucide-react"
@@ -375,7 +375,6 @@ export function ModelsPage(): React.JSX.Element {
 
   const [search, setSearch] = useState("")
   const [activeFilters, setActiveFilters] = useState<Set<FilterTag>>(new Set())
-  const searchRef = useRef<HTMLInputElement>(null)
 
   const [sortState, setSortState] = useState<SortState>({
     key: null,
@@ -550,7 +549,6 @@ export function ModelsPage(): React.JSX.Element {
             <div className="relative max-w-64 flex-1">
               <SearchIcon className="text-muted-foreground pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2" />
               <Input
-                ref={searchRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("modelsPage.searchPlaceholder")}
