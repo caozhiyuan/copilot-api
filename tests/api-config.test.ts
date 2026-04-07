@@ -76,7 +76,7 @@ describe("copilotBaseUrl", () => {
 test("githubHeaders uses opencode bearer auth when configured", () => {
   process.env.COPILOT_API_OAUTH_APP = "opencode"
 
-  const headers = githubHeaders(accountContext) as Record<string, string>
+  const headers = githubHeaders(accountContext)
 
   expect(headers.Authorization).toBe("Bearer ghu_test")
   expect(headers["User-Agent"]).toContain("opencode/")
