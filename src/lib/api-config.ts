@@ -213,8 +213,12 @@ export const copilotModelsHeaders = (
       "User-Agent": getOpencodeVersion(),
     }
   }
-
-  return githubCopilotHeaders(account)
+  const headers = githubCopilotHeaders(account)
+  headers["x-interaction-type"] = "model-access"
+  headers["openai-intent"] = "model-access"
+  delete headers["x-interaction-id"]
+  delete headers["content-type"]
+  return headers
 }
 
 export const copilotHeaders = (
@@ -293,7 +297,9 @@ const githubCopilotHeaders = (
 }
 
 export const GITHUB_API_BASE_URL = "https://api.github.com"
-export const githubHeaders = (account: AccountContext) => {
+export const githubHeaders = (
+  account: AccountContext,
+): Record<string, string> => {
   if (isOpencodeOauthApp()) {
     return {
       Authorization: `Bearer ${account.githubToken}`,
@@ -302,10 +308,7 @@ export const githubHeaders = (account: AccountContext) => {
   }
 
   return {
-    ...standardHeaders(),
     authorization: `token ${account.githubToken}`,
-    "editor-version": `vscode/${account.vsCodeVersion}`,
-    "editor-plugin-version": EDITOR_PLUGIN_VERSION,
     "user-agent": USER_AGENT,
     "x-github-api-version": API_VERSION,
     "x-vscode-user-agent-library-version": "electron-fetch",

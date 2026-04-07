@@ -82,6 +82,20 @@ test("githubHeaders uses opencode bearer auth when configured", () => {
   expect(headers["User-Agent"]).toContain("opencode/")
 })
 
+test("githubHeaders keeps GitHub REST headers minimal", () => {
+  delete process.env.COPILOT_API_OAUTH_APP
+
+  const headers = githubHeaders(accountContext)
+
+  expect(headers.authorization).toBe("token ghu_test")
+  expect(headers["user-agent"]).toContain("GitHubCopilotChat/")
+  expect(headers["x-github-api-version"]).toBe("2025-10-01")
+  expect(headers.accept).toBeUndefined()
+  expect(headers["content-type"]).toBeUndefined()
+  expect(headers["editor-version"]).toBeUndefined()
+  expect(headers["editor-plugin-version"]).toBeUndefined()
+})
+
 test("githubUserHeaders uses opencode bearer auth and versioned user-agent", () => {
   process.env.COPILOT_API_OAUTH_APP = "opencode"
 
@@ -127,6 +141,18 @@ test("copilot headers keep opencode model discovery and llm user-agents separate
   expect(modelHeaders.Authorization).toBe("Bearer copilot_test")
   expect(modelHeaders["User-Agent"]).toMatch(/^opencode\//)
   expect(llmHeaders["User-Agent"]).toContain("ai-sdk/provider-utils")
+})
+
+test("copilot model discovery uses model-access headers", () => {
+  delete process.env.COPILOT_API_OAUTH_APP
+
+  const headers = copilotModelsHeaders(accountContext)
+
+  expect(headers.Authorization).toBe("Bearer copilot_test")
+  expect(headers["x-interaction-type"]).toBe("model-access")
+  expect(headers["openai-intent"]).toBe("model-access")
+  expect(headers["content-type"]).toBeUndefined()
+  expect(headers["x-interaction-id"]).toBeUndefined()
 })
 
 test("copilotHeaders forwards opencode session affinity metadata from request context", () => {
