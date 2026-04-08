@@ -145,6 +145,7 @@ export class AccountsManager {
   private registryWatcherRestartTimer?: ReturnType<typeof setTimeout>
   private registryWatcherRestartDelayMs = WATCHER_RESTART_INITIAL_DELAY_MS
   private isReloading = false
+  private currentReloadPromise?: Promise<void>
 
   /** Initialize accounts manager (load registry, migrate legacy token). */
   async initialize(vsCodeVersion?: string): Promise<void> {
@@ -1326,6 +1327,23 @@ export class AccountsManager {
   }
 
   /**
+   * Immediately reload the registry, bypassing the debounce delay.
+   * If a reload is already running, waits for it to complete and then
+   * runs another reload to ensure the latest changes are captured.
+   */
+  async reloadRegistryNow(): Promise<void> {
+    if (this.reloadDebounceTimer) {
+      clearTimeout(this.reloadDebounceTimer)
+      this.reloadDebounceTimer = undefined
+    }
+    // Wait for any in-progress reload before starting a fresh one
+    if (this.currentReloadPromise) {
+      await this.currentReloadPromise
+    }
+    await this.reloadRegistry()
+  }
+
+  /**
    * Schedule a registry reload with debouncing.
    */
   private scheduleReload(): void {
@@ -1352,44 +1370,49 @@ export class AccountsManager {
     }
     this.isReloading = true
 
-    try {
-      const newMetas = await listAccountsFromRegistry()
-      const newIds = new Set(newMetas.map((m) => m.id))
-      const currentIds = new Set(this.accountOrder)
+    this.currentReloadPromise = (async () => {
+      try {
+        const newMetas = await listAccountsFromRegistry()
+        const newIds = new Set(newMetas.map((m) => m.id))
+        const currentIds = new Set(this.accountOrder)
 
-      // Track changes for logging
-      const added: Array<string> = []
-      const removed: Array<string> = []
-      const updated: Array<string> = []
+        // Track changes for logging
+        const added: Array<string> = []
+        const removed: Array<string> = []
+        const updated: Array<string> = []
 
-      this.removeDeletedAccounts(currentIds, newIds, removed)
+        this.removeDeletedAccounts(currentIds, newIds, removed)
 
-      // Add new accounts (newIds - currentIds)
-      for (const meta of newMetas) {
-        if (!currentIds.has(meta.id)) {
-          await this.addNewAccount(meta, added)
+        // Add new accounts (newIds - currentIds)
+        for (const meta of newMetas) {
+          if (!currentIds.has(meta.id)) {
+            await this.addNewAccount(meta, added)
+          }
         }
+
+        // Update existing accounts when meta/token changed
+        await this.reinitializeUpdatedAccounts(newMetas, currentIds, updated)
+
+        // Update accountOrder to reflect new order
+        this.accountOrder = newMetas
+          .map((m) => m.id)
+          .filter((id) => this.accounts.has(id))
+
+        // Reset load-balance cursor on account list/order changes.
+        this.loadBalanceCursor = 0
+
+        this.logRegistryReloadChanges(added, removed, updated)
+      } catch (error) {
+        consola.error("Failed to reload registry:", error)
+        this.shutdown()
+        process.exit(1)
+      } finally {
+        this.isReloading = false
+        this.currentReloadPromise = undefined
       }
+    })()
 
-      // Update existing accounts when meta/token changed
-      await this.reinitializeUpdatedAccounts(newMetas, currentIds, updated)
-
-      // Update accountOrder to reflect new order
-      this.accountOrder = newMetas
-        .map((m) => m.id)
-        .filter((id) => this.accounts.has(id))
-
-      // Reset load-balance cursor on account list/order changes.
-      this.loadBalanceCursor = 0
-
-      this.logRegistryReloadChanges(added, removed, updated)
-    } catch (error) {
-      consola.error("Failed to reload registry:", error)
-      this.shutdown()
-      process.exit(1)
-    } finally {
-      this.isReloading = false
-    }
+    await this.currentReloadPromise
   }
 
   private removeDeletedAccounts(

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto"
 
 import type { AccountType } from "~/lib/types/account"
 
+import { accountsManager } from "~/lib/accounts-manager"
 import {
   addAccountToRegistry,
   listAccountsFromRegistry,
@@ -220,6 +221,11 @@ export class AuthSessionManager {
         })
       }
       if (!this.getLiveSession(sessionId)) return
+
+      // Wait for accountsManager to pick up the new/updated account
+      // before marking the session as completed, so the frontend
+      // refresh will see the account immediately.
+      await accountsManager.reloadRegistryNow()
 
       this.completeSession(sessionId, accountId)
     } catch (error) {
