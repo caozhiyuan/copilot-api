@@ -75,6 +75,13 @@ const SESSION_REFRESH_BASE_MS = 60 * 60 * 1000
 /** Session refresh jitter window in milliseconds. */
 const SESSION_REFRESH_JITTER_MS = 20 * 60 * 1000
 
+/** Minimum delay between account initializations in milliseconds. */
+const INIT_STAGGER_MIN_MS = 2000
+/** Maximum delay between account initializations in milliseconds. */
+const INIT_STAGGER_MAX_MS = 5000
+/** Random jitter window added to token refresh delay in milliseconds. */
+const TOKEN_REFRESH_JITTER_MS = 30_000
+
 export interface AccountRequestCandidate {
   modelId: string
   endpoint: string
@@ -172,8 +179,22 @@ export class AccountsManager {
       this.accountOrder.push(meta.id)
     }
 
-    // Initialize Copilot tokens for all accounts
+    // Initialize Copilot tokens for all accounts (staggered to avoid burst traffic)
+    let isFirstAccount = true
     for (const account of this.accounts.values()) {
+      if (!isFirstAccount) {
+        const staggerDelay =
+          INIT_STAGGER_MIN_MS
+          + Math.floor(
+            Math.random() * (INIT_STAGGER_MAX_MS - INIT_STAGGER_MIN_MS),
+          )
+        consola.debug(
+          `Staggering initialization of account ${account.id} by ${staggerDelay}ms`,
+        )
+        await new Promise((resolve) => setTimeout(resolve, staggerDelay))
+      }
+      isFirstAccount = false
+
       try {
         await this.initializeAccount(account)
       } catch (error) {
@@ -203,7 +224,9 @@ export class AccountsManager {
   }
 
   private computeTokenRefreshDelayMs(refreshInSeconds: number): number {
-    return Math.max((refreshInSeconds - 60) * 1000, 1000)
+    const baseDelay = Math.max((refreshInSeconds - 60) * 1000, 1000)
+    const jitter = Math.floor(Math.random() * TOKEN_REFRESH_JITTER_MS)
+    return baseDelay + jitter
   }
 
   private computeSessionRefreshDelayMs(): number {
