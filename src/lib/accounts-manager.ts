@@ -1301,6 +1301,19 @@ export class AccountsManager {
   }
 
   /**
+   * Immediately reload the registry, bypassing the debounce delay.
+   * Useful when the caller has just modified the registry and needs
+   * the changes to be reflected before continuing.
+   */
+  async reloadRegistryNow(): Promise<void> {
+    if (this.reloadDebounceTimer) {
+      clearTimeout(this.reloadDebounceTimer)
+      this.reloadDebounceTimer = undefined
+    }
+    await this.reloadRegistry()
+  }
+
+  /**
    * Schedule a registry reload with debouncing.
    */
   private scheduleReload(): void {
