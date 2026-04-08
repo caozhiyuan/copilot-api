@@ -226,7 +226,9 @@ export class AccountsManager {
   private computeTokenRefreshDelayMs(refreshInSeconds: number): number {
     const baseDelay = Math.max((refreshInSeconds - 60) * 1000, 1000)
     const jitter = Math.floor(Math.random() * TOKEN_REFRESH_JITTER_MS)
-    return baseDelay + jitter
+    // Ensure the jittered delay doesn't exceed the token's validity window
+    const maxSafeDelay = Math.max(refreshInSeconds * 1000 - 1000, 1000)
+    return Math.min(baseDelay + jitter, maxSafeDelay)
   }
 
   private computeSessionRefreshDelayMs(): number {

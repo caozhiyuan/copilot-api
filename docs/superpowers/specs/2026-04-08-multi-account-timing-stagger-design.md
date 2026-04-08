@@ -93,14 +93,16 @@ const TOKEN_REFRESH_JITTER_MS = 30_000
 private computeTokenRefreshDelayMs(refreshInSeconds: number): number {
   const baseDelay = Math.max((refreshInSeconds - 60) * 1000, 1000)
   const jitter = Math.floor(Math.random() * TOKEN_REFRESH_JITTER_MS)
-  return baseDelay + jitter
+  // Ensure the jittered delay doesn't exceed the token's validity window
+  const maxSafeDelay = Math.max(refreshInSeconds * 1000 - 1000, 1000)
+  return Math.min(baseDelay + jitter, maxSafeDelay)
 }
 ```
 
 **Characteristics**:
 - Adds 0-30 seconds of random jitter on top of the base delay
 - Base delay already reserves a 60-second buffer before expiry
-- With 30s jitter, worst case still refreshes 30s before expiry (safe margin)
+- Total delay is capped at `refreshInSeconds * 1000 - 1000` to guarantee refresh occurs at least 1 second before token expiry, even when `refresh_in` is unusually small
 - 20 accounts spread across a 30-second window ≈ 1.5s average spacing
 - Jitter is re-randomized on each refresh cycle (no persistent pattern)
 
