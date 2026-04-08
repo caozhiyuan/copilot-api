@@ -147,7 +147,7 @@ function migrateAdminDb(db: Database): void {
   } | null
   const current = row?.user_version ?? 0
 
-  if (current >= 5) {
+  if (current >= 6) {
     return
   }
 
@@ -208,6 +208,15 @@ function migrateAdminDb(db: Database): void {
       ALTER TABLE request_log ADD COLUMN affinity_cache_key TEXT;
 
       PRAGMA user_version = 5;
+    `)
+  }
+
+  if (current < 6) {
+    // v6: explicit subagent request tracking column
+    db.run(`
+      ALTER TABLE request_log ADD COLUMN is_subagent INTEGER;
+
+      PRAGMA user_version = 6;
     `)
   }
 }

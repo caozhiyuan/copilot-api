@@ -209,6 +209,7 @@ describe("RequestHistoryStore", () => {
       clientIp: "203.0.113.9",
       clientIpSource: "x-forwarded-for",
       userAgent: "ua",
+      isSubagent: true,
       tokensInput: 10,
       tokensOutput: 20,
       tokensTotal: 30,
@@ -227,7 +228,9 @@ describe("RequestHistoryStore", () => {
     expect(row?.path).toBe("/v1/messages")
     expect(row?.account_id).toBe("acct-1")
     expect(row?.stream).toBe(0)
+    expect(row?.is_subagent).toBe(1)
     expect(row?.premium_unlimited_before).toBe(0)
+    expect(store.meta().userVersion).toBe(6)
   })
 
   test("query orders by id DESC and supports cursor paging", () => {

@@ -123,6 +123,7 @@ type InstrumentationContext = {
   safetyIdentifier?: string
   promptCacheKey?: string
   initiator?: "agent" | "user"
+  isSubagent?: boolean
   upstreamRequestId?: string
 
   /** Call after upstream success to persist affinity mapping. */
@@ -218,6 +219,7 @@ export async function handleCompletion(c: Context) {
     safetyIdentifier: normalizedSafetyIdentifier,
     promptCacheKey: normalizedPromptCacheKey,
     initiator: initiatorOverride,
+    isSubagent: Boolean(subagentMarker),
   })
   if (blockedResponse) return blockedResponse
 
@@ -267,6 +269,7 @@ export async function handleCompletion(c: Context) {
       safetyIdentifier: normalizedSafetyIdentifier,
       promptCacheKey: normalizedPromptCacheKey,
       initiator: fallbackInitiator,
+      isSubagent: Boolean(subagentMarker),
       selection,
     })
   }
@@ -290,6 +293,7 @@ export async function handleCompletion(c: Context) {
     userId,
     safetyIdentifier: normalizedSafetyIdentifier,
     promptCacheKey: normalizedPromptCacheKey,
+    isSubagent: Boolean(subagentMarker),
     clientModel,
     account,
     reservation,
@@ -594,6 +598,7 @@ function insertRequestLog(
     safetyIdentifier: instr.safetyIdentifier,
     promptCacheKey: instr.promptCacheKey,
     initiator: instr.initiator,
+    isSubagent: instr.isSubagent,
     upstreamRequestId: instr.upstreamRequestId,
     affinityHit: instr.affinityHit,
     affinityCacheKey: instr.affinityCacheKey,

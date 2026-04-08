@@ -190,6 +190,7 @@ export type RequestLogInsert = {
   safetyIdentifier?: string
   promptCacheKey?: string
   initiator?: "agent" | "user"
+  isSubagent?: boolean
   upstreamRequestId?: string
 
   tokensInput?: number
@@ -241,6 +242,7 @@ export type RequestLogRow = {
   safety_identifier: string | null
   prompt_cache_key: string | null
   initiator: string | null
+  is_subagent: number | null
   upstream_request_id: string | null
 
   tokens_input: number | null
@@ -336,6 +338,7 @@ export class RequestHistoryStore {
         safety_identifier,
         prompt_cache_key,
         initiator,
+        is_subagent,
         upstream_request_id,
         tokens_input,
         tokens_output,
@@ -359,7 +362,7 @@ export class RequestHistoryStore {
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
-        ?,?,?,?,?,?,?
+        ?,?,?,?,?,?,?,?
       );
     `)
 
@@ -411,6 +414,7 @@ export class RequestHistoryStore {
         toDbNull(record.safetyIdentifier),
         toDbNull(record.promptCacheKey),
         toDbNull(record.initiator),
+        toDbBool(record.isSubagent),
         toDbNull(record.upstreamRequestId),
 
         toDbNull(record.tokensInput),

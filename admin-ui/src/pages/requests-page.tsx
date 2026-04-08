@@ -182,6 +182,7 @@ const requestsTableColVisibility = [
   "hidden lg:table-cell",
   "hidden xl:table-cell",
   "hidden xl:table-cell",
+  "hidden xl:table-cell",
   "hidden 2xl:table-cell",
   "hidden lg:table-cell",
   null,
@@ -712,15 +713,21 @@ export function RequestsPage(): React.JSX.Element {
                     <ColHead label={t("common.xInitiator")} tooltip={t("requestsPage.columnTooltip.initiator")} />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[6])}>
-                    <ColHead label={t("common.tokens")} tooltip={t("requestsPage.columnTooltip.tokens")} />
+                    <ColHead
+                      label={t("common.subagentRequest")}
+                      tooltip={t("requestsPage.columnTooltip.subagentRequest")}
+                    />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[7])}>
-                    <ColHead label={t("common.cost")} tooltip={t("requestsPage.columnTooltip.cost")} />
+                    <ColHead label={t("common.tokens")} tooltip={t("requestsPage.columnTooltip.tokens")} />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[8])}>
-                    <ColHead label={t("common.quota")} tooltip={t("requestsPage.columnTooltip.quota")} />
+                    <ColHead label={t("common.cost")} tooltip={t("requestsPage.columnTooltip.cost")} />
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[9])}>
+                    <ColHead label={t("common.quota")} tooltip={t("requestsPage.columnTooltip.quota")} />
+                  </TableHead>
+                  <TableHead className={cn(requestsTableColVisibility[10])}>
                     <ColHead label={t("common.durationAbbrev")} tooltip={t("requestsPage.columnTooltip.duration")} />
                   </TableHead>
                   <TableHead>{t("common.status")}</TableHead>
@@ -824,16 +831,25 @@ export function RequestsPage(): React.JSX.Element {
                         <TableCell className={cn(requestsTableColVisibility[5], "font-mono text-xs")}>
                           {r.initiator || ""}
                         </TableCell>
-                        <TableCell className={cn(requestsTableColVisibility[6], "font-mono text-xs")}>
-                          {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}
+                        <TableCell className={cn(requestsTableColVisibility[6], "text-xs")}>
+                          {r.is_subagent === null ? (
+                            "—"
+                          ) : (
+                            <Badge variant={r.is_subagent ? "secondary" : "outline"}>
+                              {t(r.is_subagent ? "common.yes" : "common.no")}
+                            </Badge>
+                          )}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[7], "font-mono text-xs")}>
-                          {r.cost_units ?? ""}
+                          {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[8], "font-mono text-xs")}>
-                          {quota}
+                          {r.cost_units ?? ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[9], "font-mono text-xs")}>
+                          {quota}
+                        </TableCell>
+                        <TableCell className={cn(requestsTableColVisibility[10], "font-mono text-xs")}>
                           {r.duration_ms != null ? fmtNum(r.duration_ms) : ""}
                         </TableCell>
                         <TableCell>{statusBadge}</TableCell>

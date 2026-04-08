@@ -65,6 +65,7 @@
     "endpoint": "Endpoint",
     "model": "Model",
     "xInitiator": "Initiator",
+    "subagentRequest": "Subagent Request",
     "cost": "Cost",
     "quota": "Quota",
     "durationAbbrev": "Duration",
@@ -185,6 +186,7 @@
     },
     "columnTooltip": {
       "initiator": "Value of the x-initiator header sent by the client (e.g. IDE extension name).",
+      "subagentRequest": "Whether this request was identified as a subagent request.",
       "cost": "Copilot cost units consumed by this request.",
       "quota": "Premium interactions quota remaining after this request.",
       "duration": "Total response time in milliseconds.",
