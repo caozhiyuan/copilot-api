@@ -11,6 +11,7 @@ import {
 } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import { setupCopilotToken } from "~/lib/token"
 
 export interface ResponsesPayload {
   model: string
@@ -393,6 +394,24 @@ export const createResponses = async (
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      consola.warn("Copilot token expired, refreshing and retrying...")
+      await setupCopilotToken()
+      headers["Authorization"] = `Bearer ${state.copilotToken}`
+      const retryResponse = await fetch(`${copilotBaseUrl(state)}/responses`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      })
+      if (!retryResponse.ok) {
+        consola.error("Failed to create responses after token refresh", retryResponse)
+        throw new HTTPError("Failed to create responses", retryResponse)
+      }
+      if (payload.stream) {
+        return events(retryResponse)
+      }
+      return (await retryResponse.json()) as ResponsesResult
+    }
     consola.error("Failed to create responses", response)
     throw new HTTPError("Failed to create responses", response)
   }

@@ -16,6 +16,7 @@ import {
 } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import { setupCopilotToken } from "~/lib/token"
 import { parseUserIdMetadata } from "~/lib/utils"
 
 export type MessagesStream = ReturnType<typeof events>
@@ -129,6 +130,24 @@ export const createMessages = async (
   })
 
   if (!response.ok) {
+    if (response.status === 401) {
+      consola.warn("Copilot token expired, refreshing and retrying...")
+      await setupCopilotToken()
+      headers["Authorization"] = `Bearer ${state.copilotToken}`
+      const retryResponse = await fetch(`${copilotBaseUrl(state)}/v1/messages`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      })
+      if (!retryResponse.ok) {
+        consola.error("Failed to create messages after token refresh", retryResponse)
+        throw new HTTPError("Failed to create messages", retryResponse)
+      }
+      if (payload.stream) {
+        return events(retryResponse)
+      }
+      return (await retryResponse.json()) as AnthropicResponse
+    }
     consola.error("Failed to create messages", response)
     throw new HTTPError("Failed to create messages", response)
   }
