@@ -349,14 +349,24 @@ const PROVIDER_CONFIG_FIELDS = [
   "enabled",
   "baseUrl",
   "apiKey",
+  "authType",
   "models",
+  "adjustInputTokens",
 ] as const
 
 type ProviderConfigField = (typeof PROVIDER_CONFIG_FIELDS)[number]
 
+type ProviderAuthTypeValue = NonNullable<ProviderConfig["authType"]>
+
+const PROVIDER_AUTH_TYPES = ["authorization", "x-api-key"] as const
+
 const PROVIDER_CONFIG_KEYS = new Set<ProviderConfigField>(
   PROVIDER_CONFIG_FIELDS,
 )
+
+function isProviderAuthType(value: string): value is ProviderAuthTypeValue {
+  return PROVIDER_AUTH_TYPES.includes(value as ProviderAuthTypeValue)
+}
 
 function validateAllowedObjectKeys(
   value: Record<string, unknown>,
@@ -545,6 +555,24 @@ function applyProviderApiKey(
   return undefined
 }
 
+function applyProviderAuthType(
+  provider: ProviderConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "authType")) return undefined
+
+  const parsed = parseOptionalString(value.authType, `${field}.authType`)
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) {
+    if (!isProviderAuthType(parsed.value)) {
+      return `${field}.authType must be one of: ${PROVIDER_AUTH_TYPES.map((item) => `"${item}"`).join(", ")}`
+    }
+    provider.authType = parsed.value
+  }
+  return undefined
+}
+
 function applyProviderModels(
   provider: ProviderConfig,
   value: Record<string, unknown>,
@@ -555,6 +583,22 @@ function applyProviderModels(
   const parsed = parseProviderModelsRecord(value.models, `${field}.models`)
   if ("error" in parsed) return parsed.error
   if ("value" in parsed) provider.models = parsed.value
+  return undefined
+}
+
+function applyProviderAdjustInputTokens(
+  provider: ProviderConfig,
+  value: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.hasOwn(value, "adjustInputTokens")) return undefined
+
+  const parsed = parseOptionalBoolean(
+    value.adjustInputTokens,
+    `${field}.adjustInputTokens`,
+  )
+  if ("error" in parsed) return parsed.error
+  if ("value" in parsed) provider.adjustInputTokens = parsed.value
   return undefined
 }
 
@@ -586,8 +630,18 @@ function parseProviderConfig(
   const apiKeyError = applyProviderApiKey(provider, value, field)
   if (apiKeyError) return { error: apiKeyError }
 
+  const authTypeError = applyProviderAuthType(provider, value, field)
+  if (authTypeError) return { error: authTypeError }
+
   const modelsError = applyProviderModels(provider, value, field)
   if (modelsError) return { error: modelsError }
+
+  const adjustInputTokensError = applyProviderAdjustInputTokens(
+    provider,
+    value,
+    field,
+  )
+  if (adjustInputTokensError) return { error: adjustInputTokensError }
 
   return { value: provider }
 }

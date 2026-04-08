@@ -104,6 +104,8 @@ export type ProviderConfig = {
   enabled?: boolean
   baseUrl?: string
   apiKey?: string
+  authType?: "authorization" | "x-api-key"
+  adjustInputTokens?: boolean
   models?: Record<string, ProviderModelConfig>
 }
 

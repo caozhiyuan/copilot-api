@@ -186,6 +186,8 @@ test("POST /api/admin/config updates providers", async () => {
               enabled: true,
               baseUrl: "https://example.com",
               apiKey: "sk-test",
+              authType: "authorization",
+              adjustInputTokens: true,
               models: {
                 "kimi-k2.5": {
                   temperature: 1,
@@ -207,6 +209,8 @@ test("POST /api/admin/config updates providers", async () => {
           enabled: boolean
           baseUrl: string
           apiKey: string
+          authType: string
+          adjustInputTokens: boolean
           models: {
             "kimi-k2.5": {
               temperature: number
@@ -221,6 +225,8 @@ test("POST /api/admin/config updates providers", async () => {
     expect(body.providers.custom.enabled).toBe(true)
     expect(body.providers.custom.baseUrl).toBe("https://example.com")
     expect(body.providers.custom.apiKey).toBe("sk-test")
+    expect(body.providers.custom.authType).toBe("authorization")
+    expect(body.providers.custom.adjustInputTokens).toBe(true)
     expect(body.providers.custom.models["kimi-k2.5"].temperature).toBe(1)
     expect(body.providers.custom.models["kimi-k2.5"].topP).toBe(0.95)
   })
@@ -304,6 +310,36 @@ test("POST /api/admin/config rejects unsupported provider types", async () => {
 
     const body = (await res.json()) as { error?: { message?: string } }
     expect(body.error?.message).toContain("providers.custom.type")
+  })
+})
+
+test("POST /api/admin/config rejects invalid provider authType", async () => {
+  await withConfig({}, async () => {
+    const { server } = await import("../src/server")
+
+    const res = await server.fetch(
+      new Request("http://localhost/api/admin/config", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          providers: {
+            custom: {
+              type: "anthropic",
+              authType: "cookie",
+            },
+          },
+        }),
+      }),
+    )
+
+    expect(res.status).toBe(400)
+
+    const body = (await res.json()) as { error?: { message?: string } }
+    expect(body.error?.message).toBe(
+      'providers.custom.authType must be one of: "authorization", "x-api-key"',
+    )
   })
 })
 

@@ -41,11 +41,14 @@ export const PROVIDER_TYPE_ANTHROPIC = "anthropic" as const
 
 export type ProviderType = typeof PROVIDER_TYPE_ANTHROPIC
 
+export type ProviderAuthType = "authorization" | "x-api-key"
+
 export interface ProviderConfig {
   type?: string
   enabled?: boolean
   baseUrl?: string
   apiKey?: string
+  authType?: ProviderAuthType
   models?: Record<string, ModelConfig>
   adjustInputTokens?: boolean
 }
@@ -55,6 +58,7 @@ export interface ResolvedProviderConfig {
   type: ProviderType
   baseUrl: string
   apiKey: string
+  authType: ProviderAuthType
   models?: Record<string, ModelConfig>
   adjustInputTokens?: boolean
 }
@@ -622,6 +626,24 @@ export function normalizeProviderBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/u, "")
 }
 
+function resolveProviderAuthType(
+  providerName: string,
+  authType?: string,
+): ProviderAuthType | null {
+  if (authType === undefined || authType === "x-api-key") {
+    return "x-api-key"
+  }
+
+  if (authType === "authorization") {
+    return authType
+  }
+
+  consola.warn(
+    `Provider ${providerName} has invalid authType '${authType}', ignoring provider`,
+  )
+  return null
+}
+
 export function getProviderConfig(name: string): ResolvedProviderConfig | null {
   const providerName = name.trim()
   if (!providerName) {
@@ -648,6 +670,10 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
 
   const baseUrl = normalizeProviderBaseUrl(provider.baseUrl ?? "")
   const apiKey = (provider.apiKey ?? "").trim()
+  const authType = resolveProviderAuthType(providerName, provider.authType)
+  if (!authType) {
+    return null
+  }
   if (!baseUrl || !apiKey) {
     consola.warn(
       `Provider ${providerName} is enabled but missing baseUrl or apiKey`,
@@ -660,6 +686,7 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     type: PROVIDER_TYPE_ANTHROPIC,
     baseUrl,
     apiKey,
+    authType,
     models: provider.models,
     adjustInputTokens: provider.adjustInputTokens,
   }

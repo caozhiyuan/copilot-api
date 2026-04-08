@@ -93,6 +93,8 @@ type ProviderModelItem = {
   topK: string
 }
 
+type ProviderAuthType = NonNullable<ProviderConfig["authType"]>
+
 type ProviderItem = {
   id: string
   name: string
@@ -100,6 +102,8 @@ type ProviderItem = {
   enabled: boolean
   baseUrl: string
   apiKey: string
+  authType: ProviderAuthType
+  adjustInputTokens: boolean
   models: Array<ProviderModelItem>
 }
 
@@ -359,6 +363,8 @@ function providerItemsFromRecord(record: ProviderRecord | undefined): Array<Prov
     enabled: provider.enabled ?? true,
     baseUrl: provider.baseUrl ?? "",
     apiKey: provider.apiKey ?? "",
+    authType: provider.authType ?? "x-api-key",
+    adjustInputTokens: provider.adjustInputTokens ?? false,
     models: Object.entries(provider.models ?? {}).map(([model, config]) => ({
       id: createItemId(),
       model,
@@ -372,6 +378,7 @@ function providerItemsFromRecord(record: ProviderRecord | undefined): Array<Prov
 function providerHasMeaningfulContent(item: ProviderItem): boolean {
   if (item.enabled === false) return true
   if (item.baseUrl.trim() || item.apiKey.trim()) return true
+  if (item.authType !== "x-api-key" || item.adjustInputTokens) return true
 
   return item.models.some(
     (model) =>
@@ -506,6 +513,8 @@ function providerRecordFromItems(items: Array<ProviderItem>): ParseResult<Provid
       enabled: item.enabled,
       baseUrl: baseUrl || undefined,
       apiKey: apiKey || undefined,
+      authType: item.authType,
+      adjustInputTokens: item.adjustInputTokens,
     }
 
     const modelItemsResult = parseProviderModelItems(item.models, providerName)
@@ -571,6 +580,8 @@ function useProvidersEditor(
         enabled: true,
         baseUrl: "",
         apiKey: "",
+        authType: "x-api-key",
+        adjustInputTokens: false,
         models: [],
       }),
     )
@@ -2157,7 +2168,7 @@ function ProviderItemCard({
         </Button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <div className="grid gap-2">
           <Label className="text-muted-foreground text-xs">
             {t("settingsPage.advanced.providersBaseUrlLabel")}
@@ -2182,6 +2193,50 @@ function ProviderItemCard({
             onChange={(e) => onUpdateProvider(item.id, { apiKey: e.target.value })}
           />
         </div>
+
+        <div className="grid gap-2">
+          <Label className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.providersAuthTypeLabel")}
+          </Label>
+          <Select
+            value={item.authType}
+            onValueChange={(value) =>
+              onUpdateProvider(item.id, { authType: value as ProviderAuthType })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="x-api-key">
+                {t("settingsPage.advanced.providersAuthTypeXApiKey")}
+              </SelectItem>
+              <SelectItem value="authorization">
+                {t("settingsPage.advanced.providersAuthTypeAuthorization")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.providersAuthTypeHint")}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="text-sm font-medium">
+            {t("settingsPage.advanced.providersAdjustInputTokensLabel")}
+          </div>
+          <div className="text-muted-foreground text-xs">
+            {t("settingsPage.advanced.providersAdjustInputTokensHint")}
+          </div>
+        </div>
+        <Switch
+          checked={item.adjustInputTokens}
+          onCheckedChange={(value) =>
+            onUpdateProvider(item.id, { adjustInputTokens: value })
+          }
+        />
       </div>
 
       <div className="space-y-2">

@@ -25,10 +25,17 @@ export function buildProviderUpstreamHeaders(
   providerConfig: ResolvedProviderConfig,
   requestHeaders: Headers,
 ): Record<string, string> {
+  const authHeaders: Record<string, string> = {}
+  if (providerConfig.authType === "authorization") {
+    authHeaders.authorization = `Bearer ${providerConfig.apiKey}`
+  } else {
+    authHeaders["x-api-key"] = providerConfig.apiKey
+  }
+
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json",
-    "x-api-key": providerConfig.apiKey,
+    ...authHeaders,
   }
 
   for (const headerName of FORWARDABLE_HEADERS) {
