@@ -1,6 +1,7 @@
 import type { AnthropicMessagesPayload } from "./anthropic-types"
 
 const subagentMarkerPrefix = "__SUBAGENT_MARKER__"
+const REMINDER_RE = /<system-reminder>([\s\S]*?)<\/system-reminder>/g
 
 export interface SubagentMarker {
   session_id: string
@@ -35,44 +36,72 @@ export const parseSubagentMarkerFromFirstUser = (
 const parseSubagentMarkerFromSystemReminder = (
   text: string,
 ): SubagentMarker | null => {
-  const startTag = "<system-reminder>"
-  const endTag = "</system-reminder>"
-  let searchFrom = 0
+  for (const [, content] of text.matchAll(REMINDER_RE)) {
+    const markerIndex = content.indexOf(subagentMarkerPrefix)
+    if (markerIndex === -1) continue
 
-  while (true) {
-    const reminderStart = text.indexOf(startTag, searchFrom)
-    if (reminderStart === -1) {
-      break
-    }
-
-    const contentStart = reminderStart + startTag.length
-    const reminderEnd = text.indexOf(endTag, contentStart)
-    if (reminderEnd === -1) {
-      break
-    }
-
-    const reminderContent = text.slice(contentStart, reminderEnd)
-    const markerIndex = reminderContent.indexOf(subagentMarkerPrefix)
-    if (markerIndex === -1) {
-      searchFrom = reminderEnd + endTag.length
-      continue
-    }
-
-    const markerJson = reminderContent
+    const afterPrefix = content
       .slice(markerIndex + subagentMarkerPrefix.length)
-      .trim()
+      .trimStart()
+    if (!afterPrefix.startsWith("{")) continue
+
+    const json = extractBalancedJson(afterPrefix)
+    if (!json) continue
 
     try {
-      const parsed = JSON.parse(markerJson) as SubagentMarker
+      const parsed = JSON.parse(json) as SubagentMarker
       if (!parsed.session_id || !parsed.agent_id || !parsed.agent_type) {
-        searchFrom = reminderEnd + endTag.length
+        continue
+      }
+      return parsed
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
+/** Extract the first balanced `{...}` object from text that starts with `{`. */
+const extractBalancedJson = (text: string): string | null => {
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
         continue
       }
 
-      return parsed
-    } catch {
-      searchFrom = reminderEnd + endTag.length
+      if (char === "\\") {
+        escaped = true
+        continue
+      }
+
+      if (char === '"') {
+        inString = false
+      }
+
       continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === "{") {
+      depth += 1
+      continue
+    }
+
+    if (char === "}") {
+      depth -= 1
+      if (depth === 0) return text.slice(0, index + 1)
     }
   }
 
