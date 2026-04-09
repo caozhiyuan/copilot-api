@@ -831,14 +831,8 @@ export function RequestsPage(): React.JSX.Element {
                         <TableCell className={cn(requestsTableColVisibility[5], "font-mono text-xs text-muted-foreground")}>
                           {r.initiator || ""}
                         </TableCell>
-                        <TableCell className={cn(requestsTableColVisibility[6], "text-xs")}>
-                          {r.is_subagent === null ? (
-                            "—"
-                          ) : (
-                            <Badge variant={r.is_subagent ? "secondary" : "outline"}>
-                              {t(r.is_subagent ? "common.yes" : "common.no")}
-                            </Badge>
-                          )}
+                        <TableCell className={cn(requestsTableColVisibility[6], "text-xs text-center text-muted-foreground")}>
+                          {r.is_subagent ? "√" : ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[7], "font-mono text-xs text-muted-foreground")}>
                           {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}

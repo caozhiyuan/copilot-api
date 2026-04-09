@@ -3,6 +3,7 @@ import { MenuIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { SparklesText } from "@/components/ui/sparkles-text"
 import {
   Sheet,
   SheetContent,
@@ -73,9 +74,9 @@ export function AppShell(): React.JSX.Element {
               <SheetContent side="left" className="w-72">
                 <SheetHeader>
                   <SheetTitle>
-                    <span className="text-base font-semibold text-foreground">
+                    <SparklesText className="text-base font-semibold text-foreground" sparklesCount={3}>
                       {t("app.title")}
-                    </span>
+                    </SparklesText>
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="mt-4 flex flex-col gap-3">
@@ -86,9 +87,9 @@ export function AppShell(): React.JSX.Element {
           </div>
 
           <div className="min-w-0">
-            <span className="text-base font-semibold text-foreground">
+            <SparklesText className="text-base font-semibold text-foreground" sparklesCount={3}>
               {t("app.title")}
-            </span>
+            </SparklesText>
           </div>
 
           <nav className="hidden items-center gap-5 md:flex">
