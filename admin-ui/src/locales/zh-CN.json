@@ -65,6 +65,7 @@
     "endpoint": "端点",
     "model": "模型",
     "xInitiator": "发起方",
+    "subagentRequest": "子代理请求",
     "cost": "成本",
     "quota": "额度",
     "durationAbbrev": "耗时",
@@ -185,6 +186,7 @@
     },
     "columnTooltip": {
       "initiator": "客户端发送的 x-initiator 请求头值（如 IDE 扩展名称）。",
+      "subagentRequest": "该请求是否被识别为子代理请求。",
       "cost": "此请求消耗的 Copilot 成本单位。",
       "quota": "此请求完成后剩余的 Premium 交互额度。",
       "duration": "总响应时间（毫秒）。",

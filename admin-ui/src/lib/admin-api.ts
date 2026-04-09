@@ -2,6 +2,60 @@ import { readAdminToken } from "@/lib/admin-token"
 
 export const ADMIN_TOKEN_REQUIRED_EVENT = "admin-ui:admin-token-required"
 
+// Wire types from backend (SQLite 0/1/null)
+type AdminRequestItemWire = {
+  request_id: string
+  started_at_ms?: number
+  http_status: number
+  duration_ms?: number
+  ttfb_ms?: number
+
+  path: string
+  upstream_endpoint?: string
+  upstream_model?: string
+  client_model?: string
+  account_id?: string
+
+  cost_units?: number
+  premium_unlimited_after?: boolean
+  premium_remaining_after?: number
+  premium_remaining_before?: number
+  premium_remaining_diff?: number
+
+  tokens_input?: number
+  tokens_output?: number
+  tokens_total?: number
+  tokens_cached_input?: number
+
+  client_ip?: string
+  user_agent?: string
+
+  user_id?: string
+  safety_identifier?: string
+  prompt_cache_key?: string
+  initiator?: string
+  is_subagent?: number | null
+  upstream_request_id?: string
+
+  affinity_hit?: number | null
+  affinity_cache_key?: string | null
+
+  error?: unknown
+}
+
+// UI-facing type with normalized boolean semantics
+export type AdminRequestItem = Omit<AdminRequestItemWire, "is_subagent"> & {
+  is_subagent?: boolean | null
+}
+
+export function normalizeAdminRequestItem(wire: AdminRequestItemWire): AdminRequestItem {
+  const { is_subagent, ...rest } = wire
+  return {
+    ...rest,
+    is_subagent: is_subagent === 1 ? true : is_subagent === 0 ? false : null,
+  }
+}
+
 export type AdminMeta = {
   userVersion?: number
   dbPath?: string
@@ -29,51 +83,6 @@ export type AdminAccountItem = {
 
 export type AdminAccountsResponse = {
   items: AdminAccountItem[]
-}
-
-export type AdminRequestItem = {
-  request_id: string
-  started_at_ms?: number
-  http_status: number
-  duration_ms?: number
-  ttfb_ms?: number
-
-  path: string
-  upstream_endpoint?: string
-  upstream_model?: string
-  client_model?: string
-  account_id?: string
-
-  // Cost/quota
-  cost_units?: number
-  premium_unlimited_after?: boolean
-  premium_remaining_after?: number
-  premium_remaining_before?: number
-  premium_remaining_diff?: number
-
-  // Token usage
-  tokens_input?: number
-  tokens_output?: number
-  tokens_total?: number
-  tokens_cached_input?: number
-
-  // Client info
-  client_ip?: string
-  user_agent?: string
-
-  // Session correlation
-  user_id?: string
-  safety_identifier?: string
-  prompt_cache_key?: string
-  initiator?: string
-  upstream_request_id?: string
-
-  // Affinity
-  affinity_hit?: number | null
-  affinity_cache_key?: string | null
-
-  // Optional error info (depends on store)
-  error?: unknown
 }
 
 export type AdminRequestsResponse = {
@@ -274,15 +283,26 @@ export async function queryAdminRequests(params: {
   q.set("limit", String(params.limit ?? 50))
   if (params.cursor_id != null) q.set("cursor_id", String(params.cursor_id))
 
-  return fetchAdminJson<AdminRequestsResponse>(`/api/admin/requests?${q.toString()}`)
+  const response = await fetchAdminJson<{ items: AdminRequestItemWire[]; next_cursor_id?: number | null; has_more: boolean }>(
+    `/api/admin/requests?${q.toString()}`
+  )
+
+  return {
+    ...response,
+    items: response.items.map(normalizeAdminRequestItem),
+  }
 }
 
 export async function getAdminRequestDetail(
   requestId: string
 ): Promise<AdminRequestDetailResponse> {
-  return fetchAdminJson<AdminRequestDetailResponse>(
+  const response = await fetchAdminJson<{ item: AdminRequestItemWire | null }>(
     `/api/admin/requests/${encodeURIComponent(requestId)}`
   )
+
+  return {
+    item: response.item ? normalizeAdminRequestItem(response.item) : null,
+  }
 }
 
 export async function getAdminConfig(): Promise<AdminConfigResponse> {

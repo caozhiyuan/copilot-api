@@ -147,7 +147,7 @@ function migrateAdminDb(db: Database): void {
   } | null
   const current = row?.user_version ?? 0
 
-  if (current >= 5) {
+  if (current >= 6) {
     return
   }
 
@@ -209,5 +209,19 @@ function migrateAdminDb(db: Database): void {
 
       PRAGMA user_version = 5;
     `)
+  }
+
+  if (current < 6) {
+    // v6: explicit subagent request tracking column
+    const hasIsSubagent = db
+      .query("PRAGMA table_info(request_log);")
+      .all()
+      .some((row) => (row as { name?: string }).name === "is_subagent")
+
+    if (!hasIsSubagent) {
+      db.run("ALTER TABLE request_log ADD COLUMN is_subagent INTEGER;")
+    }
+
+    db.run("PRAGMA user_version = 6;")
   }
 }

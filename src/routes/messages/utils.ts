@@ -70,6 +70,7 @@ type SelectionFailureContext = {
   safetyIdentifier?: string
   promptCacheKey?: string
   initiator?: "agent" | "user"
+  isSubagent?: boolean
   selection: SelectionFailure
 }
 
@@ -125,6 +126,7 @@ export const handleSelectionFailure = (
     safetyIdentifier,
     promptCacheKey,
     initiator,
+    isSubagent,
     selection,
   } = context
   const finishedAtMs = Date.now()
@@ -145,6 +147,7 @@ export const handleSelectionFailure = (
     safetyIdentifier,
     promptCacheKey,
     initiator,
+    isSubagent,
     httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
     selectionFailureReason: selection.reason,
   })
