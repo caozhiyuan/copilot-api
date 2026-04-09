@@ -174,18 +174,18 @@ function presetToRange(preset: Exclude<TimeRange, "__any__" | "custom">): {
 }
 
 const requestsTableColVisibility = [
-  null,
-  null,
-  "hidden md:table-cell",
-  "hidden md:table-cell",
-  "hidden lg:table-cell",
-  "hidden lg:table-cell",
-  "hidden xl:table-cell",
-  "hidden xl:table-cell",
-  "hidden xl:table-cell",
-  "hidden 2xl:table-cell",
-  "hidden lg:table-cell",
-  null,
+  null,                        // 0: time
+  null,                        // 1: path
+  "hidden md:table-cell",      // 2: endpoint
+  "hidden md:table-cell",      // 3: account
+  "hidden lg:table-cell",      // 4: model
+  "hidden xl:table-cell",      // 5: initiator (was lg)
+  "hidden 2xl:table-cell",     // 6: subagent (was xl)
+  "hidden 2xl:table-cell",     // 7: tokens (was xl)
+  "hidden 2xl:table-cell",     // 8: cost (was xl)
+  "hidden 2xl:table-cell",     // 9: quota (unchanged)
+  "hidden lg:table-cell",      // 10: duration
+  null,                        // 11: status
 ] as const
 
 /** Table column header with optional tooltip. */
@@ -700,7 +700,7 @@ export function RequestsPage(): React.JSX.Element {
                 <TableRow>
                   <TableHead>{t("common.time")}</TableHead>
                   <TableHead>{t("common.path")}</TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[2])}>
+                  <TableHead className={cn(requestsTableColVisibility[2], "text-muted-foreground")}>
                     {t("common.endpoint")}
                   </TableHead>
                   <TableHead className={cn(requestsTableColVisibility[3])}>
@@ -709,25 +709,25 @@ export function RequestsPage(): React.JSX.Element {
                   <TableHead className={cn(requestsTableColVisibility[4])}>
                     {t("common.model")}
                   </TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[5])}>
+                  <TableHead className={cn(requestsTableColVisibility[5], "text-muted-foreground")}>
                     <ColHead label={t("common.xInitiator")} tooltip={t("requestsPage.columnTooltip.initiator")} />
                   </TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[6])}>
+                  <TableHead className={cn(requestsTableColVisibility[6], "text-muted-foreground")}>
                     <ColHead
                       label={t("common.subagentRequest")}
                       tooltip={t("requestsPage.columnTooltip.subagentRequest")}
                     />
                   </TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[7])}>
+                  <TableHead className={cn(requestsTableColVisibility[7], "text-muted-foreground")}>
                     <ColHead label={t("common.tokens")} tooltip={t("requestsPage.columnTooltip.tokens")} />
                   </TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[8])}>
+                  <TableHead className={cn(requestsTableColVisibility[8], "text-muted-foreground")}>
                     <ColHead label={t("common.cost")} tooltip={t("requestsPage.columnTooltip.cost")} />
                   </TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[9])}>
+                  <TableHead className={cn(requestsTableColVisibility[9], "text-muted-foreground")}>
                     <ColHead label={t("common.quota")} tooltip={t("requestsPage.columnTooltip.quota")} />
                   </TableHead>
-                  <TableHead className={cn(requestsTableColVisibility[10])}>
+                  <TableHead className={cn(requestsTableColVisibility[10], "text-muted-foreground")}>
                     <ColHead label={t("common.durationAbbrev")} tooltip={t("requestsPage.columnTooltip.duration")} />
                   </TableHead>
                   <TableHead>{t("common.status")}</TableHead>
@@ -785,7 +785,7 @@ export function RequestsPage(): React.JSX.Element {
                         <TableCell className="font-mono text-xs">
                           {fmtLocalDateTime(r.started_at_ms)}
                         </TableCell>
-                        <TableCell className="font-mono whitespace-normal break-words">
+                        <TableCell className="font-mono text-sm whitespace-normal break-words">
                           <Link
                             to={`/request/${encodeURIComponent(r.request_id)}`}
                             state={{ fromSearch: searchParams.toString() }}
@@ -797,7 +797,7 @@ export function RequestsPage(): React.JSX.Element {
                         <TableCell
                           className={cn(
                             requestsTableColVisibility[2],
-                            "font-mono text-xs whitespace-normal break-words"
+                            "font-mono text-xs text-muted-foreground whitespace-normal break-words"
                           )}
                         >
                           {r.upstream_endpoint || ""}
@@ -828,7 +828,7 @@ export function RequestsPage(): React.JSX.Element {
                         <TableCell className={cn(requestsTableColVisibility[4], "font-mono text-xs")}>
                           {r.upstream_model || ""}
                         </TableCell>
-                        <TableCell className={cn(requestsTableColVisibility[5], "font-mono text-xs")}>
+                        <TableCell className={cn(requestsTableColVisibility[5], "font-mono text-xs text-muted-foreground")}>
                           {r.initiator || ""}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[6], "text-xs")}>
@@ -840,16 +840,16 @@ export function RequestsPage(): React.JSX.Element {
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className={cn(requestsTableColVisibility[7], "font-mono text-xs")}>
+                        <TableCell className={cn(requestsTableColVisibility[7], "font-mono text-xs text-muted-foreground")}>
                           {r.tokens_total != null ? fmtNum(r.tokens_total) : ""}
                         </TableCell>
-                        <TableCell className={cn(requestsTableColVisibility[8], "font-mono text-xs")}>
+                        <TableCell className={cn(requestsTableColVisibility[8], "font-mono text-xs text-muted-foreground")}>
                           {r.cost_units ?? ""}
                         </TableCell>
-                        <TableCell className={cn(requestsTableColVisibility[9], "font-mono text-xs")}>
+                        <TableCell className={cn(requestsTableColVisibility[9], "font-mono text-xs text-muted-foreground")}>
                           {quota}
                         </TableCell>
-                        <TableCell className={cn(requestsTableColVisibility[10], "font-mono text-xs")}>
+                        <TableCell className={cn(requestsTableColVisibility[10], "font-mono text-xs text-muted-foreground")}>
                           {r.duration_ms != null ? fmtNum(r.duration_ms) : ""}
                         </TableCell>
                         <TableCell>{statusBadge}</TableCell>

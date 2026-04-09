@@ -2,7 +2,6 @@ import { NavLink, Outlet } from "react-router-dom"
 import { MenuIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { AnimatedGradientText } from "@/components/ui/animated-gradient-text"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -74,9 +73,9 @@ export function AppShell(): React.JSX.Element {
               <SheetContent side="left" className="w-72">
                 <SheetHeader>
                   <SheetTitle>
-                    <AnimatedGradientText className="text-base font-semibold">
+                    <span className="text-base font-semibold text-foreground">
                       {t("app.title")}
-                    </AnimatedGradientText>
+                    </span>
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="mt-4 flex flex-col gap-3">
@@ -87,9 +86,9 @@ export function AppShell(): React.JSX.Element {
           </div>
 
           <div className="min-w-0">
-            <AnimatedGradientText className="text-base font-semibold">
+            <span className="text-base font-semibold text-foreground">
               {t("app.title")}
-            </AnimatedGradientText>
+            </span>
           </div>
 
           <nav className="hidden items-center gap-5 md:flex">
