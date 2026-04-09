@@ -213,10 +213,15 @@ function migrateAdminDb(db: Database): void {
 
   if (current < 6) {
     // v6: explicit subagent request tracking column
-    db.run(`
-      ALTER TABLE request_log ADD COLUMN is_subagent INTEGER;
+    const hasIsSubagent = db
+      .query("PRAGMA table_info(request_log);")
+      .all()
+      .some((row) => (row as { name?: string }).name === "is_subagent")
 
-      PRAGMA user_version = 6;
-    `)
+    if (!hasIsSubagent) {
+      db.run("ALTER TABLE request_log ADD COLUMN is_subagent INTEGER;")
+    }
+
+    db.run("PRAGMA user_version = 6;")
   }
 }

@@ -230,7 +230,22 @@ describe("RequestHistoryStore", () => {
     expect(row?.stream).toBe(0)
     expect(row?.is_subagent).toBe(1)
     expect(row?.premium_unlimited_before).toBe(0)
-    expect(store.meta().userVersion).toBe(6)
+    expect(store.meta().userVersion).toBeGreaterThanOrEqual(6)
+  })
+
+  test("initAdminDb is idempotent when is_subagent already exists but user_version is stale", () => {
+    const db = new Database(":memory:")
+    initAdminDb(db)
+    db.run("PRAGMA user_version = 5;")
+
+    expect(() => initAdminDb(db)).not.toThrow()
+    expect(
+      db
+        .query("PRAGMA table_info(request_log);")
+        .all()
+        .some((row) => (row as { name?: string }).name === "is_subagent"),
+    ).toBe(true)
+    expect(db.query("PRAGMA user_version;").get()).toEqual({ user_version: 6 })
   })
 
   test("query orders by id DESC and supports cursor paging", () => {
