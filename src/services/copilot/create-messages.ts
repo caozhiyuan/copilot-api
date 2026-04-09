@@ -1,4 +1,3 @@
-import consola from "consola"
 import { events } from "fetch-event-stream"
 
 import type {
@@ -14,10 +13,9 @@ import {
   prepareInteractionHeaders,
   prepareMessageProxyHeaders,
 } from "~/lib/api-config"
-import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
-import { setupCopilotToken } from "~/lib/token"
 import { parseUserIdMetadata } from "~/lib/utils"
+import { fetchWithCopilotTokenRefresh } from "~/lib/with-token-refresh"
 
 export type MessagesStream = ReturnType<typeof events>
 export type CreateMessagesReturn = AnthropicResponse | MessagesStream
@@ -123,34 +121,16 @@ export const createMessages = async (
     headers["anthropic-beta"] = anthropicBeta
   }
 
-  const response = await fetch(`${copilotBaseUrl(state)}/v1/messages`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      consola.warn("Copilot token expired, refreshing and retrying...")
-      await setupCopilotToken()
-      headers["Authorization"] = `Bearer ${state.copilotToken}`
-      const retryResponse = await fetch(`${copilotBaseUrl(state)}/v1/messages`, {
+  const response = await fetchWithCopilotTokenRefresh(
+    () =>
+      fetch(`${copilotBaseUrl(state)}/v1/messages`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
-      })
-      if (!retryResponse.ok) {
-        consola.error("Failed to create messages after token refresh", retryResponse)
-        throw new HTTPError("Failed to create messages", retryResponse)
-      }
-      if (payload.stream) {
-        return events(retryResponse)
-      }
-      return (await retryResponse.json()) as AnthropicResponse
-    }
-    consola.error("Failed to create messages", response)
-    throw new HTTPError("Failed to create messages", response)
-  }
+      }),
+    headers,
+    "create messages",
+  )
 
   if (payload.stream) {
     return events(response)

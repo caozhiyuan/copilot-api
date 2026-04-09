@@ -1,4 +1,3 @@
-import consola from "consola"
 import { events } from "fetch-event-stream"
 
 import type { SubagentMarker } from "~/routes/messages/subagent-marker"
@@ -9,9 +8,8 @@ import {
   prepareForCompact,
   prepareInteractionHeaders,
 } from "~/lib/api-config"
-import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
-import { setupCopilotToken } from "~/lib/token"
+import { fetchWithCopilotTokenRefresh } from "~/lib/with-token-refresh"
 
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
@@ -55,34 +53,16 @@ export const createChatCompletions = async (
 
   prepareForCompact(headers, options.isCompact)
 
-  const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  })
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      consola.warn("Copilot token expired, refreshing and retrying...")
-      await setupCopilotToken()
-      headers["Authorization"] = `Bearer ${state.copilotToken}`
-      const retryResponse = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
+  const response = await fetchWithCopilotTokenRefresh(
+    () =>
+      fetch(`${copilotBaseUrl(state)}/chat/completions`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
-      })
-      if (!retryResponse.ok) {
-        consola.error("Failed to create chat completions after token refresh", retryResponse)
-        throw new HTTPError("Failed to create chat completions", retryResponse)
-      }
-      if (payload.stream) {
-        return events(retryResponse)
-      }
-      return (await retryResponse.json()) as ChatCompletionResponse
-    }
-    consola.error("Failed to create chat completions", response)
-    throw new HTTPError("Failed to create chat completions", response)
-  }
+      }),
+    headers,
+    "create chat completions",
+  )
 
   if (payload.stream) {
     return events(response)
