@@ -43,11 +43,11 @@
     "failed": "Failed",
     "errorRate": "Error rate",
     "tokensPerRequest": "Tokens / req",
-    "avgDurationMs": "Avg duration (ms)",
+    "avgDurationMs": "Avg duration (s)",
     "lastRequest": "Last req",
     "account": "Account",
     "status": "Status",
-    "avgMs": "Avg ms",
+    "avgMs": "Avg duration (s)",
     "clearFilter": "Clear filter",
     "statusFailed": "failed",
     "statusOk": "ok",
@@ -68,7 +68,7 @@
     "subagentRequest": "Subagent Request",
     "cost": "Cost",
     "quota": "Quota",
-    "durationAbbrev": "Duration",
+    "durationAbbrev": "Duration (s)",
     "loading": "Loading...",
     "loadMore": "Load more",
     "noMore": "All results loaded",
@@ -134,11 +134,11 @@
       "errorRate": "Percentage of requests that returned an error.",
       "tokensPerRequest": "Average number of tokens (input + output) consumed per request.",
       "tokens": "Total tokens consumed across all accounts in the selected time window.",
-      "avgDuration": "Weighted average response time across all accounts (in milliseconds)."
+      "avgDuration": "Weighted average response time across all accounts (in seconds)."
     },
     "tableTooltip": {
       "premiumReq": "Premium interactions quota: used vs remaining for the current billing cycle.",
-      "avgMs": "Average response time in milliseconds for this account."
+      "avgMs": "Average response time in seconds for this account."
     }
   },
   "requestsPage": {
@@ -189,7 +189,7 @@
       "subagentRequest": "Whether this request was identified as a subagent request.",
       "cost": "Copilot cost units consumed by this request.",
       "quota": "Premium interactions quota remaining after this request.",
-      "duration": "Total response time in milliseconds.",
+      "duration": "Total response time in seconds.",
       "tokens": "Total tokens consumed (input + output)."
     }
   },
@@ -286,8 +286,8 @@
       "quota": "Quota",
       "affinityHit": "Affinity Hit",
       "affinityCacheKey": "Affinity Key",
-      "duration": "Duration (ms)",
-      "ttfb": "TTFB (ms)"
+      "duration": "Duration (s)",
+      "ttfb": "TTFB (s)"
     },
     "fieldTooltip": {
       "endpoint": "The upstream API endpoint this request was forwarded to",
@@ -297,8 +297,8 @@
       "initiator": "The component or client that initiated this request",
       "upstreamRequestId": "Request ID returned by the upstream provider",
       "affinityCacheKey": "Cache key used for account affinity routing",
-      "duration": "Total request processing time in milliseconds",
-      "ttfb": "Time to first byte — latency before the first response chunk"
+      "duration": "Total request processing time in seconds",
+      "ttfb": "Time to first byte in seconds — latency before the first response chunk"
     },
     "tokens": {
       "in": "Input",

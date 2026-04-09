@@ -43,11 +43,11 @@
     "failed": "失败",
     "errorRate": "错误率",
     "tokensPerRequest": "Tokens/请求",
-    "avgDurationMs": "平均耗时（ms）",
+    "avgDurationMs": "平均耗时（s）",
     "lastRequest": "最近请求",
     "account": "账号",
     "status": "状态",
-    "avgMs": "平均 ms",
+    "avgMs": "平均耗时（s）",
     "clearFilter": "清除筛选",
     "statusFailed": "失败",
     "statusOk": "正常",
@@ -68,7 +68,7 @@
     "subagentRequest": "子代理请求",
     "cost": "成本",
     "quota": "额度",
-    "durationAbbrev": "耗时",
+    "durationAbbrev": "耗时（s）",
     "loading": "加载中…",
     "loadMore": "加载更多",
     "noMore": "已加载全部",
@@ -134,11 +134,11 @@
       "errorRate": "返回错误的请求所占百分比。",
       "tokensPerRequest": "每次请求平均消耗的 Token 数（输入+输出）。",
       "tokens": "在选定时间窗口内所有账号消耗的 Token 总数。",
-      "avgDuration": "所有账号的加权平均响应时间（毫秒）。"
+      "avgDuration": "所有账号的加权平均响应时间（秒）。"
     },
     "tableTooltip": {
       "premiumReq": "Premium 交互额度：当前计费周期内的已用量与剩余量。",
-      "avgMs": "该账号的平均响应时间（毫秒）。"
+      "avgMs": "该账号的平均响应时间（秒）。"
     }
   },
   "requestsPage": {
@@ -189,7 +189,7 @@
       "subagentRequest": "该请求是否被识别为子代理请求。",
       "cost": "此请求消耗的 Copilot 成本单位。",
       "quota": "此请求完成后剩余的 Premium 交互额度。",
-      "duration": "总响应时间（毫秒）。",
+      "duration": "总响应时间（秒）。",
       "tokens": "消耗的总 token 数（输入 + 输出）。"
     }
   },
@@ -286,8 +286,8 @@
       "quota": "额度",
       "affinityHit": "亲和性命中",
       "affinityCacheKey": "亲和性缓存键",
-      "duration": "耗时 (ms)",
-      "ttfb": "首字节 (ms)"
+      "duration": "耗时（s）",
+      "ttfb": "首字节（s）"
     },
     "fieldTooltip": {
       "endpoint": "此请求被转发到的上游 API 端点",
@@ -297,8 +297,8 @@
       "initiator": "发起此请求的组件或客户端",
       "upstreamRequestId": "上游提供商返回的请求 ID",
       "affinityCacheKey": "用于账号亲和性路由的缓存键",
-      "duration": "请求总处理时间（毫秒）",
-      "ttfb": "首字节时间 — 收到第一个响应块前的延迟"
+      "duration": "请求总处理时间（秒）",
+      "ttfb": "首字节时间（秒）— 收到第一个响应块前的延迟"
     },
     "tokens": {
       "in": "输入",

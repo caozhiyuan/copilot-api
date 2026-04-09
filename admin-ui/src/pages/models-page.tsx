@@ -622,7 +622,7 @@ export function ModelsPage(): React.JSX.Element {
             </span>
           </div>
 
-          <Table glow>
+          <Table glow stickyHeader>
             <TableHeader>
               <TableRow>
                 <SortableTableHead

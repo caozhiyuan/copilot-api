@@ -11,7 +11,7 @@ import {
   getAdminAccounts,
   getAdminMeta,
 } from "@/lib/admin-api"
-import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { fmtDurationSeconds, fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { i18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -86,20 +86,20 @@ function fmtNumOrDash(n?: number | null): string {
   return s || "—"
 }
 
-function calcWeightedAvgDurationMs(accounts: AdminAccountItem[]): number {
+function calcWeightedAvgDurationSeconds(accounts: AdminAccountItem[]): number {
   let totalReq = 0
-  let weighted = 0
+  let weightedMs = 0
 
   for (const a of accounts) {
     const req = a.stats?.request_count ?? 0
-    const avg = a.stats?.avg_duration_ms ?? 0
-    if (req > 0 && avg > 0) {
+    const avgMs = a.stats?.avg_duration_ms ?? 0
+    if (req > 0 && avgMs > 0) {
       totalReq += req
-      weighted += req * avg
+      weightedMs += req * avgMs
     }
   }
 
-  return totalReq > 0 ? Math.round(weighted / totalReq) : 0
+  return totalReq > 0 ? weightedMs / totalReq / 1000 : 0
 }
 
 function KpiValue({
@@ -306,7 +306,7 @@ export function AccountsPage(): React.JSX.Element {
       "requests",
       "errors",
       "tokens",
-      "avg_ms",
+      "avg_duration_s",
       "last_request",
     ]
     const rows = accounts.map((a) => [
@@ -315,14 +315,7 @@ export function AccountsPage(): React.JSX.Element {
       String(a.stats?.request_count ?? 0),
       String(a.stats?.error_count ?? 0),
       String(a.stats?.tokens_total ?? 0),
-      String(
-        (
-          a.stats?.avg_duration_ms !== null
-          && a.stats?.avg_duration_ms !== undefined
-        )
-          ? Math.round(a.stats.avg_duration_ms)
-          : "",
-      ),
+      fmtDurationSeconds(a.stats?.avg_duration_ms),
       a.stats?.last_request_at_ms
         ? new Date(a.stats.last_request_at_ms).toISOString()
         : "",
@@ -349,7 +342,7 @@ export function AccountsPage(): React.JSX.Element {
     const totalRequests = sum(accounts.map((a) => a.stats?.request_count))
     const totalErrors = sum(accounts.map((a) => a.stats?.error_count))
     const totalTokens = sum(accounts.map((a) => a.stats?.tokens_total))
-    const avgDurationMs = calcWeightedAvgDurationMs(accounts)
+    const avgDurationSeconds = calcWeightedAvgDurationSeconds(accounts)
 
     const errorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0
     const tokensPerRequest = totalRequests > 0 ? totalTokens / totalRequests : 0
@@ -360,7 +353,7 @@ export function AccountsPage(): React.JSX.Element {
       totalRequests,
       totalErrors,
       totalTokens,
-      avgDurationMs,
+      avgDurationSeconds,
       errorRatePct,
       tokensPerRequest,
     }
@@ -492,7 +485,7 @@ export function AccountsPage(): React.JSX.Element {
           { label: t("common.errorRate"), tooltip: t("accountsPage.kpiTooltip.errorRate"), value: kpis.errorRatePct, decimal: 1, suffix: "%" },
           { label: t("common.tokensPerRequest"), tooltip: t("accountsPage.kpiTooltip.tokensPerRequest"), value: kpis.tokensPerRequest, decimal: 1 },
           { label: t("common.tokens"), tooltip: t("accountsPage.kpiTooltip.tokens"), value: kpis.totalTokens },
-          { label: t("common.avgDurationMs"), tooltip: t("accountsPage.kpiTooltip.avgDuration"), value: kpis.avgDurationMs },
+          { label: t("common.avgDurationMs"), tooltip: t("accountsPage.kpiTooltip.avgDuration"), value: kpis.avgDurationSeconds, decimal: 1 },
         ].map((kpi, i) => (
           <MagicCard
             key={kpi.label}
@@ -564,7 +557,7 @@ export function AccountsPage(): React.JSX.Element {
             </div>
           </div>
 
-          <Table glow className="[&_th]:h-9 [&_td]:py-1.5">
+          <Table glow stickyHeader className="[&_th]:h-9 [&_td]:py-1.5">
             <TableHeader>
               <TableRow>
                 <TableHead>{t("common.account")}</TableHead>
@@ -717,9 +710,7 @@ export function AccountsPage(): React.JSX.Element {
                         {fmtNum(a.stats?.tokens_total)}
                       </TableCell>
                       <TableCell className={cn(accountsTableColVisibility[6])}>
-                        {a.stats?.avg_duration_ms != null
-                          ? fmtNum(Math.round(a.stats.avg_duration_ms))
-                          : ""}
+                        {fmtDurationSeconds(a.stats?.avg_duration_ms)}
                       </TableCell>
                       <TableCell className={cn(accountsTableColVisibility[7], "font-mono text-xs")}>
                         {last}

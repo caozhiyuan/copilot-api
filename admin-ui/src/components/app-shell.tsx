@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { NavLink, Outlet } from "react-router-dom"
 import { MenuIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -59,10 +60,39 @@ function NavList(): React.JSX.Element {
 
 export function AppShell(): React.JSX.Element {
   const { t } = useTranslation()
+  const shellRef = useRef<HTMLDivElement | null>(null)
+  const headerRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    const shell = shellRef.current
+    const header = headerRef.current
+    if (!shell || !header) return
+
+    const syncHeaderHeight = () => {
+      shell.style.setProperty("--app-shell-header-height", `${header.getBoundingClientRect().height}px`)
+    }
+
+    syncHeaderHeight()
+    window.addEventListener("resize", syncHeaderHeight)
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.removeEventListener("resize", syncHeaderHeight)
+      }
+    }
+
+    const resizeObserver = new ResizeObserver(syncHeaderHeight)
+    resizeObserver.observe(header)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener("resize", syncHeaderHeight)
+    }
+  }, [])
 
   return (
-    <div className="min-h-svh bg-background text-foreground">
-      <header className="bg-background/70 sticky top-0 z-50 border-b backdrop-blur">
+    <div ref={shellRef} className="min-h-svh bg-background text-foreground">
+      <header ref={headerRef} className="bg-background/70 sticky top-0 z-50 border-b backdrop-blur">
         <div className="flex w-full items-center gap-3 px-4 py-3 lg:px-6">
           <div className="md:hidden">
             <Sheet>

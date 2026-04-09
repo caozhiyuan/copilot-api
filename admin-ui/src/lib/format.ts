@@ -29,6 +29,12 @@ export function fmtNum(n?: number | null): string {
   return Intl.NumberFormat("en-US").format(n)
 }
 
+export function fmtDurationSeconds(ms?: number | null): string {
+  if (ms == null) return ""
+  if (!Number.isFinite(ms)) return ""
+  return (ms / 1000).toFixed(1)
+}
+
 export function fmtMaybeNum(n?: number | null): string {
   if (n == null) return ""
   return String(n)

@@ -9,7 +9,7 @@ import {
   type AdminRequestItem,
   queryAdminRequests,
 } from "@/lib/admin-api"
-import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { fmtDurationSeconds, fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { i18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -695,7 +695,7 @@ export function RequestsPage(): React.JSX.Element {
               />
             ) : null}
 
-            <Table glow className="[&_th]:h-9 [&_td]:py-1.5">
+            <Table glow stickyHeader className="[&_th]:h-9 [&_td]:py-1.5">
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("common.time")}</TableHead>
@@ -844,7 +844,7 @@ export function RequestsPage(): React.JSX.Element {
                           {quota}
                         </TableCell>
                         <TableCell className={cn(requestsTableColVisibility[10], "font-mono text-xs text-muted-foreground")}>
-                          {r.duration_ms != null ? fmtNum(r.duration_ms) : ""}
+                          {fmtDurationSeconds(r.duration_ms)}
                         </TableCell>
                         <TableCell>{statusBadge}</TableCell>
                       </TableRow>

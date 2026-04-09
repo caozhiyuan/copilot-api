@@ -3,11 +3,31 @@ import { useCallback } from "react"
 
 import { cn } from "@/lib/utils"
 
+const TableStickyHeaderContext = React.createContext(false)
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? React.useEffect : React.useLayoutEffect
+
+function shouldAllowStickyHeader({
+  stickyHeader,
+  tableWidth,
+  containerWidth,
+}: {
+  stickyHeader?: boolean
+  tableWidth: number
+  containerWidth: number
+}) {
+  return Boolean(stickyHeader) && tableWidth <= containerWidth + 1
+}
+
 function Table({
   className,
   glow,
+  stickyHeader,
   ...props
-}: React.ComponentProps<"table"> & { glow?: boolean }) {
+}: React.ComponentProps<"table"> & { glow?: boolean; stickyHeader?: boolean }) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null)
+  const tableRef = React.useRef<HTMLTableElement | null>(null)
+  const [allowStickyHeader, setAllowStickyHeader] = React.useState(false)
+
   const onMouseMove = useCallback(
     (e: React.MouseEvent<HTMLTableElement>) => {
       if (!glow) return
@@ -20,27 +40,78 @@ function Table({
     [glow],
   )
 
+  useIsomorphicLayoutEffect(() => {
+    if (!stickyHeader) {
+      setAllowStickyHeader(false)
+      return
+    }
+
+    const container = containerRef.current
+    const table = tableRef.current
+    if (!container || !table) return
+
+    const syncStickyHeader = () => {
+      setAllowStickyHeader(
+        shouldAllowStickyHeader({
+          stickyHeader,
+          tableWidth: table.scrollWidth,
+          containerWidth: container.clientWidth,
+        }),
+      )
+    }
+
+    syncStickyHeader()
+    window.addEventListener("resize", syncStickyHeader)
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.removeEventListener("resize", syncStickyHeader)
+      }
+    }
+
+    const resizeObserver = new ResizeObserver(syncStickyHeader)
+    resizeObserver.observe(container)
+    resizeObserver.observe(table)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener("resize", syncStickyHeader)
+    }
+  }, [stickyHeader])
+
   return (
     <div
+      ref={containerRef}
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      data-sticky-header={allowStickyHeader ? "" : undefined}
+      className={cn("relative w-full", allowStickyHeader ? "overflow-x-visible" : "overflow-x-auto")}
     >
-      <table
-        data-slot="table"
-        data-glow-table={glow ? "" : undefined}
-        className={cn("w-full caption-bottom text-sm", className)}
-        onMouseMove={glow ? onMouseMove : undefined}
-        {...props}
-      />
+      <TableStickyHeaderContext.Provider value={allowStickyHeader}>
+        <table
+          ref={tableRef}
+          data-slot="table"
+          data-glow-table={glow ? "" : undefined}
+          className={cn("w-full caption-bottom text-sm", className)}
+          onMouseMove={glow ? onMouseMove : undefined}
+          {...props}
+        />
+      </TableStickyHeaderContext.Provider>
     </div>
   )
 }
 
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+  const stickyHeader = React.useContext(TableStickyHeaderContext)
+
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      data-sticky-header={stickyHeader ? "" : undefined}
+      className={cn(
+        "[&_tr]:border-b",
+        stickyHeader && "[&_th]:sticky [&_th]:top-[var(--app-shell-header-height,3.5rem)] [&_th]:z-20 [&_th]:border-b [&_th]:border-border [&_th]:bg-card",
+        className,
+      )}
       {...props}
     />
   )
@@ -130,4 +201,5 @@ export {
   TableRow,
   TableCell,
   TableCaption,
+  shouldAllowStickyHeader,
 }

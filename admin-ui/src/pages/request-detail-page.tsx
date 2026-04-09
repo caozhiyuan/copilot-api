@@ -14,7 +14,7 @@ import {
   type AdminRequestItem,
   getAdminRequestDetail,
 } from "@/lib/admin-api"
-import { fmtLocalDateTime, fmtNum } from "@/lib/format"
+import { fmtDurationSeconds, fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { i18n } from "@/lib/i18n"
 import { JsonViewer } from "@/components/json/json-viewer"
 import { Badge } from "@/components/ui/badge"
@@ -375,9 +375,7 @@ export function RequestDetailPage(): React.JSX.Element {
                     />
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    {typeof item.duration_ms === "number"
-                      ? fmtNum(item.duration_ms)
-                      : EMPTY}
+                    {fmtDurationSeconds(item.duration_ms) || EMPTY}
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -388,9 +386,7 @@ export function RequestDetailPage(): React.JSX.Element {
                     />
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    {typeof item.ttfb_ms === "number"
-                      ? fmtNum(item.ttfb_ms)
-                      : EMPTY}
+                    {fmtDurationSeconds(item.ttfb_ms) || EMPTY}
                   </TableCell>
                 </TableRow>
 
