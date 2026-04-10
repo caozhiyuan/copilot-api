@@ -204,9 +204,7 @@ export const generateRequestIdFromPayload = (
       typeof messages === "string" ? messages : findLastUserContent(messages)
 
     if (lastUserContent) {
-      return getUUID(
-        (sessionId ?? "") + (state.macMachineId ?? "") + lastUserContent,
-      )
+      return getUUID((sessionId ?? "") + lastUserContent)
     }
   }
 

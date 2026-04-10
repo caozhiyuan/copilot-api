@@ -147,9 +147,7 @@ function buildResponsesResult(model: string, text: string) {
 
 function getLatestRequestLog(): RequestLogSnapshot | null {
   return getAdminDb()
-    .query(
-      "SELECT prompt_cache_key FROM request_log ORDER BY id DESC LIMIT 1;",
-    )
+    .query("SELECT prompt_cache_key FROM request_log ORDER BY id DESC LIMIT 1;")
     .get() as RequestLogSnapshot | null
 }
 
@@ -190,10 +188,13 @@ describe("responses request log prompt_cache_key persistence", () => {
 
     const fetchMock = mock((_url: string, _opts?: FetchOptions) => {
       return Promise.resolve(
-        new Response(JSON.stringify(buildResponsesResult("responses-model", "ok")), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify(buildResponsesResult("responses-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
       )
     })
 
@@ -239,10 +240,13 @@ describe("responses request log prompt_cache_key persistence", () => {
 
     const fetchMock = mock((_url: string, _opts?: FetchOptions) => {
       return Promise.resolve(
-        new Response(JSON.stringify(buildResponsesResult("responses-model", "ok")), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify(buildResponsesResult("responses-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
       )
     })
 

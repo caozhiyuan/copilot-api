@@ -91,7 +91,7 @@ export async function handleCompletion(c: Context) {
       },
     ],
     {
-      requestId: upstreamRequestId,
+      requestId: normalizedPromptCacheKey ?? upstreamRequestId,
     },
   )
 

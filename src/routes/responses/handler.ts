@@ -69,7 +69,9 @@ export const handleResponses = async (c: Context) => {
   const userId = (payload.metadata as { user_id?: string } | null | undefined)
     ?.user_id
   const requestBodyPromptCacheKey =
-    typeof payload.prompt_cache_key === "string" ? payload.prompt_cache_key : null
+    typeof payload.prompt_cache_key === "string" ?
+      payload.prompt_cache_key
+    : null
   const { safetyIdentifier, sessionId: metadataSessionId } =
     parseUserIdMetadata(userId)
   const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
@@ -110,7 +112,7 @@ export const handleResponses = async (c: Context) => {
       },
     ],
     {
-      requestId: upstreamRequestId,
+      requestId: normalizedPromptCacheKey ?? upstreamRequestId,
     },
   )
 
@@ -148,7 +150,9 @@ export const handleResponses = async (c: Context) => {
   if (state.manualApprove) await awaitApproval()
 
   const accountCtx = toAccountContext(account)
-  const upstreamSessionId = getUUID(upstreamRequestId)
+  const upstreamSessionId = getUUID(
+    normalizedPromptCacheKey ?? upstreamRequestId,
+  )
   request.upstreamRequestId = upstreamRequestId
   request.upstreamSessionId = upstreamSessionId
 
