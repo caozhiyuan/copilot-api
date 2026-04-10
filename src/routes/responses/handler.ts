@@ -68,10 +68,13 @@ export const handleResponses = async (c: Context) => {
   const { initiator: initialInitiator } = getResponsesRequestOptions(payload)
   const userId = (payload.metadata as { user_id?: string } | null | undefined)
     ?.user_id
-  const { safetyIdentifier, sessionId: promptCacheKey } =
+  const requestBodyPromptCacheKey =
+    typeof payload.prompt_cache_key === "string" ? payload.prompt_cache_key : null
+  const { safetyIdentifier, sessionId: metadataSessionId } =
     parseUserIdMetadata(userId)
   const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
-  const normalizedPromptCacheKey = promptCacheKey ?? undefined
+  const normalizedPromptCacheKey =
+    requestBodyPromptCacheKey ?? metadataSessionId ?? undefined
 
   request.userId = userId
   request.safetyIdentifier = normalizedSafetyIdentifier
