@@ -11,6 +11,10 @@ import {
   reauthAccount,
   startAccountAuth,
 } from "@/lib/admin-api"
+import {
+  buildAccountAuthRequest,
+  cleanEnterpriseDomain,
+} from "@/lib/account-auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,14 +41,6 @@ interface AddAccountDialogProps {
 const ACCOUNT_TYPES: AccountType[] = ["individual", "business", "enterprise"]
 
 const WARNING_THRESHOLD_S = 120 // 2 minutes
-
-/** Strip protocol prefix and trailing slashes from an enterprise domain input. */
-function cleanDomain(raw: string): string {
-  return raw
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/+$/, "")
-}
 
 function formatCountdown(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -239,22 +235,18 @@ export function AddAccountDialog({
 
   const handleContinue = useCallback(async () => {
     if (startInFlightRef.current) return
-    const domain = cleanDomain(enterpriseDomain)
-
-    if (accountType === "enterprise" && !domain) {
-      setError(t("accountManagement.enterpriseDomainRequired"))
-      return
-    }
 
     startInFlightRef.current = true
     setStartingAuth(true)
     try {
       setError(null)
       setAuthStatus(null)
-      const result = await startAccountAuth({
-        accountType,
-        enterpriseDomain: accountType === "enterprise" ? domain : undefined,
-      })
+      const result = await startAccountAuth(
+        buildAccountAuthRequest({
+          accountType,
+          enterpriseDomain,
+        }),
+      )
       setAuthSession(result)
       setStep("authorize")
       window.open(result.verificationUri, "_blank")
@@ -267,7 +259,7 @@ export function AddAccountDialog({
       startInFlightRef.current = false
       setStartingAuth(false)
     }
-  }, [accountType, enterpriseDomain, t, startPolling, startCountdown])
+  }, [accountType, enterpriseDomain, startPolling, startCountdown])
 
   const closeDialog = useCallback(async () => {
     await cancelCurrentSession()
@@ -303,7 +295,7 @@ export function AddAccountDialog({
   }, [reauthAccountId, clearCountdown])
 
   const handleDomainBlur = useCallback(() => {
-    setEnterpriseDomain((prev) => cleanDomain(prev))
+    setEnterpriseDomain((prev) => cleanEnterpriseDomain(prev))
   }, [])
 
   // Determine if the error is an expiration error for contextual hint
@@ -368,8 +360,7 @@ export function AddAccountDialog({
             {accountType === "enterprise" && (
               <div className="space-y-2">
                 <Label htmlFor="enterprise-domain">
-                  {t("accountManagement.enterpriseDomain")}{" "}
-                  <span className="text-destructive">*</span>
+                  {t("accountManagement.enterpriseDomain")}
                 </Label>
                 <Input
                   id="enterprise-domain"
