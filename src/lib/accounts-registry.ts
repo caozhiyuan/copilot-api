@@ -39,7 +39,16 @@ const accountMetaSchema = z.object({
   }),
   accountType: z.enum(["individual", "business", "enterprise"]),
   addedAt: z.number(),
+  enabled: z.boolean().optional(),
 })
+
+/**
+ * Check whether an account is enabled for request routing.
+ * Treats `undefined` and `true` as enabled (backward compatible).
+ */
+export function isAccountEnabled(meta: AccountMeta): boolean {
+  return meta.enabled !== false
+}
 
 const accountClientIdentitySchema = z.object({
   login: z.string().refine(validateAccountId, {

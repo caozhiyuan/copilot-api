@@ -4,6 +4,7 @@ import fs from "node:fs"
 
 import type {
   AccountContext,
+  AccountMeta,
   AccountRuntime,
   AccountType,
 } from "~/lib/types/account"
@@ -52,6 +53,7 @@ import {
   hasLegacyToken,
   hasRegistry,
   ensureAccountClientIdentity,
+  isAccountEnabled,
   listAccountsFromRegistry,
   loadAccountToken,
   readLegacyToken,
@@ -972,7 +974,7 @@ export class AccountsManager {
       ...this.accountOrder
         .map((id) => this.accounts.get(id))
         .filter((account): account is AccountRuntime => account !== undefined),
-    ]
+    ].filter((account) => isAccountEnabled(account))
 
     // Resolve the affinity key once — reused for both lookup and write-back.
     const affinityKey =
@@ -980,7 +982,7 @@ export class AccountsManager {
         extractAffinityKey(affinityContext)
       : undefined
 
-    const modelKey = candidates[0].modelId
+    const modelKey = affinityContext?.affinityModelId ?? candidates[0].modelId
     const cacheKey =
       affinityKey ? buildAffinityCacheKey(affinityKey, modelKey) : undefined
 
@@ -1118,6 +1120,7 @@ export class AccountsManager {
     overagePermitted?: boolean
     failed?: boolean
     failureReason?: string
+    enabled?: boolean
   }> {
     const statuses: Array<{
       id: string
@@ -1127,6 +1130,7 @@ export class AccountsManager {
       overagePermitted?: boolean
       failed?: boolean
       failureReason?: string
+      enabled?: boolean
     }> = []
 
     if (this.temporaryAccount) {
@@ -1152,6 +1156,7 @@ export class AccountsManager {
           overagePermitted: account.overagePermitted,
           failed: account.failed,
           failureReason: account.failureReason,
+          enabled: account.enabled,
         })
       }
     }
@@ -1436,7 +1441,7 @@ export class AccountsManager {
   }
 
   private async reinitializeUpdatedAccounts(
-    newMetas: Array<{ id: string; accountType: AccountType; addedAt: number }>,
+    newMetas: Array<AccountMeta>,
     currentIds: Set<string>,
     updated: Array<string>,
   ): Promise<void> {
@@ -1467,6 +1472,8 @@ export class AccountsManager {
       if (addedAtChanged) {
         account.addedAt = meta.addedAt
       }
+      // Always sync the enabled flag so toggle takes effect immediately.
+      account.enabled = meta.enabled
       account.accountLogin = meta.id
       if (tokenChanged) {
         account.githubToken = token

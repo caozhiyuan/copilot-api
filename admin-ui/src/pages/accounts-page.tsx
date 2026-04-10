@@ -10,6 +10,7 @@ import {
   type AdminAccountItem,
   getAdminAccounts,
   getAdminMeta,
+  patchAccount,
 } from "@/lib/admin-api"
 import { fmtDurationSeconds, fmtLocalDateTime, fmtNum } from "@/lib/format"
 import { i18n } from "@/lib/i18n"
@@ -46,6 +47,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
+import { Switch } from "@/components/ui/switch"
 import { BentoGrid } from "@/components/ui/bento-grid"
 import { MagicCard } from "@/components/ui/magic-card"
 import { NumberTicker } from "@/components/ui/number-ticker"
@@ -147,6 +149,7 @@ const accountsTableColVisibility = [
   "hidden xl:table-cell", // Tokens
   "hidden xl:table-cell", // Avg ms
   "hidden lg:table-cell", // Last request
+  null,           // Enabled
   null,           // Actions column
 ] as const
 
@@ -668,6 +671,7 @@ export function AccountsPage(): React.JSX.Element {
                 <TableHead className={cn(accountsTableColVisibility[8])}>
                   {t("common.lastRequest")}
                 </TableHead>
+                <TableHead>{t("common.enabled")}</TableHead>
                 <TableHead className="text-right">{t("common.actions")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -753,7 +757,10 @@ export function AccountsPage(): React.JSX.Element {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.15, ease: "easeOut" }}
                       data-slot="table-row"
-                      className="hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors"
+                      className={cn(
+                        "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors",
+                        a.runtime?.enabled === false && "text-muted-foreground opacity-60",
+                      )}
                     >
                       <TableCell className="font-mono">
                         <Link
@@ -793,6 +800,33 @@ export function AccountsPage(): React.JSX.Element {
                       </TableCell>
                       <TableCell className={cn(accountsTableColVisibility[8], "font-mono text-xs")}>
                         {last}
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={a.runtime?.enabled !== false}
+                          onCheckedChange={async (checked) => {
+                            const prev = a.runtime?.enabled !== false
+                            setAccounts((list) =>
+                              list.map((acc) =>
+                                acc.account_id === a.account_id
+                                  ? { ...acc, runtime: { ...acc.runtime, enabled: checked } }
+                                  : acc,
+                              ),
+                            )
+                            try {
+                              await patchAccount(a.account_id, { enabled: checked })
+                            } catch {
+                              setAccounts((list) =>
+                                list.map((acc) =>
+                                  acc.account_id === a.account_id
+                                    ? { ...acc, runtime: { ...acc.runtime, enabled: prev } }
+                                    : acc,
+                                ),
+                              )
+                              toast.error(t("accountsPage.enabledToggleFailed"))
+                            }
+                          }}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">

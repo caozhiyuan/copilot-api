@@ -76,7 +76,8 @@
     "back": "Back",
     "download": "Download",
     "copyJson": "Copy JSON",
-    "actions": "Actions"
+    "actions": "Actions",
+    "enabled": "Enabled"
   },
   "tokenDialog": {
     "trigger": "Token",
@@ -153,7 +154,8 @@
       "premiumTotal": "Total",
       "premiumUsageAria": "Premium request usage progress",
       "premiumUnlimitedNote": "+{{count}} unlimited account(s) not included"
-    }
+    },
+    "enabledToggleFailed": "Failed to update account enabled state"
   },
   "requestsPage": {
     "loadFailedTitle": "Failed to load requests",

@@ -39,6 +39,8 @@ export interface AccountMeta {
   accountType: AccountType
   /** Timestamp when the account was added */
   addedAt: number
+  /** Whether the account is enabled for request routing (undefined = true) */
+  enabled?: boolean
 }
 
 export interface AccountClientIdentity {

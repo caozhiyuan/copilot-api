@@ -11,8 +11,10 @@ import { accountsManager } from "~/lib/accounts-manager"
 import {
   getAccountClientIdentityByLoginAndApp,
   listAccountsFromRegistry,
+  loadRegistry,
   removeAccountFromRegistry,
   removeAccountToken,
+  saveRegistry,
 } from "~/lib/accounts-registry"
 import {
   getConfig,
@@ -1347,6 +1349,7 @@ adminApiRoutes.get("/accounts", async (c) => {
         unlimited: s.unlimited,
         failed: s.failed,
         failureReason: s.failureReason,
+        enabled: s.enabled,
       },
       stats,
     }
@@ -1474,6 +1477,58 @@ adminApiRoutes.post("/accounts/auth/cancel/:sessionId", (c) => {
   }
 
   return c.json({ cancelled: true })
+})
+
+adminApiRoutes.patch("/accounts/:id", async (c) => {
+  const accountId = c.req.param("id")
+
+  let payload: unknown
+  try {
+    payload = await c.req.json()
+  } catch {
+    return jsonError(c, 400, {
+      message: "Invalid JSON body.",
+      type: "bad_request",
+    })
+  }
+
+  if (
+    typeof payload !== "object"
+    || payload === null
+    || Array.isArray(payload)
+    || typeof (payload as Record<string, unknown>).enabled !== "boolean"
+  ) {
+    return jsonError(c, 400, {
+      message: "Request body must contain { enabled: boolean }.",
+      type: "bad_request",
+    })
+  }
+
+  const enabled = (payload as Record<string, unknown>).enabled as boolean
+
+  try {
+    const registry = await loadRegistry()
+    const entry = registry.accounts.find((a) => a.id === accountId)
+
+    if (!entry) {
+      return jsonError(c, 404, {
+        message: "Account not found.",
+        type: "not_found",
+      })
+    }
+
+    entry.enabled = enabled
+    await saveRegistry(registry)
+    await accountsManager.reloadRegistryNow()
+
+    return c.json({ success: true })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return jsonError(c, 500, {
+      message: `Failed to update account: ${msg}`,
+      type: "internal_error",
+    })
+  }
 })
 
 adminApiRoutes.delete("/accounts/:id", async (c) => {

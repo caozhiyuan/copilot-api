@@ -76,7 +76,8 @@
     "back": "返回",
     "download": "下载",
     "copyJson": "复制 JSON",
-    "actions": "操作"
+    "actions": "操作",
+    "enabled": "启用"
   },
   "tokenDialog": {
     "trigger": "Token",
@@ -153,7 +154,8 @@
       "premiumTotal": "总量",
       "premiumUsageAria": "Premium 请求使用进度",
       "premiumUnlimitedNote": "另有 {{count}} 个无限额度账号未计入"
-    }
+    },
+    "enabledToggleFailed": "更新账号启用状态失败"
   },
   "requestsPage": {
     "loadFailedTitle": "加载请求失败",

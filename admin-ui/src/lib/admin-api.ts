@@ -70,6 +70,7 @@ export type AdminAccountItem = {
     unlimited?: boolean
     failed?: boolean
     failureReason?: string
+    enabled?: boolean
   }
   stats?: {
     since_ms: number
@@ -392,5 +393,15 @@ export async function reauthAccount(
   return fetchAdminJson<AuthStartResponse>(
     `/api/admin/accounts/${encodeURIComponent(accountId)}/reauth`,
     { method: "POST" },
+  )
+}
+
+export async function patchAccount(
+  accountId: string,
+  patch: { enabled: boolean },
+): Promise<{ success: true }> {
+  return fetchAdminJson<{ success: true }>(
+    `/api/admin/accounts/${encodeURIComponent(accountId)}`,
+    { method: "PATCH", body: JSON.stringify(patch) },
   )
 }
