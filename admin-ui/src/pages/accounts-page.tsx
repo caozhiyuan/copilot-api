@@ -572,58 +572,6 @@ export function AccountsPage(): React.JSX.Element {
           </MagicCard>
         ))}
 
-        {/* Premium Usage KPI Card */}
-        <MagicCard
-          className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 rounded-xl fill-mode-backwards md:col-span-2 lg:col-span-2"
-          style={{ animationDelay: `${8 * 60}ms`, animationDuration: "400ms" }}
-        >
-          <div className="p-4">
-            <KpiLabel
-              label={t("accountsPage.kpi.premiumUsage")}
-              tooltip={t("accountsPage.kpiTooltip.premiumUsage")}
-            />
-            {kpis.unlimitedAccountCount > 0 && kpis.totalPremiumEntitlement === 0 ? (
-              <div className="mt-2">
-                <Badge variant="secondary">{t("common.unlimited")}</Badge>
-              </div>
-            ) : (
-              <div className="mt-2 space-y-2">
-                <div className="flex items-baseline justify-between gap-2 text-sm">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-muted-foreground">{t("common.used")}</span>
-                    <span className="tabular-nums text-lg font-semibold">
-                      <NumberTicker value={kpis.totalPremiumUsed} />
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-muted-foreground">{t("common.remaining")}</span>
-                    <span className="tabular-nums font-medium">
-                      {fmtNum(kpis.totalPremiumRemaining)}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-muted-foreground">{t("accountsPage.kpi.premiumTotal")}</span>
-                    <span className="tabular-nums font-medium">
-                      {fmtNum(kpis.totalPremiumEntitlement)}
-                    </span>
-                  </div>
-                </div>
-                <Progress
-                  value={kpis.premiumUsedPercent}
-                  className="h-2"
-                  aria-label={t("accountsPage.kpi.premiumUsageAria")}
-                />
-                {kpis.unlimitedAccountCount > 0 && (
-                  <div className="text-muted-foreground text-xs">
-                    {t("accountsPage.kpi.premiumUnlimitedNote", {
-                      count: kpis.unlimitedAccountCount,
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </MagicCard>
       </BentoGrid>
 
       {!loading && accounts.length === 0 ? (
