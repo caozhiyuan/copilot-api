@@ -1425,18 +1425,12 @@ adminApiRoutes.post("/accounts/auth/start", async (c) => {
     })
   }
 
-  // Only enterprise accounts use a custom domain; ignore for other types
+  // Enterprise accounts may optionally provide a custom GHE/GHES domain.
+  // When omitted, auth stays on the public github.com flow.
   const enterpriseDomainRaw = payload.enterpriseDomain
   let enterpriseDomain: string | undefined
   if (accountType === "enterprise" && typeof enterpriseDomainRaw === "string") {
-    enterpriseDomain = enterpriseDomainRaw.trim()
-  }
-
-  if (accountType === "enterprise" && !enterpriseDomain) {
-    return jsonError(c, 400, {
-      message: "enterpriseDomain is required for enterprise accounts.",
-      type: "bad_request",
-    })
+    enterpriseDomain = enterpriseDomainRaw.trim() || undefined
   }
 
   try {
@@ -1547,15 +1541,6 @@ adminApiRoutes.post("/accounts/:id/reauth", async (c) => {
       && resolvedEnterpriseDomain !== DEFAULT_IDENTITY_ENTERPRISE_DOMAIN
     ) {
       enterpriseDomain = resolvedEnterpriseDomain
-    }
-
-    // Enterprise accounts must have a resolvable enterprise domain
-    if (account.accountType === "enterprise" && !enterpriseDomain) {
-      return jsonError(c, 400, {
-        message:
-          "Cannot re-authenticate enterprise account: enterprise domain could not be resolved from stored identity.",
-        type: "bad_request",
-      })
     }
 
     const result = await authSessionManager.startAuth({
