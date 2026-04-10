@@ -496,10 +496,60 @@ export function AccountsPage(): React.JSX.Element {
         />
       ) : null}
 
-      <BentoGrid className="auto-rows-min grid-cols-1 gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
+      <BentoGrid className="auto-rows-min grid-cols-1 gap-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-9">
+        {/* Accounts & Failed */}
         {[
           { label: t("nav.accounts"), tooltip: t("accountsPage.kpiTooltip.accounts"), value: kpis.totalAccounts },
           { label: t("common.failed"), tooltip: t("accountsPage.kpiTooltip.failed"), value: kpis.failedAccounts },
+        ].map((kpi, i) => (
+          <MagicCard
+            key={kpi.label}
+            className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 rounded-xl fill-mode-backwards"
+            style={{ animationDelay: `${i * 60}ms`, animationDuration: "400ms" }}
+          >
+            <div className="p-4">
+              <KpiLabel label={kpi.label} tooltip={kpi.tooltip} />
+              <div className="mt-1 flex items-baseline gap-1 text-2xl font-semibold">
+                <KpiValue value={kpi.value} />
+              </div>
+            </div>
+          </MagicCard>
+        ))}
+
+        {/* Premium Usage — compact single-column card */}
+        <MagicCard
+          className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 rounded-xl fill-mode-backwards"
+          style={{ animationDelay: `${2 * 60}ms`, animationDuration: "400ms" }}
+        >
+          <div className="p-4">
+            <KpiLabel
+              label={t("accountsPage.kpi.premiumUsage")}
+              tooltip={t("accountsPage.kpiTooltip.premiumUsage")}
+            />
+            {kpis.unlimitedAccountCount > 0 && kpis.totalPremiumEntitlement === 0 ? (
+              <div className="mt-1">
+                <Badge variant="secondary">{t("common.unlimited")}</Badge>
+              </div>
+            ) : (
+              <>
+                <div className="mt-1 flex items-baseline gap-1 text-2xl font-semibold">
+                  <KpiValue value={kpis.totalPremiumUsed} />
+                  <span className="text-muted-foreground text-sm">
+                    / {fmtNum(kpis.totalPremiumEntitlement)}
+                  </span>
+                </div>
+                <Progress
+                  value={kpis.premiumUsedPercent}
+                  className="mt-1.5 h-1.5"
+                  aria-label={t("accountsPage.kpi.premiumUsageAria")}
+                />
+              </>
+            )}
+          </div>
+        </MagicCard>
+
+        {/* Requests through Avg Duration */}
+        {[
           { label: t("nav.requests"), tooltip: t("accountsPage.kpiTooltip.requests"), value: kpis.totalRequests },
           { label: t("common.errors"), tooltip: t("accountsPage.kpiTooltip.errors"), value: kpis.totalErrors },
           { label: t("common.errorRate"), tooltip: t("accountsPage.kpiTooltip.errorRate"), value: kpis.errorRatePct, decimal: 1, suffix: "%" },
@@ -510,7 +560,7 @@ export function AccountsPage(): React.JSX.Element {
           <MagicCard
             key={kpi.label}
             className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 rounded-xl fill-mode-backwards"
-            style={{ animationDelay: `${i * 60}ms`, animationDuration: "400ms" }}
+            style={{ animationDelay: `${(i + 3) * 60}ms`, animationDuration: "400ms" }}
           >
             <div className="p-4">
               <KpiLabel label={kpi.label} tooltip={kpi.tooltip} />
