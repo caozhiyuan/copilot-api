@@ -65,7 +65,12 @@ describe("loadRegistry with enabled field", () => {
     const content = JSON.stringify({
       version: 2,
       accounts: [
-        { id: "octocat", accountType: "individual", addedAt: 1, enabled: false },
+        {
+          id: "octocat",
+          accountType: "individual",
+          addedAt: 1,
+          enabled: false,
+        },
       ],
       clientIdentities: {},
     })
@@ -98,9 +103,7 @@ describe("loadRegistry with enabled field", () => {
   test("parses v2 registry with enabled omitted (undefined)", async () => {
     const content = JSON.stringify({
       version: 2,
-      accounts: [
-        { id: "octocat", accountType: "individual", addedAt: 1 },
-      ],
+      accounts: [{ id: "octocat", accountType: "individual", addedAt: 1 }],
       clientIdentities: {},
     })
 
@@ -297,14 +300,11 @@ describe("PATCH /api/admin/accounts/:id", () => {
     const { server } = await import("../src/server")
 
     const res = await server.fetch(
-      new Request(
-        "http://localhost/api/admin/accounts/nonexistent-user-xyz",
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ enabled: false }),
-        },
-      ),
+      new Request("http://localhost/api/admin/accounts/nonexistent-user-xyz", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      }),
     )
 
     expect(res.status).toBe(404)
