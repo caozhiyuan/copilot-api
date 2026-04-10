@@ -510,6 +510,8 @@
     "enterCodePrompt": "请在 GitHub 输入以下代码以完成授权：",
     "copy": "复制",
     "copied": "已复制！",
+    "copyFailed": "复制失败",
+    "copyManualHint": "浏览器阻止了自动复制，请手动复制上方授权码。",
     "autoOpenHint": "已打开新标签页。如果未自动打开：",
     "waitingForAuth": "等待授权中...",
     "expiresIn": "{{time}} 后过期",

@@ -510,6 +510,8 @@
     "enterCodePrompt": "Enter the code below at GitHub to authorize:",
     "copy": "Copy",
     "copied": "Copied!",
+    "copyFailed": "Copy failed",
+    "copyManualHint": "Your browser blocked automatic copy. Please copy the code manually.",
     "autoOpenHint": "A new tab has been opened. If it didn't open automatically:",
     "waitingForAuth": "Waiting for authorization...",
     "expiresIn": "expires in {{time}}",

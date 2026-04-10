@@ -1,6 +1,7 @@
 import { CircleCheckIcon, OctagonXIcon } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 import {
   type AccountType,
@@ -15,6 +16,7 @@ import {
   buildAccountAuthRequest,
   cleanEnterpriseDomain,
 } from "@/lib/account-auth"
+import { copyText } from "@/lib/clipboard"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -281,10 +283,18 @@ export function AddAccountDialog({
 
   const handleCopyCode = useCallback(async () => {
     if (!authSession) return
-    await navigator.clipboard.writeText(authSession.userCode)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [authSession])
+
+    try {
+      await copyText(authSession.userCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.warn("Failed to copy GitHub authorization code.", error)
+      toast.error(t("accountManagement.copyFailed"), {
+        description: t("accountManagement.copyManualHint"),
+      })
+    }
+  }, [authSession, t])
 
   const handleStartOver = useCallback(() => {
     setError(null)
