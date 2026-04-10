@@ -134,11 +134,25 @@
       "errorRate": "返回错误的请求所占百分比。",
       "tokensPerRequest": "每次请求平均消耗的 Token 数（输入+输出）。",
       "tokens": "在选定时间窗口内所有账号消耗的 Token 总数。",
-      "avgDuration": "所有账号的加权平均响应时间（秒）。"
+      "avgDuration": "所有账号的加权平均响应时间（秒）。",
+      "premiumUsage": "所有账号的 Premium 请求额度汇总（不含无限额度账号）"
     },
     "tableTooltip": {
       "premiumReq": "Premium 交互额度：当前计费周期内的已用量与剩余量。",
       "avgMs": "该账号的平均响应时间（秒）。"
+    },
+    "type": "类型",
+    "accountType": {
+      "free": "Free",
+      "individual": "Individual",
+      "business": "Business",
+      "enterprise": "Enterprise"
+    },
+    "kpi": {
+      "premiumUsage": "Premium 用量",
+      "premiumTotal": "总量",
+      "premiumUsageAria": "Premium 请求使用进度",
+      "premiumUnlimitedNote": "另有 {{count}} 个无限额度账号未计入"
     }
   },
   "requestsPage": {

@@ -138,15 +138,16 @@ function KpiLabel({
 }
 
 const accountsTableColVisibility = [
-  null,
-  null,
-  "hidden lg:table-cell",
-  null,
-  null,
-  "hidden xl:table-cell",
-  "hidden xl:table-cell",
-  "hidden lg:table-cell",
-  null, // Actions column
+  null,           // Account
+  null,           // Status
+  "hidden md:table-cell", // Type (NEW)
+  "hidden lg:table-cell", // Premium req
+  null,           // Requests
+  null,           // Errors
+  "hidden xl:table-cell", // Tokens
+  "hidden xl:table-cell", // Avg ms
+  "hidden lg:table-cell", // Last request
+  null,           // Actions column
 ] as const
 
 function AccountsTableSkeleton({ rows }: { rows: number }): React.JSX.Element {
@@ -303,6 +304,7 @@ export function AccountsPage(): React.JSX.Element {
     const headers = [
       "account_id",
       "status",
+      "account_type",
       "requests",
       "errors",
       "tokens",
@@ -312,6 +314,7 @@ export function AccountsPage(): React.JSX.Element {
     const rows = accounts.map((a) => [
       a.account_id,
       a.runtime?.failed ? "failed" : "ok",
+      a.account_type ?? "free",
       String(a.stats?.request_count ?? 0),
       String(a.stats?.error_count ?? 0),
       String(a.stats?.tokens_total ?? 0),
@@ -347,6 +350,18 @@ export function AccountsPage(): React.JSX.Element {
     const errorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0
     const tokensPerRequest = totalRequests > 0 ? totalTokens / totalRequests : 0
 
+    const premiumAccounts = accounts.filter(
+      (a) => a.runtime && !a.runtime.unlimited && a.runtime.entitlement != null,
+    )
+    const totalPremiumEntitlement = sum(premiumAccounts.map((a) => a.runtime?.entitlement))
+    const totalPremiumRemaining = sum(premiumAccounts.map((a) => a.runtime?.remaining))
+    const totalPremiumUsed = totalPremiumEntitlement - totalPremiumRemaining
+    const premiumUsedPercent =
+      totalPremiumEntitlement > 0
+        ? clampPercent((totalPremiumUsed / totalPremiumEntitlement) * 100)
+        : 0
+    const unlimitedAccountCount = accounts.filter((a) => a.runtime?.unlimited).length
+
     return {
       totalAccounts,
       failedAccounts,
@@ -356,6 +371,11 @@ export function AccountsPage(): React.JSX.Element {
       avgDurationSeconds,
       errorRatePct,
       tokensPerRequest,
+      totalPremiumEntitlement,
+      totalPremiumRemaining,
+      totalPremiumUsed,
+      premiumUsedPercent,
+      unlimitedAccountCount,
     }
   }, [accounts])
 
@@ -501,6 +521,59 @@ export function AccountsPage(): React.JSX.Element {
             </div>
           </MagicCard>
         ))}
+
+        {/* Premium Usage KPI Card */}
+        <MagicCard
+          className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 rounded-xl fill-mode-backwards md:col-span-2 lg:col-span-2"
+          style={{ animationDelay: `${8 * 60}ms`, animationDuration: "400ms" }}
+        >
+          <div className="p-4">
+            <KpiLabel
+              label={t("accountsPage.kpi.premiumUsage")}
+              tooltip={t("accountsPage.kpiTooltip.premiumUsage")}
+            />
+            {kpis.unlimitedAccountCount > 0 && kpis.totalPremiumEntitlement === 0 ? (
+              <div className="mt-2">
+                <Badge variant="secondary">{t("common.unlimited")}</Badge>
+              </div>
+            ) : (
+              <div className="mt-2 space-y-2">
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-muted-foreground">{t("common.used")}</span>
+                    <span className="tabular-nums text-lg font-semibold">
+                      <NumberTicker value={kpis.totalPremiumUsed} />
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-muted-foreground">{t("common.remaining")}</span>
+                    <span className="tabular-nums font-medium">
+                      {fmtNum(kpis.totalPremiumRemaining)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-muted-foreground">{t("accountsPage.kpi.premiumTotal")}</span>
+                    <span className="tabular-nums font-medium">
+                      {fmtNum(kpis.totalPremiumEntitlement)}
+                    </span>
+                  </div>
+                </div>
+                <Progress
+                  value={kpis.premiumUsedPercent}
+                  className="h-2"
+                  aria-label={t("accountsPage.kpi.premiumUsageAria")}
+                />
+                {kpis.unlimitedAccountCount > 0 && (
+                  <div className="text-muted-foreground text-xs">
+                    {t("accountsPage.kpi.premiumUnlimitedNote", {
+                      count: kpis.unlimitedAccountCount,
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </MagicCard>
       </BentoGrid>
 
       {!loading && accounts.length === 0 ? (
@@ -563,6 +636,9 @@ export function AccountsPage(): React.JSX.Element {
                 <TableHead>{t("common.account")}</TableHead>
                 <TableHead>{t("common.status")}</TableHead>
                 <TableHead className={cn(accountsTableColVisibility[2])}>
+                  {t("accountsPage.type")}
+                </TableHead>
+                <TableHead className={cn(accountsTableColVisibility[3])}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="cursor-help underline decoration-dashed decoration-current/30 underline-offset-2">
@@ -576,10 +652,10 @@ export function AccountsPage(): React.JSX.Element {
                 </TableHead>
                 <TableHead>{t("nav.requests")}</TableHead>
                 <TableHead>{t("common.errors")}</TableHead>
-                <TableHead className={cn(accountsTableColVisibility[5])}>
+                <TableHead className={cn(accountsTableColVisibility[6])}>
                   {t("common.tokens")}
                 </TableHead>
-                <TableHead className={cn(accountsTableColVisibility[6])}>
+                <TableHead className={cn(accountsTableColVisibility[7])}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="cursor-help underline decoration-dashed decoration-current/30 underline-offset-2">
@@ -591,7 +667,7 @@ export function AccountsPage(): React.JSX.Element {
                     </TooltipContent>
                   </Tooltip>
                 </TableHead>
-                <TableHead className={cn(accountsTableColVisibility[7])}>
+                <TableHead className={cn(accountsTableColVisibility[8])}>
                   {t("common.lastRequest")}
                 </TableHead>
                 <TableHead className="text-right">{t("common.actions")}</TableHead>
@@ -699,20 +775,25 @@ export function AccountsPage(): React.JSX.Element {
                           ) : null}
                         </div>
                       </TableCell>
+                      <TableCell className={cn(accountsTableColVisibility[2])}>
+                        <Badge variant="outline">
+                          {t(`accountsPage.accountType.${a.account_type ?? "free"}`, t("accountsPage.accountType.free"))}
+                        </Badge>
+                      </TableCell>
                       <TableCell
-                        className={cn(accountsTableColVisibility[2], "whitespace-normal")}
+                        className={cn(accountsTableColVisibility[3], "whitespace-normal")}
                       >
                         {remainingCell}
                       </TableCell>
                       <TableCell>{fmtNum(a.stats?.request_count)}</TableCell>
                       <TableCell>{fmtNum(a.stats?.error_count)}</TableCell>
-                      <TableCell className={cn(accountsTableColVisibility[5])}>
+                      <TableCell className={cn(accountsTableColVisibility[6])}>
                         {fmtNum(a.stats?.tokens_total)}
                       </TableCell>
-                      <TableCell className={cn(accountsTableColVisibility[6])}>
+                      <TableCell className={cn(accountsTableColVisibility[7])}>
                         {fmtDurationSeconds(a.stats?.avg_duration_ms)}
                       </TableCell>
-                      <TableCell className={cn(accountsTableColVisibility[7], "font-mono text-xs")}>
+                      <TableCell className={cn(accountsTableColVisibility[8], "font-mono text-xs")}>
                         {last}
                       </TableCell>
                       <TableCell className="text-right">

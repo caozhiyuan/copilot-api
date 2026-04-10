@@ -1503,6 +1503,9 @@ adminApiRoutes.delete("/accounts/:id", async (c) => {
       )
     }
 
+    // Force immediate reload so the next GET /accounts reflects the deletion
+    await accountsManager.reloadRegistryNow()
+
     return c.json({ deleted: true, accountId })
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

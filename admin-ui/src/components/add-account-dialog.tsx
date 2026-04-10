@@ -334,7 +334,7 @@ export function AddAccountDialog({
                   }`}
                 >
                   <div
-                    className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
                       accountType === type ? "border-primary" : "border-muted-foreground"
                     }`}
                   >

@@ -134,11 +134,25 @@
       "errorRate": "Percentage of requests that returned an error.",
       "tokensPerRequest": "Average number of tokens (input + output) consumed per request.",
       "tokens": "Total tokens consumed across all accounts in the selected time window.",
-      "avgDuration": "Weighted average response time across all accounts (in seconds)."
+      "avgDuration": "Weighted average response time across all accounts (in seconds).",
+      "premiumUsage": "Aggregated premium request quota across all accounts (excluding unlimited accounts)"
     },
     "tableTooltip": {
       "premiumReq": "Premium interactions quota: used vs remaining for the current billing cycle.",
       "avgMs": "Average response time in seconds for this account."
+    },
+    "type": "Type",
+    "accountType": {
+      "free": "Free",
+      "individual": "Individual",
+      "business": "Business",
+      "enterprise": "Enterprise"
+    },
+    "kpi": {
+      "premiumUsage": "Premium Usage",
+      "premiumTotal": "Total",
+      "premiumUsageAria": "Premium request usage progress",
+      "premiumUnlimitedNote": "+{{count}} unlimited account(s) not included"
     }
   },
   "requestsPage": {
