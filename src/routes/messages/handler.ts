@@ -7,7 +7,10 @@ import { randomUUID } from "node:crypto"
 import type { AccountRuntime } from "~/lib/types/account"
 import type { Model } from "~/services/copilot/get-models"
 
-import { accountsManager } from "~/lib/accounts-manager"
+import {
+  accountsManager,
+  type AccountSelectionReason,
+} from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import {
   getSmallModel,
@@ -17,7 +20,9 @@ import {
 } from "~/lib/config"
 import {
   computeDiff,
-  extractErrorDetails,
+  extractErrorObservability,
+  getUserVisibleErrorMessage,
+  shouldMarkAccountFailed,
   toAccountContext,
 } from "~/lib/handler-utils"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
@@ -34,9 +39,11 @@ import {
 } from "~/lib/request-history"
 import { state } from "~/lib/state"
 import {
+  type AffinityKeySource,
   generateRequestIdFromPayload,
   getRootSessionId,
   parseUserIdMetadata,
+  resolveAffinityKey,
 } from "~/lib/utils"
 import {
   buildErrorEvent,
@@ -131,6 +138,10 @@ type InstrumentationContext = {
 
   affinityHit?: boolean
   affinityCacheKey?: string
+
+  affinityKeyUsed?: string
+  affinityKeySource?: AffinityKeySource
+  selectionReason?: AccountSelectionReason
 
   clientModel: string
 
@@ -254,8 +265,15 @@ export async function handleCompletion(c: Context) {
     },
   )
 
+  const headerSessionId = c.req.header("x-session-id") ?? null
+  const affinityKey = resolveAffinityKey({
+    metadataSessionId: promptCacheKey,
+    headerSessionId,
+    upstreamRequestId,
+  })
+
   const selection = await accountsManager.selectAccountForRequest(candidates, {
-    requestId: sessionId ?? upstreamRequestId,
+    requestId: affinityKey.requestId,
     affinityModelId,
   })
   if (!selection.ok) {
@@ -276,6 +294,8 @@ export async function handleCompletion(c: Context) {
       promptCacheKey: normalizedPromptCacheKey,
       initiator: fallbackInitiator,
       isSubagent: Boolean(subagentMarker),
+      affinityKeyUsed: affinityKey.affinityKeyUsed,
+      affinityKeySource: affinityKey.affinityKeySource,
       selection,
     })
   }
@@ -312,6 +332,9 @@ export async function handleCompletion(c: Context) {
     confirmAffinity: selection.confirmAffinity,
     affinityHit: selection.affinityHit,
     affinityCacheKey: selection.affinityCacheKey,
+    affinityKeyUsed: affinityKey.affinityKeyUsed,
+    affinityKeySource: affinityKey.affinityKeySource,
+    selectionReason: selection.selectionReason,
   }
   if (endpoint === MESSAGES_ENDPOINT) {
     return await handleWithMessagesApi({
@@ -572,6 +595,9 @@ function insertRequestLog(
     | "upstreamModel"
     | "premiumRemainingBefore"
     | "premiumUnlimitedBefore"
+    | "affinityKeyUsed"
+    | "affinityKeySource"
+    | "selectionReason"
   >,
 ): void {
   const {
@@ -608,6 +634,9 @@ function insertRequestLog(
     upstreamRequestId: instr.upstreamRequestId,
     affinityHit: instr.affinityHit,
     affinityCacheKey: instr.affinityCacheKey,
+    affinityKeyUsed: instr.affinityKeyUsed,
+    affinityKeySource: instr.affinityKeySource,
+    selectionReason: instr.selectionReason,
     clientModel,
     upstreamEndpoint,
     accountId: account.id,
@@ -650,9 +679,9 @@ async function handleChatCompletionsCreateError(params: {
   const { error, instr, stream } = params
 
   const finishedAtMs = Date.now()
-  const details = extractErrorDetails(error)
+  const details = await extractErrorObservability(error)
 
-  if (details.unauthorized) {
+  if (shouldMarkAccountFailed(details)) {
     accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
   }
 
@@ -670,6 +699,7 @@ async function handleChatCompletionsCreateError(params: {
     errorName: details.errorName,
     errorStatus: details.errorStatus,
     errorMessage: details.errorMessage,
+    upstreamErrorMessageRaw: details.upstreamErrorMessageRaw,
   })
 
   throw error
@@ -688,6 +718,7 @@ async function handleChatCompletionsNonStreaming(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   const finishedAtMs = Date.now()
 
@@ -702,15 +733,16 @@ async function handleChatCompletionsNonStreaming(params: {
 
     return c.json(anthropicResponse)
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
 
     httpStatus = details.httpStatus
 
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
     }
 
@@ -734,6 +766,7 @@ async function handleChatCompletionsNonStreaming(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -754,6 +787,7 @@ async function streamChatCompletionsAndLog(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   const streamState: AnthropicStreamState = {
     messageStartSent: false,
@@ -804,17 +838,20 @@ async function streamChatCompletionsAndLog(params: {
       }
     }
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
 
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
     logger.warn("Streaming error:", error)
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
     }
+
+    await writeAnthropicStreamError(stream, getUserVisibleErrorMessage(details))
   } finally {
     const finishedAtMs = Date.now()
 
@@ -837,6 +874,7 @@ async function streamChatCompletionsAndLog(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -849,9 +887,9 @@ async function handleResponsesCreateError(params: {
   const { error, instr, stream } = params
 
   const finishedAtMs = Date.now()
-  const details = extractErrorDetails(error)
+  const details = await extractErrorObservability(error)
 
-  if (details.unauthorized) {
+  if (shouldMarkAccountFailed(details)) {
     accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
   }
 
@@ -869,6 +907,7 @@ async function handleResponsesCreateError(params: {
     errorName: details.errorName,
     errorStatus: details.errorStatus,
     errorMessage: details.errorMessage,
+    upstreamErrorMessageRaw: details.upstreamErrorMessageRaw,
   })
 
   throw error
@@ -887,6 +926,7 @@ async function handleResponsesNonStreaming(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   const finishedAtMs = Date.now()
 
@@ -903,15 +943,16 @@ async function handleResponsesNonStreaming(params: {
 
     return c.json(anthropicResponse)
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
 
     httpStatus = details.httpStatus
 
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
     }
 
@@ -935,6 +976,7 @@ async function handleResponsesNonStreaming(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -963,6 +1005,21 @@ async function ensureResponsesStreamCompleted(params: {
   })
 }
 
+async function writeAnthropicStreamError(
+  stream: StreamSseStream,
+  message: string,
+): Promise<void> {
+  try {
+    const errorEvent = buildErrorEvent(message)
+    await stream.writeSSE({
+      event: errorEvent.type,
+      data: JSON.stringify(errorEvent),
+    })
+  } catch (streamError) {
+    logger.warn("Failed to write Anthropic stream error event:", streamError)
+  }
+}
+
 async function streamResponsesAndLog(params: {
   stream: StreamSseStream
   response: AsyncIterable<unknown>
@@ -979,6 +1036,7 @@ async function streamResponsesAndLog(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   const streamState = createResponsesStreamState()
   streamState.estimatedInputTokens = estimatedInputTokens
@@ -1036,17 +1094,20 @@ async function streamResponsesAndLog(params: {
       },
     })
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
 
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
     logger.warn("Streaming error:", error)
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
     }
+
+    await writeAnthropicStreamError(stream, getUserVisibleErrorMessage(details))
   } finally {
     const finishedAtMs = Date.now()
 
@@ -1069,6 +1130,7 @@ async function streamResponsesAndLog(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -1081,9 +1143,9 @@ async function handleMessagesCreateError(params: {
   const { error, instr, stream } = params
 
   const finishedAtMs = Date.now()
-  const details = extractErrorDetails(error)
+  const details = await extractErrorObservability(error)
 
-  if (details.unauthorized) {
+  if (shouldMarkAccountFailed(details)) {
     accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
   }
 
@@ -1101,6 +1163,7 @@ async function handleMessagesCreateError(params: {
     errorName: details.errorName,
     errorStatus: details.errorStatus,
     errorMessage: details.errorMessage,
+    upstreamErrorMessageRaw: details.upstreamErrorMessageRaw,
   })
 
   throw error
@@ -1119,6 +1182,7 @@ async function handleMessagesNonStreaming(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   const finishedAtMs = Date.now()
 
@@ -1129,14 +1193,15 @@ async function handleMessagesNonStreaming(params: {
     )
     return c.json(response)
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
 
     httpStatus = details.httpStatus
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
     }
 
@@ -1160,6 +1225,7 @@ async function handleMessagesNonStreaming(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -1193,6 +1259,7 @@ async function streamMessagesAndLog(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   try {
     for await (const rawEvent of response) {
@@ -1219,17 +1286,20 @@ async function streamMessagesAndLog(params: {
       })
     }
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
 
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
     logger.warn("Streaming error:", error)
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(instr.account.id, "Unauthorized (401)")
     }
+
+    await writeAnthropicStreamError(stream, getUserVisibleErrorMessage(details))
   } finally {
     const finishedAtMs = Date.now()
 
@@ -1252,6 +1322,7 @@ async function streamMessagesAndLog(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }

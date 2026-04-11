@@ -14,6 +14,40 @@ export class HTTPError extends Error {
 
 export class CancelledError extends Error {}
 
+function getFallbackHttpErrorMessage(error: HTTPError): string {
+  return error.message || `HTTP ${error.response.status}`
+}
+
+async function readHttpErrorText(error: HTTPError): Promise<string> {
+  try {
+    const text = await error.response.text()
+    return text || getFallbackHttpErrorMessage(error)
+  } catch (readError) {
+    consola.warn("Failed to read HTTP error response body:", readError)
+    return getFallbackHttpErrorMessage(error)
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || "Unknown error"
+  }
+
+  if (typeof error === "string") {
+    return error
+  }
+
+  if (
+    typeof error === "number"
+    || typeof error === "boolean"
+    || typeof error === "bigint"
+  ) {
+    return `${error}`
+  }
+
+  return "Unknown error"
+}
+
 export async function forwardError(c: Context, error: unknown) {
   consola.error("Error occurred:", error)
 
@@ -27,7 +61,7 @@ export async function forwardError(c: Context, error: unknown) {
       }
     }
 
-    const errorText = await error.response.text()
+    const errorText = await readHttpErrorText(error)
     let errorJson: unknown
     try {
       errorJson = JSON.parse(errorText)
@@ -49,7 +83,7 @@ export async function forwardError(c: Context, error: unknown) {
   return c.json(
     {
       error: {
-        message: (error as Error).message,
+        message: getErrorMessage(error),
         type: "error",
       },
     },

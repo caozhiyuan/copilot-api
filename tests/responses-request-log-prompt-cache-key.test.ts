@@ -1,23 +1,11 @@
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test"
-import fs from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+
+import "./shared-admin-db-test-home"
 
 import type { AccountRuntime } from "~/lib/types/account"
 import type { Model } from "~/services/copilot/get-models"
 
-const testHome = await fs.mkdtemp(
-  path.join(os.tmpdir(), "copilot-api-responses-prompt-cache-key-"),
-)
-process.env.COPILOT_API_HOME = testHome
+import { getUUID } from "~/lib/utils"
 
 const [{ accountsManager }, { getAdminDb }, { state }, { responsesRoutes }] =
   await Promise.all([
@@ -29,6 +17,9 @@ const [{ accountsManager }, { getAdminDb }, { state }, { responsesRoutes }] =
 
 type RequestLogSnapshot = {
   prompt_cache_key: string | null
+  affinity_key_used: string | null
+  affinity_key_source: string | null
+  selection_reason: string | null
 }
 
 type SelectionResult = Awaited<
@@ -38,6 +29,7 @@ type SelectionOk = Extract<SelectionResult, { ok: true }>
 
 type FetchOptions = {
   body?: unknown
+  headers?: Record<string, string>
 }
 
 const fetchHolder = globalThis as unknown as { fetch: typeof fetch }
@@ -96,6 +88,8 @@ function buildSelection(endpoint: string, modelId: string): SelectionOk {
     costUnits: 0,
     confirmAffinity: mock(() => {}),
     affinityHit: false,
+    affinityCacheKey: "test-cache-key",
+    selectionReason: "affinity_miss",
   }
 }
 
@@ -141,7 +135,9 @@ function buildResponsesResult(model: string, text: string) {
 
 function getLatestRequestLog(): RequestLogSnapshot | null {
   return getAdminDb()
-    .query("SELECT prompt_cache_key FROM request_log ORDER BY id DESC LIMIT 1;")
+    .query(
+      "SELECT prompt_cache_key, affinity_key_used, affinity_key_source, selection_reason FROM request_log ORDER BY id DESC LIMIT 1;",
+    )
     .get() as RequestLogSnapshot | null
 }
 
@@ -160,12 +156,6 @@ afterEach(() => {
   accountsManager.selectAccountForRequest = originalSelect
   accountsManager.finalizeQuota = originalFinalize
   accountsManager.markAccountFailed = originalMarkFailed
-})
-
-afterAll(async () => {
-  // getAdminDb() is a shared singleton for the Bun test process.
-  // Closing it here makes later test files fail with "Database has closed".
-  await fs.rm(testHome, { recursive: true, force: true })
 })
 
 describe("responses request log prompt_cache_key persistence", () => {
@@ -217,6 +207,11 @@ describe("responses request log prompt_cache_key persistence", () => {
     expect(response.status).toBe(200)
     expect(getLatestRequestLog()?.prompt_cache_key).toBe(payloadPromptCacheKey)
     expect(selectionRequestId).toBe(payloadPromptCacheKey)
+
+    const log = getLatestRequestLog()
+    expect(log?.affinity_key_used).toBe(payloadPromptCacheKey)
+    expect(log?.affinity_key_source).toBe("prompt_cache_key")
+    expect(log?.selection_reason).toBe("affinity_miss")
   })
 
   test("falls back to metadata user_id session_id when payload.prompt_cache_key is missing", async () => {
@@ -264,6 +259,62 @@ describe("responses request log prompt_cache_key persistence", () => {
 
     expect(response.status).toBe(200)
     expect(getLatestRequestLog()?.prompt_cache_key).toBe(metadataSessionId)
-    expect(selectionRequestId).toBe(metadataSessionId)
+    expect(selectionRequestId).toBe(getUUID(metadataSessionId))
+
+    const log = getLatestRequestLog()
+    expect(log?.affinity_key_used).toBe(metadataSessionId)
+    expect(log?.affinity_key_source).toBe("metadata_session_id")
+    expect(log?.selection_reason).toBe("affinity_miss")
+  })
+
+  test("uses x-session-id for upstream interaction id when no other session key exists", async () => {
+    let selectionRequestId: string | undefined
+    let upstreamInteractionId: string | undefined
+
+    accountsManager.selectAccountForRequest = (_candidates, options) => {
+      selectionRequestId = options?.requestId
+      return Promise.resolve(buildSelection("/responses", "responses-model"))
+    }
+
+    const fetchMock = mock((_url: string, options?: FetchOptions) => {
+      upstreamInteractionId = options?.headers?.["x-interaction-id"]
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(buildResponsesResult("responses-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      )
+    })
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const headerSessionId = "header-session-only"
+
+    const response = await responsesRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-session-id": headerSessionId,
+        },
+        body: JSON.stringify({
+          model: "original-model",
+          input: "hello",
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(selectionRequestId).toBe(getUUID(headerSessionId))
+    expect(upstreamInteractionId).toBe(getUUID(headerSessionId))
+
+    const log = getLatestRequestLog()
+    expect(log?.affinity_key_used).toBe(headerSessionId)
+    expect(log?.affinity_key_source).toBe("x_session_id")
+    expect(log?.selection_reason).toBe("affinity_miss")
   })
 })

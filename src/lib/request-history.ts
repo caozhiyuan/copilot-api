@@ -14,6 +14,9 @@ import type {
   ResponseUsage,
 } from "~/services/copilot/create-responses"
 
+import type { AccountSelectionReason } from "./accounts-manager"
+import type { AffinityKeySource } from "./utils"
+
 import { getAdminDb, getAdminDbPath, getAdminDbUserVersion } from "./admin-db"
 
 const DEFAULT_RETENTION_DAYS = 14
@@ -192,6 +195,9 @@ export type RequestLogInsert = {
   initiator?: "agent" | "user"
   isSubagent?: boolean
   upstreamRequestId?: string
+  affinityKeyUsed?: string
+  affinityKeySource?: AffinityKeySource
+  selectionReason?: AccountSelectionReason
 
   tokensInput?: number
   tokensOutput?: number
@@ -209,6 +215,7 @@ export type RequestLogInsert = {
   errorName?: string
   errorStatus?: number
   errorMessage?: string
+  upstreamErrorMessageRaw?: string
   selectionFailureReason?: string
 
   affinityHit?: boolean
@@ -244,6 +251,9 @@ export type RequestLogRow = {
   initiator: string | null
   is_subagent: number | null
   upstream_request_id: string | null
+  affinity_key_used: string | null
+  affinity_key_source: string | null
+  selection_reason: string | null
 
   tokens_input: number | null
   tokens_output: number | null
@@ -261,6 +271,7 @@ export type RequestLogRow = {
   error_name: string | null
   error_status: number | null
   error_message: string | null
+  upstream_error_message_raw: string | null
   selection_failure_reason: string | null
 
   affinity_hit: number | null
@@ -340,6 +351,9 @@ export class RequestHistoryStore {
         initiator,
         is_subagent,
         upstream_request_id,
+        affinity_key_used,
+        affinity_key_source,
+        selection_reason,
         tokens_input,
         tokens_output,
         tokens_total,
@@ -354,6 +368,7 @@ export class RequestHistoryStore {
         error_name,
         error_status,
         error_message,
+        upstream_error_message_raw,
         selection_failure_reason,
         affinity_hit,
         affinity_cache_key
@@ -362,7 +377,8 @@ export class RequestHistoryStore {
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
         ?,?,?,?,?,?,?,?,
-        ?,?,?,?,?,?,?,?
+        ?,?,?,?,?,?,?,?,
+        ?,?,?,?
       );
     `)
 
@@ -416,6 +432,9 @@ export class RequestHistoryStore {
         toDbNull(record.initiator),
         toDbBool(record.isSubagent),
         toDbNull(record.upstreamRequestId),
+        toDbNull(record.affinityKeyUsed),
+        toDbNull(record.affinityKeySource),
+        toDbNull(record.selectionReason),
 
         toDbNull(record.tokensInput),
         toDbNull(record.tokensOutput),
@@ -433,6 +452,7 @@ export class RequestHistoryStore {
         toDbNull(record.errorName),
         toDbNull(record.errorStatus),
         toDbNull(record.errorMessage),
+        toDbNull(record.upstreamErrorMessageRaw),
         toDbNull(record.selectionFailureReason),
 
         toDbBool(record.affinityHit),

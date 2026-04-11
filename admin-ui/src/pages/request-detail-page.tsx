@@ -434,6 +434,39 @@ export function RequestDetailPage(): React.JSX.Element {
                 <TableRow>
                   <TableCell className="text-muted-foreground">
                     <FieldLabel
+                      label={t("requestDetailPage.fields.affinityKeyUsed")}
+                      tooltip={t("requestDetailPage.fieldTooltip.affinityKeyUsed")}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.affinity_key_used || EMPTY}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.affinityKeySource")}
+                      tooltip={t("requestDetailPage.fieldTooltip.affinityKeySource")}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.affinity_key_source || EMPTY}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.selectionReason")}
+                      tooltip={t("requestDetailPage.fieldTooltip.selectionReason")}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.selection_reason || EMPTY}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    <FieldLabel
                       label={t("requestDetailPage.fields.initiator")}
                       tooltip={t("requestDetailPage.fieldTooltip.initiator")}
                     />
@@ -453,6 +486,19 @@ export function RequestDetailPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell className="font-mono text-xs whitespace-normal break-words">
                     {item.upstream_request_id || EMPTY}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-muted-foreground">
+                    <FieldLabel
+                      label={t("requestDetailPage.fields.upstreamErrorMessageRaw")}
+                      tooltip={t(
+                        "requestDetailPage.fieldTooltip.upstreamErrorMessageRaw",
+                      )}
+                    />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs whitespace-normal break-words">
+                    {item.upstream_error_message_raw || EMPTY}
                   </TableCell>
                 </TableRow>
 

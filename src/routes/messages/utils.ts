@@ -1,6 +1,7 @@
 import type { ConsolaInstance } from "consola"
 import type { Context } from "hono"
 
+import type { AffinityKeySource } from "~/lib/utils"
 import type { ChatCompletionsPayload } from "~/services/copilot/create-chat-completions"
 import type { Model } from "~/services/copilot/get-models"
 
@@ -71,6 +72,8 @@ type SelectionFailureContext = {
   promptCacheKey?: string
   initiator?: "agent" | "user"
   isSubagent?: boolean
+  affinityKeyUsed?: string
+  affinityKeySource?: AffinityKeySource
   selection: SelectionFailure
 }
 
@@ -127,6 +130,8 @@ export const handleSelectionFailure = (
     promptCacheKey,
     initiator,
     isSubagent,
+    affinityKeyUsed,
+    affinityKeySource,
     selection,
   } = context
   const finishedAtMs = Date.now()
@@ -148,6 +153,8 @@ export const handleSelectionFailure = (
     promptCacheKey,
     initiator,
     isSubagent,
+    affinityKeyUsed,
+    affinityKeySource,
     httpStatus: selection.reason === "MODEL_NOT_SUPPORTED" ? 400 : 429,
     selectionFailureReason: selection.reason,
   })

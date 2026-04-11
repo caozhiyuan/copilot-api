@@ -5,6 +5,7 @@ import type {
 } from "~/services/copilot/create-responses"
 
 import {
+  getConfig,
   isForceAgentEnabled,
   isResponsesApiContextManagementModel,
 } from "~/lib/config"
@@ -135,6 +136,64 @@ const getPayloadItems = (
 
   return result
 }
+
+export const useFunctionApplyPatch = (payload: ResponsesPayload): void => {
+  const config = getConfig()
+  const enabled = config.useFunctionApplyPatch ?? true
+  if (!enabled) return
+
+  if (Array.isArray(payload.tools)) {
+    const toolsArr = payload.tools
+    for (let i = 0; i < toolsArr.length; i++) {
+      const t = toolsArr[i]
+      if (t.type === "custom" && t.name === "apply_patch") {
+        toolsArr[i] = {
+          type: "function",
+          name: t.name,
+          description: "Use the `apply_patch` tool to edit files",
+          parameters: {
+            type: "object",
+            properties: {
+              input: {
+                type: "string",
+                description: "The entire contents of the apply_patch command",
+              },
+            },
+            required: ["input"],
+          },
+          strict: false,
+        }
+      }
+    }
+  }
+}
+
+export const removeWebSearchTool = (payload: ResponsesPayload): void => {
+  if (!Array.isArray(payload.tools) || payload.tools.length === 0) return
+
+  payload.tools = payload.tools.filter((t) => {
+    return t.type !== "web_search"
+  })
+}
+
+type StreamChunk = {
+  id?: string
+  event?: string
+  data?: string
+}
+
+export function getStreamChunkFields(chunk: unknown): StreamChunk {
+  const c = chunk as StreamChunk
+  return {
+    id: c.id,
+    event: c.event,
+    data: c.data,
+  }
+}
+
+export const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
+  Boolean(value)
+  && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
 
 const containsVisionContent = (value: unknown): boolean => {
   if (!value) return false
