@@ -211,6 +211,13 @@ export const generateRequestIdFromPayload = (
   return randomUUID()
 }
 
+export const normalizeStableSessionId = (
+  sessionId?: string | null,
+): string | undefined => {
+  const trimmedSessionId = sessionId?.trim()
+  return trimmedSessionId ? getUUID(trimmedSessionId) : undefined
+}
+
 export const getRootSessionId = (
   anthropicPayload: AnthropicMessagesPayload,
   c: Context,
@@ -221,7 +228,7 @@ export const getRootSessionId = (
       parseUserIdMetadata(userId).sessionId || undefined
     : c.req.header("x-session-id")
 
-  return sessionId ? getUUID(sessionId) : sessionId
+  return normalizeStableSessionId(sessionId)
 }
 
 export const getUUID = (content: string): string => {

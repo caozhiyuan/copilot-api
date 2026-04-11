@@ -502,6 +502,75 @@ test("selectAccountForRequest falls back to next account when first has no overa
   expect(selection.account.id).toBe("available")
 })
 
+test("ownership: unusable owner falls back safely for premium requests", async () => {
+  const model = makeModel({
+    id: "gpt-5",
+    billing: {
+      is_premium: true,
+      multiplier: 1,
+    },
+  })
+
+  const preferredAccount: AccountRuntime = {
+    id: "preferred",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_preferred",
+    vsCodeVersion: "1.0.0",
+    models: makeModelsResponse([model]),
+    premiumRemaining: 1,
+    lastQuotaFetch: Date.now(),
+  }
+  const fallbackAccount: AccountRuntime = {
+    id: "fallback",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_fallback",
+    vsCodeVersion: "1.0.0",
+    models: makeModelsResponse([model]),
+    premiumRemaining: 10,
+    lastQuotaFetch: Date.now(),
+  }
+
+  const manager = new AccountsManager()
+  const internals = manager as unknown as {
+    accounts: Map<string, AccountRuntime>
+    accountOrder: Array<string>
+  }
+  internals.accounts.set(preferredAccount.id, preferredAccount)
+  internals.accounts.set(fallbackAccount.id, fallbackAccount)
+  internals.accountOrder.push(preferredAccount.id, fallbackAccount.id)
+
+  const mainRequest = await manager.selectAccountForRequest(
+    [{ modelId: "gpt-5", endpoint: "/chat/completions" }],
+    { ownershipWriteSessionId: "root-session-premium" },
+  )
+  expect(mainRequest.ok).toBe(true)
+  if (!mainRequest.ok) return
+
+  expect(mainRequest.account.id).toBe("preferred")
+  expect(mainRequest.confirmOwnership).toBeDefined()
+  mainRequest.confirmOwnership?.()
+  ;(manager as unknown as { refreshQuota: () => Promise<void> }).refreshQuota =
+    async () => {}
+
+  await manager.finalizeQuota(preferredAccount, mainRequest.reservation)
+  preferredAccount.premiumRemaining = 0
+
+  const subagentRequest = await manager.selectAccountForRequest(
+    [{ modelId: "gpt-5", endpoint: "/chat/completions" }],
+    { ownershipLookupSessionId: "root-session-premium" },
+  )
+  expect(subagentRequest.ok).toBe(true)
+  if (!subagentRequest.ok) return
+
+  expect(subagentRequest.account.id).toBe("fallback")
+  expect(subagentRequest.selectionReason).toBe(
+    "subagent_owner_unusable_fallback",
+  )
+  expect(subagentRequest.confirmOwnership).toBeUndefined()
+})
+
 test("applyQuotaRefreshSuccessIfCurrent sets overagePermitted from quota response", () => {
   const account: AccountRuntime = {
     id: "test-user",

@@ -42,6 +42,7 @@ import {
   type AffinityKeySource,
   generateRequestIdFromPayload,
   getRootSessionId,
+  normalizeStableSessionId,
   parseUserIdMetadata,
   resolveAffinityKey,
 } from "~/lib/utils"
@@ -95,7 +96,7 @@ import {
   stripToolReferenceTurnBoundary,
 } from "./preprocess"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
-import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
+import { inspectSubagentMarkerFromFirstUser } from "./subagent-marker"
 import {
   estimateInputTokens,
   handleSelectionFailure,
@@ -135,6 +136,8 @@ type InstrumentationContext = {
 
   /** Call after upstream success to persist affinity mapping. */
   confirmAffinity?: () => void
+  /** Call after upstream success to persist ownership mapping. */
+  confirmOwnership?: () => void
 
   affinityHit?: boolean
   affinityCacheKey?: string
@@ -168,7 +171,9 @@ export async function handleCompletion(c: Context) {
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
   debugJson(logger, "Anthropic request payload:", anthropicPayload)
 
-  const subagentMarker = parseSubagentMarkerFromFirstUser(anthropicPayload)
+  const markerInspection = inspectSubagentMarkerFromFirstUser(anthropicPayload)
+  const subagentMarker =
+    markerInspection.kind === "valid" ? markerInspection.marker : null
   const initiatorOverride = subagentMarker ? "agent" : undefined
   if (subagentMarker) {
     debugJson(logger, "Detected Subagent marker:", subagentMarker)
@@ -176,6 +181,13 @@ export async function handleCompletion(c: Context) {
 
   const sessionId = getRootSessionId(anthropicPayload, c)
   logger.debug("Extracted session ID:", sessionId)
+
+  const ownershipLookupSessionId =
+    markerInspection.kind === "valid" ?
+      normalizeStableSessionId(markerInspection.marker.session_id)
+    : undefined
+  const ownershipWriteSessionId =
+    markerInspection.kind === "none" ? sessionId : undefined
 
   const anthropicBeta = c.req.header("anthropic-beta")
   const isCompact = isCompactRequest(anthropicPayload)
@@ -275,6 +287,8 @@ export async function handleCompletion(c: Context) {
   const selection = await accountsManager.selectAccountForRequest(candidates, {
     requestId: affinityKey.requestId,
     affinityModelId,
+    ownershipLookupSessionId,
+    ownershipWriteSessionId,
   })
   if (!selection.ok) {
     return handleSelectionFailure({
@@ -300,6 +314,10 @@ export async function handleCompletion(c: Context) {
     })
   }
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
+  const selectionReason =
+    markerInspection.kind === "invalid" ?
+      "subagent_marker_invalid_fallback"
+    : selection.selectionReason
   openAIPayload.model = selectedModel.id
   anthropicPayload.model = selectedModel.id
   const premiumRemainingBefore = account.premiumRemaining
@@ -330,11 +348,12 @@ export async function handleCompletion(c: Context) {
     premiumRemainingBefore,
     premiumUnlimitedBefore,
     confirmAffinity: selection.confirmAffinity,
+    confirmOwnership: selection.confirmOwnership,
     affinityHit: selection.affinityHit,
     affinityCacheKey: selection.affinityCacheKey,
     affinityKeyUsed: affinityKey.affinityKeyUsed,
     affinityKeySource: affinityKey.affinityKeySource,
-    selectionReason: selection.selectionReason,
+    selectionReason,
   }
   if (endpoint === MESSAGES_ENDPOINT) {
     return await handleWithMessagesApi({
@@ -414,6 +433,7 @@ const handleWithChatCompletions = async (params: {
       isCompact,
     })
     instr.confirmAffinity?.()
+    instr.confirmOwnership?.()
   } catch (error) {
     return await handleChatCompletionsCreateError({
       error,
@@ -516,6 +536,7 @@ const handleWithResponsesApi = async (params: {
       ctx,
     )
     instr.confirmAffinity?.()
+    instr.confirmOwnership?.()
   } catch (error) {
     return await handleResponsesCreateError({
       error,
@@ -1371,6 +1392,7 @@ const handleWithMessagesApi = async (params: {
       isCompact,
     })
     instr.confirmAffinity?.()
+    instr.confirmOwnership?.()
   } catch (error) {
     return await handleMessagesCreateError({
       error,

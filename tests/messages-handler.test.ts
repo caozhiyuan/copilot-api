@@ -83,7 +83,9 @@ function buildSelection(endpoint: string, modelId: string): SelectionOk {
     endpoint,
     costUnits: 0,
     confirmAffinity: mock(() => {}),
+    confirmOwnership: mock(() => {}),
     affinityHit: false,
+    selectionReason: "affinity_miss",
   }
 }
 
@@ -201,8 +203,8 @@ describe("messages handler routing", () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    accountsManager.selectAccountForRequest = () =>
-      Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+    const selection = buildSelection("/v1/messages", "messages-model")
+    accountsManager.selectAccountForRequest = () => Promise.resolve(selection)
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
@@ -238,14 +240,16 @@ describe("messages handler routing", () => {
     expect(requestedUrl).toContain("/v1/messages")
     expect(upstreamBody?.model).toBe("messages-model")
     expect(body.content[0].text).toBe("messages")
+    expect(selection.confirmAffinity).toHaveBeenCalledTimes(1)
+    expect(selection.confirmOwnership).toHaveBeenCalledTimes(1)
   })
 
   test("routes to the Responses API when selection chooses /responses", async () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    accountsManager.selectAccountForRequest = () =>
-      Promise.resolve(buildSelection("/responses", "responses-model"))
+    const selection = buildSelection("/responses", "responses-model")
+    accountsManager.selectAccountForRequest = () => Promise.resolve(selection)
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
@@ -281,14 +285,16 @@ describe("messages handler routing", () => {
     expect(requestedUrl).toContain("/responses")
     expect(upstreamBody?.model).toBe("responses-model")
     expect(body.content[0].text).toBe("responses")
+    expect(selection.confirmAffinity).toHaveBeenCalledTimes(1)
+    expect(selection.confirmOwnership).toHaveBeenCalledTimes(1)
   })
 
   test("falls back to Chat Completions when selection chooses /chat/completions", async () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
 
-    accountsManager.selectAccountForRequest = () =>
-      Promise.resolve(buildSelection("/chat/completions", "chat-model"))
+    const selection = buildSelection("/chat/completions", "chat-model")
+    accountsManager.selectAccountForRequest = () => Promise.resolve(selection)
 
     const fetchMock = mock((url: string, opts?: FetchOptions) => {
       requestedUrl = url
@@ -324,6 +330,8 @@ describe("messages handler routing", () => {
     expect(requestedUrl).toContain("/chat/completions")
     expect(upstreamBody?.model).toBe("chat-model")
     expect(body.content[0].text).toBe("chat")
+    expect(selection.confirmAffinity).toHaveBeenCalledTimes(1)
+    expect(selection.confirmOwnership).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -487,6 +495,108 @@ describe("messages handler affinity context", () => {
 
     expect(response.status).toBe(200)
     expect(selectionRequestId).toBe(getUUID(metadataSessionId))
+  })
+})
+
+describe("messages handler ownership context", () => {
+  test("main-agent requests write ownership session id during selection", async () => {
+    let selectionOwnershipLookupSessionId: string | undefined
+    let selectionOwnershipWriteSessionId: string | undefined
+
+    accountsManager.selectAccountForRequest = (_candidates, options) => {
+      selectionOwnershipLookupSessionId = options?.ownershipLookupSessionId
+      selectionOwnershipWriteSessionId = options?.ownershipWriteSessionId
+      return Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+    }
+
+    const fetchMock = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(buildAnthropicResponse("messages-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    )
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const response = await messageRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-session-id": "root-session-123",
+        },
+        body: JSON.stringify(createPayload()),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(selectionOwnershipLookupSessionId).toBeUndefined()
+    expect(selectionOwnershipWriteSessionId).toBe(getUUID("root-session-123"))
+  })
+
+  test("valid subagent requests look up normalized ownership session id during selection", async () => {
+    let selectionOwnershipLookupSessionId: string | undefined
+    let selectionOwnershipWriteSessionId: string | undefined
+
+    accountsManager.selectAccountForRequest = (_candidates, options) => {
+      selectionOwnershipLookupSessionId = options?.ownershipLookupSessionId
+      selectionOwnershipWriteSessionId = options?.ownershipWriteSessionId
+      return Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+    }
+
+    const fetchMock = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(buildAnthropicResponse("messages-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    )
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const response = await messageRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-session-id": "root-session-123",
+        },
+        body: JSON.stringify(
+          createPayload({
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"  sub-session  ","agent_id":"agent-1","agent_type":"Explore"}</system-reminder>',
+                  },
+                  {
+                    type: "text",
+                    text: "hello",
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(selectionOwnershipLookupSessionId).toBe(getUUID("sub-session"))
+    expect(selectionOwnershipWriteSessionId).toBeUndefined()
   })
 })
 

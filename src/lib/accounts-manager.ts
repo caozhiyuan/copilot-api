@@ -61,6 +61,7 @@ import {
   addAccountToRegistry,
 } from "./accounts-registry"
 import { PATHS } from "./paths"
+import { SessionOwnershipCache } from "./session-ownership"
 
 /** Quota cache TTL in milliseconds (45 seconds) for pre-request selection. */
 const QUOTA_CACHE_TTL = 45 * 1000
@@ -92,6 +93,11 @@ export interface AccountRequestCandidate {
 export type { QuotaReservation } from "./accounts-manager-quota"
 export type { AffinityContext } from "~/lib/account-affinity"
 
+export type AccountSelectionContext = AffinityContext & {
+  ownershipLookupSessionId?: string
+  ownershipWriteSessionId?: string
+}
+
 export type SelectAccountForRequestFailureReason =
   | "NO_ACCOUNTS"
   | "MODEL_NOT_SUPPORTED"
@@ -103,6 +109,10 @@ export type AccountSelectionReason =
   | "preferred_account_unavailable"
   | "no_session_key"
   | "rotated_after_miss"
+  | "subagent_owner_hit"
+  | "subagent_owner_miss"
+  | "subagent_owner_unusable_fallback"
+  | "subagent_marker_invalid_fallback"
 
 type SelectAccountForRequestSuccess = {
   ok: true
@@ -113,6 +123,8 @@ type SelectAccountForRequestSuccess = {
   reservation?: QuotaReservation
   /** Call after a successful upstream response to persist the affinity mapping. */
   confirmAffinity?: () => void
+  /** Call after a successful upstream response to persist the ownership mapping. */
+  confirmOwnership?: () => void
   /** Whether this selection was served from the affinity cache. */
   affinityHit?: boolean
   /** The cache key used for affinity lookup (e.g. `"session-1:claude-sonnet-4"`). */
@@ -158,6 +170,7 @@ export class AccountsManager {
   private vsCodeVersion?: string
   private accountAffinityEnabled = true
   private affinityCache = new AccountAffinityCache()
+  private sessionOwnership = new SessionOwnershipCache()
   private loadBalanceCursor = 0
 
   private quotaRefreshSnapshotByAccount = new WeakMap<
@@ -994,26 +1007,85 @@ export class AccountsManager {
    */
   async selectAccountForRequest(
     candidates: Array<AccountRequestCandidate>,
-    affinityContext?: AffinityContext,
+    context?: AccountSelectionContext,
   ): Promise<SelectAccountForRequestResult> {
     if (candidates.length === 0) {
       throw new Error("selectAccountForRequest requires at least one candidate")
     }
 
-    const orderedAccounts = [
+    const orderedAccounts = this.getOrderedEnabledAccounts()
+    const ownerSelection = await this.selectPreferredSessionOwner({
+      lookupSessionId: context?.ownershipLookupSessionId,
+      orderedAccounts,
+      candidates,
+    })
+    if (ownerSelection.result) {
+      this.attachConfirmOwnership(
+        ownerSelection.result,
+        context?.ownershipWriteSessionId,
+      )
+      return ownerSelection.result
+    }
+
+    const affinityPlan = this.buildAffinitySelectionPlan({
+      orderedAccounts,
+      candidates,
+      context,
+      ownerSelectionReason: ownerSelection.selectionReason,
+    })
+    const preferredSelection = await this.selectPreferredAffinityAccount({
+      cacheKey: affinityPlan.cacheKey,
+      orderedAccounts,
+      candidates,
+      initialSelectionReason: affinityPlan.initialSelectionReason,
+    })
+    if (preferredSelection.result) {
+      this.attachConfirmOwnership(
+        preferredSelection.result,
+        context?.ownershipWriteSessionId,
+      )
+      return preferredSelection.result
+    }
+
+    const result = await this.selectWithAliasFallback(
+      affinityPlan.accountsForSelection,
+      candidates,
+    )
+
+    return this.finalizeSelectedAccount({
+      result,
+      cacheKey: affinityPlan.cacheKey,
+      selectionReason: preferredSelection.selectionReason,
+      ownershipWriteSessionId: context?.ownershipWriteSessionId,
+    })
+  }
+
+  private getOrderedEnabledAccounts(): Array<AccountRuntime> {
+    return [
       ...(this.temporaryAccount ? [this.temporaryAccount] : []),
       ...this.accountOrder
         .map((id) => this.accounts.get(id))
         .filter((account): account is AccountRuntime => account !== undefined),
     ].filter((account) => isAccountEnabled(account))
+  }
 
-    // Resolve the affinity key once — reused for both lookup and write-back.
+  private buildAffinitySelectionPlan(params: {
+    orderedAccounts: Array<AccountRuntime>
+    candidates: Array<AccountRequestCandidate>
+    context?: AccountSelectionContext
+    ownerSelectionReason?: AccountSelectionReason
+  }): {
+    cacheKey: string | undefined
+    accountsForSelection: Array<AccountRuntime>
+    initialSelectionReason: AccountSelectionReason
+  } {
+    const { orderedAccounts, candidates, context, ownerSelectionReason } =
+      params
     const affinityKey =
-      this.accountAffinityEnabled && affinityContext ?
-        extractAffinityKey(affinityContext)
+      this.accountAffinityEnabled && context ?
+        extractAffinityKey(context)
       : undefined
-
-    const modelKey = affinityContext?.affinityModelId ?? candidates[0].modelId
+    const modelKey = context?.affinityModelId ?? candidates[0].modelId
     const cacheKey =
       affinityKey ? buildAffinityCacheKey(affinityKey, modelKey) : undefined
     const shouldRotate =
@@ -1021,47 +1093,96 @@ export class AccountsManager {
     const rotationStart =
       shouldRotate ? this.loadBalanceCursor % orderedAccounts.length : 0
 
-    const initialSelectionReason = getInitialSelectionReason(
+    return {
       cacheKey,
-      rotationStart,
-    )
-    const preferredSelection = await this.selectPreferredAffinityAccount({
-      cacheKey,
-      orderedAccounts,
-      candidates,
-      initialSelectionReason,
-    })
-    if (preferredSelection.result) {
-      return preferredSelection.result
+      accountsForSelection:
+        shouldRotate ? this.rotateAccounts(orderedAccounts) : orderedAccounts,
+      initialSelectionReason:
+        ownerSelectionReason
+        ?? getInitialSelectionReason(cacheKey, rotationStart),
+    }
+  }
+
+  private finalizeSelectedAccount(params: {
+    result: SelectAccountForRequestResult
+    cacheKey: string | undefined
+    selectionReason: AccountSelectionReason
+    ownershipWriteSessionId: string | undefined
+  }): SelectAccountForRequestResult {
+    const { result, cacheKey, selectionReason, ownershipWriteSessionId } =
+      params
+    if (!result.ok) {
+      return result
     }
 
-    const { selectionReason } = preferredSelection
+    this.loadBalanceCursor++
+    result.selectionReason = selectionReason
+    result.affinityCacheKey = cacheKey
 
-    // Step 2: Cache miss — rotate accounts for load balancing when affinity is enabled.
-    const accountsForSelection =
-      shouldRotate ? this.rotateAccounts(orderedAccounts) : orderedAccounts
-
-    const result = await this.selectWithAliasFallback(
-      accountsForSelection,
-      candidates,
-    )
-
-    if (result.ok) {
-      this.loadBalanceCursor++
-      result.selectionReason = selectionReason
-      result.affinityCacheKey = cacheKey
-    }
-
-    // Attach confirmAffinity callback so the handler can persist the mapping on success.
-    if (result.ok && cacheKey) {
-      const successResult = result
-      successResult.confirmAffinity = () => {
+    if (cacheKey) {
+      result.confirmAffinity = () => {
         if (!this.accountAffinityEnabled) return
-        this.affinityCache.set(cacheKey, successResult.account.id)
+        this.affinityCache.set(cacheKey, result.account.id)
       }
     }
 
+    this.attachConfirmOwnership(result, ownershipWriteSessionId)
     return result
+  }
+
+  private attachConfirmOwnership(
+    result: SelectAccountForRequestSuccess,
+    ownershipWriteSessionId: string | undefined,
+  ): void {
+    const rootSessionId = ownershipWriteSessionId?.trim()
+    if (!rootSessionId) {
+      return
+    }
+
+    result.confirmOwnership = () => {
+      this.sessionOwnership.set(rootSessionId, result.account.id)
+    }
+  }
+
+  private async selectPreferredSessionOwner(params: {
+    lookupSessionId: string | undefined
+    orderedAccounts: Array<AccountRuntime>
+    candidates: Array<AccountRequestCandidate>
+  }): Promise<{
+    result?: SelectAccountForRequestSuccess
+    selectionReason?: AccountSelectionReason
+  }> {
+    const { lookupSessionId, orderedAccounts, candidates } = params
+
+    if (lookupSessionId === undefined) {
+      return {}
+    }
+
+    const rootSessionId = lookupSessionId.trim()
+    if (!rootSessionId) {
+      return { selectionReason: "subagent_marker_invalid_fallback" }
+    }
+
+    const preferredAccountId = this.sessionOwnership.get(rootSessionId)
+    if (!preferredAccountId) {
+      return { selectionReason: "subagent_owner_miss" }
+    }
+
+    const ownerResult = await this.tryAffinityAccount(
+      preferredAccountId,
+      orderedAccounts,
+      candidates,
+    )
+    if (!ownerResult) {
+      return { selectionReason: "subagent_owner_unusable_fallback" }
+    }
+
+    ownerResult.selectionReason = "subagent_owner_hit"
+
+    return {
+      result: ownerResult,
+      selectionReason: "subagent_owner_hit",
+    }
   }
 
   /**

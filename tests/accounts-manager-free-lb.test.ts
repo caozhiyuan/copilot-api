@@ -641,3 +641,78 @@ test("affinity: disabled → no confirmAffinity callback even with context", asy
   if (!selection.ok) return
   expect(selection.confirmAffinity).toBeUndefined()
 })
+
+test("ownership: subagent owner hit keeps same account across different models", async () => {
+  const smallModel = makeModel({ id: "small-model" })
+  const bigModel = makeModel({ id: "big-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([smallModel, bigModel]),
+  }
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([smallModel, bigModel]),
+  }
+
+  const manager = setupManager([a, b])
+
+  const mainRequest = await manager.selectAccountForRequest(
+    [{ modelId: "small-model", endpoint: "/chat/completions" }],
+    { ownershipWriteSessionId: "root-session-1" },
+  )
+  expect(mainRequest.ok).toBe(true)
+  if (!mainRequest.ok) return
+  expect(mainRequest.account.id).toBe("a")
+  expect(mainRequest.confirmOwnership).toBeDefined()
+  mainRequest.confirmOwnership?.()
+
+  const subagentRequest = await manager.selectAccountForRequest(
+    [{ modelId: "big-model", endpoint: "/chat/completions" }],
+    { ownershipLookupSessionId: "root-session-1" },
+  )
+  expect(subagentRequest.ok).toBe(true)
+  if (!subagentRequest.ok) return
+
+  expect(subagentRequest.account.id).toBe("a")
+  expect(subagentRequest.selectionReason).toBe("subagent_owner_hit")
+  expect(subagentRequest.confirmOwnership).toBeUndefined()
+})
+
+test("ownership: subagent owner miss falls back to existing path", async () => {
+  const model = makeModel({ id: "free-model" })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([model]),
+  }
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([model]),
+  }
+
+  const manager = setupManager([a, b])
+
+  const selection = await manager.selectAccountForRequest(
+    [{ modelId: "free-model", endpoint: "/chat/completions" }],
+    { ownershipLookupSessionId: "missing-root-session" },
+  )
+  expect(selection.ok).toBe(true)
+  if (!selection.ok) return
+
+  expect(selection.account.id).toBe("a")
+  expect(selection.selectionReason).toBe("subagent_owner_miss")
+  expect(selection.confirmOwnership).toBeUndefined()
+})

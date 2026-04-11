@@ -193,6 +193,54 @@ describe("messages request log subagent persistence", () => {
     expect(log?.selection_reason).toBe("affinity_miss")
   })
 
+  test("logs invalid subagent markers with fallback selection reason", async () => {
+    const fetchMock = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(buildAnthropicResponse("messages-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    )
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const response = await messageRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          createPayload({
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"sub-session"}</system-reminder>',
+                  },
+                  {
+                    type: "text",
+                    text: "hello",
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const latest = getLatestRequestLog()
+    expect(latest?.is_subagent).toBe(0)
+    expect(latest?.selection_reason).toBe("subagent_marker_invalid_fallback")
+  })
+
   test("keeps tool_result continuations out of is_subagent without marker", async () => {
     const fetchMock = mock(() =>
       Promise.resolve(

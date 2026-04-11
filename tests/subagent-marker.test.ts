@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test"
 
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 
-import { parseSubagentMarkerFromFirstUser } from "~/routes/messages/subagent-marker"
+import {
+  inspectSubagentMarkerFromFirstUser,
+  parseSubagentMarkerFromFirstUser,
+} from "~/routes/messages/subagent-marker"
 
 const basePayload = (
   messages: AnthropicMessagesPayload["messages"],
@@ -12,8 +15,8 @@ const basePayload = (
   messages,
 })
 
-describe("parseSubagentMarkerFromFirstUser", () => {
-  test("parses valid marker from first user system reminder", () => {
+describe("inspectSubagentMarkerFromFirstUser", () => {
+  test("returns valid marker from first user system reminder", () => {
     const payload = basePayload([
       {
         role: "user",
@@ -32,14 +35,17 @@ SubagentStart hook additional context: __SUBAGENT_MARKER__{"session_id":"s-1","a
       },
     ])
 
-    expect(parseSubagentMarkerFromFirstUser(payload)).toEqual({
-      session_id: "s-1",
-      agent_id: "a-1",
-      agent_type: "claude-subagent",
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "valid",
+      marker: {
+        session_id: "s-1",
+        agent_id: "a-1",
+        agent_type: "claude-subagent",
+      },
     })
   })
 
-  test("parses marker when runtime appends a started line after json", () => {
+  test("returns valid marker when runtime appends a started line after json", () => {
     const payload = basePayload([
       {
         role: "user",
@@ -55,14 +61,17 @@ Agent Explore started (agent-1)
       },
     ])
 
-    expect(parseSubagentMarkerFromFirstUser(payload)).toEqual({
-      session_id: "s-1",
-      agent_id: "a-1",
-      agent_type: "claude-subagent",
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "valid",
+      marker: {
+        session_id: "s-1",
+        agent_id: "a-1",
+        agent_type: "claude-subagent",
+      },
     })
   })
 
-  test("parses marker when runtime appends multiple lines after json", () => {
+  test("returns valid marker when runtime appends multiple lines after json", () => {
     const payload = basePayload([
       {
         role: "user",
@@ -75,14 +84,17 @@ Agent Explore started (agent-1)
       },
     ])
 
-    expect(parseSubagentMarkerFromFirstUser(payload)).toEqual({
-      session_id: "s-2",
-      agent_id: "a-2",
-      agent_type: 'claude "subagent"',
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "valid",
+      marker: {
+        session_id: "s-2",
+        agent_id: "a-2",
+        agent_type: 'claude "subagent"',
+      },
     })
   })
 
-  test("returns null when marker json is invalid", () => {
+  test("returns invalid when marker json is invalid", () => {
     const payload = basePayload([
       {
         role: "user",
@@ -95,10 +107,13 @@ Agent Explore started (agent-1)
       },
     ])
 
-    expect(parseSubagentMarkerFromFirstUser(payload)).toBeNull()
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "invalid",
+      marker: null,
+    })
   })
 
-  test("returns null when marker json object is incomplete", () => {
+  test("returns invalid when marker prefix exists but json object is incomplete", () => {
     const payload = basePayload([
       {
         role: "user",
@@ -114,10 +129,13 @@ Agent Explore started (agent-1)
       },
     ])
 
-    expect(parseSubagentMarkerFromFirstUser(payload)).toBeNull()
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "invalid",
+      marker: null,
+    })
   })
 
-  test("returns null when required fields are missing", () => {
+  test("returns invalid when required fields are missing", () => {
     const payload = basePayload([
       {
         role: "user",
@@ -130,7 +148,33 @@ Agent Explore started (agent-1)
       },
     ])
 
-    expect(parseSubagentMarkerFromFirstUser(payload)).toBeNull()
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "invalid",
+      marker: null,
+    })
+  })
+
+  test("returns none when no marker exists", () => {
+    const payload = basePayload([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<system-reminder>普通提醒</system-reminder>",
+          },
+          {
+            type: "text",
+            text: "继续执行",
+          },
+        ],
+      },
+    ])
+
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "none",
+      marker: null,
+    })
   })
 
   test("only checks the first user message", () => {
@@ -151,6 +195,58 @@ Agent Explore started (agent-1)
             text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"s-2","agent_id":"a-2","agent_type":"opencode-subagent"}</system-reminder>',
           },
         ],
+      },
+    ])
+
+    expect(inspectSubagentMarkerFromFirstUser(payload)).toEqual({
+      kind: "none",
+      marker: null,
+    })
+  })
+})
+
+describe("parseSubagentMarkerFromFirstUser", () => {
+  test("returns marker for valid marker inspection", () => {
+    const payload = basePayload([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"s-1","agent_id":"a-1","agent_type":"claude-subagent"}</system-reminder>',
+          },
+        ],
+      },
+    ])
+
+    expect(parseSubagentMarkerFromFirstUser(payload)).toEqual({
+      session_id: "s-1",
+      agent_id: "a-1",
+      agent_type: "claude-subagent",
+    })
+  })
+
+  test("returns null for invalid marker inspection", () => {
+    const payload = basePayload([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<system-reminder>__SUBAGENT_MARKER__{invalid-json}</system-reminder>",
+          },
+        ],
+      },
+    ])
+
+    expect(parseSubagentMarkerFromFirstUser(payload)).toBeNull()
+  })
+
+  test("returns null when marker inspection is none", () => {
+    const payload = basePayload([
+      {
+        role: "user",
+        content: [{ type: "text", text: "没有 marker" }],
       },
     ])
 

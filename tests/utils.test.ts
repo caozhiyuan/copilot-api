@@ -5,7 +5,12 @@ import { createHash, randomUUID } from "node:crypto"
 
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 
-import { getRootSessionId, getUUID, resolveAffinityKey } from "../src/lib/utils"
+import {
+  getRootSessionId,
+  getUUID,
+  normalizeStableSessionId,
+  resolveAffinityKey,
+} from "../src/lib/utils"
 
 const jsonStyleUserId = JSON.stringify({
   device_id: "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
@@ -55,6 +60,21 @@ test("prints randomUUID and deterministic UUID for comparison", () => {
   expect(derivedAgain).toBe(derived)
   expect(legacy).not.toBe(derived)
   expect(random).not.toBe(derived)
+})
+
+describe("normalizeStableSessionId", () => {
+  test("trims whitespace and returns deterministic UUID", () => {
+    expect(normalizeStableSessionId("  session-123  ")).toBe(
+      getUUID("session-123"),
+    )
+  })
+
+  test("returns undefined for empty string, undefined, and null", () => {
+    expect(normalizeStableSessionId("")).toBeUndefined()
+    expect(normalizeStableSessionId("   ")).toBeUndefined()
+    expect(normalizeStableSessionId(undefined)).toBeUndefined()
+    expect(normalizeStableSessionId(null)).toBeUndefined()
+  })
 })
 
 test("getRootSessionId supports JSON-like user_id metadata", () => {
