@@ -493,6 +493,54 @@ test("affinity: different models with same key can route to different accounts",
   expect(selB.account.id).toBe("y")
 })
 
+test("affinity: affinityModelId shares stickiness across different candidate models", async () => {
+  const bigModel = makeModel({
+    id: "big-model",
+    supported_endpoints: ["/chat/completions"],
+  })
+  const smallModel = makeModel({
+    id: "small-model",
+    supported_endpoints: ["/chat/completions"],
+  })
+
+  const a: AccountRuntime = {
+    id: "a",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_a",
+    models: makeModelsResponse([bigModel, smallModel]),
+  }
+  const b: AccountRuntime = {
+    id: "b",
+    accountType: "individual",
+    addedAt: Date.now(),
+    githubToken: "ghp_b",
+    models: makeModelsResponse([bigModel, smallModel]),
+  }
+
+  const manager = setupManager([a, b])
+
+  const first = await manager.selectAccountForRequest(
+    [{ modelId: "small-model", endpoint: "/chat/completions" }],
+    { requestId: "shared-key", affinityModelId: "big-model" },
+  )
+  expect(first.ok).toBe(true)
+  if (!first.ok) return
+  expect(first.account.id).toBe("a")
+  first.confirmAffinity?.()
+
+  const second = await manager.selectAccountForRequest(
+    [{ modelId: "big-model", endpoint: "/chat/completions" }],
+    { requestId: "shared-key" },
+  )
+  expect(second.ok).toBe(true)
+  if (!second.ok) return
+
+  expect(second.account.id).toBe("a")
+  expect(second.affinityHit).toBe(true)
+  expect(second.affinityCacheKey).toBe("shared-key:big-model")
+})
+
 test("affinity: skips failed preferred account and falls back to sequential", async () => {
   const model = makeModel({ id: "free-model" })
 

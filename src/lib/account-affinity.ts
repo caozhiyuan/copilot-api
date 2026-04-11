@@ -2,6 +2,7 @@ import type { AccountRuntime } from "~/lib/types/account"
 
 export interface AffinityContext {
   requestId?: string
+  affinityModelId?: string
 }
 
 interface AffinityCacheEntry {

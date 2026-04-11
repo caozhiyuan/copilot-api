@@ -982,7 +982,7 @@ export class AccountsManager {
         extractAffinityKey(affinityContext)
       : undefined
 
-    const modelKey = candidates[0].modelId
+    const modelKey = affinityContext?.affinityModelId ?? candidates[0].modelId
     const cacheKey =
       affinityKey ? buildAffinityCacheKey(affinityKey, modelKey) : undefined
 

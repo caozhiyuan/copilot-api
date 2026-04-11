@@ -168,6 +168,7 @@ export async function handleCompletion(c: Context) {
 
   const anthropicBeta = c.req.header("anthropic-beta")
   const isCompact = isCompactRequest(anthropicPayload)
+  const originalRequestModel = anthropicPayload.model
 
   // Fix warmup probe: force small model for Claude Code warmup requests (CLAUDE_CODE_SUBAGENT_MODEL also works).
   if (anthropicBeta && isWarmupProbeRequest(anthropicPayload)) {
@@ -229,6 +230,10 @@ export async function handleCompletion(c: Context) {
 
   const endpointModel = findEndpointModel(clientModel)
   const resolvedClientModel = endpointModel?.id ?? clientModel
+  const affinityModelId =
+    clientModel !== originalRequestModel ?
+      (findEndpointModel(originalRequestModel)?.id ?? originalRequestModel)
+    : undefined
   const useMessagesApi = isMessagesApiEnabled()
 
   const candidates: Array<{ modelId: string; endpoint: string }> = []
@@ -251,6 +256,7 @@ export async function handleCompletion(c: Context) {
 
   const selection = await accountsManager.selectAccountForRequest(candidates, {
     requestId: sessionId ?? upstreamRequestId,
+    affinityModelId,
   })
   if (!selection.ok) {
     return handleSelectionFailure({
