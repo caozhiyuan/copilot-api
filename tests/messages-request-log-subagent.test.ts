@@ -1,24 +1,10 @@
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test"
-import fs from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+
+import "./shared-admin-db-test-home"
 
 import type { AccountRuntime } from "~/lib/types/account"
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 import type { Model } from "~/services/copilot/get-models"
-
-const testHome = await fs.mkdtemp(
-  path.join(os.tmpdir(), "copilot-api-subagent-request-log-"),
-)
-process.env.COPILOT_API_HOME = testHome
 
 const [{ accountsManager }, { getAdminDb }, { state }, { messageRoutes }] =
   await Promise.all([
@@ -31,6 +17,9 @@ const [{ accountsManager }, { getAdminDb }, { state }, { messageRoutes }] =
 type RequestLogSnapshot = {
   initiator: string | null
   is_subagent: number | null
+  affinity_key_used: string | null
+  affinity_key_source: string | null
+  selection_reason: string | null
 }
 
 const fetchHolder = globalThis as unknown as { fetch: typeof fetch }
@@ -89,6 +78,8 @@ function buildSelection(endpoint: string, modelId: string) {
     costUnits: 0,
     confirmAffinity: mock(() => {}),
     affinityHit: false,
+    affinityCacheKey: "test-cache-key",
+    selectionReason: "affinity_miss" as const,
   }
 }
 
@@ -122,7 +113,7 @@ function createPayload(
 function getLatestRequestLog(): RequestLogSnapshot | null {
   return getAdminDb()
     .query(
-      "SELECT initiator, is_subagent FROM request_log ORDER BY id DESC LIMIT 1;",
+      "SELECT initiator, is_subagent, affinity_key_used, affinity_key_source, selection_reason FROM request_log ORDER BY id DESC LIMIT 1;",
     )
     .get() as RequestLogSnapshot | null
 }
@@ -146,12 +137,6 @@ afterEach(() => {
   accountsManager.markAccountFailed = originalMarkFailed
 })
 
-afterAll(async () => {
-  // getAdminDb() is a shared singleton for the Bun test process.
-  // Closing it here makes later test files fail with "Database has closed".
-  await fs.rm(testHome, { recursive: true, force: true })
-})
-
 describe("messages request log subagent persistence", () => {
   test("writes is_subagent = 1 for __SUBAGENT_MARKER__ requests", async () => {
     const fetchMock = mock(() =>
@@ -169,10 +154,15 @@ describe("messages request log subagent persistence", () => {
     // @ts-expect-error test mock only implements the used subset
     fetchHolder.fetch = fetchMock
 
+    const stableSessionId = "stable-session-for-subagent-test"
+
     const response = await messageRoutes.fetch(
       new Request("http://local/", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "x-session-id": stableSessionId,
+        },
         body: JSON.stringify(
           createPayload({
             messages: [
@@ -196,7 +186,11 @@ describe("messages request log subagent persistence", () => {
     )
 
     expect(response.status).toBe(200)
-    expect(getLatestRequestLog()?.is_subagent).toBe(1)
+    const log = getLatestRequestLog()
+    expect(log?.is_subagent).toBe(1)
+    expect(log?.affinity_key_used).toBe(stableSessionId)
+    expect(log?.affinity_key_source).toBe("x_session_id")
+    expect(log?.selection_reason).toBe("affinity_miss")
   })
 
   test("keeps tool_result continuations out of is_subagent without marker", async () => {
@@ -238,10 +232,13 @@ describe("messages request log subagent persistence", () => {
       }),
     )
 
+    const latest = getLatestRequestLog()
+
     expect(response.status).toBe(200)
-    expect(getLatestRequestLog()).toEqual({
-      initiator: "agent",
-      is_subagent: 0,
-    })
+    expect(latest?.initiator).toBe("agent")
+    expect(latest?.is_subagent).toBe(0)
+    expect(typeof latest?.affinity_key_used).toBe("string")
+    expect(typeof latest?.affinity_key_source).toBe("string")
+    expect(latest?.selection_reason).toBe("affinity_miss")
   })
 })

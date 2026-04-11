@@ -6,7 +6,8 @@ import { getAliasTargetSet } from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import {
   computeDiff,
-  extractErrorDetails,
+  extractErrorObservability,
+  shouldMarkAccountFailed,
   toAccountContext,
 } from "~/lib/handler-utils"
 import {
@@ -195,6 +196,7 @@ async function runEmbeddingsWithAccount({
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   let finishedAtMs: number | undefined
 
@@ -210,14 +212,15 @@ async function runEmbeddingsWithAccount({
   } catch (error) {
     finishedAtMs = Date.now()
 
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
 
     httpStatus = details.httpStatus
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
     }
 
@@ -260,6 +263,7 @@ async function runEmbeddingsWithAccount({
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }

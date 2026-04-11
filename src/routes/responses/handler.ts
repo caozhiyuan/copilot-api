@@ -3,16 +3,17 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 import { randomUUID } from "node:crypto"
 
-import { accountsManager } from "~/lib/accounts-manager"
-import { awaitApproval } from "~/lib/approval"
 import {
-  getAliasTargetSet,
-  getConfig,
-  isResponsesApiWebSearchEnabled,
-} from "~/lib/config"
+  accountsManager,
+  type AccountSelectionReason,
+} from "~/lib/accounts-manager"
+import { awaitApproval } from "~/lib/approval"
+import { getAliasTargetSet, isResponsesApiWebSearchEnabled } from "~/lib/config"
 import {
   computeDiff,
-  extractErrorDetails,
+  extractErrorObservability,
+  getUserVisibleErrorMessage,
+  shouldMarkAccountFailed,
   toAccountContext,
 } from "~/lib/handler-utils"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
@@ -29,11 +30,14 @@ import {
   generateRequestIdFromPayload,
   getUUID,
   parseUserIdMetadata,
+  resolveAffinityKey,
+  type AffinityKeySource,
 } from "~/lib/utils"
 import {
   createResponses,
   type ResponsesPayload,
   type ResponsesResult,
+  type ResponseErrorEvent,
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
 
@@ -42,6 +46,10 @@ import {
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
   getResponsesRequestOptions,
+  getStreamChunkFields,
+  isAsyncIterable,
+  removeWebSearchTool,
+  useFunctionApplyPatch,
 } from "./utils"
 
 const logger = createHandlerLogger("responses-handler")
@@ -104,6 +112,16 @@ export const handleResponses = async (c: Context) => {
     normalizedPromptCacheKey,
   )
 
+  const headerSessionId = c.req.header("x-session-id") ?? null
+  const affinityKey = resolveAffinityKey({
+    promptCacheKey: requestBodyPromptCacheKey,
+    metadataSessionId,
+    headerSessionId,
+    upstreamRequestId,
+  })
+  request.affinityKeyUsed = affinityKey.affinityKeyUsed
+  request.affinityKeySource = affinityKey.affinityKeySource
+
   const selection = await accountsManager.selectAccountForRequest(
     [
       {
@@ -112,7 +130,7 @@ export const handleResponses = async (c: Context) => {
       },
     ],
     {
-      requestId: normalizedPromptCacheKey ?? upstreamRequestId,
+      requestId: affinityKey.requestId,
     },
   )
 
@@ -133,6 +151,7 @@ export const handleResponses = async (c: Context) => {
 
   request.affinityHit = selection.affinityHit
   request.affinityCacheKey = selection.affinityCacheKey
+  request.selectionReason = selection.selectionReason
 
   const upstreamPayload = { ...payload, model: selectedModel.id }
   useFunctionApplyPatch(upstreamPayload)
@@ -151,7 +170,7 @@ export const handleResponses = async (c: Context) => {
 
   const accountCtx = toAccountContext(account)
   const upstreamSessionId = getUUID(
-    normalizedPromptCacheKey ?? upstreamRequestId,
+    normalizedPromptCacheKey ?? headerSessionId ?? upstreamRequestId,
   )
   request.upstreamRequestId = upstreamRequestId
   request.upstreamSessionId = upstreamSessionId
@@ -213,6 +232,9 @@ type RequestContext = {
   upstreamRequestId?: string
   upstreamSessionId?: string
 
+  affinityKeyUsed?: string
+  affinityKeySource?: AffinityKeySource
+  selectionReason?: AccountSelectionReason
   affinityHit?: boolean
   affinityCacheKey?: string
 }
@@ -221,7 +243,59 @@ type Store = ReturnType<typeof getRequestHistoryStore>
 
 type RequestLogInsert = Parameters<Store["insert"]>[0]
 
+type ObservedErrorState = {
+  httpStatus: number
+  errorName?: string
+  errorStatus?: number
+  errorMessage?: string
+  upstreamErrorMessageRaw?: string
+}
+
 type StreamSseStream = Parameters<Parameters<typeof streamSSE>[1]>[0]
+
+async function observeRequestError(
+  accountId: string,
+  error: unknown,
+): Promise<ObservedErrorState> {
+  const details = await extractErrorObservability(error)
+
+  if (shouldMarkAccountFailed(details)) {
+    accountsManager.markAccountFailed(accountId, "Unauthorized (401)")
+  }
+
+  return {
+    httpStatus: details.httpStatus,
+    errorName: details.errorName,
+    errorStatus: details.errorStatus,
+    errorMessage: details.errorMessage,
+    upstreamErrorMessageRaw: details.upstreamErrorMessageRaw,
+  }
+}
+
+function buildResponsesStreamError(message: string): ResponseErrorEvent {
+  return {
+    type: "error",
+    code: null,
+    message,
+    param: null,
+    sequence_number: 0,
+  }
+}
+
+async function writeResponsesStreamError(
+  stream: StreamSseStream,
+  message: string,
+): Promise<void> {
+  try {
+    const errorEvent = buildResponsesStreamError(message)
+    await stream.writeSSE({
+      event: errorEvent.type,
+      data: JSON.stringify(errorEvent),
+    })
+  } catch (streamError) {
+    logger.warn("Failed to write Responses stream error event:", streamError)
+  }
+}
 
 function buildRequestContext(c: Context): RequestContext {
   const requestId = randomUUID()
@@ -271,6 +345,9 @@ function insertRequestLog(
     promptCacheKey: request.promptCacheKey,
     initiator: request.initiator,
     upstreamRequestId: request.upstreamRequestId,
+    affinityKeyUsed: request.affinityKeyUsed,
+    affinityKeySource: request.affinityKeySource,
+    selectionReason: request.selectionReason,
     affinityHit: request.affinityHit,
     affinityCacheKey: request.affinityCacheKey,
     ...record,
@@ -347,21 +424,6 @@ function extractUsageFromChunkData(
     return usage.usageJson ? usage : undefined
   } catch {
     return undefined
-  }
-}
-
-type StreamChunk = {
-  id?: string
-  event?: string
-  data?: string
-}
-
-function getStreamChunkFields(chunk: unknown): StreamChunk {
-  const c = chunk as StreamChunk
-  return {
-    id: c.id,
-    event: c.event,
-    data: c.data,
   }
 }
 
@@ -469,9 +531,9 @@ async function handleUpstreamCreateError(params: {
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
 
   const finishedAtMs = Date.now()
-  const details = extractErrorDetails(error)
+  const details = await extractErrorObservability(error)
 
-  if (details.unauthorized) {
+  if (shouldMarkAccountFailed(details)) {
     accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
   }
 
@@ -502,6 +564,7 @@ async function handleUpstreamCreateError(params: {
     errorName: details.errorName,
     errorStatus: details.errorStatus,
     errorMessage: details.errorMessage,
+    upstreamErrorMessageRaw: details.upstreamErrorMessageRaw,
   })
 
   throw error
@@ -535,6 +598,7 @@ async function handleNonStreamingUpstreamResult(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   const finishedAtMs = Date.now()
 
@@ -545,12 +609,13 @@ async function handleNonStreamingUpstreamResult(params: {
     })
     return c.json(result)
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
     httpStatus = details.httpStatus
 
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
     throw error
   } finally {
@@ -582,6 +647,7 @@ async function handleNonStreamingUpstreamResult(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -615,6 +681,7 @@ async function streamResponsesAndLog(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   try {
     for await (const chunk of response) {
@@ -639,12 +706,19 @@ async function streamResponsesAndLog(params: {
       })
     }
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
     logger.warn("Responses streaming error:", error)
+
+    if (shouldMarkAccountFailed(details)) {
+      accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
+    }
+
+    await writeResponsesStreamError(stream, getUserVisibleErrorMessage(details))
   } finally {
     const finishedAtMs = Date.now()
 
@@ -677,6 +751,7 @@ async function streamResponsesAndLog(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -708,11 +783,8 @@ async function handleNonStreamingResponses(params: {
     premiumUnlimitedBefore,
   } = params
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
-  let httpStatus = 200
   let usage: NormalizedUsage = {}
-  let errorName: string | undefined
-  let errorStatus: number | undefined
-  let errorMessage: string | undefined
+  let errorState: ObservedErrorState = { httpStatus: 200 }
   let finishedAtMs: number | undefined
   try {
     const response = await createResponses(
@@ -725,13 +797,12 @@ async function handleNonStreamingResponses(params: {
       },
       accountCtx,
     )
+    if (isAsyncIterable(response)) {
+      throw new Error("Upstream returned a stream unexpectedly")
+    }
     selection.confirmAffinity?.()
     finishedAtMs = Date.now()
-    const streamResponse = handleUnexpectedResponsesStream(c, response)
-    if (streamResponse) {
-      return streamResponse
-    }
-    const result = response as ResponsesResult
+    const result = response
     usage = extractResponsesUsageFromResult(result)
     debugJsonTail(logger, "Forwarding native Responses result:", {
       value: result,
@@ -740,14 +811,7 @@ async function handleNonStreamingResponses(params: {
     return c.json(result)
   } catch (error) {
     finishedAtMs = Date.now()
-    const details = extractErrorDetails(error)
-    httpStatus = details.httpStatus
-    errorName = details.errorName
-    errorStatus = details.errorStatus
-    errorMessage = details.errorMessage
-    if (details.unauthorized) {
-      accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
-    }
+    errorState = await observeRequestError(account.id, error)
     throw error
   } finally {
     const finishedAtMsFinal = finishedAtMs ?? Date.now()
@@ -776,81 +840,11 @@ async function handleNonStreamingResponses(params: {
       ),
       premiumUnlimitedBefore,
       premiumUnlimitedAfter,
-      httpStatus,
-      errorName,
-      errorStatus,
-      errorMessage,
+      httpStatus: errorState.httpStatus,
+      errorName: errorState.errorName,
+      errorStatus: errorState.errorStatus,
+      errorMessage: errorState.errorMessage,
+      upstreamErrorMessageRaw: errorState.upstreamErrorMessageRaw,
     })
   }
-}
-
-function handleUnexpectedResponsesStream(
-  c: Context,
-  response: Awaited<ReturnType<typeof createResponses>>,
-): Response | null {
-  if (!isAsyncIterable(response)) {
-    return null
-  }
-
-  // Defensive guard: upstream returned stream unexpectedly.
-  logger.debug("Forwarding native Responses stream (unexpected)")
-
-  return streamSSE(c, async (stream) => {
-    const idTracker = createStreamIdTracker()
-
-    for await (const chunk of response) {
-      const { id, event, data } = getStreamChunkFields(chunk)
-      const processedData = fixStreamIds(data ?? "", event, idTracker)
-      debugJson(logger, "Responses stream chunk:", chunk)
-      await stream.writeSSE({
-        id,
-        event,
-        data: processedData,
-      })
-    }
-  })
-}
-
-const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
-  Boolean(value)
-  && typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
-
-const useFunctionApplyPatch = (payload: ResponsesPayload): void => {
-  const config = getConfig()
-  const enabled = config.useFunctionApplyPatch ?? true
-  if (!enabled) return
-
-  logger.debug("Using function tool apply_patch for responses")
-  if (Array.isArray(payload.tools)) {
-    const toolsArr = payload.tools
-    for (let i = 0; i < toolsArr.length; i++) {
-      const t = toolsArr[i]
-      if (t.type === "custom" && t.name === "apply_patch") {
-        toolsArr[i] = {
-          type: "function",
-          name: t.name,
-          description: "Use the `apply_patch` tool to edit files",
-          parameters: {
-            type: "object",
-            properties: {
-              input: {
-                type: "string",
-                description: "The entire contents of the apply_patch command",
-              },
-            },
-            required: ["input"],
-          },
-          strict: false,
-        }
-      }
-    }
-  }
-}
-
-const removeWebSearchTool = (payload: ResponsesPayload): void => {
-  if (!Array.isArray(payload.tools) || payload.tools.length === 0) return
-
-  payload.tools = payload.tools.filter((t) => {
-    return t.type !== "web_search"
-  })
 }

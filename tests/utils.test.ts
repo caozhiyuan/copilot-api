@@ -1,11 +1,11 @@
 import type { Context } from "hono"
 
-import { expect, test } from "bun:test"
+import { expect, test, describe } from "bun:test"
 import { createHash, randomUUID } from "node:crypto"
 
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 
-import { getRootSessionId, getUUID } from "../src/lib/utils"
+import { getRootSessionId, getUUID, resolveAffinityKey } from "../src/lib/utils"
 
 const jsonStyleUserId = JSON.stringify({
   device_id: "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
@@ -95,4 +95,76 @@ test("getRootSessionId keeps legacy parsing before JSON fallback", () => {
   expect(getRootSessionId(anthropicPayload, context)).toBe(
     getUUID("7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b"),
   )
+})
+
+describe("resolveAffinityKey", () => {
+  test("prefers prompt_cache_key over all other sources", () => {
+    const result = resolveAffinityKey({
+      promptCacheKey: "pck-value",
+      metadataSessionId: "meta-session",
+      headerSessionId: "header-session",
+      upstreamRequestId: "upstream-req",
+    })
+
+    expect(result.requestId).toBe("pck-value")
+    expect(result.affinityKeyUsed).toBe("pck-value")
+    expect(result.affinityKeySource).toBe("prompt_cache_key")
+  })
+
+  test("uses metadata_session_id with getUUID when prompt_cache_key is absent", () => {
+    const result = resolveAffinityKey({
+      metadataSessionId: "meta-session",
+      headerSessionId: "header-session",
+      upstreamRequestId: "upstream-req",
+    })
+
+    expect(result.requestId).toBe(getUUID("meta-session"))
+    expect(result.affinityKeyUsed).toBe("meta-session")
+    expect(result.affinityKeySource).toBe("metadata_session_id")
+  })
+
+  test("uses x_session_id with getUUID when prompt_cache_key and metadata are absent", () => {
+    const result = resolveAffinityKey({
+      headerSessionId: "header-session",
+      upstreamRequestId: "upstream-req",
+    })
+
+    expect(result.requestId).toBe(getUUID("header-session"))
+    expect(result.affinityKeyUsed).toBe("header-session")
+    expect(result.affinityKeySource).toBe("x_session_id")
+  })
+
+  test("falls back to upstream_request_id_fallback when all other sources are absent", () => {
+    const result = resolveAffinityKey({
+      upstreamRequestId: "upstream-req",
+    })
+
+    expect(result.requestId).toBe("upstream-req")
+    expect(result.affinityKeyUsed).toBe("upstream-req")
+    expect(result.affinityKeySource).toBe("upstream_request_id_fallback")
+  })
+
+  test("treats null and undefined values as absent", () => {
+    const result = resolveAffinityKey({
+      promptCacheKey: null,
+      metadataSessionId: null,
+      headerSessionId: null,
+      upstreamRequestId: "upstream-req",
+    })
+
+    expect(result.requestId).toBe("upstream-req")
+    expect(result.affinityKeyUsed).toBe("upstream-req")
+    expect(result.affinityKeySource).toBe("upstream_request_id_fallback")
+  })
+
+  test("skips empty string prompt_cache_key", () => {
+    const result = resolveAffinityKey({
+      promptCacheKey: "",
+      metadataSessionId: "meta-session",
+      upstreamRequestId: "upstream-req",
+    })
+
+    expect(result.requestId).toBe(getUUID("meta-session"))
+    expect(result.affinityKeySource).toBe("metadata_session_id")
+  })
 })

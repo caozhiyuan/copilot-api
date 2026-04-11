@@ -210,6 +210,9 @@ describe("RequestHistoryStore", () => {
       clientIpSource: "x-forwarded-for",
       userAgent: "ua",
       isSubagent: true,
+      affinityKeyUsed: "session-key-1",
+      affinityKeySource: "x_session_id",
+      selectionReason: "affinity_miss",
       tokensInput: 10,
       tokensOutput: 20,
       tokensTotal: 30,
@@ -221,6 +224,7 @@ describe("RequestHistoryStore", () => {
       premiumUnlimitedBefore: false,
       premiumUnlimitedAfter: false,
       httpStatus: 200,
+      upstreamErrorMessageRaw: "test error body",
     })
 
     const row = store.getByRequestId("r1")
@@ -230,7 +234,11 @@ describe("RequestHistoryStore", () => {
     expect(row?.stream).toBe(0)
     expect(row?.is_subagent).toBe(1)
     expect(row?.premium_unlimited_before).toBe(0)
-    expect(store.meta().userVersion).toBeGreaterThanOrEqual(6)
+    expect(row?.affinity_key_used).toBe("session-key-1")
+    expect(row?.affinity_key_source).toBe("x_session_id")
+    expect(row?.selection_reason).toBe("affinity_miss")
+    expect(row?.upstream_error_message_raw).toBe("test error body")
+    expect(store.meta().userVersion).toBeGreaterThanOrEqual(7)
   })
 
   test("initAdminDb is idempotent when is_subagent already exists but user_version is stale", () => {
@@ -245,7 +253,17 @@ describe("RequestHistoryStore", () => {
         .all()
         .some((row) => (row as { name?: string }).name === "is_subagent"),
     ).toBe(true)
-    expect(db.query("PRAGMA user_version;").get()).toEqual({ user_version: 6 })
+
+    const columns = db
+      .query("PRAGMA table_info(request_log);")
+      .all()
+      .map((row) => (row as { name: string }).name)
+    expect(columns).toContain("affinity_key_used")
+    expect(columns).toContain("affinity_key_source")
+    expect(columns).toContain("selection_reason")
+    expect(columns).toContain("upstream_error_message_raw")
+
+    expect(db.query("PRAGMA user_version;").get()).toEqual({ user_version: 7 })
   })
 
   test("query orders by id DESC and supports cursor paging", () => {

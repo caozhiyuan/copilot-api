@@ -81,6 +81,13 @@ export function getAdminDbUserVersion(db: Database = getAdminDb()): number {
   }
 }
 
+function hasRequestLogColumn(db: Database, columnName: string): boolean {
+  return db
+    .query("PRAGMA table_info(request_log);")
+    .all()
+    .some((row) => (row as { name?: string }).name === columnName)
+}
+
 function migrateV1(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS request_log (
@@ -147,7 +154,7 @@ function migrateAdminDb(db: Database): void {
   } | null
   const current = row?.user_version ?? 0
 
-  if (current >= 6) {
+  if (current >= 7) {
     return
   }
 
@@ -213,15 +220,33 @@ function migrateAdminDb(db: Database): void {
 
   if (current < 6) {
     // v6: explicit subagent request tracking column
-    const hasIsSubagent = db
-      .query("PRAGMA table_info(request_log);")
-      .all()
-      .some((row) => (row as { name?: string }).name === "is_subagent")
-
-    if (!hasIsSubagent) {
+    if (!hasRequestLogColumn(db, "is_subagent")) {
       db.run("ALTER TABLE request_log ADD COLUMN is_subagent INTEGER;")
     }
 
     db.run("PRAGMA user_version = 6;")
+  }
+
+  if (current < 7) {
+    // v7: request-level affinity and upstream error observability columns
+    if (!hasRequestLogColumn(db, "affinity_key_used")) {
+      db.run("ALTER TABLE request_log ADD COLUMN affinity_key_used TEXT;")
+    }
+
+    if (!hasRequestLogColumn(db, "affinity_key_source")) {
+      db.run("ALTER TABLE request_log ADD COLUMN affinity_key_source TEXT;")
+    }
+
+    if (!hasRequestLogColumn(db, "selection_reason")) {
+      db.run("ALTER TABLE request_log ADD COLUMN selection_reason TEXT;")
+    }
+
+    if (!hasRequestLogColumn(db, "upstream_error_message_raw")) {
+      db.run(
+        "ALTER TABLE request_log ADD COLUMN upstream_error_message_raw TEXT;",
+      )
+    }
+
+    db.run("PRAGMA user_version = 7;")
   }
 }

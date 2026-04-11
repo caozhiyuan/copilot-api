@@ -302,6 +302,10 @@
       "quota": "额度",
       "affinityHit": "亲和性命中",
       "affinityCacheKey": "亲和性缓存键",
+      "affinityKeyUsed": "实际使用的亲和性键",
+      "affinityKeySource": "亲和性键来源",
+      "selectionReason": "选中原因",
+      "upstreamErrorMessageRaw": "上游原始错误（脱敏后）",
       "duration": "耗时（s）",
       "ttfb": "首字节（s）"
     },
@@ -312,7 +316,11 @@
       "promptCacheKey": "用于提示词去重的缓存键",
       "initiator": "发起此请求的组件或客户端",
       "upstreamRequestId": "上游提供商返回的请求 ID",
-      "affinityCacheKey": "用于账号亲和性路由的缓存键",
+      "affinityCacheKey": "请求成功后持久化保存、用于账号亲和性命中的缓存键",
+      "affinityKeyUsed": "本次请求在评估账号亲和性时实际使用的键值",
+      "affinityKeySource": "亲和性键的来源：prompt_cache_key、metadata.session_id、x-session-id，或 request-id 回退值",
+      "selectionReason": "账号选择器记录的高层原因，用于解释这次为何选中当前账号",
+      "upstreamErrorMessageRaw": "为调试和所有权不匹配分析保存的、已脱敏的上游原始错误消息",
       "duration": "请求总处理时间（秒）",
       "ttfb": "首字节时间（秒）— 收到第一个响应块前的延迟"
     },
