@@ -6,6 +6,7 @@ import type { Model } from "~/services/copilot/get-models"
 
 import { accountsManager } from "~/lib/accounts-manager"
 import { getSmallModel } from "~/lib/config"
+import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 import { getUUID } from "~/lib/utils"
 import { messageRoutes } from "~/routes/messages/route"
@@ -195,7 +196,7 @@ afterEach(() => {
   accountsManager.markAccountFailed = originalMarkFailed
 })
 
-describe("messages handler orchestration", () => {
+describe("messages handler routing", () => {
   test("routes to the Messages API when selection chooses /v1/messages", async () => {
     let requestedUrl = ""
     let upstreamBody: Record<string, unknown> | undefined
@@ -324,7 +325,9 @@ describe("messages handler orchestration", () => {
     expect(upstreamBody?.model).toBe("chat-model")
     expect(body.content[0].text).toBe("chat")
   })
+})
 
+describe("messages handler affinity context", () => {
   test("warmup requests switch candidate model before account selection", async () => {
     let selectionCandidates: Array<{ modelId: string; endpoint: string }> = []
     let selectionRequestId: string | undefined
@@ -388,5 +391,118 @@ describe("messages handler orchestration", () => {
     expect(selectionCandidates[0]?.modelId).toBe(getSmallModel())
     expect(selectionCandidates[0]?.endpoint).toBe("/v1/messages")
     expect(selectionRequestId).toBe(expectedSessionId)
+  })
+
+  test("metadata session_id takes priority over x-session-id header for affinity key", async () => {
+    let selectionRequestId: string | undefined
+
+    accountsManager.selectAccountForRequest = (_candidates, options) => {
+      selectionRequestId = options?.requestId
+      return Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+    }
+
+    const fetchMock = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(buildAnthropicResponse("messages-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    )
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const metadataSessionId = "metadata-session-id-123"
+    const payload = createPayload({
+      metadata: {
+        user_id: JSON.stringify({
+          device_id: "device-1",
+          session_id: metadataSessionId,
+        }),
+      },
+    })
+
+    const response = await messageRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-session-id": "header-session-should-be-ignored",
+        },
+        body: JSON.stringify(payload),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(selectionRequestId).toBe(getUUID(metadataSessionId))
+  })
+})
+
+describe("messages handler unauthorized classification", () => {
+  test("ownership mismatch 401 does not trigger markAccountFailed", async () => {
+    const markFailedSpy = mock(() => {})
+
+    accountsManager.selectAccountForRequest = () =>
+      Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+    accountsManager.markAccountFailed = markFailedSpy
+
+    const fetchMock = mock(() =>
+      Promise.reject(
+        new HTTPError(
+          'input item ID "msg_abc" does not belong to this connection',
+          new Response("ownership mismatch", { status: 401 }),
+        ),
+      ),
+    )
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const response = await messageRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(createPayload()),
+      }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(markFailedSpy).not.toHaveBeenCalled()
+  })
+
+  test("genuine unauthorized 401 does trigger markAccountFailed", async () => {
+    const markFailedSpy = mock(() => {})
+
+    accountsManager.selectAccountForRequest = () =>
+      Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+    accountsManager.markAccountFailed = markFailedSpy
+
+    const fetchMock = mock(() =>
+      Promise.reject(
+        new HTTPError(
+          "Unauthorized",
+          new Response("unauthorized", { status: 401 }),
+        ),
+      ),
+    )
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const response = await messageRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(createPayload()),
+      }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(markFailedSpy).toHaveBeenCalledTimes(1)
+    expect(markFailedSpy).toHaveBeenCalledWith("octocat", "Unauthorized (401)")
   })
 })

@@ -237,3 +237,66 @@ export const getUUID = (content: string): string => {
 
   return `${uuidHex.slice(0, 8)}-${uuidHex.slice(8, 12)}-${uuidHex.slice(12, 16)}-${uuidHex.slice(16, 20)}-${uuidHex.slice(20)}`
 }
+
+export type AffinityKeySource =
+  | "prompt_cache_key"
+  | "metadata_session_id"
+  | "x_session_id"
+  | "upstream_request_id_fallback"
+
+export interface ResolvedAffinityKey {
+  requestId: string
+  affinityKeyUsed: string
+  affinityKeySource: AffinityKeySource
+}
+
+/**
+ * Unified affinity key resolution with fixed priority:
+ * 1. payload.prompt_cache_key (used as-is)
+ * 2. metadata.user_id.session_id (normalized via getUUID)
+ * 3. x-session-id header (normalized via getUUID)
+ * 4. generateRequestIdFromPayload fallback (used as-is)
+ */
+export const resolveAffinityKey = (params: {
+  promptCacheKey?: string | null
+  metadataSessionId?: string | null
+  headerSessionId?: string | null
+  upstreamRequestId: string
+}): ResolvedAffinityKey => {
+  const {
+    promptCacheKey,
+    metadataSessionId,
+    headerSessionId,
+    upstreamRequestId,
+  } = params
+
+  if (promptCacheKey) {
+    return {
+      requestId: promptCacheKey,
+      affinityKeyUsed: promptCacheKey,
+      affinityKeySource: "prompt_cache_key",
+    }
+  }
+
+  if (metadataSessionId) {
+    return {
+      requestId: getUUID(metadataSessionId),
+      affinityKeyUsed: metadataSessionId,
+      affinityKeySource: "metadata_session_id",
+    }
+  }
+
+  if (headerSessionId) {
+    return {
+      requestId: getUUID(headerSessionId),
+      affinityKeyUsed: headerSessionId,
+      affinityKeySource: "x_session_id",
+    }
+  }
+
+  return {
+    requestId: upstreamRequestId,
+    affinityKeyUsed: upstreamRequestId,
+    affinityKeySource: "upstream_request_id_fallback",
+  }
+}

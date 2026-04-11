@@ -3,12 +3,17 @@ import type { Context } from "hono"
 import { streamSSE, type SSEMessage } from "hono/streaming"
 import { randomUUID } from "node:crypto"
 
-import { accountsManager } from "~/lib/accounts-manager"
+import {
+  accountsManager,
+  type AccountSelectionReason,
+} from "~/lib/accounts-manager"
 import { awaitApproval } from "~/lib/approval"
 import { getAliasTargetSet } from "~/lib/config"
 import {
   computeDiff,
-  extractErrorDetails,
+  extractErrorObservability,
+  getUserVisibleErrorMessage,
+  shouldMarkAccountFailed,
   toAccountContext,
 } from "~/lib/handler-utils"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
@@ -26,6 +31,8 @@ import {
   getUUID,
   isNullish,
   parseUserIdMetadata,
+  resolveAffinityKey,
+  type AffinityKeySource,
 } from "~/lib/utils"
 import {
   createChatCompletions,
@@ -39,62 +46,59 @@ const logger = createHandlerLogger("chat-completions-handler")
 
 const CHAT_COMPLETIONS_ENDPOINT = "/chat/completions"
 
+function buildChatCompletionCandidates(clientModel: string) {
+  return [
+    {
+      modelId: clientModel,
+      endpoint: CHAT_COMPLETIONS_ENDPOINT,
+    },
+  ]
+}
+
 export async function handleCompletion(c: Context) {
   await checkRateLimit(state)
-
   const store = getRequestHistoryStore()
   const request = buildRequestContext(c)
-
   const payload = await c.req.json<ChatCompletionsPayload>()
   const clientModel = payload.model
   const streamRequested = Boolean(payload.stream)
-
   const initiator = getChatInitiator(payload.messages)
-  const userId = payload.user ?? undefined
-  const { safetyIdentifier, sessionId: promptCacheKey } =
-    parseUserIdMetadata(userId)
-  const normalizedSafetyIdentifier = safetyIdentifier ?? undefined
-  const normalizedPromptCacheKey = promptCacheKey ?? undefined
-
-  request.userId = userId
-  request.safetyIdentifier = normalizedSafetyIdentifier
-  request.promptCacheKey = normalizedPromptCacheKey
-  request.initiator = initiator
-
-  const blockedTargets = getAliasTargetSet()
-  if (blockedTargets.has(clientModel.toLowerCase())) {
+  const normalizedPromptCacheKey = applyChatRequestMetadata(
+    request,
+    payload,
+    initiator,
+  )
+  if (getAliasTargetSet().has(clientModel.toLowerCase())) {
     recordSelectionFailure(store, {
       request,
       clientModel,
       stream: streamRequested,
       reason: "MODEL_NOT_SUPPORTED",
     })
-
     return selectionFailureResponse(c, {
       clientModel,
       reason: "MODEL_NOT_SUPPORTED",
     })
   }
-
   debugJsonTail(logger, "Request payload:", { value: payload, tailLength: 400 })
-
   const upstreamRequestId = generateRequestIdFromPayload(
     payload,
     normalizedPromptCacheKey,
   )
-
+  const headerSessionId = c.req.header("x-session-id") ?? null
+  const affinityKey = resolveAffinityKey({
+    metadataSessionId: normalizedPromptCacheKey,
+    headerSessionId,
+    upstreamRequestId,
+  })
+  request.affinityKeyUsed = affinityKey.affinityKeyUsed
+  request.affinityKeySource = affinityKey.affinityKeySource
   const selection = await accountsManager.selectAccountForRequest(
-    [
-      {
-        modelId: clientModel,
-        endpoint: CHAT_COMPLETIONS_ENDPOINT,
-      },
-    ],
+    buildChatCompletionCandidates(clientModel),
     {
-      requestId: normalizedPromptCacheKey ?? upstreamRequestId,
+      requestId: affinityKey.requestId,
     },
   )
-
   if (!selection.ok) {
     recordSelectionFailure(store, {
       request,
@@ -102,17 +106,15 @@ export async function handleCompletion(c: Context) {
       stream: streamRequested,
       reason: selection.reason,
     })
-
     return selectionFailureResponse(c, {
       clientModel,
       reason: selection.reason,
     })
   }
-
   const { account, selectedModel } = selection
-
   request.affinityHit = selection.affinityHit
   request.affinityCacheKey = selection.affinityCacheKey
+  request.selectionReason = selection.selectionReason
 
   const upstreamPayload = { ...payload, model: selectedModel.id }
 
@@ -186,6 +188,9 @@ type RequestContext = {
   upstreamRequestId?: string
   upstreamSessionId?: string
 
+  affinityKeyUsed?: string
+  affinityKeySource?: AffinityKeySource
+  selectionReason?: AccountSelectionReason
   affinityHit?: boolean
   affinityCacheKey?: string
 }
@@ -202,6 +207,46 @@ type ChatCompletionsStream = Exclude<
 >
 
 type StreamSseStream = Parameters<Parameters<typeof streamSSE>[1]>[0]
+
+function applyChatRequestMetadata(
+  request: RequestContext,
+  payload: ChatCompletionsPayload,
+  initiator: "agent" | "user",
+): string | undefined {
+  const userId = payload.user ?? undefined
+  const { safetyIdentifier, sessionId: promptCacheKey } =
+    parseUserIdMetadata(userId)
+  const normalizedPromptCacheKey = promptCacheKey ?? undefined
+
+  request.userId = userId
+  request.safetyIdentifier = safetyIdentifier ?? undefined
+  request.promptCacheKey = normalizedPromptCacheKey
+  request.initiator = initiator
+
+  return normalizedPromptCacheKey
+}
+
+async function writeChatCompletionsStreamError(
+  stream: StreamSseStream,
+  message: string,
+): Promise<void> {
+  try {
+    await stream.writeSSE({
+      data: JSON.stringify({
+        error: {
+          message,
+          type: "error",
+        },
+      }),
+    })
+    await stream.writeSSE({ data: "[DONE]" })
+  } catch (streamError) {
+    logger.warn(
+      "Failed to write chat completions stream error event:",
+      streamError,
+    )
+  }
+}
 
 function buildRequestContext(c: Context): RequestContext {
   const requestId = randomUUID()
@@ -251,6 +296,9 @@ function insertRequestLog(
     promptCacheKey: request.promptCacheKey,
     initiator: request.initiator,
     upstreamRequestId: request.upstreamRequestId,
+    affinityKeyUsed: request.affinityKeyUsed,
+    affinityKeySource: request.affinityKeySource,
+    selectionReason: request.selectionReason,
     affinityHit: request.affinityHit,
     affinityCacheKey: request.affinityCacheKey,
     ...record,
@@ -439,9 +487,9 @@ async function handleUpstreamCreateError(params: {
   const { account, reservation, selectedModel, endpoint, costUnits } = selection
 
   const finishedAtMs = Date.now()
-  const details = extractErrorDetails(error)
+  const details = await extractErrorObservability(error)
 
-  if (details.unauthorized) {
+  if (shouldMarkAccountFailed(details)) {
     accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
   }
 
@@ -472,6 +520,7 @@ async function handleUpstreamCreateError(params: {
     errorName: details.errorName,
     errorStatus: details.errorStatus,
     errorMessage: details.errorMessage,
+    upstreamErrorMessageRaw: details.upstreamErrorMessageRaw,
   })
 
   throw error
@@ -505,6 +554,7 @@ async function handleNonStreamingUpstreamResponse(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   const finishedAtMs = Date.now()
 
@@ -512,11 +562,12 @@ async function handleNonStreamingUpstreamResponse(params: {
     debugJson(logger, "Non-streaming response:", response)
     return c.json(response)
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
     httpStatus = details.httpStatus
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
     throw error
   } finally {
@@ -548,6 +599,7 @@ async function handleNonStreamingUpstreamResponse(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -580,6 +632,7 @@ async function streamChatCompletionsAndLog(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
+  let upstreamErrorMessageRaw: string | undefined
 
   try {
     for await (const rawChunk of response) {
@@ -598,12 +651,22 @@ async function streamChatCompletionsAndLog(params: {
       await stream.writeSSE(chunk)
     }
   } catch (error) {
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
     logger.warn("Streaming error:", error)
+
+    if (shouldMarkAccountFailed(details)) {
+      accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
+    }
+
+    await writeChatCompletionsStreamError(
+      stream,
+      getUserVisibleErrorMessage(details),
+    )
   } finally {
     const finishedAtMs = Date.now()
 
@@ -636,6 +699,7 @@ async function streamChatCompletionsAndLog(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }
@@ -688,28 +752,16 @@ async function handleNonStreamingRequest(params: {
   let errorName: string | undefined
   let errorStatus: number | undefined
   let errorMessage: string | undefined
-
+  let upstreamErrorMessageRaw: string | undefined
   let finishedAtMs: number | undefined
 
   try {
-    const response = await createChatCompletions(payload, accountCtx, {
+    const response = (await createChatCompletions(payload, accountCtx, {
       upstreamRequestId: request.upstreamRequestId,
       sessionId: request.upstreamSessionId,
-    })
+    })) as ChatCompletionResponse
     selection.confirmAffinity?.()
     finishedAtMs = Date.now()
-
-    if (!isNonStreaming(response)) {
-      logger.debug("Unexpected streaming response")
-      // If upstream returns streaming unexpectedly, we just forward it.
-      // Note: This will not have "true completion" accounting.
-      return streamSSE(c, async (stream) => {
-        for await (const chunk of response) {
-          await stream.writeSSE(chunk as SSEMessage)
-        }
-      })
-    }
-
     usage = normalizeChatCompletionsUsage(response.usage)
 
     debugJson(logger, "Non-streaming response:", response)
@@ -717,14 +769,15 @@ async function handleNonStreamingRequest(params: {
   } catch (error) {
     finishedAtMs = Date.now()
 
-    const details = extractErrorDetails(error)
+    const details = await extractErrorObservability(error)
     httpStatus = details.httpStatus
 
     errorName = details.errorName
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
+    upstreamErrorMessageRaw = details.upstreamErrorMessageRaw
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
     }
 
@@ -760,6 +813,7 @@ async function handleNonStreamingRequest(params: {
       errorName,
       errorStatus,
       errorMessage,
+      upstreamErrorMessageRaw,
     })
   }
 }

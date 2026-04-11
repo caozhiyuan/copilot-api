@@ -97,6 +97,14 @@ export type SelectAccountForRequestFailureReason =
   | "MODEL_NOT_SUPPORTED"
   | "NO_QUOTA"
 
+export type AccountSelectionReason =
+  | "affinity_hit"
+  | "affinity_miss"
+  | "preferred_account_unavailable"
+  | "no_session_key"
+  | "model_dimension_change"
+  | "rotated_after_miss"
+
 type SelectAccountForRequestSuccess = {
   ok: true
   account: AccountRuntime
@@ -110,6 +118,8 @@ type SelectAccountForRequestSuccess = {
   affinityHit?: boolean
   /** The cache key used for affinity lookup (e.g. `"session-1:claude-sonnet-4"`). */
   affinityCacheKey?: string
+  /** High-level reason for why this account was selected. */
+  selectionReason?: AccountSelectionReason
 }
 
 export type SelectAccountForRequestResult =
@@ -118,6 +128,17 @@ export type SelectAccountForRequestResult =
       ok: false
       reason: SelectAccountForRequestFailureReason
     }
+
+function getInitialSelectionReason(
+  cacheKey: string | undefined,
+  rotationStart: number,
+): AccountSelectionReason {
+  if (!cacheKey) {
+    return "no_session_key"
+  }
+
+  return rotationStart > 0 ? "rotated_after_miss" : "affinity_miss"
+}
 
 /** Manages multiple GitHub Copilot accounts at runtime. */
 export class AccountsManager {
@@ -985,6 +1006,12 @@ export class AccountsManager {
     const modelKey = candidates[0].modelId
     const cacheKey =
       affinityKey ? buildAffinityCacheKey(affinityKey, modelKey) : undefined
+    const shouldRotate =
+      this.accountAffinityEnabled && orderedAccounts.length > 1
+    const rotationStart =
+      shouldRotate ? this.loadBalanceCursor % orderedAccounts.length : 0
+
+    let selectionReason = getInitialSelectionReason(cacheKey, rotationStart)
 
     // Step 1: Try the preferred (affinity) account.
     if (cacheKey) {
@@ -998,20 +1025,21 @@ export class AccountsManager {
         if (affinityResult) {
           affinityResult.affinityHit = true
           affinityResult.affinityCacheKey = cacheKey
+          affinityResult.selectionReason = "affinity_hit"
           affinityResult.confirmAffinity = () => {
             if (!this.accountAffinityEnabled) return
             this.affinityCache.set(cacheKey, affinityResult.account.id)
           }
           return affinityResult
         }
+
+        selectionReason = "preferred_account_unavailable"
       }
     }
 
     // Step 2: Cache miss — rotate accounts for load balancing when affinity is enabled.
     const accountsForSelection =
-      this.accountAffinityEnabled && orderedAccounts.length > 1 ?
-        this.rotateAccounts(orderedAccounts)
-      : orderedAccounts
+      shouldRotate ? this.rotateAccounts(orderedAccounts) : orderedAccounts
 
     const result = await this.selectWithAliasFallback(
       accountsForSelection,
@@ -1020,6 +1048,8 @@ export class AccountsManager {
 
     if (result.ok) {
       this.loadBalanceCursor++
+      result.selectionReason = selectionReason
+      result.affinityCacheKey = cacheKey
     }
 
     // Attach confirmAffinity callback so the handler can persist the mapping on success.

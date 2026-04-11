@@ -39,6 +39,10 @@ type AdminRequestItemWire = {
 
   affinity_hit?: number | null
   affinity_cache_key?: string | null
+  affinity_key_used?: string | null
+  affinity_key_source?: string | null
+  selection_reason?: string | null
+  upstream_error_message_raw?: string | null
 
   error?: unknown
 }

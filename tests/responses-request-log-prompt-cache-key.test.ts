@@ -14,6 +14,8 @@ import path from "node:path"
 import type { AccountRuntime } from "~/lib/types/account"
 import type { Model } from "~/services/copilot/get-models"
 
+import { getUUID } from "~/lib/utils"
+
 const testHome = await fs.mkdtemp(
   path.join(os.tmpdir(), "copilot-api-responses-prompt-cache-key-"),
 )
@@ -29,6 +31,9 @@ const [{ accountsManager }, { getAdminDb }, { state }, { responsesRoutes }] =
 
 type RequestLogSnapshot = {
   prompt_cache_key: string | null
+  affinity_key_used: string | null
+  affinity_key_source: string | null
+  selection_reason: string | null
 }
 
 type SelectionResult = Awaited<
@@ -96,6 +101,8 @@ function buildSelection(endpoint: string, modelId: string): SelectionOk {
     costUnits: 0,
     confirmAffinity: mock(() => {}),
     affinityHit: false,
+    affinityCacheKey: "test-cache-key",
+    selectionReason: "affinity_miss",
   }
 }
 
@@ -141,7 +148,9 @@ function buildResponsesResult(model: string, text: string) {
 
 function getLatestRequestLog(): RequestLogSnapshot | null {
   return getAdminDb()
-    .query("SELECT prompt_cache_key FROM request_log ORDER BY id DESC LIMIT 1;")
+    .query(
+      "SELECT prompt_cache_key, affinity_key_used, affinity_key_source, selection_reason FROM request_log ORDER BY id DESC LIMIT 1;",
+    )
     .get() as RequestLogSnapshot | null
 }
 
@@ -217,6 +226,11 @@ describe("responses request log prompt_cache_key persistence", () => {
     expect(response.status).toBe(200)
     expect(getLatestRequestLog()?.prompt_cache_key).toBe(payloadPromptCacheKey)
     expect(selectionRequestId).toBe(payloadPromptCacheKey)
+
+    const log = getLatestRequestLog()
+    expect(log?.affinity_key_used).toBe(payloadPromptCacheKey)
+    expect(log?.affinity_key_source).toBe("prompt_cache_key")
+    expect(log?.selection_reason).toBe("affinity_miss")
   })
 
   test("falls back to metadata user_id session_id when payload.prompt_cache_key is missing", async () => {
@@ -264,6 +278,11 @@ describe("responses request log prompt_cache_key persistence", () => {
 
     expect(response.status).toBe(200)
     expect(getLatestRequestLog()?.prompt_cache_key).toBe(metadataSessionId)
-    expect(selectionRequestId).toBe(metadataSessionId)
+    expect(selectionRequestId).toBe(getUUID(metadataSessionId))
+
+    const log = getLatestRequestLog()
+    expect(log?.affinity_key_used).toBe(metadataSessionId)
+    expect(log?.affinity_key_source).toBe("metadata_session_id")
+    expect(log?.selection_reason).toBe("affinity_miss")
   })
 })

@@ -7,6 +7,7 @@ import { forwardError } from "~/lib/error"
 import {
   computeDiff,
   extractErrorDetails,
+  shouldMarkAccountFailed,
   toAccountContext,
 } from "~/lib/handler-utils"
 import {
@@ -217,7 +218,7 @@ async function runEmbeddingsWithAccount({
     errorStatus = details.errorStatus
     errorMessage = details.errorMessage
 
-    if (details.unauthorized) {
+    if (shouldMarkAccountFailed(details)) {
       accountsManager.markAccountFailed(account.id, "Unauthorized (401)")
     }
 
