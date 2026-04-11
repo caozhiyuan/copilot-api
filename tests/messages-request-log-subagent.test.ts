@@ -147,7 +147,8 @@ afterEach(() => {
 })
 
 afterAll(async () => {
-  getAdminDb().close()
+  // getAdminDb() is a shared singleton for the Bun test process.
+  // Closing it here makes later test files fail with "Database has closed".
   await fs.rm(testHome, { recursive: true, force: true })
 })
 
