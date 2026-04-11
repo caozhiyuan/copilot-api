@@ -218,11 +218,27 @@ const filterAssistantThinkingBlocks = (
   }
 }
 
+// Strip fields from the top-level payload that the Copilot Messages API
+// rejects with "Extra inputs are not permitted". These are valid Anthropic API
+// fields but not (yet) supported by the Copilot Messages endpoint.
+const stripUnsupportedPayloadFields = (
+  payload: AnthropicMessagesPayload,
+): void => {
+  // Valid Anthropic API fields not yet supported by the Copilot Messages endpoint.
+  // They arrive at runtime via JSON pass-through despite not being in our type.
+  for (const key of ["context_management"]) {
+    if (key in payload) {
+      Reflect.deleteProperty(payload, key)
+    }
+  }
+}
+
 export const prepareMessagesApiPayload = (
   payload: AnthropicMessagesPayload,
   selectedModel?: Model,
 ): void => {
   stripCacheControl(payload)
+  stripUnsupportedPayloadFields(payload)
   filterAssistantThinkingBlocks(payload)
 
   // https://platform.claude.com/docs/en/build-with-claude/extended-thinking#extended-thinking-with-tool-use
