@@ -1,17 +1,11 @@
-import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test"
-import fs from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
+import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+
+import "./shared-admin-db-test-home"
 
 import type { AccountRuntime } from "~/lib/types/account"
 import type { Model } from "~/services/copilot/get-models"
 
 import { getUUID } from "~/lib/utils"
-
-const testHome = await fs.mkdtemp(
-  path.join(os.tmpdir(), "copilot-api-chat-completions-session-id-"),
-)
-process.env.COPILOT_API_HOME = testHome
 
 const [{ accountsManager }, { getAdminDb }, { state }, { completionRoutes }] =
   await Promise.all([
@@ -131,10 +125,6 @@ afterEach(() => {
   accountsManager.selectAccountForRequest = originalSelect
   accountsManager.finalizeQuota = originalFinalize
   accountsManager.markAccountFailed = originalMarkFailed
-})
-
-afterAll(async () => {
-  await fs.rm(testHome, { recursive: true, force: true })
 })
 
 test("uses x-session-id for upstream interaction id when no other session key exists", async () => {

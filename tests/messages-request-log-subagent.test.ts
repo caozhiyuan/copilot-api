@@ -1,24 +1,10 @@
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  mock,
-  test,
-} from "bun:test"
-import fs from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+
+import "./shared-admin-db-test-home"
 
 import type { AccountRuntime } from "~/lib/types/account"
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 import type { Model } from "~/services/copilot/get-models"
-
-const testHome = await fs.mkdtemp(
-  path.join(os.tmpdir(), "copilot-api-subagent-request-log-"),
-)
-process.env.COPILOT_API_HOME = testHome
 
 const [{ accountsManager }, { getAdminDb }, { state }, { messageRoutes }] =
   await Promise.all([
@@ -149,12 +135,6 @@ afterEach(() => {
   accountsManager.selectAccountForRequest = originalSelect
   accountsManager.finalizeQuota = originalFinalize
   accountsManager.markAccountFailed = originalMarkFailed
-})
-
-afterAll(async () => {
-  // getAdminDb() is a shared singleton for the Bun test process.
-  // Closing it here makes later test files fail with "Database has closed".
-  await fs.rm(testHome, { recursive: true, force: true })
 })
 
 describe("messages request log subagent persistence", () => {
