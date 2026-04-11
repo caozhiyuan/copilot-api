@@ -1013,7 +1013,7 @@ export class AccountsManager {
         extractAffinityKey(affinityContext)
       : undefined
 
-    const modelKey = candidates[0].modelId
+    const modelKey = affinityContext?.affinityModelId ?? candidates[0].modelId
     const cacheKey =
       affinityKey ? buildAffinityCacheKey(affinityKey, modelKey) : undefined
     const shouldRotate =
@@ -1021,31 +1021,21 @@ export class AccountsManager {
     const rotationStart =
       shouldRotate ? this.loadBalanceCursor % orderedAccounts.length : 0
 
-    let selectionReason = getInitialSelectionReason(cacheKey, rotationStart)
-
-    // Step 1: Try the preferred (affinity) account.
-    if (cacheKey) {
-      const preferredId = this.affinityCache.get(cacheKey)
-      if (preferredId) {
-        const affinityResult = await this.tryAffinityAccount(
-          preferredId,
-          orderedAccounts,
-          candidates,
-        )
-        if (affinityResult) {
-          affinityResult.affinityHit = true
-          affinityResult.affinityCacheKey = cacheKey
-          affinityResult.selectionReason = "affinity_hit"
-          affinityResult.confirmAffinity = () => {
-            if (!this.accountAffinityEnabled) return
-            this.affinityCache.set(cacheKey, affinityResult.account.id)
-          }
-          return affinityResult
-        }
-
-        selectionReason = "preferred_account_unavailable"
-      }
+    const initialSelectionReason = getInitialSelectionReason(
+      cacheKey,
+      rotationStart,
+    )
+    const preferredSelection = await this.selectPreferredAffinityAccount({
+      cacheKey,
+      orderedAccounts,
+      candidates,
+      initialSelectionReason,
+    })
+    if (preferredSelection.result) {
+      return preferredSelection.result
     }
+
+    const { selectionReason } = preferredSelection
 
     // Step 2: Cache miss — rotate accounts for load balancing when affinity is enabled.
     const accountsForSelection =
@@ -1072,6 +1062,53 @@ export class AccountsManager {
     }
 
     return result
+  }
+
+  /**
+   * Try the preferred account from the affinity cache before normal selection.
+   */
+  private async selectPreferredAffinityAccount(params: {
+    cacheKey: string | undefined
+    orderedAccounts: Array<AccountRuntime>
+    candidates: Array<AccountRequestCandidate>
+    initialSelectionReason: AccountSelectionReason
+  }): Promise<{
+    result?: SelectAccountForRequestSuccess
+    selectionReason: AccountSelectionReason
+  }> {
+    const { cacheKey, orderedAccounts, candidates, initialSelectionReason } =
+      params
+
+    if (!cacheKey) {
+      return { selectionReason: initialSelectionReason }
+    }
+
+    const preferredId = this.affinityCache.get(cacheKey)
+    if (!preferredId) {
+      return { selectionReason: initialSelectionReason }
+    }
+
+    const affinityResult = await this.tryAffinityAccount(
+      preferredId,
+      orderedAccounts,
+      candidates,
+    )
+    if (!affinityResult) {
+      return { selectionReason: "preferred_account_unavailable" }
+    }
+
+    affinityResult.affinityHit = true
+    affinityResult.affinityCacheKey = cacheKey
+    affinityResult.selectionReason = "affinity_hit"
+    affinityResult.confirmAffinity = () => {
+      if (!this.accountAffinityEnabled) return
+      this.affinityCache.set(cacheKey, affinityResult.account.id)
+    }
+
+    return {
+      result: affinityResult,
+      selectionReason: "affinity_hit",
+    }
   }
 
   /**

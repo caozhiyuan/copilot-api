@@ -331,10 +331,12 @@ describe("messages handler affinity context", () => {
   test("warmup requests switch candidate model before account selection", async () => {
     let selectionCandidates: Array<{ modelId: string; endpoint: string }> = []
     let selectionRequestId: string | undefined
+    let selectionAffinityModelId: string | undefined
 
     accountsManager.selectAccountForRequest = (candidates, options) => {
       selectionCandidates = candidates
       selectionRequestId = options?.requestId
+      selectionAffinityModelId = options?.affinityModelId
 
       return Promise.resolve(buildSelection("/v1/messages", "messages-model"))
     }
@@ -391,6 +393,52 @@ describe("messages handler affinity context", () => {
     expect(selectionCandidates[0]?.modelId).toBe(getSmallModel())
     expect(selectionCandidates[0]?.endpoint).toBe("/v1/messages")
     expect(selectionRequestId).toBe(expectedSessionId)
+    expect(selectionAffinityModelId).toBe("original-model")
+  })
+
+  test("compact requests keep original model for affinity while routing small model", async () => {
+    let selectionCandidates: Array<{ modelId: string; endpoint: string }> = []
+    let selectionAffinityModelId: string | undefined
+
+    accountsManager.selectAccountForRequest = (candidates, options) => {
+      selectionCandidates = candidates
+      selectionAffinityModelId = options?.affinityModelId
+
+      return Promise.resolve(buildSelection("/v1/messages", "messages-model"))
+    }
+
+    const fetchMock = mock(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(buildAnthropicResponse("messages-model", "compact")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    )
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const response = await messageRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          createPayload({
+            system:
+              "You are a helpful AI assistant tasked with summarizing conversations",
+          }),
+        ),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(selectionCandidates[0]?.modelId).toBe(getSmallModel())
+    expect(selectionCandidates[0]?.endpoint).toBe("/v1/messages")
+    expect(selectionAffinityModelId).toBe("original-model")
   })
 
   test("metadata session_id takes priority over x-session-id header for affinity key", async () => {
