@@ -43,6 +43,7 @@ type SelectionOk = Extract<SelectionResult, { ok: true }>
 
 type FetchOptions = {
   body?: unknown
+  headers?: Record<string, string>
 }
 
 const fetchHolder = globalThis as unknown as { fetch: typeof fetch }
@@ -283,6 +284,57 @@ describe("responses request log prompt_cache_key persistence", () => {
     const log = getLatestRequestLog()
     expect(log?.affinity_key_used).toBe(metadataSessionId)
     expect(log?.affinity_key_source).toBe("metadata_session_id")
+    expect(log?.selection_reason).toBe("affinity_miss")
+  })
+
+  test("uses x-session-id for upstream interaction id when no other session key exists", async () => {
+    let selectionRequestId: string | undefined
+    let upstreamInteractionId: string | undefined
+
+    accountsManager.selectAccountForRequest = (_candidates, options) => {
+      selectionRequestId = options?.requestId
+      return Promise.resolve(buildSelection("/responses", "responses-model"))
+    }
+
+    const fetchMock = mock((_url: string, options?: FetchOptions) => {
+      upstreamInteractionId = options?.headers?.["x-interaction-id"]
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(buildResponsesResult("responses-model", "ok")),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      )
+    })
+
+    // @ts-expect-error test mock only implements the used subset
+    fetchHolder.fetch = fetchMock
+
+    const headerSessionId = "header-session-only"
+
+    const response = await responsesRoutes.fetch(
+      new Request("http://local/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-session-id": headerSessionId,
+        },
+        body: JSON.stringify({
+          model: "original-model",
+          input: "hello",
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(selectionRequestId).toBe(getUUID(headerSessionId))
+    expect(upstreamInteractionId).toBe(getUUID(headerSessionId))
+
+    const log = getLatestRequestLog()
+    expect(log?.affinity_key_used).toBe(headerSessionId)
+    expect(log?.affinity_key_source).toBe("x_session_id")
     expect(log?.selection_reason).toBe("affinity_miss")
   })
 })

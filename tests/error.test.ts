@@ -66,3 +66,19 @@ test("forwardError returns null throws safely", async () => {
     },
   })
 })
+
+test("forwardError falls back for Error instances with empty messages", async () => {
+  const app = new Hono()
+
+  app.get("/", async (c) => forwardError(c, new Error("")))
+
+  const response = await app.fetch(new Request("http://local/"))
+
+  expect(response.status).toBe(500)
+  expect(await response.json()).toEqual({
+    error: {
+      message: "Unknown error",
+      type: "error",
+    },
+  })
+})

@@ -102,7 +102,6 @@ export type AccountSelectionReason =
   | "affinity_miss"
   | "preferred_account_unavailable"
   | "no_session_key"
-  | "model_dimension_change"
   | "rotated_after_miss"
 
 type SelectAccountForRequestSuccess = {
@@ -128,6 +127,17 @@ export type SelectAccountForRequestResult =
       ok: false
       reason: SelectAccountForRequestFailureReason
     }
+
+export type AccountStatusEntry = {
+  id: string
+  entitlement?: number
+  remaining?: number
+  unlimited?: boolean
+  overagePermitted?: boolean
+  failed?: boolean
+  failureReason?: string
+  enabled?: boolean
+}
 
 function getInitialSelectionReason(
   cacheKey: string | undefined,
@@ -1142,26 +1152,8 @@ export class AccountsManager {
   /**
    * Get status of all accounts.
    */
-  getAccountStatus(): Array<{
-    id: string
-    entitlement?: number
-    remaining?: number
-    unlimited?: boolean
-    overagePermitted?: boolean
-    failed?: boolean
-    failureReason?: string
-    enabled?: boolean
-  }> {
-    const statuses: Array<{
-      id: string
-      entitlement?: number
-      remaining?: number
-      unlimited?: boolean
-      overagePermitted?: boolean
-      failed?: boolean
-      failureReason?: string
-      enabled?: boolean
-    }> = []
+  getAccountStatus(): Array<AccountStatusEntry> {
+    const statuses: Array<AccountStatusEntry> = []
 
     if (this.temporaryAccount) {
       statuses.push({

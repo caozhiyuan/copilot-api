@@ -30,7 +30,7 @@ async function readHttpErrorText(error: HTTPError): Promise<string> {
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    return error.message
+    return error.message || "Unknown error"
   }
 
   if (typeof error === "string") {

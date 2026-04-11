@@ -170,7 +170,7 @@ export const handleResponses = async (c: Context) => {
 
   const accountCtx = toAccountContext(account)
   const upstreamSessionId = getUUID(
-    normalizedPromptCacheKey ?? upstreamRequestId,
+    normalizedPromptCacheKey ?? headerSessionId ?? upstreamRequestId,
   )
   request.upstreamRequestId = upstreamRequestId
   request.upstreamSessionId = upstreamSessionId
@@ -797,9 +797,12 @@ async function handleNonStreamingResponses(params: {
       },
       accountCtx,
     )
+    if (isAsyncIterable(response)) {
+      throw new Error("Upstream returned a stream unexpectedly")
+    }
     selection.confirmAffinity?.()
     finishedAtMs = Date.now()
-    const result = response as ResponsesResult
+    const result = response
     usage = extractResponsesUsageFromResult(result)
     debugJsonTail(logger, "Forwarding native Responses result:", {
       value: result,

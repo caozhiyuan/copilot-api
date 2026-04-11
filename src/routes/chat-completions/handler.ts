@@ -131,7 +131,9 @@ export async function handleCompletion(c: Context) {
   )
 
   const accountCtx = toAccountContext(account)
-  const upstreamSessionId = getUUID(upstreamRequestId)
+  const upstreamSessionId = getUUID(
+    normalizedPromptCacheKey ?? headerSessionId ?? upstreamRequestId,
+  )
   request.upstreamRequestId = upstreamRequestId
   request.upstreamSessionId = upstreamSessionId
 
@@ -756,10 +758,13 @@ async function handleNonStreamingRequest(params: {
   let finishedAtMs: number | undefined
 
   try {
-    const response = (await createChatCompletions(payload, accountCtx, {
+    const response = await createChatCompletions(payload, accountCtx, {
       upstreamRequestId: request.upstreamRequestId,
       sessionId: request.upstreamSessionId,
-    })) as ChatCompletionResponse
+    })
+    if (!isNonStreaming(response)) {
+      throw new Error("Upstream returned a stream unexpectedly")
+    }
     selection.confirmAffinity?.()
     finishedAtMs = Date.now()
     usage = normalizeChatCompletionsUsage(response.usage)

@@ -320,7 +320,7 @@
       "affinityKeyUsed": "本次请求在评估账号亲和性时实际使用的键值",
       "affinityKeySource": "亲和性键的来源：prompt_cache_key、metadata.session_id、x-session-id，或 request-id 回退值",
       "selectionReason": "账号选择器记录的高层原因，用于解释这次为何选中当前账号",
-      "upstreamErrorMessageRaw": "为调试和 ownership mismatch 分析保存的、已脱敏的上游原始错误消息",
+      "upstreamErrorMessageRaw": "为调试和所有权不匹配分析保存的、已脱敏的上游原始错误消息",
       "duration": "请求总处理时间（秒）",
       "ttfb": "首字节时间（秒）— 收到第一个响应块前的延迟"
     },
