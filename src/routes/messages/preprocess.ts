@@ -13,10 +13,12 @@ import {
 import { getReasoningEffortForModel } from "~/lib/config"
 
 import type {
+  AnthropicImageBlock,
   AnthropicMessage,
   AnthropicMessagesPayload,
   AnthropicTextBlock,
   AnthropicToolResultBlock,
+  AnthropicUserContentBlock,
 } from "./anthropic-types"
 
 export const TOOL_REFERENCE_TURN_BOUNDARY = "Tool loaded."
@@ -164,6 +166,57 @@ export const stripToolReferenceTurnBoundary = (
   }
 }
 
+const scanUserContentBlocks = (content: Array<AnthropicUserContentBlock>) => {
+  const toolResults: Array<AnthropicToolResultBlock> = []
+  const textBlocks: Array<AnthropicTextBlock> = []
+  const imageBlocks: Array<AnthropicImageBlock> = []
+
+  for (const block of content) {
+    switch (block.type) {
+      case "tool_result": {
+        toolResults.push(block)
+        break
+      }
+      case "text": {
+        textBlocks.push(block)
+        break
+      }
+      case "image": {
+        imageBlocks.push(block)
+        break
+      }
+      default: {
+        break
+      }
+    }
+  }
+
+  return { toolResults, textBlocks, imageBlocks }
+}
+
+const mergeImageBlocksIntoToolResult = (
+  toolResults: Array<AnthropicToolResultBlock>,
+  imageBlocks: Array<AnthropicImageBlock>,
+): Array<AnthropicToolResultBlock> => {
+  const lastIndex = toolResults.length - 1
+  return toolResults.map((tr, i) => {
+    if (i !== lastIndex) return tr
+    if (hasToolRef(tr)) return tr
+
+    if (typeof tr.content === "string") {
+      return {
+        ...tr,
+        content: [{ type: "text" as const, text: tr.content }, ...imageBlocks],
+      }
+    }
+
+    return {
+      ...tr,
+      content: [...tr.content, ...imageBlocks],
+    }
+  })
+}
+
 export const mergeToolResultForClaude = (
   anthropicPayload: AnthropicMessagesPayload,
   options?: {
@@ -177,24 +230,26 @@ export const mergeToolResultForClaude = (
 
     if (msg.role !== "user" || !Array.isArray(msg.content)) continue
 
-    const toolResults: Array<AnthropicToolResultBlock> = []
-    const textBlocks: Array<AnthropicTextBlock> = []
-    let valid = true
+    const { toolResults, textBlocks, imageBlocks } = scanUserContentBlocks(
+      msg.content,
+    )
 
-    for (const block of msg.content) {
-      if (block.type === "tool_result") {
-        toolResults.push(block)
-      } else if (block.type === "text") {
-        textBlocks.push(block)
-      } else {
-        valid = false
-        break
-      }
+    if (
+      toolResults.length === 0
+      || (textBlocks.length === 0 && imageBlocks.length === 0)
+    ) {
+      continue
     }
 
-    if (!valid || toolResults.length === 0 || textBlocks.length === 0) continue
+    const merged =
+      textBlocks.length > 0 ?
+        mergeToolResult(toolResults, textBlocks)
+      : [...toolResults]
 
-    msg.content = mergeToolResult(toolResults, textBlocks)
+    msg.content =
+      imageBlocks.length > 0 ?
+        mergeImageBlocksIntoToolResult(merged, imageBlocks)
+      : merged
   }
 }
 
