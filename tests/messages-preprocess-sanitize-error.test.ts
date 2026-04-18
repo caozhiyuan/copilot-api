@@ -36,7 +36,7 @@ describe("sanitizeErrorToolResults - extraction", () => {
 
     prepareMessagesApiPayload(payload)
 
-    const content = payload.messages[0].content as Array<
+    const content = payload.messages[0].content as unknown as Array<
       Record<string, unknown>
     >
     expect(content).toHaveLength(2)
@@ -73,7 +73,7 @@ describe("sanitizeErrorToolResults - extraction", () => {
 
     prepareMessagesApiPayload(payload)
 
-    const content = payload.messages[0].content as Array<
+    const content = payload.messages[0].content as unknown as Array<
       Record<string, unknown>
     >
     expect(content).toHaveLength(1)
@@ -136,7 +136,7 @@ describe("sanitizeErrorToolResults - extraction", () => {
 
     prepareMessagesApiPayload(payload)
 
-    const content = payload.messages[0].content as Array<
+    const content = payload.messages[0].content as unknown as Array<
       Record<string, unknown>
     >
     expect(content).toHaveLength(5)
@@ -181,7 +181,7 @@ describe("sanitizeErrorToolResults - passthrough", () => {
 
     prepareMessagesApiPayload(payload)
 
-    const content = payload.messages[0].content as Array<
+    const content = payload.messages[0].content as unknown as Array<
       Record<string, unknown>
     >
     expect(content).toHaveLength(1)
@@ -223,7 +223,7 @@ describe("sanitizeErrorToolResults - passthrough", () => {
 
     prepareMessagesApiPayload(payload)
 
-    const content = payload.messages[0].content as Array<
+    const content = payload.messages[0].content as unknown as Array<
       Record<string, unknown>
     >
     expect(content).toHaveLength(1)
