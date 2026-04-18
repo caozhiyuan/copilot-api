@@ -478,6 +478,59 @@ const hasToolRef = (block: AnthropicToolResultBlock) => {
   )
 }
 
+// The Messages API requires all content to be type `text` when is_error is true.
+// Extract non-text content (images, documents) from is_error tool results and
+// append them at the end of the message to preserve data while keeping all
+// tool_result blocks contiguous (required by the Messages API).
+const sanitizeErrorToolResults = (payload: AnthropicMessagesPayload): void => {
+  for (const msg of payload.messages) {
+    if (msg.role !== "user" || !Array.isArray(msg.content)) continue
+
+    const sanitized: Array<AnthropicUserContentBlock> = []
+    const extractedTail: Array<AnthropicUserContentBlock> = []
+    let changed = false
+
+    for (const block of msg.content) {
+      if (block.type !== "tool_result" || !block.is_error) {
+        sanitized.push(block)
+        continue
+      }
+
+      if (typeof block.content === "string") {
+        sanitized.push(block)
+        continue
+      }
+
+      const textContent: Array<AnthropicTextBlock> = []
+      const extracted: Array<AnthropicUserContentBlock> = []
+
+      for (const inner of block.content) {
+        if (inner.type === "text") {
+          textContent.push(inner)
+        } else if (inner.type === "image" || inner.type === "document") {
+          extracted.push(inner)
+        }
+      }
+
+      if (
+        extracted.length === 0
+        && textContent.length === block.content.length
+      ) {
+        sanitized.push(block)
+        continue
+      }
+
+      changed = true
+      sanitized.push({ ...block, content: textContent })
+      extractedTail.push(...extracted)
+    }
+
+    if (changed) {
+      msg.content = [...sanitized, ...extractedTail]
+    }
+  }
+}
+
 // Strip cache_control from system content blocks as the
 // Copilot Messages API does not support them (rejects extra fields like scope).
 // commit by nicktogo
@@ -522,6 +575,7 @@ export const prepareMessagesApiPayload = (
 ): void => {
   stripCacheControl(payload)
   filterAssistantThinkingBlocks(payload)
+  sanitizeErrorToolResults(payload)
 
   const hasThinking = Boolean(payload.thinking)
 
