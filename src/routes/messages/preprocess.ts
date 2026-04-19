@@ -168,7 +168,7 @@ const getMergeableToolResultIndices = (
   toolResults: Array<AnthropicToolResultBlock>,
 ): Array<number> => {
   return toolResults.flatMap((block, index) =>
-    hasToolRef(block) ? [] : [index],
+    block.is_error || hasToolRef(block) ? [] : [index],
   )
 }
 
