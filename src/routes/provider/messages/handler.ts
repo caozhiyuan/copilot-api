@@ -12,6 +12,7 @@ import type {
 import { getProviderConfig, type ResolvedProviderConfig } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
+import { logRequestModel } from "~/lib/model-logger"
 import { forwardProviderMessages } from "~/services/providers/anthropic-proxy"
 
 const logger = createHandlerLogger("provider-messages-handler")
@@ -34,6 +35,7 @@ export async function handleProviderMessages(c: Context): Promise<Response> {
   try {
     const payload = await c.req.json<AnthropicMessagesPayload>()
 
+    logRequestModel(payload.model)
     const modelConfig = providerConfig.models?.[payload.model]
     payload.temperature ??= modelConfig?.temperature
     payload.top_p ??= modelConfig?.topP

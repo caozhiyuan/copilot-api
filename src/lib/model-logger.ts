@@ -1,16 +1,24 @@
 import type { MiddlewareHandler } from "hono"
 
 import { getColorEnabled } from "hono/utils/color"
+import { AsyncLocalStorage } from "node:async_hooks"
+
+interface PendingLog {
+  print: (model?: string) => void
+  printed: boolean
+}
+
+const pendingLogStorage = new AsyncLocalStorage<PendingLog>()
 
 const humanize = (times: Array<string>): string => {
   const [delimiter, separator] = [",", "."]
   const orderTimes = times.map((v) =>
-    v.replaceAll(/(\d)(?=(\d\d\d)+(?!\d))/g, "$1" + delimiter),
+    v.replaceAll(/(\d)(?=(\d\d\d)+(?!\d))/g, `$1${delimiter}`),
   )
   return orderTimes.join(separator)
 }
 
-const elapsed = (start: number): string => {
+const calcElapsed = (start: number): string => {
   const delta = Date.now() - start
   return humanize([
     delta < 1000 ? `${delta}ms` : `${Math.round(delta / 1000)}s`,
@@ -43,19 +51,16 @@ const formatModelBadge = (model: string): string => {
   return ` \x1b[100m\x1b[1m\x1b[97m [${model}] \x1b[0m`
 }
 
-const extractModelFromBody = async (
-  req: Request,
-): Promise<string | undefined> => {
-  const contentType = req.headers.get("content-type") ?? ""
-  if (!contentType.includes("application/json")) return undefined
-
-  try {
-    const body = (await req.clone().json()) as Record<string, unknown>
-    const model = body["model"]
-    return typeof model === "string" && model ? model : undefined
-  } catch {
-    return undefined
-  }
+/**
+ * Call this in a request handler once the model name is known.
+ * It flushes the deferred "<-- METHOD PATH [model]" log line.
+ * If never called, the middleware will print the line without a model badge.
+ */
+export const logRequestModel = (model: string): void => {
+  const store = pendingLogStorage.getStore()
+  if (!store || store.printed) return
+  store.printed = true
+  store.print(model)
 }
 
 export const modelAwareLogger: MiddlewareHandler = async (c, next) => {
@@ -63,21 +68,25 @@ export const modelAwareLogger: MiddlewareHandler = async (c, next) => {
   const { url } = c.req
   const path = url.slice(url.indexOf("/", 8))
 
-  let incomingLine = `<-- ${method} ${path}`
-
-  if (method === "POST") {
-    const model = await extractModelFromBody(c.req.raw)
-    if (model) {
-      incomingLine += formatModelBadge(model)
-    }
+  const pending: PendingLog = {
+    printed: false,
+    print: (model?: string) => {
+      const badge = model ? formatModelBadge(model) : ""
+      console.log(`<-- ${method} ${path}${badge}`)
+    },
   }
 
-  console.log(incomingLine)
-
   const start = Date.now()
-  await next()
+
+  await pendingLogStorage.run(pending, async () => {
+    await next()
+  })
+
+  if (!pending.printed) {
+    pending.print()
+  }
 
   console.log(
-    `--> ${method} ${path} ${colorStatus(c.res.status)} ${elapsed(start)}`,
+    `--> ${method} ${path} ${colorStatus(c.res.status)} ${calcElapsed(start)}`,
   )
 }

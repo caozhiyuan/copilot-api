@@ -4,6 +4,7 @@ import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { awaitApproval } from "~/lib/approval"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
+import { logRequestModel } from "~/lib/model-logger"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
@@ -25,6 +26,7 @@ export async function handleCompletion(c: Context) {
   const selectedModel = state.models?.data.find(
     (model) => model.id === payload.model,
   )
+  logRequestModel(payload.model)
 
   if (selectedModel?.id === "gpt-5.4") {
     return c.json(
