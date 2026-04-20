@@ -1,8 +1,8 @@
 import { Hono } from "hono"
 import { cors } from "hono/cors"
-import { logger } from "hono/logger"
 import { readFileSync } from "node:fs"
 
+import { modelAwareLogger } from "./lib/model-logger"
 import { createAuthMiddleware } from "./lib/request-auth"
 import { traceIdMiddleware } from "./lib/trace"
 import { completionRoutes } from "./routes/chat-completions/route"
@@ -18,7 +18,7 @@ import { usageRoute } from "./routes/usage/route"
 export const server = new Hono()
 
 server.use(traceIdMiddleware)
-server.use(logger())
+server.use(modelAwareLogger)
 server.use(cors())
 server.use(
   "*",
