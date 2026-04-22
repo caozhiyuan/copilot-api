@@ -17,3 +17,5 @@ dist/
 .opencode/package-lock.json
 
 *.vsix
+
+.claude
