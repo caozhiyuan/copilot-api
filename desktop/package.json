@@ -1,0 +1,72 @@
+{
+  "name": "copilot-api-desktop",
+  "version": "1.0.0",
+  "description": "Copilot API Desktop App",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "electron-vite build && electron-builder",
+    "package:mac": "electron-vite build && electron-builder --mac",
+    "package:win": "electron-vite build && electron-builder --win",
+    "package:linux": "electron-vite build && electron-builder --linux"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.4"
+  },
+  "build": {
+    "appId": "com.copilot-api.desktop",
+    "productName": "Copilot API",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
+    "files": [
+      "out/**/*",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "server",
+        "filter": ["**/*.js"]
+      },
+      {
+        "from": "build/server-package.json",
+        "to": "server/package.json"
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "dmg": {
+      "format": "ULFO"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@tailwindcss/vite": "^4.1.4",
+    "electron": "^35.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.1.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.3"
+  }
+}
