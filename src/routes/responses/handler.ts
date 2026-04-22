@@ -40,6 +40,8 @@ export const handleResponses = async (c: Context) => {
 
   useFunctionApplyPatch(payload)
 
+  removeUnsupportedTools(payload)
+
   if (!isResponsesApiWebSearchEnabled()) {
     removeWebSearchTool(payload)
   }
@@ -160,4 +162,23 @@ const removeWebSearchTool = (payload: ResponsesPayload): void => {
   payload.tools = payload.tools.filter((t) => {
     return t.type !== "web_search"
   })
+}
+
+const COPILOT_UNSUPPORTED_TOOL_TYPES = new Set(["image_generation"])
+
+export const removeUnsupportedTools = (payload: ResponsesPayload): void => {
+  if (!Array.isArray(payload.tools) || payload.tools.length === 0) return
+
+  const dropped: Array<string> = []
+  payload.tools = payload.tools.filter((t) => {
+    const type = t.type as string
+    if (COPILOT_UNSUPPORTED_TOOL_TYPES.has(type)) {
+      dropped.push(type)
+      return false
+    }
+    return true
+  })
+  if (dropped.length > 0) {
+    logger.debug("Removed unsupported tools:", dropped)
+  }
 }
