@@ -252,6 +252,12 @@ export const handleWithMessagesApi = async (
       for await (const event of response) {
         const eventName = event.event
         const data = event.data ?? ""
+        if (data === "[DONE]") {
+          break
+        }
+        if (!data) {
+          continue
+        }
         debugLazy(logger, () => ["Messages raw stream event:", data])
         await stream.writeSSE({
           event: eventName,
