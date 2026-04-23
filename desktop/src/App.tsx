@@ -5,23 +5,41 @@ import DashboardPage from './pages/DashboardPage'
 export type Page = 'auth' | 'dashboard'
 
 export default function App() {
-  const [page, setPage] = useState<Page>('auth')
+  const [page, setPage] = useState<Page | null>(null)
   const [username, setUsername] = useState<string>('')
   const [port, setPort] = useState<number>(4141)
 
   useEffect(() => {
-    window.electronAPI.checkSavedToken().then((result) => {
-      if (result.success && result.username) {
-        setUsername(result.username)
-        setPage(prev => prev === 'auth' ? 'dashboard' : prev)
-      }
-    })
-  }, [])
+    let active = true
 
-  useEffect(() => {
-    window.electronAPI.getSettings().then((settings) => {
-      setPort(settings.lastPort)
-    })
+    const bootstrap = async () => {
+      try {
+        const [authResult, settings] = await Promise.all([
+          window.electronAPI.checkSavedToken(),
+          window.electronAPI.getSettings(),
+        ])
+
+        if (!active) return
+
+        setPort(settings.lastPort)
+
+        if (authResult.success && authResult.username) {
+          setUsername(authResult.username)
+          setPage('dashboard')
+          return
+        }
+
+        setPage('auth')
+      } catch {
+        if (active) setPage('auth')
+      }
+    }
+
+    void bootstrap()
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleAuthSuccess = (user: string) => {
@@ -37,6 +55,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
+      {page === null && <div className="min-h-screen bg-white" />}
       {page === 'auth' && <AuthPage onSuccess={handleAuthSuccess} />}
       {page === 'dashboard' && (
         <DashboardPage

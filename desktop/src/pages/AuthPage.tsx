@@ -96,7 +96,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
             <span className="text-white text-base font-extrabold">CA</span>
           </div>
           <h1 className="text-lg font-bold text-[#0f172a]">Copilot API</h1>
-          <p className="text-xs text-slate-400 mt-1">连接你的 GitHub Copilot</p>
+          <p className="text-[13px] text-slate-400 mt-1">连接你的 GitHub Copilot</p>
         </div>
 
         {/* 默认态：两个按钮 */}
@@ -105,7 +105,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
             <button
               onClick={handleOAuth}
               disabled={loading}
-              className="w-full py-2.5 bg-[#0f172a] text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-2 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+              className="w-full py-2.5 bg-[#0f172a] text-white text-[13px] font-semibold rounded-lg flex items-center justify-center gap-2 hover:bg-slate-800 disabled:opacity-50 transition-colors"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
@@ -114,7 +114,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
             </button>
             <button
               onClick={() => setView('token-input')}
-              className="w-full py-2.5 bg-white border border-slate-200 text-slate-500 text-xs rounded-lg hover:bg-slate-50 transition-colors"
+              className="w-full py-2.5 bg-white border border-slate-200 text-slate-500 text-[13px] rounded-lg hover:bg-slate-50 transition-colors"
             >
               手动填写 Token
             </button>
@@ -125,14 +125,14 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
         {view === 'oauth-pending' && deviceCode && (
           <div className="w-full max-w-[240px] flex flex-col gap-3">
             <div>
-              <p className="text-[10px] text-slate-400 mb-1.5">授权码</p>
+              <p className="text-[13px] text-slate-400 mb-1.5">授权码</p>
               <div className="flex items-center gap-2 px-3 py-2.5 border border-dashed border-slate-300 rounded-lg bg-slate-50">
-                <span className="font-mono text-sm font-bold text-[#0f172a] tracking-widest flex-1">
+                <span className="font-mono text-[13px] font-bold text-[#0f172a] tracking-widest flex-1">
                   {deviceCode.user_code}
                 </span>
                 <button
                   onClick={handleCopyCode}
-                  className="text-[10px] text-blue-500 hover:text-blue-600 shrink-0"
+                  className="text-[13px] text-blue-500 hover:text-blue-600 shrink-0"
                 >
                   {copied ? '✓ 已复制' : '复制'}
                 </button>
@@ -140,18 +140,18 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
             </div>
             <button
               onClick={handleOpenDeviceUrl}
-              className="w-full py-2.5 bg-[#0f172a] text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition-colors"
+              className="w-full py-2.5 bg-[#0f172a] text-white text-[13px] font-semibold rounded-lg hover:bg-slate-800 transition-colors"
             >
               打开授权页面
             </button>
             {polling && (
-              <p className="text-center text-xs text-slate-400 animate-pulse">
+              <p className="text-center text-[13px] text-slate-400 animate-pulse">
                 等待 GitHub 授权中…
               </p>
             )}
             <button
               onClick={handleBack}
-              className="text-[10px] text-slate-400 hover:text-slate-600 text-center"
+              className="text-[13px] text-slate-400 hover:text-slate-600 text-center"
             >
               ← 返回
             </button>
@@ -166,18 +166,18 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
               onChange={e => setTokenInput(e.target.value)}
               placeholder="gho_xxxxxxxxxxxxxxxx"
               rows={3}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-xs resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 font-mono"
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-[13px] resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 font-mono"
             />
             <button
               onClick={handleSaveToken}
               disabled={loading || !tokenInput.trim()}
-              className="w-full py-2.5 bg-[#0f172a] text-white text-xs font-semibold rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
+              className="w-full py-2.5 bg-[#0f172a] text-white text-[13px] font-semibold rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
             >
               {loading ? '验证中…' : '确认添加'}
             </button>
             <button
               onClick={handleBack}
-              className="text-[10px] text-slate-400 hover:text-slate-600 text-center"
+              className="text-[13px] text-slate-400 hover:text-slate-600 text-center"
             >
               ← 返回
             </button>
@@ -186,12 +186,12 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
 
         {/* 错误提示 */}
         {error && (
-          <div className="w-full max-w-[240px] px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600 flex items-center gap-1.5">
+          <div className="w-full max-w-[240px] px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-[13px] text-red-600 flex items-center gap-1.5">
             <span>⚠️</span><span>{error}</span>
           </div>
         )}
 
-        <p className="text-[10px] text-slate-200">登录即代表授权访问 Copilot API</p>
+        <p className="text-[13px] text-slate-200">登录即代表授权访问 Copilot API</p>
       </div>
     </div>
   )

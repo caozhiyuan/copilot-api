@@ -46,7 +46,7 @@ export default function Header({ username, onLogout, onStop, isRunning }: Header
           {isRunning && onStop && (
             <button
               onClick={onStop}
-              className="px-2.5 py-1 text-xs border border-red-200 text-red-500 rounded-md hover:bg-red-50 transition-colors"
+              className="px-2.5 py-1 text-[13px] border border-red-200 text-red-500 rounded-md hover:bg-red-50 transition-colors"
             >
               ■ 停止
             </button>
@@ -56,12 +56,12 @@ export default function Header({ username, onLogout, onStop, isRunning }: Header
           {isRunning ? (
             <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-full px-2.5 py-1">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              <span className="text-xs font-semibold text-green-700">运行中</span>
+              <span className="text-[13px] font-semibold text-green-700">运行中</span>
             </div>
           ) : username ? (
             <div className="flex items-center gap-1.5 bg-yellow-50 border border-yellow-200 rounded-full px-2.5 py-1">
               <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-              <span className="text-xs font-semibold text-yellow-700">未启动</span>
+              <span className="text-[13px] font-semibold text-yellow-700">未启动</span>
             </div>
           ) : null}
 
@@ -74,7 +74,7 @@ export default function Header({ username, onLogout, onStop, isRunning }: Header
                   showLogout ? 'bg-blue-600' : 'bg-blue-500 hover:bg-blue-600'
                 }`}
               >
-                <span className="text-white text-[9px] font-bold">{username[0]?.toUpperCase()}</span>
+                <span className="text-white text-[13px] font-bold">{username[0]?.toUpperCase()}</span>
               </button>
               {showLogout && (
                 <div className="absolute right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg z-10 min-w-[140px] overflow-hidden">
@@ -82,15 +82,15 @@ export default function Header({ username, onLogout, onStop, isRunning }: Header
                   <div className="px-3 py-2.5 border-b border-gray-100">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center shrink-0">
-                        <span className="text-white text-[10px] font-bold">{username[0]?.toUpperCase()}</span>
+                        <span className="text-white text-[13px] font-bold">{username[0]?.toUpperCase()}</span>
                       </div>
-                      <span className="text-xs font-semibold text-[#0f172a] truncate max-w-[90px]">{username}</span>
+                      <span className="text-[13px] font-semibold text-[#0f172a] truncate max-w-[90px]">{username}</span>
                     </div>
                   </div>
                   {/* 注销按钮 */}
                   <button
                     onClick={() => { setShowLogout(false); onLogout?.() }}
-                    className="flex items-center gap-2 w-full px-3 py-2.5 text-xs text-red-600 hover:bg-red-50 transition-colors text-left"
+                    className="flex items-center gap-2 w-full px-3 py-2.5 text-[13px] text-red-600 hover:bg-red-50 transition-colors text-left"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
