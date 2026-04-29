@@ -96,7 +96,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-[560px] max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-xl w-[540px] h-[480px] flex flex-col overflow-hidden">
 
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
