@@ -78,9 +78,12 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   // 监听服务状态变化，仅在非主动停止时显示异常提示
   useEffect(() => {
     const unsubscribe = window.electronAPI.onServerStatus((status) => {
-      if (!status.running && !intentionalStop.current) {
-        setServerError(status.error ?? t('dashboard.serverUnexpectedStop'))
-        setStarted(false)
+      if (!status.running) {
+        if (!intentionalStop.current) {
+          setServerError(status.error ?? t('dashboard.serverUnexpectedStop'))
+          setStarted(false)
+        }
+        intentionalStop.current = false
       }
     })
     return unsubscribe
@@ -135,7 +138,6 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
     setUsage(null)
     setModels([])
     setServerError('')
-    intentionalStop.current = false
   }
 
   const handleLogout = async () => {
