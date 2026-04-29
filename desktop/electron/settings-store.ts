@@ -14,7 +14,11 @@ const SETTINGS_PATH = path.join(
 
 const DEFAULT_SETTINGS: DesktopSettings = {
   proxy: { http: '', https: '' },
-  lastPort: 4141
+  lastPort: 4141,
+  minimizeToTray: false,
+  accountType: 'individual',
+  verbose: false,
+  showToken: false
 }
 
 export async function readSettings(): Promise<DesktopSettings> {

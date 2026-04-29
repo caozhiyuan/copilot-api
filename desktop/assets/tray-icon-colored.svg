@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d2d5a"/>
+      <stop offset="100%" stop-color="#0a4a7a"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38d9ff"/>
+      <stop offset="100%" stop-color="#1a9fff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- squircle 背景 -->
+  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
+
+  <!-- 天线竖杆 -->
+  <line x1="16" y1="8" x2="16" y2="5" stroke="#38d9ff" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- 天线顶端圆点（信号感） -->
+  <circle cx="16" cy="3.5" r="1.8" fill="url(#cyan)"/>
+
+  <!-- bot 头部：带圆角的方形 -->
+  <rect x="5" y="8" width="22" height="16" rx="4.5" fill="#091e38" stroke="url(#cyan)" stroke-width="1.6"/>
+
+  <!-- 左眼 -->
+  <circle cx="11.5" cy="14.5" r="2.2" fill="url(#cyan)"/>
+  <!-- 右眼 -->
+  <circle cx="20.5" cy="14.5" r="2.2" fill="url(#cyan)"/>
+
+  <!-- 口部横条（表示对话/代理）-->
+  <rect x="10" y="19" width="12" height="2" rx="1" fill="#38d9ff" opacity="0.75"/>
+
+  <!-- 颈部连接 -->
+  <rect x="13.5" y="24" width="5" height="2.5" rx="1.2" fill="#38d9ff" opacity="0.4"/>
+</svg>

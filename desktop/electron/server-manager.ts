@@ -44,7 +44,8 @@ function getServerPath(): string {
 export async function startServer(
   port: number,
   token: string,
-  proxy?: { http?: string; https?: string }
+  proxy?: { http?: string; https?: string },
+  serverOptions?: { accountType?: string; verbose?: boolean; showToken?: boolean }
 ): Promise<ServerStatus> {
   const available = await checkPortAvailable(port)
   if (!available) {
@@ -72,6 +73,11 @@ export async function startServer(
   const args = ['start', '--github-token', token, '--port', String(port)]
   // 有代理配置时传 --proxy-env，让服务端从环境变量读取代理
   if (proxy?.http || proxy?.https) args.push('--proxy-env')
+  if (serverOptions?.accountType && serverOptions.accountType !== 'individual') {
+    args.push('--account-type', serverOptions.accountType)
+  }
+  if (serverOptions?.verbose) args.push('--verbose')
+  if (serverOptions?.showToken) args.push('--show-token')
 
   // utilityProcess.fork 是 Electron 官方 API，不会创建新的 Electron 实例，
   // 在 macOS 打包后也不会出现第二个 Dock 图标

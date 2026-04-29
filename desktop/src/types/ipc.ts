@@ -24,6 +24,10 @@ export interface DesktopSettings {
     https: string
   }
   lastPort: number
+  minimizeToTray: boolean
+  accountType: 'individual' | 'business' | 'enterprise'
+  verbose: boolean
+  showToken: boolean
 }
 
 // 全局 window 类型扩展（渲染进程使用）

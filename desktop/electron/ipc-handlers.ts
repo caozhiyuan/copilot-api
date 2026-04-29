@@ -1,17 +1,26 @@
 import { ipcMain, shell, BrowserWindow } from 'electron'
-import { getDeviceCode, pollAccessToken, getGitHubUser, saveToken, readToken, clearToken } from './auth'
+import { getDeviceCode, pollAccessToken, getGitHubUser, saveToken, readToken, clearToken, getCopilotAccountType } from './auth'
 import { startServer, stopServer, getPort, getLogs } from './server-manager'
 import { readSettings, writeSettings } from './settings-store'
 import type { DesktopSettings } from '../src/types/ipc'
 
-export function registerIpcHandlers(mainWindow: BrowserWindow): void {
+export function registerIpcHandlers(
+  mainWindow: BrowserWindow,
+  onTraySettingChange?: (minimizeToTray: boolean) => void
+): void {
   // Auth: 触发 OAuth device flow
   ipcMain.handle('auth:get-device-code', async () => {
     const deviceCode = await getDeviceCode()
     // 后台轮询，拿到 token 后推送给渲染进程
     pollAccessToken(deviceCode).then(async (token) => {
       await saveToken(token)
-      const username = await getGitHubUser(token)
+      const [username, accountType] = await Promise.all([
+        getGitHubUser(token),
+        getCopilotAccountType(token)
+      ])
+      // 登录成功后自动检测并持久化账户类型
+      const settings = await readSettings()
+      await writeSettings({ ...settings, accountType })
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('auth:success', { success: true, username })
       }
@@ -26,8 +35,14 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // Auth: 直接保存 token
   ipcMain.handle('auth:save-token', async (_event, token: string) => {
     try {
-      const username = await getGitHubUser(token)
+      const [username, accountType] = await Promise.all([
+        getGitHubUser(token),
+        getCopilotAccountType(token)
+      ])
       await saveToken(token)
+      // 自动检测并持久化账户类型
+      const settings = await readSettings()
+      await writeSettings({ ...settings, accountType })
       return { success: true, username }
     } catch (err) {
       return { success: false, error: (err as Error).message }
@@ -39,7 +54,13 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     const token = await readToken()
     if (!token) return { success: false }
     try {
-      const username = await getGitHubUser(token)
+      const [username, accountType] = await Promise.all([
+        getGitHubUser(token),
+        getCopilotAccountType(token)
+      ])
+      // 每次启动校验时同步更新账户类型（套餐可能已变更）
+      const settings = await readSettings()
+      await writeSettings({ ...settings, accountType })
       return { success: true, username }
     } catch {
       return { success: false }
@@ -61,10 +82,16 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       ? { http: settings.proxy.http, https: settings.proxy.https }
       : undefined
 
+    const serverOptions = {
+      accountType: settings.accountType,
+      verbose: settings.verbose,
+      showToken: settings.showToken
+    }
+
     // 保存最后使用的端口
     await writeSettings({ ...settings, lastPort: port })
 
-    return startServer(port, token, proxy)
+    return startServer(port, token, proxy, serverOptions)
   })
 
   // Server: 停止
@@ -75,7 +102,12 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   // Settings
   ipcMain.handle('settings:get', async () => readSettings())
   ipcMain.handle('settings:save', async (_event, settings: DesktopSettings) => {
+    const prev = await readSettings()
     await writeSettings(settings)
+    // 当 minimizeToTray 变化时通知主进程更新托盘状态
+    if (onTraySettingChange && settings.minimizeToTray !== prev.minimizeToTray) {
+      onTraySettingChange(settings.minimizeToTray)
+    }
   })
 
   // Shell: 打开系统浏览器

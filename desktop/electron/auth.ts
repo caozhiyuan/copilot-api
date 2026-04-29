@@ -110,3 +110,25 @@ export async function clearToken(): Promise<void> {
     // ignore
   }
 }
+
+// 从 GitHub Copilot 用户信息接口获取套餐类型，映射为 accountType
+export async function getCopilotAccountType(token: string): Promise<'individual' | 'business' | 'enterprise'> {
+  try {
+    const res = await fetch('https://api.github.com/copilot_internal/user', {
+      headers: {
+        authorization: `token ${token}`,
+        'user-agent': USER_AGENT,
+        'x-github-api-version': '2022-11-28'
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+    if (!res.ok) return 'individual'
+    const json = await res.json() as { copilot_plan?: string }
+    const plan = json.copilot_plan ?? ''
+    if (plan.includes('enterprise')) return 'enterprise'
+    if (plan.includes('business')) return 'business'
+    return 'individual'
+  } catch {
+    return 'individual'
+  }
+}

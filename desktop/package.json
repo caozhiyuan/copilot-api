@@ -7,6 +7,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "gen-icons": "rsvg-convert -w 1024 -h 1024 assets/tray-icon-colored.svg -o assets/icon.png",
     "package": "electron-vite build && electron-builder",
     "package:mac": "electron-vite build && electron-builder --mac",
     "package:win": "electron-vite build && electron-builder --win",
@@ -38,11 +39,28 @@
       {
         "from": "build/server-package.json",
         "to": "server/package.json"
+      },
+      {
+        "from": "assets/tray-icon.png",
+        "to": "tray-icon.png"
+      },
+      {
+        "from": "assets/tray-icon@2x.png",
+        "to": "tray-icon@2x.png"
+      },
+      {
+        "from": "assets/tray-iconTemplate.png",
+        "to": "tray-iconTemplate.png"
+      },
+      {
+        "from": "assets/tray-iconTemplate@2x.png",
+        "to": "tray-iconTemplate@2x.png"
       }
     ],
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png"
     },
     "dmg": {
       "format": "ULFO"
