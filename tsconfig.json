@@ -20,5 +20,7 @@
     "paths": {
       "~/*": ["./src/*"]
     }
-  }
+  },
+  "include": ["src/**/*", "tests/**/*", "eslint.config.js", "tsdown.config.ts"],
+  "exclude": ["node_modules", "dist", "desktop", "build"]
 }
