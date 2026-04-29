@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import AuthPage from './pages/AuthPage'
 import DashboardPage from './pages/DashboardPage'
+import { useLanguage } from './contexts/LanguageContext'
 
 export type Page = 'auth' | 'dashboard'
 
@@ -8,6 +9,7 @@ export default function App() {
   const [page, setPage] = useState<Page | null>(null)
   const [username, setUsername] = useState<string>('')
   const [port, setPort] = useState<number>(4141)
+  const { setLangPref } = useLanguage()
 
   useEffect(() => {
     let active = true
@@ -22,6 +24,7 @@ export default function App() {
         if (!active) return
 
         setPort(settings.lastPort)
+        setLangPref(settings.language ?? 'auto')
 
         if (authResult.success && authResult.username) {
           setUsername(authResult.username)

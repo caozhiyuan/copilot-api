@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Header from '../components/Header'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface DashboardPageProps {
   username: string
@@ -52,6 +53,7 @@ function getQuotaBarColor(pct: number, isUsed: boolean): string {
 }
 
 export default function DashboardPage({ username, defaultPort, onLogout }: DashboardPageProps) {
+  const { t } = useLanguage()
   const [started, setStarted] = useState(false)
   const [port, setPort] = useState<string>(String(defaultPort))
   const [starting, setStarting] = useState(false)
@@ -76,7 +78,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   useEffect(() => {
     const unsubscribe = window.electronAPI.onServerStatus((status) => {
       if (!status.running) {
-        setServerError(status.error ?? '服务已意外停止')
+        setServerError(status.error ?? t('dashboard.serverUnexpectedStop'))
         setStarted(false)
       }
     })
@@ -103,7 +105,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
 
   const handleStart = async () => {
     if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      setStartError('请输入有效的端口号（1–65535）')
+      setStartError(t('dashboard.invalidPort'))
       return
     }
     setStarting(true)
@@ -114,7 +116,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
       if (status.running) {
         setStarted(true)
       } else {
-        setStartError(status.error ?? '服务启动失败')
+        setStartError(status.error ?? t('dashboard.serverUnexpectedStop'))
       }
     } catch (err) {
       setStartError((err as Error).message)
@@ -194,17 +196,17 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
       {/* Tab 栏（仅服务运行时显示） */}
       {started && (
         <div className="flex px-4 bg-white border-b border-slate-100 shrink-0">
-          {(['dashboard', 'logs'] as const).map(t => (
+          {(['dashboard', 'logs'] as const).map(tabKey => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
               className={`px-3 py-2 text-[13px] border-b-2 transition-colors ${
-                tab === t
+                tab === tabKey
                   ? 'font-semibold text-[#0f172a] border-[#0f172a]'
                   : 'text-slate-400 border-transparent hover:text-slate-600'
               }`}
             >
-              {t === 'dashboard' ? '看板' : '日志'}
+              {tabKey === 'dashboard' ? t('dashboard.tabDashboard') : t('dashboard.tabLogs')}
             </button>
           ))}
         </div>
@@ -218,12 +220,12 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
           <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
             <div className="w-11 h-11 bg-slate-100 rounded-xl flex items-center justify-center text-[13px]">🚀</div>
             <div className="text-center">
-              <p className="text-[13px] font-semibold text-[#0f172a]">服务未运行</p>
-              <p className="text-[13px] text-slate-400 mt-1">配置端口后一键启动</p>
+              <p className="text-[13px] font-semibold text-[#0f172a]">{t('dashboard.serverStopped')}</p>
+              <p className="text-[13px] text-slate-400 mt-1">{t('dashboard.configPort')}</p>
             </div>
             <div className="w-full max-w-[190px] bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex flex-col gap-2.5">
               <div className="flex items-center gap-2">
-                <span className="text-[13px] text-slate-500">端口</span>
+                <span className="text-[13px] text-slate-500">{t('dashboard.port')}</span>
                 <input
                   type="number"
                   value={port}
@@ -234,12 +236,8 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                 />
               </div>
               {startError && (
-                <p className={`text-[13px] px-2 py-1.5 rounded-md ${
-                  startError.includes('占用')
-                    ? 'bg-orange-50 text-orange-700 border border-orange-200'
-                    : 'bg-red-50 text-red-600 border border-red-200'
-                }`}>
-                  {startError.includes('占用') ? '🔌' : '⚠️'} {startError}
+                <p className="text-[13px] px-2 py-1.5 rounded-md bg-red-50 text-red-600 border border-red-200">
+                  ⚠️ {startError}
                 </p>
               )}
               <button
@@ -247,7 +245,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                 disabled={starting}
                 className="w-full py-2 bg-[#0f172a] text-white text-[13px] font-semibold rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
               >
-                {starting ? '启动中…' : '▶ 启动服务'}
+                {starting ? t('dashboard.starting') : t('dashboard.startServer')}
               </button>
             </div>
           </div>
@@ -270,19 +268,19 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                     <div className={`text-[13px] font-bold text-green-600 ${loading ? 'animate-pulse' : ''}`}>
                       {loading ? '…' : premiumUsed}
                     </div>
-                    <div className="text-[13px] text-green-400 mt-0.5">Premium 已用</div>
+                    <div className="text-[13px] text-green-400 mt-0.5">{t('dashboard.premiumUsed')}</div>
                   </div>
                   <div className="bg-white border border-slate-200 rounded-xl p-3">
                     <div className={`text-[13px] font-bold text-[#0f172a] ${loading ? 'animate-pulse text-slate-200' : ''}`}>
                       {loading ? '…' : (usage?.quota_reset_date ?? '—')}
                     </div>
-                    <div className="text-[13px] text-slate-400 mt-0.5">配额重置</div>
+                    <div className="text-[13px] text-slate-400 mt-0.5">{t('dashboard.quotaReset')}</div>
                   </div>
                 </div>
 
                 {/* 服务地址 */}
                 <div className="bg-white border border-slate-200 rounded-xl p-3">
-                  <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide mb-2">服务地址</h3>
+                  <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide mb-2">{t('dashboard.serviceAddress')}</h3>
                   <div className="space-y-1.5">
                     {[
                       { label: 'OpenAI', url: openaiUrl, key: 'openai', color: 'bg-slate-500' },
@@ -295,7 +293,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                           onClick={() => handleCopy(url, key)}
                           className="shrink-0 text-[13px] text-blue-500 hover:text-blue-600"
                         >
-                          {copied === key ? '✓' : '复制'}
+                          {copied === key ? '✓' : t('dashboard.copy')}
                         </button>
                       </div>
                     ))}
@@ -305,13 +303,13 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                 {/* 配额使用 */}
                 <div className="bg-white border border-slate-200 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">配额使用</h3>
+                    <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">{t('dashboard.quotaUsage')}</h3>
                     <button
                       onClick={fetchData}
                       disabled={loading}
                       className="text-[13px] text-blue-500 hover:text-blue-600 disabled:opacity-50"
                     >
-                      {loading ? '刷新中…' : '🔄 刷新'}
+                      {loading ? t('dashboard.refreshing') : t('dashboard.refresh')}
                     </button>
                   </div>
                   <div className="space-y-2.5">
@@ -326,11 +324,11 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
               <div className="min-w-0">
                 <div className="bg-white border border-slate-200 rounded-xl p-3 xl:max-h-[calc(100vh-190px)] xl:min-h-[420px] flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
-                    <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">可用模型</h3>
-                    {!loading && <span className="text-[13px] text-slate-400 shrink-0">{models.length} 个</span>}
+                    <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">{t('dashboard.availableModels')}</h3>
+                    {!loading && <span className="text-[13px] text-slate-400 shrink-0">{t('dashboard.modelsCount', { n: models.length })}</span>}
                   </div>
                   {loading ? (
-                    <p className="text-[13px] text-slate-400 animate-pulse">加载中…</p>
+                    <p className="text-[13px] text-slate-400 animate-pulse">{t('dashboard.loading')}</p>
                   ) : models.length > 0 ? (
                     <div className="flex-1 space-y-1 overflow-y-auto pr-1 min-h-0">
                       {models.map(m => (
@@ -340,7 +338,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                       ))}
                     </div>
                   ) : (
-                    <p className="text-[13px] text-slate-400">暂无模型</p>
+                    <p className="text-[13px] text-slate-400">{t('dashboard.noModels')}</p>
                   )}
                 </div>
               </div>
@@ -353,17 +351,17 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
           <div className="p-4 h-full flex flex-col">
             <div className="flex-1 bg-[#0f172a] rounded-xl p-4 flex flex-col overflow-hidden min-h-0">
               <div className="flex items-center justify-between mb-3 shrink-0">
-                <span className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">服务日志</span>
+                <span className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">{t('dashboard.serverLog')}</span>
                 <button
                   onClick={() => setLogs([])}
                   className="text-[13px] text-slate-500 hover:text-slate-300 transition-colors"
                 >
-                  清空
+                  {t('dashboard.clear')}
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed">
                 {logs.length === 0 ? (
-                  <span className="text-slate-600">暂无日志…</span>
+                  <span className="text-slate-600">{t('dashboard.noLogs')}</span>
                 ) : (
                   logs.map((line, i) => (
                     <div key={i} className="whitespace-pre-wrap break-all">{line.trimEnd()}</div>

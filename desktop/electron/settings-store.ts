@@ -18,7 +18,8 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   minimizeToTray: false,
   accountType: 'individual',
   verbose: false,
-  showToken: false
+  showToken: false,
+  language: 'auto'
 }
 
 export async function readSettings(): Promise<DesktopSettings> {

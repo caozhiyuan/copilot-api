@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { DeviceCodeInfo } from '../types/ipc'
+import { useLanguage } from '../contexts/LanguageContext'
 
 interface AuthPageProps {
   onSuccess: (username: string) => void
@@ -8,6 +9,7 @@ interface AuthPageProps {
 type AuthView = 'default' | 'oauth-pending' | 'token-input'
 
 export default function AuthPage({ onSuccess }: AuthPageProps) {
+  const { t } = useLanguage()
   const [view, setView] = useState<AuthView>('default')
   const [deviceCode, setDeviceCode] = useState<DeviceCodeInfo | null>(null)
   const [loading, setLoading] = useState(false)
@@ -31,7 +33,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
         if (result.success && result.username) {
           onSuccess(result.username)
         } else {
-          setError(result.error ?? '授权失败，请重试')
+          setError(result.error ?? t('auth.authFailed'))
           setView('default')
         }
       })
@@ -63,7 +65,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
       if (result.success && result.username) {
         onSuccess(result.username)
       } else {
-        setError(result.error ?? 'Token 无效，请重试')
+        setError(result.error ?? t('auth.tokenInvalid'))
       }
     } catch (err) {
       setError((err as Error).message)
@@ -96,7 +98,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
             <span className="text-white text-base font-extrabold">CA</span>
           </div>
           <h1 className="text-lg font-bold text-[#0f172a]">Copilot API</h1>
-          <p className="text-[13px] text-slate-400 mt-1">连接你的 GitHub Copilot</p>
+          <p className="text-[13px] text-slate-400 mt-1">{t('auth.subtitle')}</p>
         </div>
 
         {/* 默认态：两个按钮 */}
@@ -110,13 +112,13 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
               </svg>
-              {loading ? '请稍候…' : '使用 GitHub 授权'}
+              {loading ? t('auth.loading') : t('auth.githubAuth')}
             </button>
             <button
               onClick={() => setView('token-input')}
               className="w-full py-2.5 bg-white border border-slate-200 text-slate-500 text-[13px] rounded-lg hover:bg-slate-50 transition-colors"
             >
-              手动填写 Token
+              {t('auth.manualToken')}
             </button>
           </div>
         )}
@@ -125,7 +127,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
         {view === 'oauth-pending' && deviceCode && (
           <div className="w-full max-w-[240px] flex flex-col gap-3">
             <div>
-              <p className="text-[13px] text-slate-400 mb-1.5">授权码</p>
+              <p className="text-[13px] text-slate-400 mb-1.5">{t('auth.deviceCode')}</p>
               <div className="flex items-center gap-2 px-3 py-2.5 border border-dashed border-slate-300 rounded-lg bg-slate-50">
                 <span className="font-mono text-[13px] font-bold text-[#0f172a] tracking-widest flex-1">
                   {deviceCode.user_code}
@@ -134,7 +136,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
                   onClick={handleCopyCode}
                   className="text-[13px] text-blue-500 hover:text-blue-600 shrink-0"
                 >
-                  {copied ? '✓ 已复制' : '复制'}
+                  {copied ? t('auth.copied') : t('auth.copy')}
                 </button>
               </div>
             </div>
@@ -142,18 +144,18 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
               onClick={handleOpenDeviceUrl}
               className="w-full py-2.5 bg-[#0f172a] text-white text-[13px] font-semibold rounded-lg hover:bg-slate-800 transition-colors"
             >
-              打开授权页面
+              {t('auth.openAuthPage')}
             </button>
             {polling && (
               <p className="text-center text-[13px] text-slate-400 animate-pulse">
-                等待 GitHub 授权中…
+                {t('auth.waitingAuth')}
               </p>
             )}
             <button
               onClick={handleBack}
               className="text-[13px] text-slate-400 hover:text-slate-600 text-center"
             >
-              ← 返回
+              {t('auth.back')}
             </button>
           </div>
         )}
@@ -173,13 +175,13 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
               disabled={loading || !tokenInput.trim()}
               className="w-full py-2.5 bg-[#0f172a] text-white text-[13px] font-semibold rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors"
             >
-              {loading ? '验证中…' : '确认添加'}
+              {loading ? t('auth.verifying') : t('auth.confirmAdd')}
             </button>
             <button
               onClick={handleBack}
               className="text-[13px] text-slate-400 hover:text-slate-600 text-center"
             >
-              ← 返回
+              {t('auth.back')}
             </button>
           </div>
         )}
@@ -191,7 +193,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
           </div>
         )}
 
-        <p className="text-[13px] text-slate-200">登录即代表授权访问 Copilot API</p>
+        <p className="text-[13px] text-slate-200">{t('auth.loginConsent')}</p>
       </div>
     </div>
   )

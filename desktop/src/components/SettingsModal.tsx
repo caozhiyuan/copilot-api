@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { DesktopSettings } from '../types/ipc'
+import { useLanguage } from '../contexts/LanguageContext'
+import type { LangPreference } from '../locales'
 
 interface SettingsModalProps {
   onClose: () => void
@@ -42,13 +44,15 @@ function Row({ label, description, children }: { label: string; description?: st
 }
 
 export default function SettingsModal({ onClose }: SettingsModalProps) {
+  const { t, setLangPref } = useLanguage()
   const [settings, setSettings] = useState<DesktopSettings>({
     proxy: { http: '', https: '' },
     lastPort: 4141,
     minimizeToTray: false,
     accountType: 'individual',
     verbose: false,
-    showToken: false
+    showToken: false,
+    language: 'auto',
   })
   const [saving, setSaving] = useState(false)
 
@@ -59,21 +63,28 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const handleSave = async () => {
     setSaving(true)
     await window.electronAPI.saveSettings(settings)
+    setLangPref(settings.language)
     setSaving(false)
     onClose()
   }
 
+  const langOptions: { value: LangPreference; label: string }[] = [
+    { value: 'auto', label: t('settings.langAuto') },
+    { value: 'en',   label: t('settings.langEn') },
+    { value: 'zh',   label: t('settings.langZh') },
+  ]
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-xl w-[480px] p-6 max-h-[85vh] flex flex-col">
-        <h2 className="text-[14px] font-semibold mb-1">设置</h2>
-        <p className="text-[12px] text-gray-500 mb-4">修改后需重启服务才能生效</p>
+        <h2 className="text-[14px] font-semibold mb-1">{t('settings.title')}</h2>
+        <p className="text-[12px] text-gray-500 mb-4">{t('settings.restartNote')}</p>
 
         <div className="flex-1 overflow-y-auto pr-1 -mr-1">
           {/* 常规 */}
-          <SectionTitle>常规</SectionTitle>
+          <SectionTitle>{t('settings.sectionGeneral')}</SectionTitle>
           <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 px-3">
-            <Row label="最小化到托盘" description="关闭窗口时隐藏到系统托盘，不退出程序">
+            <Row label={t('settings.minimizeToTray')} description={t('settings.minimizeToTrayDesc')}>
               <Toggle
                 checked={settings.minimizeToTray}
                 onChange={v => setSettings(s => ({ ...s, minimizeToTray: v }))}
@@ -82,10 +93,10 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           </div>
 
           {/* 代理 */}
-          <SectionTitle>代理</SectionTitle>
+          <SectionTitle>{t('settings.sectionProxy')}</SectionTitle>
           <div className="space-y-2">
             <div>
-              <label className="block text-[12px] font-medium text-gray-700 mb-1">HTTP 代理</label>
+              <label className="block text-[12px] font-medium text-gray-700 mb-1">{t('settings.httpProxy')}</label>
               <input
                 type="text"
                 placeholder="http://127.0.0.1:7890"
@@ -95,7 +106,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               />
             </div>
             <div>
-              <label className="block text-[12px] font-medium text-gray-700 mb-1">HTTPS 代理</label>
+              <label className="block text-[12px] font-medium text-gray-700 mb-1">{t('settings.httpsProxy')}</label>
               <input
                 type="text"
                 placeholder="http://127.0.0.1:7890"
@@ -107,20 +118,38 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           </div>
 
           {/* 启动参数 */}
-          <SectionTitle>启动参数</SectionTitle>
+          <SectionTitle>{t('settings.sectionStartup')}</SectionTitle>
           <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 px-3">
-            <Row label="详细日志" description="输出更详细的调试信息">
+            <Row label={t('settings.verbose')} description={t('settings.verboseDesc')}>
               <Toggle
                 checked={settings.verbose}
                 onChange={v => setSettings(s => ({ ...s, verbose: v }))}
               />
             </Row>
-            <Row label="显示 Token" description="在日志中打印 GitHub/Copilot Token 值">
+            <Row label={t('settings.showToken')} description={t('settings.showTokenDesc')}>
               <Toggle
                 checked={settings.showToken}
                 onChange={v => setSettings(s => ({ ...s, showToken: v }))}
               />
             </Row>
+          </div>
+
+          {/* 语言 */}
+          <SectionTitle>{t('settings.sectionLanguage')}</SectionTitle>
+          <div className="divide-y divide-gray-100 rounded-xl border border-gray-200 px-3">
+            {langOptions.map(opt => (
+              <label key={opt.value} className="flex items-center justify-between py-2.5 cursor-pointer">
+                <span className="text-[13px] font-medium text-gray-800">{opt.label}</span>
+                <input
+                  type="radio"
+                  name="language"
+                  value={opt.value}
+                  checked={settings.language === opt.value}
+                  onChange={() => setSettings(s => ({ ...s, language: opt.value }))}
+                  className="accent-blue-600"
+                />
+              </label>
+            ))}
           </div>
         </div>
 
@@ -129,14 +158,14 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             onClick={onClose}
             className="px-4 py-2 text-[13px] border border-gray-300 rounded-lg hover:bg-gray-50"
           >
-            取消
+            {t('settings.cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
             className="px-4 py-2 text-[13px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {saving ? '保存中…' : '保存'}
+            {saving ? t('settings.saving') : t('settings.save')}
           </button>
         </div>
       </div>

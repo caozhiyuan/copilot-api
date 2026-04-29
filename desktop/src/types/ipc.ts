@@ -1,3 +1,5 @@
+import type { LangPreference } from '../locales'
+
 export interface DeviceCodeInfo {
   user_code: string
   verification_uri: string
@@ -28,6 +30,7 @@ export interface DesktopSettings {
   accountType: 'individual' | 'business' | 'enterprise'
   verbose: boolean
   showToken: boolean
+  language: LangPreference
 }
 
 // 全局 window 类型扩展（渲染进程使用）
