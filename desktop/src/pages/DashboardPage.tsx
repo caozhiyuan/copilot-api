@@ -69,15 +69,16 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
 
   const [logs, setLogs] = useState<string[]>([])
   const logEndRef = useRef<HTMLDivElement>(null)
+  const intentionalStop = useRef(false)
 
   const portNum = parseInt(port, 10)
   const openaiUrl = `http://localhost:${portNum}/v1`
   const anthropicUrl = `http://localhost:${portNum}`
 
-  // 监听服务异常停止
+  // 监听服务状态变化，仅在非主动停止时显示异常提示
   useEffect(() => {
     const unsubscribe = window.electronAPI.onServerStatus((status) => {
-      if (!status.running) {
+      if (!status.running && !intentionalStop.current) {
         setServerError(status.error ?? t('dashboard.serverUnexpectedStop'))
         setStarted(false)
       }
@@ -126,6 +127,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   }
 
   const handleStop = async () => {
+    intentionalStop.current = true
     setStopping(true)
     await window.electronAPI.stopServer()
     setStopping(false)
@@ -133,9 +135,11 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
     setUsage(null)
     setModels([])
     setServerError('')
+    intentionalStop.current = false
   }
 
   const handleLogout = async () => {
+    intentionalStop.current = true
     if (started) await window.electronAPI.stopServer()
     onLogout()
   }
