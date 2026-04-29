@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DeviceCodeInfo } from '../types/ipc'
 import { useLanguage } from '../contexts/LanguageContext'
+import Header from '../components/Header'
 
 interface AuthPageProps {
   onSuccess: (username: string) => void
@@ -84,12 +85,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
 
   return (
     <div className="flex flex-col h-screen bg-white">
-      {/* macOS 交通灯占位条 */}
-      <div
-        className="h-7 shrink-0"
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        style={{ WebkitAppRegion: 'drag' } as any}
-      />
+      <Header />
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
         {/* Logo + 标题 */}
