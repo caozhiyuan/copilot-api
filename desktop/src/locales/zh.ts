@@ -53,7 +53,7 @@ const zh: Locale = {
   settings: {
     title: '设置',
     restartNote: '修改后需重启服务才能生效',
-    sectionGeneral: '常规',
+    sectionGeneral: '通用',
     minimizeToTray: '最小化到托盘',
     minimizeToTrayDesc: '关闭窗口时隐藏到系统托盘，不退出程序',
     sectionProxy: '代理',
