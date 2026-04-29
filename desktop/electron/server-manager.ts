@@ -29,7 +29,8 @@ function checkPortAvailable(port: number): Promise<boolean> {
       server.close()
       resolve(true)
     })
-    server.listen(port, '127.0.0.1')
+    // 绑定 0.0.0.0 以检测所有网络接口上的占用情况
+    server.listen(port, '0.0.0.0')
   })
 }
 
@@ -97,7 +98,21 @@ export async function startServer(
   serverProcess.stdout?.on('data', handleLog)
   serverProcess.stderr?.on('data', handleLog)
 
-  serverProcess.on('exit', (code) => {
+  // 等待服务就绪（同时感知进程退出），启动失败时立即返回错误
+  const startResult = await waitForServer(port, serverProcess)
+  if (!startResult.ok) {
+    if (serverProcess) {
+      serverProcess.kill()
+      serverProcess = null
+    }
+    const msg = startResult.exitCode !== undefined
+      ? `服务进程启动失败（退出码 ${startResult.exitCode}），请查看日志`
+      : `服务启动超时，端口 ${port} 可能已被占用`
+    return { running: false, error: msg }
+  }
+
+  // 启动成功后再注册运行时异常退出的监听
+  serverProcess!.on('exit', (code) => {
     serverProcess = null
     statusCallback?.({
       running: false,
@@ -105,22 +120,48 @@ export async function startServer(
     })
   })
 
-  await waitForServer(port)
-
   return { running: true, port }
 }
 
-async function waitForServer(port: number): Promise<void> {
-  const url = `http://localhost:${port}/`
-  for (let i = 0; i < 20; i++) {
-    await new Promise(resolve => setTimeout(resolve, 500))
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(1000) })
-      if (res.ok || res.status === 404) return
-    } catch {
-      // 继续等待
+// 等待服务就绪，同时监听进程退出，任一先发生就结束等待
+async function waitForServer(
+  port: number,
+  proc: UtilityProcess
+): Promise<{ ok: boolean; exitCode?: number }> {
+  return new Promise((resolve) => {
+    let settled = false
+
+    const finish = (result: { ok: boolean; exitCode?: number }) => {
+      if (settled) return
+      settled = true
+      proc.removeListener('exit', onExit)
+      resolve(result)
     }
-  }
+
+    const onExit = (code: number) => {
+      finish({ ok: false, exitCode: code ?? undefined })
+    }
+
+    proc.once('exit', onExit)
+
+    ;(async () => {
+      const url = `http://localhost:${port}/`
+      for (let i = 0; i < 20; i++) {
+        await new Promise<void>((r) => setTimeout(r, 500))
+        if (settled) return
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(1000) })
+          if (res.ok || res.status === 404) {
+            finish({ ok: true })
+            return
+          }
+        } catch {
+          // 继续等待
+        }
+      }
+      finish({ ok: false }) // 超时
+    })().catch(() => finish({ ok: false }))
+  })
 }
 
 export async function stopServer(): Promise<void> {
