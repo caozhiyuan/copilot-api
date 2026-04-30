@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+
 import Header from '../components/Header'
 import { useLanguage } from '../contexts/LanguageContext'
+import type { ServerAuthInfo } from '../types/ipc'
 
 interface DashboardPageProps {
   username: string
@@ -52,6 +54,11 @@ function getQuotaBarColor(pct: number, isUsed: boolean): string {
   return 'bg-red-500'
 }
 
+function maskSecret(value: string): string {
+  if (value.length <= 8) return '*'.repeat(Math.max(value.length, 4))
+  return `${value.slice(0, 4)}********${value.slice(-4)}`
+}
+
 export default function DashboardPage({ username, defaultPort, onLogout }: DashboardPageProps) {
   const { t } = useLanguage()
   const [started, setStarted] = useState(false)
@@ -63,6 +70,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   const [tab, setTab] = useState<'dashboard' | 'logs'>('dashboard')
   const [usage, setUsage] = useState<UsageInfo | null>(null)
   const [models, setModels] = useState<Model[]>([])
+  const [serverAuthInfo, setServerAuthInfo] = useState<ServerAuthInfo>({ enabled: false })
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState('')
   const [copied, setCopied] = useState<string>('')
@@ -75,13 +83,14 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   const openaiUrl = `http://localhost:${portNum}/v1`
   const anthropicUrl = `http://localhost:${portNum}`
 
-  // 监听服务状态变化，仅在非主动停止时显示异常提示
+  // Watch server status changes and only surface unexpected stops.
   useEffect(() => {
     const unsubscribe = window.electronAPI.onServerStatus((status) => {
       if (!status.running) {
         if (!intentionalStop.current) {
           setServerError(status.error ?? t('dashboard.serverUnexpectedStop'))
           setStarted(false)
+          void window.electronAPI.getLogs().then(setLogs).catch(() => {})
         }
         intentionalStop.current = false
       }
@@ -89,7 +98,11 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
     return unsubscribe
   }, [])
 
-  // 订阅实时日志
+  useEffect(() => {
+    void window.electronAPI.getLogs().then(setLogs).catch(() => {})
+  }, [])
+
+  // Subscribe to live logs.
   useEffect(() => {
     const unsubscribe = window.electronAPI.onServerLog((log) => {
       setLogs(prev => [...prev, log])
@@ -97,14 +110,27 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
     return unsubscribe
   }, [])
 
-  // 日志自动滚动
+  // Auto-scroll the log view.
   useEffect(() => {
-    if (tab === 'logs') logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs, tab])
+    if (tab === 'logs' || (!started && (startError || serverError))) {
+      logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs, tab, started, startError, serverError])
 
-  // 服务启动后拉取数据
+  // Fetch data after the server starts.
   useEffect(() => {
     if (started) fetchData()
+  }, [started])
+
+  useEffect(() => {
+    if (!started) {
+      setServerAuthInfo({ enabled: false })
+      return
+    }
+
+    window.electronAPI.getServerAuthInfo().then(setServerAuthInfo).catch(() => {
+      setServerAuthInfo({ enabled: false })
+    })
   }, [started])
 
   const handleStart = async () => {
@@ -115,15 +141,18 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
     setStarting(true)
     setStartError('')
     setServerError('')
+    setLogs([])
     try {
       const status = await window.electronAPI.startServer(portNum)
       if (status.running) {
         setStarted(true)
       } else {
         setStartError(status.error ?? t('dashboard.serverUnexpectedStop'))
+        void window.electronAPI.getLogs().then(setLogs).catch(() => {})
       }
     } catch (err) {
       setStartError((err as Error).message)
+      void window.electronAPI.getLogs().then(setLogs).catch(() => {})
     } finally {
       setStarting(false)
     }
@@ -149,7 +178,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   const fetchData = async () => {
     setLoading(true)
     try {
-      // 通过 IPC 由主进程代理 HTTP 请求，绕过渲染进程 file:// origin 的 CORS 限制
+      // Proxy HTTP requests through IPC so the main process bypasses renderer CORS.
       const [usageData, modelsData] = await Promise.all([
         window.electronAPI.fetchUsage(),
         window.electronAPI.fetchModels()
@@ -160,7 +189,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
         setModels(d.data ?? [])
       }
     } catch {
-      // 服务可能仍在初始化
+      // The server may still be initializing.
     } finally {
       setLoading(false)
     }
@@ -176,6 +205,15 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   const premiumQ = usage?.quota_snapshots?.premium_interactions
   const chatQ = usage?.quota_snapshots?.chat
   const completionsQ = usage?.quota_snapshots?.completions
+  const shouldShowFailureLogs = !started && Boolean(startError || serverError)
+  const serverAuthHeaderName = serverAuthInfo.headerName ?? ''
+  const serverAuthHeaderValue = serverAuthInfo.headerValue ?? ''
+  const serverAuthHeader = serverAuthHeaderName && serverAuthHeaderValue
+    ? `${serverAuthHeaderName}: ${serverAuthHeaderValue}`
+    : ''
+  const maskedServerAuthHeader = serverAuthHeaderName && serverAuthHeaderValue
+    ? `${serverAuthHeaderName}: ${maskSecret(serverAuthHeaderValue)}`
+    : ''
 
   const premiumUsed = premiumQ
     ? premiumQ.unlimited
@@ -192,14 +230,14 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
         isRunning={started && !stopping}
       />
 
-      {/* 服务异常停止横幅 */}
+      {/* Unexpected server stop banner */}
       {serverError && (
         <div className="mx-4 mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-[13px] text-red-600 flex items-center gap-1.5 shrink-0">
           <span>⚠️</span><span>{serverError}</span>
         </div>
       )}
 
-      {/* Tab 栏（仅服务运行时显示） */}
+      {/* Tabs shown only while the server is running */}
       {started && (
         <div className="flex px-4 bg-white border-b border-slate-100 shrink-0">
           {(['dashboard', 'logs'] as const).map(tabKey => (
@@ -218,10 +256,10 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
         </div>
       )}
 
-      {/* 内容区 */}
+      {/* Content area */}
       <div className="flex-1 overflow-auto">
 
-        {/* ── 空态：启动表单 ── */}
+        {/* Empty state: start form */}
         {!started && (
           <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
             <div className="w-11 h-11 bg-slate-100 rounded-xl flex items-center justify-center text-[13px]">🚀</div>
@@ -254,15 +292,32 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                 {starting ? t('dashboard.starting') : t('dashboard.startServer')}
               </button>
             </div>
+            {shouldShowFailureLogs && (
+              <div className="w-full max-w-2xl bg-[#0f172a] rounded-xl p-4 flex flex-col overflow-hidden min-h-0">
+                <div className="flex items-center justify-between mb-3 shrink-0">
+                  <span className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">{t('dashboard.serverLog')}</span>
+                </div>
+                <div className="max-h-60 overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed">
+                  {logs.length === 0 ? (
+                    <span className="text-slate-600">{t('dashboard.noLogs')}</span>
+                  ) : (
+                    logs.map((line, i) => (
+                      <div key={i} className="whitespace-pre-wrap break-all">{line.trimEnd()}</div>
+                    ))
+                  )}
+                  <div ref={logEndRef} />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── 看板 Tab ── */}
+        {/* Dashboard tab */}
         {started && tab === 'dashboard' && (
           <div className="p-4">
             <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="flex min-w-0 flex-col gap-3">
-                {/* 指标卡片 */}
+                {/* Metric cards */}
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                   <div className="bg-white border border-slate-200 rounded-xl p-3">
                     <div className={`text-[13px] font-bold text-[#0f172a] ${loading ? 'animate-pulse text-slate-200' : ''}`}>
@@ -284,7 +339,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                   </div>
                 </div>
 
-                {/* 服务地址 */}
+                {/* Service endpoints */}
                 <div className="bg-white border border-slate-200 rounded-xl p-3">
                   <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide mb-2">{t('dashboard.serviceAddress')}</h3>
                   <div className="space-y-1.5">
@@ -304,9 +359,27 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                       </div>
                     ))}
                   </div>
+                  {serverAuthInfo.enabled && serverAuthInfo.headerName && serverAuthInfo.headerValue && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <h4 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+                        {t('dashboard.authHeader')}
+                      </h4>
+                      <div className="flex items-start gap-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-lg">
+                        <span className="text-[13px] font-mono text-amber-900 break-all flex-1">
+                          {maskedServerAuthHeader}
+                        </span>
+                        <button
+                          onClick={() => handleCopy(serverAuthHeader, 'auth-header')}
+                          className="shrink-0 text-[13px] text-blue-500 hover:text-blue-600"
+                        >
+                          {copied === 'auth-header' ? '✓' : t('dashboard.copy')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* 配额使用 */}
+                {/* Quota usage */}
                 <div className="bg-white border border-slate-200 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="text-[13px] font-semibold text-slate-400 uppercase tracking-wide">{t('dashboard.quotaUsage')}</h3>
@@ -326,7 +399,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
                 </div>
               </div>
 
-              {/* 可用模型 */}
+              {/* Available models */}
               <div className="min-w-0">
                 <div className="bg-white border border-slate-200 rounded-xl p-3 xl:max-h-[calc(100vh-190px)] xl:min-h-[420px] flex flex-col overflow-hidden">
                   <div className="flex items-center justify-between gap-2 mb-2 shrink-0">
@@ -352,7 +425,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
           </div>
         )}
 
-        {/* ── 日志 Tab ── */}
+        {/* Logs tab */}
         {started && tab === 'logs' && (
           <div className="p-4 h-full flex flex-col">
             <div className="flex-1 bg-[#0f172a] rounded-xl p-4 flex flex-col overflow-hidden min-h-0">
@@ -384,7 +457,7 @@ export default function DashboardPage({ username, defaultPort, onLogout }: Dashb
   )
 }
 
-// ── 子组件 ──
+// Subcomponents
 
 function QuotaBar({ label, quota, loading, mode }: {
   label: string

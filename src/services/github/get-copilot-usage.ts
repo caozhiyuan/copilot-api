@@ -2,11 +2,21 @@ import { getGitHubApiBaseUrl, githubHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
-export const getCopilotUsage = async (): Promise<CopilotUsageResponse> => {
+export type CopilotAccountType = "individual" | "business" | "enterprise"
+
+export const getCopilotUsage = async (
+  githubToken?: string,
+): Promise<CopilotUsageResponse> => {
+  const resolvedGithubToken = githubToken ?? state.githubToken
+  if (!resolvedGithubToken) {
+    throw new Error("GitHub token not found")
+  }
+
+  const authState = { ...state, githubToken: resolvedGithubToken }
   const response = await fetch(
     `${getGitHubApiBaseUrl()}/copilot_internal/user`,
     {
-      headers: githubHeaders(state),
+      headers: githubHeaders(authState),
     },
   )
 
@@ -15,6 +25,17 @@ export const getCopilotUsage = async (): Promise<CopilotUsageResponse> => {
   }
 
   return (await response.json()) as CopilotUsageResponse
+}
+
+export const getCopilotAccountType = async (
+  githubToken?: string,
+): Promise<CopilotAccountType> => {
+  const usage = await getCopilotUsage(githubToken)
+  const plan = (usage.copilot_plan ?? "").toLowerCase()
+
+  if (plan.includes("enterprise")) return "enterprise"
+  if (plan.includes("business")) return "business"
+  return "individual"
 }
 
 export interface QuotaDetail {
@@ -41,7 +62,7 @@ interface CopilotUsageResponse {
   assigned_date: string
   can_signup_for_limited: boolean
   chat_enabled: boolean
-  copilot_plan: string
+  copilot_plan?: string
   organization_login_list: Array<unknown>
   organization_list: Array<unknown>
   quota_reset_date: string

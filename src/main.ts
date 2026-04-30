@@ -2,6 +2,8 @@
 
 import { defineCommand, runMain, parseArgs } from "citty"
 
+import { bindElectronFetch } from "./lib/electron-fetch"
+
 const cliArgs = {
   "api-home": {
     type: "string",
@@ -29,6 +31,8 @@ if (typeof args["oauth-app"] === "string") {
 if (typeof args["enterprise-url"] === "string") {
   process.env.COPILOT_API_ENTERPRISE_URL = args["enterprise-url"]
 }
+
+bindElectronFetch()
 
 // Dynamically import other modules to ensure environment variables are set
 const { auth } = await import("./auth")

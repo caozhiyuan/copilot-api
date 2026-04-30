@@ -38,6 +38,10 @@
         "filter": ["**/*.js"]
       },
       {
+        "from": "../pages",
+        "to": "pages"
+      },
+      {
         "from": "build/server-package.json",
         "to": "server/package.json"
       },

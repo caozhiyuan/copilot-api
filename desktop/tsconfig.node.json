@@ -1,8 +1,32 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["electron.vite.config.*", "electron/**/*", "src/locales/**/*", "src/types/**/*"],
+  "include": [
+    "electron.vite.config.*",
+    "electron/**/*",
+    "src/locales/**/*",
+    "src/types/**/*",
+    "../src/lib/api-config.ts",
+    "../src/lib/compact.ts",
+    "../src/lib/config.ts",
+    "../src/lib/deviceid.ts",
+    "../src/lib/error.ts",
+    "../src/lib/opencode.ts",
+    "../src/lib/paths.ts",
+    "../src/lib/request-auth.ts",
+    "../src/lib/request-context.ts",
+    "../src/lib/state.ts",
+    "../src/lib/utils.ts",
+    "../src/routes/messages/anthropic-types.ts",
+    "../src/services/copilot/get-models.ts",
+    "../src/services/get-vscode-version.ts",
+    "../src/services/github/**/*.ts",
+    "../src/lib/electron-fetch.ts"
+  ],
   "compilerOptions": {
     "composite": true,
+    "paths": {
+      "~/*": ["../src/*"]
+    },
     "types": ["electron-vite/node", "node"]
   }
 }

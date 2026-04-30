@@ -12,7 +12,10 @@ export class HTTPError extends Error {
   }
 }
 
-export async function forwardError(c: Context, error: unknown) {
+export async function forwardError(
+  c: Context,
+  error: unknown,
+): Promise<Response> {
   consola.error("Error occurred:", error)
 
   if (error instanceof HTTPError) {

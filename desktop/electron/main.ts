@@ -1,17 +1,110 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage } from 'electron'
 import path from 'node:path'
-import { registerIpcHandlers } from './ipc-handlers'
-import { stopServer, onStatusChange, onLog, clearCallbacks } from './server-manager'
-import { readSettings } from './settings-store'
+
+import { bindElectronFetch } from '../../src/lib/electron-fetch'
+import type { DesktopSettings } from '../src/types/ipc'
+import { tMain } from './i18n'
+
+const CLI_ENV_FLAGS = {
+  '--api-home': 'COPILOT_API_HOME',
+  '--oauth-app': 'COPILOT_API_OAUTH_APP',
+  '--enterprise-url': 'COPILOT_API_ENTERPRISE_URL'
+} as const
+
+function applyCliEnvOverrides(argv: string[]): void {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (!arg.startsWith('--')) continue
+
+    for (const [flag, envName] of Object.entries(CLI_ENV_FLAGS)) {
+      if (arg === flag) {
+        const nextArg = argv[index + 1]?.trim()
+        const value = nextArg?.startsWith('--') ? undefined : nextArg
+        if (value) process.env[envName] = value
+        break
+      }
+
+      const prefix = `${flag}=`
+      if (!arg.startsWith(prefix)) continue
+
+      const value = arg.slice(prefix.length).trim()
+      if (value) process.env[envName] = value
+      break
+    }
+  }
+}
+
+applyCliEnvOverrides(process.argv)
+bindElectronFetch()
+
+interface RuntimeDependencies {
+  registerIpcHandlers: typeof import('./ipc-handlers').registerIpcHandlers
+  stopServer: typeof import('./server-manager').stopServer
+  onStatusChange: typeof import('./server-manager').onStatusChange
+  onLog: typeof import('./server-manager').onLog
+  clearCallbacks: typeof import('./server-manager').clearCallbacks
+  readSettings: typeof import('./settings-store').readSettings
+}
+
+let runtimeDependenciesPromise: Promise<RuntimeDependencies> | null = null
+
+function applySettingsEnvOverrides(settings: DesktopSettings): void {
+  const apiHome = settings.apiHome.trim()
+  if (!process.env.COPILOT_API_HOME && apiHome) {
+    process.env.COPILOT_API_HOME = apiHome
+  }
+
+  if (!process.env.COPILOT_API_OAUTH_APP && settings.oauthApp === 'opencode') {
+    process.env.COPILOT_API_OAUTH_APP = 'opencode'
+  }
+
+  const enterpriseUrl = settings.enterpriseUrl.trim()
+  if (!process.env.COPILOT_API_ENTERPRISE_URL && enterpriseUrl) {
+    process.env.COPILOT_API_ENTERPRISE_URL = enterpriseUrl
+  }
+}
+
+function getRuntimeDependencies(): Promise<RuntimeDependencies> {
+  runtimeDependenciesPromise ??= (async () => {
+    const { readSettings } = await import('./settings-store')
+
+    applySettingsEnvOverrides(await readSettings())
+
+    const { initOpencodeVersion } = await import('../../src/lib/opencode')
+
+    await initOpencodeVersion()
+
+    const [
+      { registerIpcHandlers },
+      { stopServer, onStatusChange, onLog, clearCallbacks },
+      settingsStore
+    ] = await Promise.all([
+      import('./ipc-handlers'),
+      import('./server-manager'),
+      import('./settings-store')
+    ])
+
+    return {
+      registerIpcHandlers,
+      stopServer,
+      onStatusChange,
+      onLog,
+      clearCallbacks,
+      readSettings: settingsStore.readSettings
+    }
+  })()
+
+  return runtimeDependenciesPromise
+}
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
-// 标记是通过菜单/系统退出，而非点击关闭按钮
+// Track exits triggered by menu or system actions instead of the close button
 let isQuitting = false
 
 function createTrayNativeImage(): Electron.NativeImage {
-  // macOS 使用 Template Image（白色透明底），系统自动适配深/浅色模式
-  // Windows/Linux 使用彩色版（深色背景 + 蓝色图标）
+  // macOS uses a template image so the system adapts it for light and dark mode.
+  // Windows and Linux use the colored icon variant.
   const isMac = process.platform === 'darwin'
   const baseName = isMac ? 'tray-iconTemplate.png' : 'tray-icon.png'
   const iconDir = app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'assets')
@@ -25,7 +118,7 @@ function createTrayNativeImage(): Electron.NativeImage {
 }
 
 function showWindow(win: BrowserWindow): void {
-  // macOS：恢复 Dock 图标后再显示窗口
+  // Restore the Dock icon before showing the window on macOS.
   if (process.platform === 'darwin') {
     app.dock?.show()
   }
@@ -33,23 +126,25 @@ function showWindow(win: BrowserWindow): void {
   win.focus()
 }
 
-export function createTray(win: BrowserWindow): void {
-  if (tray) return
+async function refreshTrayContextMenu(win: BrowserWindow): Promise<void> {
+  if (!tray) return
 
-  const icon = createTrayNativeImage()
-  tray = new Tray(icon)
-  tray.setToolTip('Copilot API')
+  const [showWindowLabel, quitLabel] = await Promise.all([
+    tMain('tray.showWindow'),
+    tMain('tray.quit')
+  ])
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: '显示窗口',
+      label: showWindowLabel,
       click: () => showWindow(win)
     },
     { type: 'separator' },
     {
-      label: '退出',
+      label: quitLabel,
       click: async () => {
         isQuitting = true
+        const { stopServer } = await getRuntimeDependencies()
         await stopServer()
         app.quit()
       }
@@ -57,19 +152,28 @@ export function createTray(win: BrowserWindow): void {
   ])
 
   tray.setContextMenu(contextMenu)
+}
+
+async function createTray(win: BrowserWindow): Promise<void> {
+  if (tray) return
+
+  const icon = createTrayNativeImage()
+  tray = new Tray(icon)
+  tray.setToolTip('Copilot API')
+  await refreshTrayContextMenu(win)
   tray.on('double-click', () => showWindow(win))
-  // macOS 单击托盘图标也显示窗口
+  // On macOS, a single tray click should also show the window.
   if (process.platform === 'darwin') {
     tray.on('click', () => showWindow(win))
   }
 }
 
-export function destroyTray(): void {
+function destroyTray(): void {
   if (tray) {
     tray.destroy()
     tray = null
   }
-  // macOS：销毁托盘时恢复 Dock 图标（窗口应当可见）
+  // Restore the Dock icon when destroying the tray on macOS.
   if (process.platform === 'darwin') {
     app.dock?.show()
   }
@@ -90,6 +194,8 @@ function createWindow(): BrowserWindow {
     show: false
   })
 
+  win.removeMenu()
+
   mainWindow = win
 
   win.once('ready-to-show', () => win.show())
@@ -101,19 +207,21 @@ function createWindow(): BrowserWindow {
   })
 
   win.on('close', async (e) => {
-    // isQuitting 为 true 时（菜单退出），直接放行
+    // Allow the close event to proceed when quitting from the menu or system.
     if (isQuitting) return
 
     e.preventDefault()
+    const { readSettings } = await getRuntimeDependencies()
     const settings = await readSettings()
     if (settings.minimizeToTray) {
       win.hide()
-      // macOS：隐藏 Dock 图标，应用仅在托盘中运行
+      // Hide the Dock icon on macOS so the app runs from the tray only.
       if (process.platform === 'darwin') {
         app.dock?.hide()
       }
     } else {
       isQuitting = true
+      const { clearCallbacks, stopServer } = await getRuntimeDependencies()
       clearCallbacks()
       await stopServer()
       app.quit()
@@ -130,24 +238,29 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
+  const { registerIpcHandlers, readSettings, onStatusChange, onLog } = await getRuntimeDependencies()
   const win = createWindow()
 
-  registerIpcHandlers(win, async (minimizeToTray: boolean) => {
-    if (minimizeToTray) {
-      createTray(win)
-    } else {
+  registerIpcHandlers(win, async (settings, prevSettings) => {
+    if (settings.minimizeToTray) {
+      await createTray(win)
+      await refreshTrayContextMenu(win)
+      return
+    }
+
+    if (prevSettings.minimizeToTray) {
       destroyTray()
-      // 设置关闭时若窗口是隐藏状态，恢复显示
+      // Restore the window if it was hidden when this setting is turned off.
       if (!win.isVisible()) {
         showWindow(win)
       }
     }
   })
 
-  // 仅在开启最小化到托盘时才创建托盘
+  // Only create the tray when minimize-to-tray is enabled.
   const settings = await readSettings()
   if (settings.minimizeToTray) {
-    createTray(win)
+    await createTray(win)
   }
 
   onStatusChange((status) => {
@@ -173,10 +286,11 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', async () => {
   isQuitting = true
+  const { stopServer } = await getRuntimeDependencies()
   await stopServer()
 })
 
-// 关闭所有窗口时（macOS 托盘场景下不会触发，因为 close 被拦截）
+// This will not fire in the macOS tray flow because the close event is intercepted.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })

@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react'
 import type { DesktopSettings } from '../types/ipc'
 import { useLanguage } from '../contexts/LanguageContext'
-import type { LangPreference } from '../locales'
+import { translate, type LangPreference } from '../locales'
 
 interface SettingsModalProps {
   onClose: () => void
 }
 
-type Section = 'general' | 'startup' | 'proxy'
+type Section = 'general' | 'startup'
+
+function requiresAppRestart(previous: DesktopSettings, next: DesktopSettings): boolean {
+  return previous.apiHome !== next.apiHome
+    || previous.oauthApp !== next.oauthApp
+    || previous.enterpriseUrl !== next.enterpriseUrl
+}
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -49,18 +55,13 @@ const IconStartup = () => (
   </svg>
 )
 
-const IconProxy = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-  </svg>
-)
-
 export default function SettingsModal({ onClose }: SettingsModalProps) {
   const { t, setLangPref } = useLanguage()
   const [section, setSection] = useState<Section>('general')
   const [settings, setSettings] = useState<DesktopSettings>({
-    proxy: { http: '', https: '' },
+    apiHome: '',
+    oauthApp: 'default',
+    enterpriseUrl: '',
     lastPort: 4141,
     minimizeToTray: false,
     accountType: 'individual',
@@ -68,18 +69,32 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     showToken: false,
     language: 'auto',
   })
+  const [initialSettings, setInitialSettings] = useState<DesktopSettings | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    window.electronAPI.getSettings().then(setSettings)
+    window.electronAPI.getSettings().then((loadedSettings) => {
+      setSettings(loadedSettings)
+      setInitialSettings(loadedSettings)
+    })
   }, [])
 
   const handleSave = async () => {
+    const shouldPromptRestart = initialSettings !== null && requiresAppRestart(initialSettings, settings)
+
     setSaving(true)
-    await window.electronAPI.saveSettings(settings)
-    setLangPref(settings.language)
-    setSaving(false)
-    onClose()
+    try {
+      await window.electronAPI.saveSettings(settings)
+      setLangPref(settings.language)
+
+      if (shouldPromptRestart) {
+        window.alert(translate('settings.restartAppPrompt', settings.language, undefined, navigator.language))
+      }
+
+      onClose()
+    } finally {
+      setSaving(false)
+    }
   }
 
   const langOptions: { value: LangPreference; label: string }[] = [
@@ -91,14 +106,13 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
   const navItems: { key: Section; label: string; icon: React.ReactNode }[] = [
     { key: 'general',  label: t('settings.sectionGeneral'),  icon: <IconGeneral /> },
     { key: 'startup',  label: t('settings.sectionStartup'),  icon: <IconStartup /> },
-    { key: 'proxy',    label: t('settings.sectionProxy'),    icon: <IconProxy /> },
   ]
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-xl w-[540px] h-[480px] flex flex-col overflow-hidden">
 
-        {/* 标题栏 */}
+        {/* Title bar */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500">
@@ -116,10 +130,10 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        {/* 主体 */}
+        {/* Main content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
 
-          {/* 左侧导航 */}
+          {/* Left navigation */}
           <div className="w-[152px] shrink-0 bg-slate-50 border-r border-slate-100 py-3 px-2 flex flex-col gap-0.5">
             {navItems.map(item => (
               <button
@@ -137,7 +151,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
             ))}
           </div>
 
-          {/* 右侧内容 */}
+          {/* Right panel */}
           <div className="flex-1 overflow-y-auto px-6 py-5">
 
             {section === 'general' && (
@@ -165,7 +179,43 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
 
             {section === 'startup' && (
               <div>
-                <p className="text-[12px] text-slate-400 mb-4">{t('settings.restartNote')}</p>
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800">
+                  {t('settings.restartAppNote')}
+                </div>
+                <div className="mb-4">
+                  <div className="text-[13px] font-medium text-[#0f172a] mb-1.5">{t('settings.oauthApp')}</div>
+                  <select
+                    value={settings.oauthApp}
+                    onChange={e => setSettings(s => ({ ...s, oauthApp: e.target.value as DesktopSettings['oauthApp'] }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-[13px] text-[#0f172a] bg-white focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer"
+                  >
+                    <option value="default">{t('settings.oauthAppDefault')}</option>
+                    <option value="opencode">opencode</option>
+                  </select>
+                  <p className="text-[12px] text-slate-400 mt-1.5 leading-relaxed">{t('settings.oauthAppDesc')}</p>
+                </div>
+                <div className="mb-4">
+                  <div className="text-[13px] font-medium text-[#0f172a] mb-1.5">{t('settings.apiHome')}</div>
+                  <input
+                    type="text"
+                    placeholder="C:/copilot-api"
+                    value={settings.apiHome}
+                    onChange={e => setSettings(s => ({ ...s, apiHome: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-[13px] bg-slate-50 text-[#0f172a] placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:bg-white transition-colors"
+                  />
+                  <p className="text-[12px] text-slate-400 mt-1.5 leading-relaxed">{t('settings.apiHomeDesc')}</p>
+                </div>
+                <div className="mb-4">
+                  <div className="text-[13px] font-medium text-[#0f172a] mb-1.5">{t('settings.enterpriseUrl')}</div>
+                  <input
+                    type="text"
+                    placeholder="company.ghe.com"
+                    value={settings.enterpriseUrl}
+                    onChange={e => setSettings(s => ({ ...s, enterpriseUrl: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-[13px] bg-slate-50 text-[#0f172a] placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:bg-white transition-colors"
+                  />
+                  <p className="text-[12px] text-slate-400 mt-1.5 leading-relaxed">{t('settings.enterpriseUrlDesc')}</p>
+                </div>
                 <SettingRow label={t('settings.verbose')} description={t('settings.verboseDesc')}>
                   <Toggle
                     checked={settings.verbose}
@@ -181,36 +231,10 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
               </div>
             )}
 
-            {section === 'proxy' && (
-              <div>
-                <p className="text-[12px] text-slate-400 mb-4">{t('settings.restartNote')}</p>
-                <div className="mb-4">
-                  <div className="text-[13px] font-medium text-[#0f172a] mb-1.5">{t('settings.httpProxy')}</div>
-                  <input
-                    type="text"
-                    placeholder="http://127.0.0.1:7890"
-                    value={settings.proxy.http}
-                    onChange={e => setSettings(s => ({ ...s, proxy: { ...s.proxy, http: e.target.value } }))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-[13px] bg-slate-50 text-[#0f172a] placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:bg-white transition-colors"
-                  />
-                </div>
-                <div>
-                  <div className="text-[13px] font-medium text-[#0f172a] mb-1.5">{t('settings.httpsProxy')}</div>
-                  <input
-                    type="text"
-                    placeholder="http://127.0.0.1:7890"
-                    value={settings.proxy.https}
-                    onChange={e => setSettings(s => ({ ...s, proxy: { ...s.proxy, https: e.target.value } }))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-[13px] bg-slate-50 text-[#0f172a] placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:bg-white transition-colors"
-                  />
-                </div>
-              </div>
-            )}
-
           </div>
         </div>
 
-        {/* 底部操作栏 */}
+        {/* Footer actions */}
         <div className="flex gap-2 justify-end px-5 py-3.5 border-t border-slate-100 bg-slate-50/60 shrink-0">
           <button
             onClick={onClose}

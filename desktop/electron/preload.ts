@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   fetchUsage: () => ipcRenderer.invoke('server:fetch-usage'),
   fetchModels: () => ipcRenderer.invoke('server:fetch-models'),
+  getServerAuthInfo: () => ipcRenderer.invoke('server:get-auth-info'),
   getLogs: () => ipcRenderer.invoke('server:get-logs'),
 
   onAuthSuccess: (callback: (result: unknown) => void) => {

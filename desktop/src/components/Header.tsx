@@ -28,7 +28,7 @@ export default function Header({ username, onLogout, onStop, isRunning }: Header
 
   return (
     <>
-      {/* macOS 交通灯按钮占位条，可拖拽移动窗口 */}
+      {/* Placeholder for the macOS traffic lights that keeps the window draggable */}
       <div
         className="h-9 bg-white shrink-0"
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

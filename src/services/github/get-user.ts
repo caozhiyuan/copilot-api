@@ -2,9 +2,15 @@ import { getGitHubApiBaseUrl, githubUserHeaders } from "~/lib/api-config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 
-export async function getGitHubUser() {
+export async function getGitHubUser(githubToken?: string) {
+  const resolvedGithubToken = githubToken ?? state.githubToken
+  if (!resolvedGithubToken) {
+    throw new Error("GitHub token not found")
+  }
+
+  const authState = { ...state, githubToken: resolvedGithubToken }
   const response = await fetch(`${getGitHubApiBaseUrl()}/user`, {
-    headers: githubUserHeaders(state),
+    headers: githubUserHeaders(authState),
   })
 
   if (!response.ok) throw new HTTPError("Failed to get GitHub user", response)

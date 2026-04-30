@@ -88,7 +88,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
       <Header />
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
-        {/* Logo + 标题 */}
+        {/* Logo and title */}
         <div className="text-center">
           <div className="w-14 h-14 bg-[#0f172a] rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-[0_4px_14px_rgba(0,0,0,0.15)]">
             <span className="text-white text-base font-extrabold">CA</span>
@@ -97,7 +97,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
           <p className="text-[13px] text-slate-400 mt-1">{t('auth.subtitle')}</p>
         </div>
 
-        {/* 默认态：两个按钮 */}
+        {/* Default state: two actions */}
         {view === 'default' && (
           <div className="flex flex-col gap-2 w-full max-w-[220px]">
             <button
@@ -119,7 +119,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
           </div>
         )}
 
-        {/* OAuth 等待授权码 */}
+        {/* OAuth pending state */}
         {view === 'oauth-pending' && deviceCode && (
           <div className="w-full max-w-[240px] flex flex-col gap-3">
             <div>
@@ -156,7 +156,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
           </div>
         )}
 
-        {/* Token 输入展开态 */}
+        {/* Expanded token input state */}
         {view === 'token-input' && (
           <div className="w-full max-w-[240px] flex flex-col gap-3">
             <textarea
@@ -182,7 +182,7 @@ export default function AuthPage({ onSuccess }: AuthPageProps) {
           </div>
         )}
 
-        {/* 错误提示 */}
+        {/* Error message */}
         {error && (
           <div className="w-full max-w-[240px] px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-[13px] text-red-600 flex items-center gap-1.5">
             <span>⚠️</span><span>{error}</span>

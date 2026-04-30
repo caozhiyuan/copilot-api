@@ -5,6 +5,11 @@ import { resolve } from 'path'
 
 export default defineConfig({
   main: {
+    resolve: {
+      alias: {
+        '~': resolve(__dirname, '../src')
+      }
+    },
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
@@ -15,6 +20,11 @@ export default defineConfig({
     }
   },
   preload: {
+    resolve: {
+      alias: {
+        '~': resolve(__dirname, '../src')
+      }
+    },
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {

@@ -2,16 +2,126 @@ import { utilityProcess, app } from 'electron'
 import type { UtilityProcess } from 'electron'
 import net from 'node:net'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 
 import type { ServerStatus } from '../src/types/ipc'
+import { tMain } from './i18n'
 
 let serverProcess: UtilityProcess | null = null
 let currentPort = 4141
 let statusCallback: ((status: ServerStatus) => void) | null = null
 let logCallback: ((log: string) => void) | null = null
-// 环形日志缓冲，最多保留 2000 条，供打开日志面板时回放
+// Ring buffer for logs, capped at 2000 entries for log panel replay.
 const LOG_BUFFER_MAX = 2000
 const logBuffer: string[] = []
+const ESC_CHAR_CODE = 27
+const BEL_CHAR_CODE = 7
+const CSI_CHAR_CODE = 0x9b
+
+function codeAt(input: string, index: number): number {
+  return input.codePointAt(index) ?? -1
+}
+
+function skipCsiSequence(input: string, startIndex: number): number {
+  const inputLength = input.length
+  let index = startIndex
+
+  while (index < inputLength) {
+    const code = codeAt(input, index)
+    if (code >= 0x40 && code <= 0x7e) return index + 1
+    index += 1
+  }
+
+  return inputLength
+}
+
+function skipStringTerminatedSequence(input: string, startIndex: number): number {
+  const inputLength = input.length
+  let index = startIndex
+
+  while (index < inputLength) {
+    const code = codeAt(input, index)
+
+    if (code === BEL_CHAR_CODE) return index + 1
+    if (code === ESC_CHAR_CODE && codeAt(input, index + 1) === 92) {
+      return Math.min(index + 2, inputLength)
+    }
+
+    index += 1
+  }
+
+  return inputLength
+}
+
+function stripAnsi(input: string): string {
+  const inputLength = input.length
+  let lastIndex = 0
+  let index = 0
+  let stripped = false
+  const parts: Array<string> = []
+
+  while (index < inputLength) {
+    const code = codeAt(input, index)
+    if (code !== ESC_CHAR_CODE && code !== CSI_CHAR_CODE) {
+      index += 1
+      continue
+    }
+
+    stripped = true
+    if (index > lastIndex) parts.push(input.slice(lastIndex, index))
+
+    if (code === CSI_CHAR_CODE) {
+      index = skipCsiSequence(input, index + 1)
+      lastIndex = index
+      continue
+    }
+
+    const next = input[index + 1]
+    if (next === '[') {
+      index = skipCsiSequence(input, index + 2)
+      lastIndex = index
+      continue
+    }
+
+    if (next === ']' || next === 'P' || next === 'X' || next === '^' || next === '_') {
+      index = skipStringTerminatedSequence(input, index + 2)
+      lastIndex = index
+      continue
+    }
+
+    index = Math.min(index + 2, inputLength)
+    lastIndex = index
+  }
+
+  if (!stripped) return input
+  if (lastIndex < inputLength) parts.push(input.slice(lastIndex))
+  return parts.join('')
+}
+
+function emitLog(message: string): void {
+  const sanitizedMessage = stripAnsi(message)
+  if (sanitizedMessage.length === 0) return
+
+  logBuffer.push(sanitizedMessage)
+  if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift()
+  logCallback?.(sanitizedMessage)
+}
+
+function createLogStream() {
+  const decoder = new StringDecoder('utf8')
+  let flushed = false
+
+  return {
+    handleData(data: Buffer) {
+      emitLog(decoder.write(data))
+    },
+    flush() {
+      if (flushed) return
+      flushed = true
+      emitLog(decoder.end())
+    }
+  }
+}
 
 export function onStatusChange(cb: (status: ServerStatus) => void): void {
   statusCallback = cb
@@ -29,7 +139,7 @@ function checkPortAvailable(port: number): Promise<boolean> {
       server.close()
       resolve(true)
     })
-    // 绑定 0.0.0.0 以检测所有网络接口上的占用情况
+    // Bind to 0.0.0.0 to check whether the port is occupied on any interface.
     server.listen(port, '0.0.0.0')
   })
 }
@@ -38,19 +148,21 @@ function getServerPath(): string {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, 'server', 'main.js')
   }
-  // 开发模式下使用项目根目录的 dist/main.js
+  // In development, use dist/main.js from the project root.
   return path.join(app.getAppPath(), '..', 'dist', 'main.js')
 }
 
 export async function startServer(
   port: number,
   token: string,
-  proxy?: { http?: string; https?: string },
   serverOptions?: { accountType?: string; verbose?: boolean; showToken?: boolean }
 ): Promise<ServerStatus> {
   const available = await checkPortAvailable(port)
   if (!available) {
-    return { running: false, error: `端口 ${port} 已被占用，请更换其他端口` }
+    return {
+      running: false,
+      error: await tMain('server.portInUse', { port })
+    }
   }
 
   if (serverProcess) {
@@ -59,7 +171,7 @@ export async function startServer(
 
   currentPort = port
 
-  // 每次启动新服务时清空旧日志缓冲
+  // Clear the previous log buffer before each new server start.
   logBuffer.length = 0
 
   const env: NodeJS.ProcessEnv = {
@@ -67,38 +179,34 @@ export async function startServer(
     NODE_ENV: 'production'
   }
 
-  if (proxy?.http) env.HTTP_PROXY = proxy.http
-  if (proxy?.https) env.HTTPS_PROXY = proxy.https
-
   const serverPath = getServerPath()
   const args = ['start', '--github-token', token, '--port', String(port)]
-  // 有代理配置时传 --proxy-env，让服务端从环境变量读取代理
-  if (proxy?.http || proxy?.https) args.push('--proxy-env')
   if (serverOptions?.accountType && serverOptions.accountType !== 'individual') {
     args.push('--account-type', serverOptions.accountType)
   }
   if (serverOptions?.verbose) args.push('--verbose')
   if (serverOptions?.showToken) args.push('--show-token')
 
-  // utilityProcess.fork 是 Electron 官方 API，不会创建新的 Electron 实例，
-  // 在 macOS 打包后也不会出现第二个 Dock 图标
+  // utilityProcess.fork is an official Electron API and does not start another
+  // Electron instance, so packaged macOS builds do not show a second Dock icon.
   serverProcess = utilityProcess.fork(serverPath, args, {
     env,
     stdio: 'pipe',
     serviceName: 'copilot-api-server'
   })
 
-  const handleLog = (data: Buffer) => {
-    const msg = data.toString()
-    logBuffer.push(msg)
-    if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift()
-    logCallback?.(msg)
-  }
+  // Decode streamed UTF-8 safely so chunk boundaries do not corrupt Chinese or box-drawing characters.
+  const stdoutLogStream = createLogStream()
+  const stderrLogStream = createLogStream()
 
-  serverProcess.stdout?.on('data', handleLog)
-  serverProcess.stderr?.on('data', handleLog)
+  serverProcess.stdout?.on('data', stdoutLogStream.handleData)
+  serverProcess.stdout?.once('end', stdoutLogStream.flush)
+  serverProcess.stdout?.once('close', stdoutLogStream.flush)
+  serverProcess.stderr?.on('data', stderrLogStream.handleData)
+  serverProcess.stderr?.once('end', stderrLogStream.flush)
+  serverProcess.stderr?.once('close', stderrLogStream.flush)
 
-  // 等待服务就绪（同时感知进程退出），启动失败时立即返回错误
+  // Wait for the server to become ready while also detecting early process exit.
   const startResult = await waitForServer(port, serverProcess)
   if (!startResult.ok) {
     if (serverProcess) {
@@ -106,24 +214,34 @@ export async function startServer(
       serverProcess = null
     }
     const msg = startResult.exitCode !== undefined
-      ? `服务进程启动失败（退出码 ${startResult.exitCode}），请查看日志`
-      : `服务启动超时，端口 ${port} 可能已被占用`
+      ? await tMain('server.startFailed', { code: startResult.exitCode })
+      : await tMain('server.startTimeout', { port })
     return { running: false, error: msg }
   }
 
-  // 启动成功后再注册运行时异常退出的监听
+  // Register the runtime exit handler only after startup succeeds.
   serverProcess!.on('exit', (code) => {
+    stdoutLogStream.flush()
+    stderrLogStream.flush()
     serverProcess = null
-    statusCallback?.({
-      running: false,
-      error: code !== 0 ? `进程退出，代码 ${code}` : undefined
+
+    if (code === 0) {
+      statusCallback?.({ running: false })
+      return
+    }
+
+    void tMain('server.processExit', { code: String(code ?? 'unknown') }).then((error) => {
+      statusCallback?.({
+        running: false,
+        error
+      })
     })
   })
 
   return { running: true, port }
 }
 
-// 等待服务就绪，同时监听进程退出，任一先发生就结束等待
+// Wait for server readiness or process exit, whichever happens first.
 async function waitForServer(
   port: number,
   proc: UtilityProcess
@@ -156,10 +274,10 @@ async function waitForServer(
             return
           }
         } catch {
-          // 继续等待
+          // Keep waiting.
         }
       }
-      finish({ ok: false }) // 超时
+      finish({ ok: false }) // Timed out.
     })().catch(() => finish({ ok: false }))
   })
 }

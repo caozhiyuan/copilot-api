@@ -32,6 +32,7 @@ export interface Locale {
     premiumUsed: string
     quotaReset: string
     serviceAddress: string
+    authHeader: string
     copy: string
     quotaUsage: string
     refreshing: string
@@ -51,16 +52,32 @@ export interface Locale {
     logout: string
     settings: string
   }
+  tray: {
+    showWindow: string
+    quit: string
+  }
+  server: {
+    tokenNotFound: string
+    portInUse: string
+    startFailed: string
+    startTimeout: string
+    processExit: string
+  }
   settings: {
     title: string
-    restartNote: string
+    restartAppNote: string
+    restartAppPrompt: string
     sectionGeneral: string
     minimizeToTray: string
     minimizeToTrayDesc: string
-    sectionProxy: string
-    httpProxy: string
-    httpsProxy: string
     sectionStartup: string
+    oauthApp: string
+    oauthAppDefault: string
+    oauthAppDesc: string
+    apiHome: string
+    apiHomeDesc: string
+    enterpriseUrl: string
+    enterpriseUrlDesc: string
     verbose: string
     verboseDesc: string
     showToken: string
@@ -77,8 +94,9 @@ export interface Locale {
 
 export type Language = 'en' | 'zh'
 export type LangPreference = Language | 'auto'
+export type LocaleVars = Record<string, string | number>
 
-// 点路径类型 — key 自动补全 + 漏译编译报错
+// Dot-path key type with autocomplete and compile-time missing-key checks.
 type DotPaths<T, P extends string = ''> = {
   [K in keyof T & string]: T[K] extends string
     ? `${P}${K}`
@@ -88,3 +106,43 @@ type DotPaths<T, P extends string = ''> = {
 export type LocaleKey = DotPaths<Locale>
 
 export const locales: Record<Language, Locale> = { en, zh }
+
+function detectLanguage(systemLocale: string): Language {
+  const normalizedLocale = systemLocale.toLowerCase()
+  if (normalizedLocale.startsWith('zh')) return 'zh'
+  return 'en'
+}
+
+export function resolveLanguage(pref: LangPreference, systemLocale: string): Language {
+  if (pref === 'auto') return detectLanguage(systemLocale)
+  return pref
+}
+
+function getNestedValue(obj: unknown, path: string): string {
+  const keys = path.split('.')
+  let value: unknown = obj
+  for (const key of keys) {
+    value = (value as Record<string, unknown>)[key]
+  }
+  return value as string
+}
+
+function interpolate(template: string, vars?: LocaleVars): string {
+  if (!vars) return template
+
+  let result = template
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(`{{${key}}}`, String(value))
+  }
+  return result
+}
+
+export function translate(
+  key: LocaleKey,
+  pref: LangPreference,
+  vars?: LocaleVars,
+  systemLocale = 'en'
+): string {
+  const lang = resolveLanguage(pref, systemLocale)
+  return interpolate(getNestedValue(locales[lang], key), vars)
+}

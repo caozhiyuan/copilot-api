@@ -20,11 +20,16 @@ export interface ServerStatus {
   error?: string
 }
 
+export interface ServerAuthInfo {
+  enabled: boolean
+  headerName?: string
+  headerValue?: string
+}
+
 export interface DesktopSettings {
-  proxy: {
-    http: string
-    https: string
-  }
+  apiHome: string
+  oauthApp: 'default' | 'opencode'
+  enterpriseUrl: string
   lastPort: number
   minimizeToTray: boolean
   accountType: 'individual' | 'business' | 'enterprise'
@@ -33,7 +38,7 @@ export interface DesktopSettings {
   language: LangPreference
 }
 
-// 全局 window 类型扩展（渲染进程使用）
+// Extend the global window type for the renderer process.
 declare global {
   interface Window {
     electronAPI: {
@@ -48,6 +53,7 @@ declare global {
       openUrl: (url: string) => Promise<void>
       fetchUsage: () => Promise<unknown>
       fetchModels: () => Promise<unknown>
+      getServerAuthInfo: () => Promise<ServerAuthInfo>
       getLogs: () => Promise<string[]>
       onAuthSuccess: (callback: (result: AuthResult) => void) => () => void
       onServerStatus: (callback: (status: ServerStatus) => void) => () => void

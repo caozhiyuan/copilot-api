@@ -1,24 +1,63 @@
+import fs from 'node:fs/promises'
+
 import { ipcMain, shell, BrowserWindow } from 'electron'
+
+import { normalizeApiKeys } from '../../src/lib/request-auth'
+import { PATHS } from '../../src/lib/paths'
 import { getDeviceCode, pollAccessToken, getGitHubUser, saveToken, readToken, clearToken, getCopilotAccountType } from './auth'
+import { tMain } from './i18n'
 import { startServer, stopServer, getPort, getLogs } from './server-manager'
 import { readSettings, writeSettings } from './settings-store'
-import type { DesktopSettings } from '../src/types/ipc'
+import type { DesktopSettings, ServerAuthInfo } from '../src/types/ipc'
+
+async function getServerAuthInfo(): Promise<ServerAuthInfo> {
+  try {
+    const raw = await fs.readFile(PATHS.CONFIG_PATH, 'utf8')
+    const parsed = raw.trim()
+      ? JSON.parse(raw) as { auth?: { apiKeys?: unknown } }
+      : {}
+    const apiKey = normalizeApiKeys(parsed.auth?.apiKeys)[0]
+
+    if (!apiKey) {
+      return { enabled: false }
+    }
+
+    return {
+      enabled: true,
+      headerName: 'x-api-key',
+      headerValue: apiKey,
+    }
+  } catch {
+    return { enabled: false }
+  }
+}
+
+async function getServerRequestHeaders(): Promise<Record<string, string> | undefined> {
+  const authInfo = await getServerAuthInfo()
+  if (!authInfo.enabled || !authInfo.headerName || !authInfo.headerValue) {
+    return undefined
+  }
+
+  return {
+    [authInfo.headerName]: authInfo.headerValue,
+  }
+}
 
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
-  onTraySettingChange?: (minimizeToTray: boolean) => void
+  onSettingsChange?: (settings: DesktopSettings, prevSettings: DesktopSettings) => void | Promise<void>
 ): void {
-  // Auth: 触发 OAuth device flow
+  // Auth: Start the OAuth device flow
   ipcMain.handle('auth:get-device-code', async () => {
     const deviceCode = await getDeviceCode()
-    // 后台轮询，拿到 token 后推送给渲染进程
+    // Poll in the background and notify the renderer when the token arrives
     pollAccessToken(deviceCode).then(async (token) => {
       await saveToken(token)
       const [username, accountType] = await Promise.all([
         getGitHubUser(token),
         getCopilotAccountType(token)
       ])
-      // 登录成功后自动检测并持久化账户类型
+      // Detect and persist the account type automatically after sign-in
       const settings = await readSettings()
       await writeSettings({ ...settings, accountType })
       if (!mainWindow.isDestroyed()) {
@@ -32,7 +71,7 @@ export function registerIpcHandlers(
     return deviceCode
   })
 
-  // Auth: 直接保存 token
+  // Auth: Save token directly
   ipcMain.handle('auth:save-token', async (_event, token: string) => {
     try {
       const [username, accountType] = await Promise.all([
@@ -40,7 +79,7 @@ export function registerIpcHandlers(
         getCopilotAccountType(token)
       ])
       await saveToken(token)
-      // 自动检测并持久化账户类型
+      // Detect and persist the account type automatically
       const settings = await readSettings()
       await writeSettings({ ...settings, accountType })
       return { success: true, username }
@@ -49,7 +88,7 @@ export function registerIpcHandlers(
     }
   })
 
-  // Auth: 检查已保存的 token
+  // Auth: Check the saved token
   ipcMain.handle('auth:check-saved', async () => {
     const token = await readToken()
     if (!token) return { success: false }
@@ -58,7 +97,7 @@ export function registerIpcHandlers(
         getGitHubUser(token),
         getCopilotAccountType(token)
       ])
-      // 每次启动校验时同步更新账户类型（套餐可能已变更）
+      // Refresh the persisted account type on startup in case the plan changed
       const settings = await readSettings()
       await writeSettings({ ...settings, accountType })
       return { success: true, username }
@@ -67,34 +106,35 @@ export function registerIpcHandlers(
     }
   })
 
-  // Auth: 注销
+  // Auth: Log out
   ipcMain.handle('auth:logout', async () => {
     await clearToken()
   })
 
-  // Server: 启动
+  // Server: Start
   ipcMain.handle('server:start', async (_event, port: number) => {
     const token = await readToken()
-    if (!token) return { running: false, error: '未找到 token' }
+    if (!token) {
+      return {
+        running: false,
+        error: await tMain('server.tokenNotFound')
+      }
+    }
 
     const settings = await readSettings()
-    const proxy = settings.proxy.http || settings.proxy.https
-      ? { http: settings.proxy.http, https: settings.proxy.https }
-      : undefined
-
     const serverOptions = {
       accountType: settings.accountType,
       verbose: settings.verbose,
       showToken: settings.showToken
     }
 
-    // 保存最后使用的端口
+    // Persist the last used port
     await writeSettings({ ...settings, lastPort: port })
 
-    return startServer(port, token, proxy, serverOptions)
+    return startServer(port, token, serverOptions)
   })
 
-  // Server: 停止
+  // Server: Stop
   ipcMain.handle('server:stop', async () => {
     await stopServer()
   })
@@ -104,22 +144,26 @@ export function registerIpcHandlers(
   ipcMain.handle('settings:save', async (_event, settings: DesktopSettings) => {
     const prev = await readSettings()
     await writeSettings(settings)
-    // 当 minimizeToTray 变化时通知主进程更新托盘状态
-    if (onTraySettingChange && settings.minimizeToTray !== prev.minimizeToTray) {
-      onTraySettingChange(settings.minimizeToTray)
+    // Notify the main process after settings are saved so tray state and labels stay in sync.
+    if (onSettingsChange) {
+      await onSettingsChange(settings, prev)
     }
   })
 
-  // Shell: 打开系统浏览器
+  // Shell: Open the system browser
   ipcMain.handle('shell:open-url', async (_event, url: string) => {
     await shell.openExternal(url)
   })
 
-  // Server: 通过主进程代理 HTTP 请求，绕过渲染进程 file:// origin 的 CORS 限制
+  // Server: Proxy HTTP requests through the main process to bypass file:// origin CORS in the renderer
   ipcMain.handle('server:fetch-usage', async () => {
     const port = getPort()
     try {
-      const res = await fetch(`http://localhost:${port}/usage`, { signal: AbortSignal.timeout(5000) })
+      const headers = await getServerRequestHeaders()
+      const res = await fetch(`http://localhost:${port}/usage`, {
+        headers,
+        signal: AbortSignal.timeout(5000)
+      })
       if (!res.ok) return null
       return res.json()
     } catch {
@@ -130,7 +174,11 @@ export function registerIpcHandlers(
   ipcMain.handle('server:fetch-models', async () => {
     const port = getPort()
     try {
-      const res = await fetch(`http://localhost:${port}/models`, { signal: AbortSignal.timeout(5000) })
+      const headers = await getServerRequestHeaders()
+      const res = await fetch(`http://localhost:${port}/models`, {
+        headers,
+        signal: AbortSignal.timeout(5000)
+      })
       if (!res.ok) return null
       return res.json()
     } catch {
@@ -138,6 +186,8 @@ export function registerIpcHandlers(
     }
   })
 
-  // Server: 返回内存中的日志缓冲
+  ipcMain.handle('server:get-auth-info', async () => getServerAuthInfo())
+
+  // Server: Return the in-memory log buffer
   ipcMain.handle('server:get-logs', () => getLogs())
 }
