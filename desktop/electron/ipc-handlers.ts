@@ -10,17 +10,18 @@ export function registerIpcHandlers(
 ): void {
   // Auth: 触发 OAuth device flow
   ipcMain.handle('auth:get-device-code', async () => {
-    const deviceCode = await getDeviceCode()
+    const settings = await readSettings()
+    const deviceCode = await getDeviceCode(settings.proxy)
     // 后台轮询，拿到 token 后推送给渲染进程
-    pollAccessToken(deviceCode).then(async (token) => {
+    pollAccessToken(deviceCode, settings.proxy).then(async (token) => {
       await saveToken(token)
       const [username, accountType] = await Promise.all([
-        getGitHubUser(token),
-        getCopilotAccountType(token)
+        getGitHubUser(token, settings.proxy),
+        getCopilotAccountType(token, settings.proxy)
       ])
       // 登录成功后自动检测并持久化账户类型
-      const settings = await readSettings()
-      await writeSettings({ ...settings, accountType })
+      const latestSettings = await readSettings()
+      await writeSettings({ ...latestSettings, accountType })
       if (!mainWindow.isDestroyed()) {
         mainWindow.webContents.send('auth:success', { success: true, username })
       }
@@ -35,13 +36,13 @@ export function registerIpcHandlers(
   // Auth: 直接保存 token
   ipcMain.handle('auth:save-token', async (_event, token: string) => {
     try {
+      const settings = await readSettings()
       const [username, accountType] = await Promise.all([
-        getGitHubUser(token),
-        getCopilotAccountType(token)
+        getGitHubUser(token, settings.proxy),
+        getCopilotAccountType(token, settings.proxy)
       ])
       await saveToken(token)
       // 自动检测并持久化账户类型
-      const settings = await readSettings()
       await writeSettings({ ...settings, accountType })
       return { success: true, username }
     } catch (err) {
@@ -54,12 +55,12 @@ export function registerIpcHandlers(
     const token = await readToken()
     if (!token) return { success: false }
     try {
+      const settings = await readSettings()
       const [username, accountType] = await Promise.all([
-        getGitHubUser(token),
-        getCopilotAccountType(token)
+        getGitHubUser(token, settings.proxy),
+        getCopilotAccountType(token, settings.proxy)
       ])
       // 每次启动校验时同步更新账户类型（套餐可能已变更）
-      const settings = await readSettings()
       await writeSettings({ ...settings, accountType })
       return { success: true, username }
     } catch {
