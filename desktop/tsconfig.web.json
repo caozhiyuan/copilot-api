@@ -1,7 +1,8 @@
 {
-  "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
+  "extends": "./tsconfig.base.json",
   "include": ["src/**/*"],
   "compilerOptions": {
-    "composite": true
+    "composite": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
   }
 }

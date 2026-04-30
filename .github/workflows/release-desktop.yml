@@ -38,50 +38,13 @@ jobs:
         working-directory: desktop
         run: npm run package:mac
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false   # 跳过代码签名
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - uses: actions/upload-artifact@v4
         with:
           name: mac-arm64
           path: desktop/release/*.dmg
           if-no-files-found: warn
-
-  # ─── macOS Intel (x64) ──────────────────────────────────────────────────
-  #  build-mac-x64:
-  #    name: Build macOS (Intel)
-  #    runs-on: macos-13
-  #    steps:
-  #      - uses: actions/checkout@v4
-  #
-  #      - uses: oven-sh/setup-bun@v2
-  #        with:
-  #          bun-version: latest
-  #
-  #      - name: Install root dependencies
-  #        run: bun install
-  #
-  #      - name: Build server
-  #        run: bun run build
-  #
-  #      - uses: actions/setup-node@v4
-  #        with:
-  #          node-version: "20"
-  #
-  #      - name: Install desktop dependencies
-  #        working-directory: desktop
-  #        run: npm install
-  #
-  #      - name: Build macOS x64 package
-  #        working-directory: desktop
-  #        run: npm run package:mac
-  #        env:
-  #          CSC_IDENTITY_AUTO_DISCOVERY: false   # 跳过代码签名
-  #
-  #      - uses: actions/upload-artifact@v4
-  #        with:
-  #          name: mac-x64
-  #          path: desktop/release/*.dmg
-  #          if-no-files-found: warn
 
   # ─── Windows ─────────────────────────────────────────────────────────────
   build-win:
@@ -112,7 +75,7 @@ jobs:
         working-directory: desktop
         run: npm run package:win
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false   # 跳过代码签名
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - uses: actions/upload-artifact@v4
         with:
@@ -121,44 +84,6 @@ jobs:
             desktop/release/*.exe
             desktop/release/*.msi
           if-no-files-found: warn
-
-  # ─── Linux ────────────────────────────────────────────────────────────────
-  #  build-linux:
-  #    name: Build Linux
-  #    runs-on: ubuntu-latest
-  #    steps:
-  #      - uses: actions/checkout@v4
-  #
-  #      - uses: oven-sh/setup-bun@v2
-  #        with:
-  #          bun-version: latest
-  #
-  #      - name: Install root dependencies
-  #        run: bun install
-  #
-  #      - name: Build server
-  #        run: bun run build
-  #
-  #      - uses: actions/setup-node@v4
-  #        with:
-  #          node-version: "20"
-  #
-  #      - name: Install desktop dependencies
-  #        working-directory: desktop
-  #        run: npm install
-  #
-  #      - name: Install Linux build dependencies
-  #        run: sudo apt-get install -y libopenjp2-tools fakeroot rpm
-  #
-  #      - name: Build Linux package
-  #        working-directory: desktop
-  #        run: npm run package:linux
-  #
-  #      - uses: actions/upload-artifact@v4
-  #        with:
-  #          name: linux
-  #          path: desktop/release/*.AppImage
-  #          if-no-files-found: warn
 
   # ─── Upload all artifacts to the GitHub Release ──────────────────────────
   release-upload:

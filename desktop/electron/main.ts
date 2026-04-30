@@ -90,7 +90,15 @@ function createWindow(): BrowserWindow {
     show: false
   })
 
+  mainWindow = win
+
   win.once('ready-to-show', () => win.show())
+
+  win.on('closed', () => {
+    if (mainWindow === win) {
+      mainWindow = null
+    }
+  })
 
   win.on('close', async (e) => {
     // isQuitting 为 true 时（菜单退出），直接放行
@@ -123,7 +131,6 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(async () => {
   const win = createWindow()
-  mainWindow = win
 
   registerIpcHandlers(win, async (minimizeToTray: boolean) => {
     if (minimizeToTray) {
@@ -156,10 +163,10 @@ app.whenReady().then(async () => {
   })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       createWindow()
     } else {
-      showWindow(win)
+      showWindow(mainWindow)
     }
   })
 })
