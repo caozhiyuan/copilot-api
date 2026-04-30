@@ -76,6 +76,7 @@ export function destroyTray(): void {
 }
 
 function createWindow(): BrowserWindow {
+  const isMac = process.platform === 'darwin'
   const win = new BrowserWindow({
     width: 1000,
     height: 650,
@@ -86,9 +87,15 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false
     },
-    titleBarStyle: 'hiddenInset',
+    ...(isMac ? { titleBarStyle: 'hiddenInset' as const } : {}),
+    autoHideMenuBar: !isMac,
     show: false
   })
+
+  if (!isMac) {
+    // Windows/Linux 不展示 Electron 默认菜单栏，避免占用窗口顶部空间。
+    win.removeMenu()
+  }
 
   win.once('ready-to-show', () => win.show())
 

@@ -14,6 +14,7 @@ export default function Header({ username, onLogout, onStop, isRunning }: Header
   const [showSettings, setShowSettings] = useState(false)
   const [showLogout, setShowLogout] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const isMac = navigator.platform.toLowerCase().includes('mac')
 
   useEffect(() => {
     if (!showLogout) return
@@ -28,12 +29,13 @@ export default function Header({ username, onLogout, onStop, isRunning }: Header
 
   return (
     <>
-      {/* macOS 交通灯按钮占位条，可拖拽移动窗口 */}
-      <div
-        className="h-9 bg-white shrink-0"
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        style={{ WebkitAppRegion: 'drag' } as any}
-      />
+      {isMac && (
+        <div
+          className="h-9 bg-white shrink-0"
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          style={{ WebkitAppRegion: 'drag' } as any}
+        />
+      )}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-white">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 bg-[#0f172a] rounded-md flex items-center justify-center">
