@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:server": "npm --prefix .. run build",
     "preview": "electron-vite preview",
     "gen-icons": "rsvg-convert -w 1024 -h 1024 assets/tray-icon-colored.svg -o assets/icon.png",
-    "package": "electron-vite build && electron-builder",
-    "package:mac": "electron-vite build && electron-builder --mac",
-    "package:win": "electron-vite build && electron-builder --win",
-    "package:linux": "electron-vite build && electron-builder --linux"
+    "package": "npm run build:server && electron-vite build && electron-builder",
+    "package:mac": "npm run build:server && electron-vite build && electron-builder --mac",
+    "package:win": "npm run build:server && electron-vite build && electron-builder --win",
+    "package:linux": "npm run build:server && electron-vite build && electron-builder --linux"
   },
   "dependencies": {
     "electron-updater": "^6.3.4"
