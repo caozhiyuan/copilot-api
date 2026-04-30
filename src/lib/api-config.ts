@@ -141,15 +141,15 @@ export const getOpencodeVersion = () => {
   return OPENCODE_VERSION
 }
 
-const OPENCODE_VERSION = "opencode/1.3.15"
+const OPENCODE_VERSION = "opencode/1.14.29"
 const OPENCODE_LLM_USER_AGENT =
-  "opencode/1.3.15 ai-sdk/provider-utils/4.0.21 runtime/bun/1.3.11, opencode/1.3.15"
+  "opencode/1.14.29 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13, opencode/1.14.29"
 
-const COPILOT_VERSION = "0.44.2"
+const COPILOT_VERSION = "0.46.0"
 const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
 const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
 const CLAUDE_AGENT_USER_AGENT =
-  "vscode_claude_code/2.1.98 (external, sdk-ts, agent-sdk/0.2.98)"
+  "vscode_claude_code/2.1.112 (external, sdk-ts, agent-sdk/0.2.112)"
 
 const API_VERSION = "2025-10-01"
 

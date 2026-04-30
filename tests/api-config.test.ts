@@ -29,7 +29,7 @@ test("prepareMessageProxyHeaders applies message proxy headers by default", () =
   expect(headers["x-interaction-type"]).toBe("messages-proxy")
   expect(headers["openai-intent"]).toBe("messages-proxy")
   expect(headers["user-agent"]).toBe(
-    "vscode_claude_code/2.1.98 (external, sdk-ts, agent-sdk/0.2.98)",
+    "vscode_claude_code/2.1.112 (external, sdk-ts, agent-sdk/0.2.112)",
   )
   expect(headers["x-request-id"]).toBeDefined()
   expect(headers["x-agent-task-id"]).toBe(headers["x-request-id"])
