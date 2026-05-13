@@ -18,7 +18,7 @@ import {
 import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
-import { parseUserIdMetadata } from "~/lib/utils"
+import { parseUserIdMetadata, normalizeModelName } from "~/lib/utils"
 
 export type MessagesStream = ReturnType<typeof events>
 export type CreateMessagesReturn = AnthropicResponse | MessagesStream
@@ -125,12 +125,13 @@ export const createMessages = async (
     headers["anthropic-beta"] = anthropicBeta
   }
 
-  consola.log(`<-- model: ${payload.model}`)
+  const normalizedModel = normalizeModelName(payload.model)
+  consola.log(`<-- model: ${normalizedModel}`)
 
   const response = await fetch(`${copilotBaseUrl(state)}/v1/messages`, {
     method: "POST",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, model: normalizedModel }),
   })
 
   logCopilotRateLimits(response.headers)

@@ -13,6 +13,7 @@ import {
 import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import { normalizeModelName } from "~/lib/utils"
 
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
@@ -56,12 +57,13 @@ export const createChatCompletions = async (
 
   prepareForCompact(headers, options.compactType)
 
-  consola.log(`<-- model: ${payload.model}`)
+  const normalizedModel = normalizeModelName(payload.model)
+  consola.log(`<-- model: ${normalizedModel}`)
 
   const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, model: normalizedModel }),
   })
 
   logCopilotRateLimits(response.headers)

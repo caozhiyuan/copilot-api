@@ -12,6 +12,11 @@ import { getVSCodeVersion } from "~/services/get-vscode-version"
 import { getVSCodeDeviceId } from "./deviceid"
 import { state } from "./state"
 
+const CLAUDE_DESKTOP_SUFFIX = "_claude_desktop"
+
+export const normalizeModelName = (model: string): string =>
+  model.replaceAll(CLAUDE_DESKTOP_SUFFIX, "")
+
 export const sleep = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms)
