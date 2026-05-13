@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto"
 
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 
-import { getRootSessionId, getUUID } from "../src/lib/utils"
+import { getRootSessionId, getUUID, normalizeModelName } from "../src/lib/utils"
 
 const jsonStyleUserId = JSON.stringify({
   device_id: "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
@@ -95,4 +95,15 @@ test("getRootSessionId keeps legacy parsing before JSON fallback", () => {
   expect(getRootSessionId(anthropicPayload, context)).toBe(
     getUUID("7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b"),
   )
+})
+
+test("normalizeModelName strips _claude_desktop suffix", () => {
+  expect(normalizeModelName("claude-3-7-sonnet_claude_desktop")).toBe(
+    "claude-3-7-sonnet",
+  )
+})
+
+test("normalizeModelName leaves names without suffix unchanged", () => {
+  expect(normalizeModelName("claude-3-7-sonnet")).toBe("claude-3-7-sonnet")
+  expect(normalizeModelName("gpt-4o")).toBe("gpt-4o")
 })

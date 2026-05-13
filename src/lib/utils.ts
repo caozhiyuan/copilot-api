@@ -12,6 +12,9 @@ import { getVSCodeVersion } from "~/services/get-vscode-version"
 import { getVSCodeDeviceId } from "./deviceid"
 import { state } from "./state"
 
+export const normalizeModelName = (model: string): string =>
+  model.replaceAll("_claude_desktop", "")
+
 export const sleep = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms)
