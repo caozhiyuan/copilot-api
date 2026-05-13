@@ -107,3 +107,9 @@ test("normalizeModelName leaves names without suffix unchanged", () => {
   expect(normalizeModelName("claude-3-7-sonnet")).toBe("claude-3-7-sonnet")
   expect(normalizeModelName("gpt-4o")).toBe("gpt-4o")
 })
+
+test("normalizeModelName removes all occurrences of the suffix", () => {
+  expect(
+    normalizeModelName("claude-3-7-sonnet_claude_desktop_claude_desktop"),
+  ).toBe("claude-3-7-sonnet")
+})
