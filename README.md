@@ -53,6 +53,7 @@ Compared with routing everything through plain Chat Completions compatibility, t
 - **Subagent Marker Integration**: Claude Code and opencode plugins can inject `__SUBAGENT_MARKER__...` and propagate `x-session-id` so subagent traffic keeps the correct root session and agent/user semantics.
 - **OpenCode via `@ai-sdk/anthropic`**: Point OpenCode at this proxy as an Anthropic provider so Anthropic Messages semantics, premium-request optimizations, and Claude-native behavior are preserved end to end.
 - **Claude Code Integration**: Easily configure and launch [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview) to use Copilot as its backend with a simple command-line flag (`--claude-code`).
+- **Claude Desktop Compatibility**: Automatically strips the `_claude_desktop` suffix that Claude Desktop appends to model names (e.g. `claude-opus-4_claude_desktop` → `claude-opus-4`) before forwarding requests upstream, so Claude Desktop works out of the box without any manual model name configuration.
 - **Usage Dashboard**: A web-based dashboard to monitor your Copilot API usage, view quotas, and see detailed statistics.
 - **Rate Limit Control**: Manage API usage with rate-limiting options (`--rate-limit`) and a waiting mechanism (`--wait`) to prevent errors from rapid requests.
 - **Manual Request Approval**: Manually approve or deny each API request for fine-grained control over usage (`--manual`).
