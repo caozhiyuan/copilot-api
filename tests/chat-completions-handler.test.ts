@@ -118,4 +118,25 @@ describe("chat completions handler", () => {
     })
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  test("non-streaming response includes object: 'chat.completion'", async () => {
+    const app = createApp()
+    const response = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-test",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    const json = await response.json()
+    expect(json).toHaveProperty("object", "chat.completion")
+    // Optionally, check other required fields
+    expect(json).toHaveProperty("id")
+    expect(json).toHaveProperty("choices")
+  })
 })

@@ -74,7 +74,12 @@ export async function handleCompletion(c: Context) {
   if (isNonStreaming(response)) {
     debugJson(logger, "Non-streaming response:", response)
     recordUsage(normalizeOpenAIUsage(response.usage))
-    return c.json(response)
+    // Ensure the response includes the required "object" field for OpenAI compatibility
+    const completionResponse = {
+      ...response,
+      object: "chat.completion" as const,
+    }
+    return c.json(completionResponse)
   }
 
   logger.debug("Streaming response")
