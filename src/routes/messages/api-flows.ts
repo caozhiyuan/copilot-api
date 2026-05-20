@@ -226,43 +226,60 @@ export const handleWithResponsesApi = async (
       })
       let usage: UsageTokens = {}
 
-      for await (const chunk of response) {
-        const eventName = chunk.event
-        if (eventName === "ping") {
-          await stream.writeSSE({ event: "ping", data: '{"type":"ping"}' })
-          continue
+      try {
+        for await (const chunk of response) {
+          const eventName = chunk.event
+          if (eventName === "ping") {
+            await stream.writeSSE({ event: "ping", data: '{"type":"ping"}' })
+            continue
+          }
+
+          const data = chunk.data
+          if (!data) {
+            continue
+          }
+
+          debugLazy(logger, () => ["Responses raw stream event:", data])
+
+          const responseEvent = JSON.parse(data) as ResponseStreamEvent
+          if (
+            responseEvent.type === "response.completed"
+            || responseEvent.type === "response.failed"
+            || responseEvent.type === "response.incomplete"
+          ) {
+            usage = normalizeResponsesUsage(responseEvent.response.usage)
+          }
+
+          const events = translateResponsesStreamEvent(responseEvent, streamState)
+          for (const event of events) {
+            const eventData = JSON.stringify(event)
+            debugLazy(logger, () => ["Translated Anthropic event:", eventData])
+            await stream.writeSSE({
+              event: event.type,
+              data: eventData,
+            })
+          }
+
+          if (streamState.messageCompleted) {
+            logger.debug("Message completed, ending stream")
+            break
+          }
         }
-
-        const data = chunk.data
-        if (!data) {
-          continue
-        }
-
-        debugLazy(logger, () => ["Responses raw stream event:", data])
-
-        const responseEvent = JSON.parse(data) as ResponseStreamEvent
-        if (
-          responseEvent.type === "response.completed"
-          || responseEvent.type === "response.failed"
-          || responseEvent.type === "response.incomplete"
-        ) {
-          usage = normalizeResponsesUsage(responseEvent.response.usage)
-        }
-
-        const events = translateResponsesStreamEvent(responseEvent, streamState)
-        for (const event of events) {
-          const eventData = JSON.stringify(event)
-          debugLazy(logger, () => ["Translated Anthropic event:", eventData])
+      } catch (streamError) {
+        logger.warn("Responses stream error:", streamError)
+        if (!streamState.messageCompleted) {
+          const errorMessage =
+            streamError instanceof Error ?
+              streamError.message
+            : "Responses stream error"
+          const errorEvent = buildErrorEvent(errorMessage)
           await stream.writeSSE({
-            event: event.type,
-            data: eventData,
+            event: errorEvent.type,
+            data: JSON.stringify(errorEvent),
           })
         }
-
-        if (streamState.messageCompleted) {
-          logger.debug("Message completed, ending stream")
-          break
-        }
+        recordUsage(usage)
+        return
       }
 
       if (!streamState.messageCompleted) {
