@@ -254,6 +254,46 @@ describe("responses handler token usage", () => {
     expect(createResponses.mock.calls[0][0].tools?.[0]).toEqual(applyPatchTool)
   })
 
+  test("uses the next sequence number for streaming error events", async () => {
+    createResponses.mockImplementation(() =>
+      Promise.resolve(
+        (async function* () {
+          yield {
+            data: JSON.stringify({
+              type: "response.output_text.delta",
+              sequence_number: 41,
+              output_index: 0,
+              content_index: 0,
+              delta: "hel",
+            }),
+            event: "response.output_text.delta",
+            id: "event_41",
+          }
+
+          throw new Error("socket hang up")
+        })(),
+      ),
+    )
+
+    const app = createApp()
+    const response = await app.request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        input: "hello",
+        model: "gpt-test",
+        stream: true,
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain(
+      '{"type":"error","code":null,"message":"socket hang up","param":null,"sequence_number":42}',
+    )
+  })
+
   test("records usage from failed streaming responses and falls back to interaction id", async () => {
     createResponses.mockImplementation(() =>
       Promise.resolve(

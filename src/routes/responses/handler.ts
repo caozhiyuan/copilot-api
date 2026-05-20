@@ -106,11 +106,18 @@ export const handleResponses = async (c: Context) => {
     return streamSSE(c, async (stream) => {
       const idTracker = createStreamIdTracker()
       let usage: UsageTokens = {}
+      let lastSequenceNumber = 0
 
       try {
         for await (const chunk of response) {
           debugJson(logger, "Responses stream chunk:", chunk)
           const parsedEvent = parseResponsesStreamEvent(chunk)
+          if (typeof parsedEvent?.sequence_number === "number") {
+            lastSequenceNumber = Math.max(
+              lastSequenceNumber,
+              parsedEvent.sequence_number,
+            )
+          }
           if (
             parsedEvent?.type === "response.completed"
             || parsedEvent?.type === "response.failed"
@@ -144,7 +151,7 @@ export const handleResponses = async (c: Context) => {
             code: null,
             message: errorMessage,
             param: null,
-            sequence_number: 0,
+            sequence_number: lastSequenceNumber + 1,
           }),
         })
         recordUsage(usage)
