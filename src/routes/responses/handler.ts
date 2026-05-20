@@ -107,28 +107,48 @@ export const handleResponses = async (c: Context) => {
       const idTracker = createStreamIdTracker()
       let usage: UsageTokens = {}
 
-      for await (const chunk of response) {
-        debugJson(logger, "Responses stream chunk:", chunk)
-        const parsedEvent = parseResponsesStreamEvent(chunk)
-        if (
-          parsedEvent?.type === "response.completed"
-          || parsedEvent?.type === "response.failed"
-          || parsedEvent?.type === "response.incomplete"
-        ) {
-          usage = normalizeResponsesUsage(parsedEvent.response.usage)
+      try {
+        for await (const chunk of response) {
+          debugJson(logger, "Responses stream chunk:", chunk)
+          const parsedEvent = parseResponsesStreamEvent(chunk)
+          if (
+            parsedEvent?.type === "response.completed"
+            || parsedEvent?.type === "response.failed"
+            || parsedEvent?.type === "response.incomplete"
+          ) {
+            usage = normalizeResponsesUsage(parsedEvent.response.usage)
+          }
+
+          const processedData = fixStreamIds(
+            (chunk as { data?: string }).data ?? "",
+            (chunk as { event?: string }).event,
+            idTracker,
+          )
+
+          await stream.writeSSE({
+            id: (chunk as { id?: string }).id,
+            event: (chunk as { event?: string }).event,
+            data: processedData,
+          })
         }
-
-        const processedData = fixStreamIds(
-          (chunk as { data?: string }).data ?? "",
-          (chunk as { event?: string }).event,
-          idTracker,
-        )
-
+      } catch (streamError) {
+        logger.warn("Responses stream error:", streamError)
+        const errorMessage =
+          streamError instanceof Error ?
+            streamError.message
+          : "Responses stream error"
         await stream.writeSSE({
-          id: (chunk as { id?: string }).id,
-          event: (chunk as { event?: string }).event,
-          data: processedData,
+          event: "error",
+          data: JSON.stringify({
+            type: "error",
+            code: null,
+            message: errorMessage,
+            param: null,
+            sequence_number: 0,
+          }),
         })
+        recordUsage(usage)
+        return
       }
 
       recordUsage(usage)

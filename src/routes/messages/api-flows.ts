@@ -137,30 +137,45 @@ export const handleWithChatCompletions = async (
       thinkingBlockOpen: false,
     }
 
-    for await (const rawEvent of response) {
-      debugJson(logger, "Copilot raw stream event:", rawEvent)
-      if (rawEvent.data === "[DONE]") {
-        break
-      }
+    try {
+      for await (const rawEvent of response) {
+        debugJson(logger, "Copilot raw stream event:", rawEvent)
+        if (rawEvent.data === "[DONE]") {
+          break
+        }
 
-      if (!rawEvent.data) {
-        continue
-      }
+        if (!rawEvent.data) {
+          continue
+        }
 
-      const chunk = JSON.parse(rawEvent.data) as ChatCompletionChunk
-      if (chunk.usage) {
-        usage = normalizeOpenAIUsage(chunk.usage)
-      }
-      const events = translateChunkToAnthropicEvents(chunk, streamState)
+        const chunk = JSON.parse(rawEvent.data) as ChatCompletionChunk
+        if (chunk.usage) {
+          usage = normalizeOpenAIUsage(chunk.usage)
+        }
+        const events = translateChunkToAnthropicEvents(chunk, streamState)
 
-      for (const event of events) {
-        const eventData = JSON.stringify(event)
-        debugLazy(logger, () => ["Translated Anthropic event:", eventData])
-        await stream.writeSSE({
-          event: event.type,
-          data: eventData,
-        })
+        for (const event of events) {
+          const eventData = JSON.stringify(event)
+          debugLazy(logger, () => ["Translated Anthropic event:", eventData])
+          await stream.writeSSE({
+            event: event.type,
+            data: eventData,
+          })
+        }
       }
+    } catch (streamError) {
+      logger.warn("Chat completions stream error:", streamError)
+      const errorMessage =
+        streamError instanceof Error ?
+          streamError.message
+        : "Chat completions stream error"
+      const errorEvent = buildErrorEvent(errorMessage)
+      await stream.writeSSE({
+        event: errorEvent.type,
+        data: JSON.stringify(errorEvent),
+      })
+      recordUsage(usage)
+      return
     }
 
     for (const event of flushPendingAnthropicStreamEvents(streamState)) {
@@ -355,32 +370,47 @@ export const handleWithMessagesApi = async (
     return streamSSE(c, async (stream) => {
       let usage: UsageTokens = {}
 
-      for await (const event of response) {
-        const eventName = event.event
-        const data = event.data ?? ""
-        if (data === "[DONE]") {
-          break
+      try {
+        for await (const event of response) {
+          const eventName = event.event
+          const data = event.data ?? ""
+          if (data === "[DONE]") {
+            break
+          }
+          if (!data) {
+            continue
+          }
+          debugLazy(logger, () => ["Messages raw stream event:", data])
+          const parsedEvent = parseAnthropicStreamEvent(data)
+          if (parsedEvent?.type === "message_start") {
+            usage = mergeAnthropicUsage(
+              usage,
+              normalizeAnthropicUsage(parsedEvent.message.usage),
+            )
+          } else if (parsedEvent?.type === "message_delta") {
+            usage = mergeAnthropicUsage(
+              usage,
+              normalizeAnthropicUsage(parsedEvent.usage),
+            )
+          }
+          await stream.writeSSE({
+            event: eventName,
+            data,
+          })
         }
-        if (!data) {
-          continue
-        }
-        debugLazy(logger, () => ["Messages raw stream event:", data])
-        const parsedEvent = parseAnthropicStreamEvent(data)
-        if (parsedEvent?.type === "message_start") {
-          usage = mergeAnthropicUsage(
-            usage,
-            normalizeAnthropicUsage(parsedEvent.message.usage),
-          )
-        } else if (parsedEvent?.type === "message_delta") {
-          usage = mergeAnthropicUsage(
-            usage,
-            normalizeAnthropicUsage(parsedEvent.usage),
-          )
-        }
+      } catch (streamError) {
+        logger.warn("Messages API stream error:", streamError)
+        const errorMessage =
+          streamError instanceof Error ?
+            streamError.message
+          : "Messages API stream error"
+        const errorEvent = buildErrorEvent(errorMessage)
         await stream.writeSSE({
-          event: eventName,
-          data,
+          event: errorEvent.type,
+          data: JSON.stringify(errorEvent),
         })
+        recordUsage(usage)
+        return
       }
 
       recordUsage(usage)

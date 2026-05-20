@@ -81,13 +81,29 @@ export async function handleCompletion(c: Context) {
   return streamSSE(c, async (stream) => {
     let usage: UsageTokens = {}
 
-    for await (const chunk of response) {
-      debugJson(logger, "Streaming chunk:", chunk)
-      const parsedChunk = parseChatCompletionChunk(chunk)
-      if (parsedChunk?.usage) {
-        usage = normalizeOpenAIUsage(parsedChunk.usage)
+    try {
+      for await (const chunk of response) {
+        debugJson(logger, "Streaming chunk:", chunk)
+        const parsedChunk = parseChatCompletionChunk(chunk)
+        if (parsedChunk?.usage) {
+          usage = normalizeOpenAIUsage(parsedChunk.usage)
+        }
+        await stream.writeSSE(chunk as SSEMessage)
       }
-      await stream.writeSSE(chunk as SSEMessage)
+    } catch (streamError) {
+      logger.warn("Chat completions stream error:", streamError)
+      const errorMessage =
+        streamError instanceof Error ?
+          streamError.message
+        : "Chat completions stream error"
+      await stream.writeSSE({
+        data: JSON.stringify({
+          error: { message: errorMessage, type: "server_error", code: null },
+        }),
+      })
+      await stream.writeSSE({ data: "[DONE]" })
+      recordUsage(usage)
+      return
     }
 
     recordUsage(usage)
