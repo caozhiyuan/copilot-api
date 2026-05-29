@@ -28,24 +28,27 @@ const makePayload = (imageUrl: string): ResponsesPayload =>
   }) as unknown as ResponsesPayload
 
 describe("sanitizeOversizedInputImages", () => {
-  test("replaces oversized input images with text markers", () => {
+  test("replaces oversized input images with placeholder images", () => {
     const payload = makePayload(tinyPngDataUrl)
 
     const sanitized = sanitizeOversizedInputImages(payload, 67)
 
     expect(sanitized).toBe(1)
-    expect(payload.input).toEqual([
-      {
-        content: [
-          { text: "look", type: "input_text" },
-          {
-            text: "[omitted input image: image/png, 68 bytes, max 67 bytes]",
-            type: "input_text",
-          },
-        ],
-        role: "user",
-      },
-    ])
+    const image = (
+      payload.input as Array<{
+        content: Array<{
+          detail?: string
+          image_url?: string
+          text?: string
+          type: string
+        }>
+      }>
+    )[0].content[1]
+    expect(image.type).toBe("input_image")
+    expect(image.detail).toBe("low")
+    expect(image.image_url?.startsWith("data:image/png;base64,")).toBe(true)
+    expect(image.image_url).not.toBe(tinyPngDataUrl)
+    expect(image.text).toBeUndefined()
   })
 
   test("keeps input images within the model size limit", () => {
@@ -64,7 +67,9 @@ describe("sanitizeOversizedInputImages", () => {
     ).toEqual({ detail: "low", image_url: imageUrl, type: "input_image" })
   })
 
-  test("removes all input images for a retry after payload rejection", () => {
+  test("replaces all input images for a retry after payload rejection", () => {
+    const firstImageUrl = imageDataUrl(1024)
+    const secondImageUrl = imageDataUrl(1024)
     const payload = {
       input: [
         {
@@ -72,12 +77,12 @@ describe("sanitizeOversizedInputImages", () => {
             { text: "look", type: "input_text" },
             {
               detail: "low",
-              image_url: imageDataUrl(1024),
+              image_url: firstImageUrl,
               type: "input_image",
             },
             {
               detail: "low",
-              image_url: imageDataUrl(1024),
+              image_url: secondImageUrl,
               type: "input_image",
             },
           ],
@@ -90,6 +95,8 @@ describe("sanitizeOversizedInputImages", () => {
     const sanitized = sanitizeAllInputImages(payload)
 
     expect(sanitized).toBe(2)
-    expect(JSON.stringify(payload)).not.toContain("data:image/png;base64")
+    expect(JSON.stringify(payload)).not.toContain(firstImageUrl)
+    expect(JSON.stringify(payload)).not.toContain(secondImageUrl)
+    expect(JSON.stringify(payload)).toContain("data:image/png;base64")
   })
 })

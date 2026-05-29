@@ -80,6 +80,26 @@ export const hasVisionInput = (payload: ResponsesPayload): boolean => {
 const DATA_URL_PREFIX = "data:"
 const BASE64_MARKER = ";base64,"
 const IMAGE_MEDIA_TYPE_PATTERN = /^image\/[a-zA-Z0-9.+-]+$/
+// Static 96x32 PNG reading "Image too large / Redacted".
+const REDACTED_IMAGE_PLACEHOLDER_DATA_URL =
+  "data:image/png;base64,"
+  + [
+    "iVBORw0KGgoAAAANSUhEUgAAAGAAAAAgCAMAAADaHo1mAAADAFBMVEX///8fKTfR1dsAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "AAAAAAAAAAAAAAAAAAAAAACae8QWAAAAvElEQVR42u1WixKAIAhj/f9Hdz2BXJiVed3pVSYtpgwsGSo3GaRq6wSd4F8EyIJx",
+    "ydSUAMB8il51sHT2fiVQu8czguQwXWAyFvswIJhmoS9gmzYlcFiHj1aAgzcJVgCyguYhAhNZmMhYQZs1EJnnIAqKiuHjSrZT",
+    "ucSQ4s8JkKDDIYr3IuR8vEWgqroKP9b1bYKk2wfgeVmqATQLXdXamsXdEKkz3QXEEeTTuWWImMhW6qci94/+hwSVf99HqVoD",
+    "OAuj2SEAAAAASUVORK5CYII=",
+  ].join("")
 
 export const sanitizeOversizedInputImages = (
   payload: ResponsesPayload,
@@ -97,7 +117,7 @@ export const sanitizeOversizedInputImages = (
   let count = 0
   for (const image of collectInputImageDataUrls(payload.input)) {
     if (limit !== undefined && image.decodedBytes > limit) {
-      replaceInputImageWithText(image, `max ${limit} bytes`)
+      replaceInputImageWithPlaceholder(image)
       count += 1
     }
   }
@@ -112,7 +132,7 @@ export const sanitizeAllInputImages = (payload: ResponsesPayload): number => {
 
   let count = 0
   for (const image of collectInputImageDataUrls(payload.input)) {
-    replaceInputImageWithText(image, "upstream rejected payload as too large")
+    replaceInputImageWithPlaceholder(image)
     count += 1
   }
   return count
@@ -204,15 +224,12 @@ const getBase64DecodedByteLength = (
   return Math.max(0, Math.floor((base64Length * 3) / 4) - padding)
 }
 
-const replaceInputImageWithText = (
-  image: InputImageDataUrl,
-  reason: string,
-): void => {
-  image.record.type = "input_text"
-  image.record.text = `[omitted input image: ${image.mediaType}, ${image.decodedBytes} bytes, ${reason}]`
-  delete image.record.image_url
+const replaceInputImageWithPlaceholder = (image: InputImageDataUrl): void => {
+  image.record.type = "input_image"
+  image.record.image_url = REDACTED_IMAGE_PLACEHOLDER_DATA_URL
+  image.record.detail = "low"
+  delete image.record.text
   delete image.record.file_id
-  delete image.record.detail
 }
 
 export const resolveResponsesCompactThreshold = (

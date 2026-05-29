@@ -313,18 +313,20 @@ describe("responses handler token usage", () => {
 
     expect(response.status).toBe(200)
     expect(createResponses).toHaveBeenCalledTimes(1)
-    expect(createResponses.mock.calls[0][0].input).toEqual([
-      {
-        content: [
-          { text: "look", type: "input_text" },
-          {
-            text: "[omitted input image: image/png, 12 bytes, max 8 bytes]",
-            type: "input_text",
-          },
-        ],
-        role: "user",
-      },
-    ])
+    const image = (
+      createResponses.mock.calls[0][0].input as Array<{
+        content: Array<{
+          detail?: string
+          image_url?: string
+          text?: string
+          type: string
+        }>
+      }>
+    )[0].content[1]
+    expect(image.type).toBe("input_image")
+    expect(image.detail).toBe("low")
+    expect(image.image_url?.startsWith("data:image/png;base64,")).toBe(true)
+    expect(image.text).toBeUndefined()
   })
 
   test("preserves multiple input images before forwarding to Copilot Responses", async () => {
@@ -446,19 +448,24 @@ describe("responses handler token usage", () => {
 
     expect(response.status).toBe(200)
     expect(createResponses).toHaveBeenCalledTimes(2)
-    expect(createResponses.mock.calls[1][0].input).toEqual([
-      {
-        content: [
-          { text: "look", type: "input_text" },
-          {
-            text: "[omitted input image: image/png, 6 bytes, upstream rejected payload as too large]",
-            type: "input_text",
-          },
-        ],
-        role: "user",
-      },
-    ])
-    expect(createResponses.mock.calls[1][1]?.vision).toBe(false)
+    const retryImage = (
+      createResponses.mock.calls[1][0].input as Array<{
+        content: Array<{
+          detail?: string
+          image_url?: string
+          text?: string
+          type: string
+        }>
+      }>
+    )[0].content[1]
+    expect(retryImage.type).toBe("input_image")
+    expect(retryImage.detail).toBe("low")
+    expect(retryImage.image_url?.startsWith("data:image/png;base64,")).toBe(
+      true,
+    )
+    expect(retryImage.image_url).not.toBe(imageUrl)
+    expect(retryImage.text).toBeUndefined()
+    expect(createResponses.mock.calls[1][1]?.vision).toBe(true)
   })
 
   test("records usage from failed streaming responses and falls back to interaction id", async () => {
