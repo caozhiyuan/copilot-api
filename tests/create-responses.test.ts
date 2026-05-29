@@ -123,6 +123,36 @@ describe("createResponses", () => {
     expect(body.type).toBeUndefined()
   })
 
+  test("sets subagent interaction headers for HTTP responses requests", async () => {
+    const payload: ResponsesPayload = {
+      input: "hello",
+      model: "gpt-test",
+    }
+
+    await createResponses(payload, {
+      initiator: "agent",
+      requestId: "request-1",
+      sessionId: "interaction-1",
+      subagentMarker: {
+        agent_id: "agent-1",
+        agent_type: "collab_spawn",
+        session_id: "sub-session",
+      },
+      vision: false,
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, init] = fetchMock.mock.calls[0]
+    const requestInit = init as RequestInit & {
+      headers: Record<string, string>
+    }
+    expect(requestInit.headers["x-initiator"]).toBe("agent")
+    expect(requestInit.headers["x-interaction-id"]).toBe("interaction-1")
+    expect(requestInit.headers["x-interaction-type"]).toBe(
+      "conversation-subagent",
+    )
+  })
+
   test("uses HTTP when websocket transport is requested without stream=true", async () => {
     const payload: ResponsesPayload = {
       input: "hello",

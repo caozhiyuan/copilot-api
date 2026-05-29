@@ -50,13 +50,18 @@ const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 
 const originalState = {
+  accountType: state.accountType,
   copilotToken: state.copilotToken,
   lastRequestTimestamp: state.lastRequestTimestamp,
+  macMachineId: state.macMachineId,
   manualApprove: state.manualApprove,
   models: state.models,
   rateLimitSeconds: state.rateLimitSeconds,
   rateLimitWait: state.rateLimitWait,
   verbose: state.verbose,
+  vsCodeDeviceId: state.vsCodeDeviceId,
+  vsCodeSessionId: state.vsCodeSessionId,
+  vsCodeVersion: state.vsCodeVersion,
 }
 
 function createApp(): Hono {
@@ -78,11 +83,16 @@ beforeEach(async () => {
   await closeUsageStore()
 
   state.copilotToken = "test-token"
+  state.accountType = "individual"
+  state.macMachineId = "machine-1"
   state.manualApprove = false
   state.verbose = false
   state.rateLimitSeconds = undefined
   state.rateLimitWait = false
   state.lastRequestTimestamp = undefined
+  state.vsCodeDeviceId = "device-1"
+  state.vsCodeSessionId = "session-1"
+  state.vsCodeVersion = "1.120.0"
   state.models = {
     object: "list",
     data: [
@@ -112,11 +122,16 @@ afterEach(async () => {
   Reflect.deleteProperty(process.env, DB_PATH_ENV)
 
   state.copilotToken = originalState.copilotToken
+  state.accountType = originalState.accountType
+  state.macMachineId = originalState.macMachineId
   state.manualApprove = originalState.manualApprove
   state.verbose = originalState.verbose
   state.rateLimitSeconds = originalState.rateLimitSeconds
   state.rateLimitWait = originalState.rateLimitWait
   state.lastRequestTimestamp = originalState.lastRequestTimestamp
+  state.vsCodeDeviceId = originalState.vsCodeDeviceId
+  state.vsCodeSessionId = originalState.vsCodeSessionId
+  state.vsCodeVersion = originalState.vsCodeVersion
   state.models = originalState.models
   Object.assign(
     responsesHandlerDependencies,
@@ -160,6 +175,8 @@ describe("responses handler token usage", () => {
     expect(response.status).toBe(200)
     expect(createResponses).toHaveBeenCalledTimes(1)
     expect(createResponses.mock.calls[0][1]?.transport).toBe("websocket")
+    expect(createResponses.mock.calls[0][1]?.initiator).toBe("user")
+    expect(createResponses.mock.calls[0][1]?.subagentMarker).toBeNull()
   })
 
   test("keeps HTTP transport for dual-endpoint models when websocket is disabled", async () => {
@@ -252,6 +269,164 @@ describe("responses handler token usage", () => {
     expect(response.status).toBe(200)
     expect(createResponses).toHaveBeenCalledTimes(1)
     expect(createResponses.mock.calls[0][0].tools?.[0]).toEqual(applyPatchTool)
+  })
+
+  test("uses Codex subagent headers for Responses request attribution", async () => {
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const payload = {
+      input: [
+        {
+          content: [{ text: "SUBAGENT_PROBE", type: "input_text" }],
+          role: "user",
+        },
+      ],
+      model: "gpt-test",
+    }
+
+    const app = createApp()
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify(payload),
+      headers: {
+        "content-type": "application/json",
+        "session-id": "root-session",
+        "thread-id": "child-thread",
+        "x-codex-parent-thread-id": "parent-thread",
+        "x-openai-subagent": "collab_spawn",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(1)
+
+    const options = createResponses.mock.calls[0][1]
+    const expectedSessionId = getUUID("root-session")
+    expect(options?.initiator).toBe("agent")
+    expect(options?.sessionId).toBe(expectedSessionId)
+    expect(options?.requestId).toBe(
+      generateRequestIdFromPayload(
+        { messages: payload.input },
+        expectedSessionId,
+      ),
+    )
+    expect(options?.subagentMarker).toEqual({
+      agent_id: "child-thread",
+      agent_type: "collab_spawn",
+      session_id: "child-thread",
+    })
+  })
+
+  test("ignores session headers when Codex subagent header is missing", async () => {
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const payload = {
+      input: [
+        {
+          content: [{ text: "hello", type: "input_text" }],
+          role: "user",
+        },
+      ],
+      model: "gpt-test",
+    }
+
+    const app = createApp()
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify(payload),
+      headers: {
+        "content-type": "application/json",
+        "session-id": "root-session",
+        "thread-id": "child-thread",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(1)
+
+    const options = createResponses.mock.calls[0][1]
+    const expectedRequestId = generateRequestIdFromPayload({
+      messages: payload.input,
+    })
+    expect(options?.initiator).toBe("user")
+    expect(options?.requestId).toBe(expectedRequestId)
+    expect(options?.sessionId).toBe(getUUID(expectedRequestId))
+    expect(options?.subagentMarker).toBeNull()
+  })
+
+  test("ignores unknown x-openai-subagent values", async () => {
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const payload = {
+      input: [
+        {
+          content: [{ text: "hello", type: "input_text" }],
+          role: "user",
+        },
+      ],
+      model: "gpt-test",
+    }
+
+    const app = createApp()
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify(payload),
+      headers: {
+        "content-type": "application/json",
+        "session-id": "root-session",
+        "thread-id": "child-thread",
+        "x-openai-subagent": "unexpected",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(1)
+    expect(createResponses.mock.calls[0][1]?.initiator).toBe("user")
+    expect(createResponses.mock.calls[0][1]?.subagentMarker).toBeNull()
+  })
+
+  test("accepts known Codex subagent header values", async () => {
+    for (const agentType of ["compact", "memory_consolidation", "review"]) {
+      createResponses.mockReset()
+      createResponses.mockImplementation((payload) =>
+        Promise.resolve(createResponsesResult(payload.model)),
+      )
+
+      const app = createApp()
+      const response = await app.request("/v1/responses", {
+        body: JSON.stringify({
+          input: [
+            {
+              content: [{ text: "hello", type: "input_text" }],
+              role: "user",
+            },
+          ],
+          model: "gpt-test",
+        }),
+        headers: {
+          "content-type": "application/json",
+          "session-id": "root-session",
+          "thread-id": "child-thread",
+          "x-openai-subagent": agentType,
+        },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(200)
+      expect(createResponses).toHaveBeenCalledTimes(1)
+      expect(createResponses.mock.calls[0][1]?.initiator).toBe("agent")
+      expect(createResponses.mock.calls[0][1]?.subagentMarker).toEqual({
+        agent_id: "child-thread",
+        agent_type: agentType,
+        session_id: "child-thread",
+      })
+    }
   })
 
   test("omits oversized input images before forwarding to Copilot Responses", async () => {

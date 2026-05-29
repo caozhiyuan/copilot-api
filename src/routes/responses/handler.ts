@@ -15,6 +15,7 @@ import {
   type UsageTokens,
 } from "~/lib/token-usage"
 import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
+import type { SubagentMarker } from "~/lib/subagent"
 import {
   createResponses as createCopilotResponses,
   type ResponsesPayload,
@@ -54,15 +55,24 @@ export const handleResponses = async (c: Context) => {
   debugJson(logger, "Responses request payload:", payload)
   await responsesHandlerDependencies.checkRateLimit(state)
 
-  // not support subagent marker for now , set sessionId = getUUID(requestId)
-  const requestId = generateRequestIdFromPayload({ messages: payload.input })
+  const subagentMarker = getCodexResponsesSubagentMarker(c)
+  if (subagentMarker) {
+    debugJson(logger, "Detected Codex subagent headers:", subagentMarker)
+  }
+  const incomingSessionId =
+    subagentMarker ? getIncomingResponsesSessionId(c) : undefined
+  const sessionId = incomingSessionId ? getUUID(incomingSessionId) : undefined
+  const requestId = generateRequestIdFromPayload(
+    { messages: payload.input },
+    sessionId,
+  )
   logger.debug("Generated request ID:", requestId)
 
-  const sessionId = getUUID(requestId)
-  logger.debug("Extracted session ID:", sessionId)
+  const fallbackSessionId = sessionId ?? getUUID(requestId)
+  logger.debug("Extracted session ID:", fallbackSessionId)
   const recordUsage = createCopilotTokenUsageRecorder({
     endpoint: "responses",
-    fallbackSessionId: sessionId,
+    fallbackSessionId,
     model: payload.model,
   })
 
@@ -109,7 +119,9 @@ export const handleResponses = async (c: Context) => {
 
   debugJson(logger, "Translated Responses payload:", payload)
 
-  const { vision, initiator } = getResponsesRequestOptions(payload)
+  const { vision, initiator: inferredInitiator } =
+    getResponsesRequestOptions(payload)
+  const initiator = subagentMarker ? "agent" : inferredInitiator
 
   if (state.manualApprove) {
     await awaitApproval()
@@ -118,8 +130,9 @@ export const handleResponses = async (c: Context) => {
   const response = await responsesHandlerDependencies.createResponses(payload, {
     vision,
     initiator,
+    subagentMarker,
     requestId,
-    sessionId: sessionId,
+    sessionId: fallbackSessionId,
     transport: responsesTransport,
   })
 
@@ -212,4 +225,41 @@ export const removeUnsupportedTools = (payload: ResponsesPayload): void => {
   if (dropped.length > 0) {
     logger.debug("Removed unsupported tools:", dropped)
   }
+}
+
+const getIncomingResponsesSessionId = (c: Context): string | undefined =>
+  getTrimmedHeader(c, "session-id") ?? getTrimmedHeader(c, "x-session-id")
+
+const codexSubagentHeaderValues = new Set([
+  "collab_spawn",
+  "compact",
+  "memory_consolidation",
+  "review",
+])
+
+const getCodexResponsesSubagentMarker = (c: Context): SubagentMarker | null => {
+  const agentType = getTrimmedHeader(c, "x-openai-subagent")
+  if (!agentType || !codexSubagentHeaderValues.has(agentType)) {
+    return null
+  }
+
+  const threadId = getTrimmedHeader(c, "thread-id")
+  const rootSessionId = getIncomingResponsesSessionId(c)
+  const parentThreadId = getTrimmedHeader(c, "x-codex-parent-thread-id")
+  if (!threadId && !rootSessionId && !parentThreadId) {
+    return null
+  }
+
+  const agentId = threadId ?? parentThreadId ?? rootSessionId ?? agentType
+
+  return {
+    agent_id: agentId,
+    agent_type: agentType,
+    session_id: threadId ?? rootSessionId ?? agentId,
+  }
+}
+
+const getTrimmedHeader = (c: Context, name: string): string | undefined => {
+  const value = c.req.header(name)?.trim()
+  return value ? value : undefined
 }
