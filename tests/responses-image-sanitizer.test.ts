@@ -10,6 +10,9 @@ import {
 const imageDataUrl = (base64Length: number): string =>
   `data:image/png;base64,${"A".repeat(base64Length)}`
 
+const tinyPngDataUrl =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+
 const makePayload = (imageUrl: string): ResponsesPayload =>
   ({
     input: [
@@ -26,9 +29,9 @@ const makePayload = (imageUrl: string): ResponsesPayload =>
 
 describe("sanitizeOversizedInputImages", () => {
   test("replaces oversized input images with text markers", () => {
-    const payload = makePayload(imageDataUrl(16))
+    const payload = makePayload(tinyPngDataUrl)
 
-    const sanitized = sanitizeOversizedInputImages(payload, 8)
+    const sanitized = sanitizeOversizedInputImages(payload, 67)
 
     expect(sanitized).toBe(1)
     expect(payload.input).toEqual([
@@ -36,7 +39,7 @@ describe("sanitizeOversizedInputImages", () => {
         content: [
           { text: "look", type: "input_text" },
           {
-            text: "[omitted input image: image/png, 12 bytes, max 8 bytes]",
+            text: "[omitted input image: image/png, 68 bytes, max 67 bytes]",
             type: "input_text",
           },
         ],

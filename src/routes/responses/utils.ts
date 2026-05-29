@@ -77,7 +77,9 @@ export const hasVisionInput = (payload: ResponsesPayload): boolean => {
   return values.some((item) => containsVisionContent(item))
 }
 
-const IMAGE_DATA_URL_PATTERN = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/s
+const DATA_URL_PREFIX = "data:"
+const BASE64_MARKER = ";base64,"
+const IMAGE_MEDIA_TYPE_PATTERN = /^image\/[a-zA-Z0-9.+-]+$/
 
 export const sanitizeOversizedInputImages = (
   payload: ResponsesPayload,
@@ -163,19 +165,43 @@ const getInputImageDataUrl = (
     return null
   }
 
-  const match = record.image_url.match(IMAGE_DATA_URL_PATTERN)
-  if (!match) {
+  const imageUrl = record.image_url
+  const base64MarkerIndex = imageUrl.indexOf(BASE64_MARKER)
+  if (
+    !imageUrl.startsWith(DATA_URL_PREFIX)
+    || base64MarkerIndex <= DATA_URL_PREFIX.length
+  ) {
     return null
   }
 
-  const mediaType = match[1]
-  const decodedBytes = Buffer.byteLength(match[2], "base64")
+  const mediaType = imageUrl.slice(DATA_URL_PREFIX.length, base64MarkerIndex)
+  if (!IMAGE_MEDIA_TYPE_PATTERN.test(mediaType)) {
+    return null
+  }
+
+  const decodedBytes = getBase64DecodedByteLength(
+    imageUrl,
+    base64MarkerIndex + BASE64_MARKER.length,
+  )
 
   return {
     decodedBytes,
     mediaType,
     record,
   }
+}
+
+const getBase64DecodedByteLength = (
+  value: string,
+  base64Start: number,
+): number => {
+  const base64Length = value.length - base64Start
+  const padding =
+    value.endsWith("==") ? 2
+    : value.endsWith("=") ? 1
+    : 0
+
+  return Math.max(0, Math.floor((base64Length * 3) / 4) - padding)
 }
 
 const replaceInputImageWithText = (
