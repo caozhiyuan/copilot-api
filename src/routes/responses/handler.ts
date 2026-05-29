@@ -21,6 +21,7 @@ import {
   type ResponsesResult,
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
+import { HTTPError } from "~/lib/error"
 
 import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
 import {
@@ -28,6 +29,8 @@ import {
   compactInputByLatestCompaction,
   getResponsesTransportForModel,
   getResponsesRequestOptions,
+  sanitizeAllInputImages,
+  sanitizeOversizedInputImages,
 } from "./utils"
 
 const logger = createHandlerLogger("responses-handler")
@@ -91,6 +94,16 @@ export const handleResponses = async (c: Context) => {
     )
   }
 
+  const sanitizedImageCount = sanitizeOversizedInputImages(
+    payload,
+    selectedModel?.capabilities.limits.vision?.max_prompt_image_size,
+  )
+  if (sanitizedImageCount > 0) {
+    logger.warn(
+      `Omitted ${sanitizedImageCount} oversized input image(s) before forwarding to Copilot Responses`,
+    )
+  }
+
   applyResponsesApiContextManagement(
     payload,
     selectedModel?.capabilities.limits.max_prompt_tokens,
@@ -104,13 +117,41 @@ export const handleResponses = async (c: Context) => {
     await awaitApproval()
   }
 
-  const response = await responsesHandlerDependencies.createResponses(payload, {
+  const responseOptions = {
     vision,
     initiator,
     requestId,
     sessionId: sessionId,
     transport: responsesTransport,
-  })
+  }
+  let response: Awaited<ReturnType<typeof createCopilotResponses>>
+  try {
+    response = await responsesHandlerDependencies.createResponses(
+      payload,
+      responseOptions,
+    )
+  } catch (error) {
+    if (!(error instanceof HTTPError) || error.response.status !== 413) {
+      throw error
+    }
+
+    const retrySanitizedImageCount = sanitizeAllInputImages(payload)
+    if (retrySanitizedImageCount === 0) {
+      throw error
+    }
+
+    logger.warn(
+      `Omitted ${retrySanitizedImageCount} input image(s) after Copilot Responses rejected the payload as too large`,
+    )
+    const retryOptions = {
+      ...responseOptions,
+      vision: getResponsesRequestOptions(payload).vision,
+    }
+    response = await responsesHandlerDependencies.createResponses(
+      payload,
+      retryOptions,
+    )
+  }
 
   if (isStreamingRequested(payload) && isAsyncIterable(response)) {
     logger.debug("Forwarding native Responses stream")

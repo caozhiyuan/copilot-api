@@ -77,6 +77,118 @@ export const hasVisionInput = (payload: ResponsesPayload): boolean => {
   return values.some((item) => containsVisionContent(item))
 }
 
+const IMAGE_DATA_URL_PATTERN = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/s
+
+export const sanitizeOversizedInputImages = (
+  payload: ResponsesPayload,
+  maxPromptImageSize?: number,
+): number => {
+  const limit =
+    typeof maxPromptImageSize === "number" && maxPromptImageSize > 0 ?
+      maxPromptImageSize
+    : undefined
+
+  if (!payload.input) {
+    return 0
+  }
+
+  let count = 0
+  for (const image of collectInputImageDataUrls(payload.input)) {
+    if (limit !== undefined && image.decodedBytes > limit) {
+      replaceInputImageWithText(image, `max ${limit} bytes`)
+      count += 1
+    }
+  }
+
+  return count
+}
+
+export const sanitizeAllInputImages = (payload: ResponsesPayload): number => {
+  if (!payload.input) {
+    return 0
+  }
+
+  let count = 0
+  for (const image of collectInputImageDataUrls(payload.input)) {
+    replaceInputImageWithText(image, "upstream rejected payload as too large")
+    count += 1
+  }
+  return count
+}
+
+interface InputImageDataUrl {
+  decodedBytes: number
+  mediaType: string
+  record: Record<string, unknown>
+}
+
+const collectInputImageDataUrls = (
+  value: unknown,
+  images: Array<InputImageDataUrl> = [],
+): Array<InputImageDataUrl> => {
+  if (!value) {
+    return images
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectInputImageDataUrls(entry, images)
+    }
+    return images
+  }
+
+  if (typeof value !== "object") {
+    return images
+  }
+
+  const record = value as Record<string, unknown>
+  const image = getInputImageDataUrl(record)
+  if (image) {
+    images.push(image)
+    return images
+  }
+
+  for (const key of Object.keys(record)) {
+    collectInputImageDataUrls(record[key], images)
+  }
+  return images
+}
+
+const getInputImageDataUrl = (
+  record: Record<string, unknown>,
+): InputImageDataUrl | null => {
+  const type =
+    typeof record.type === "string" ? record.type.toLowerCase() : undefined
+  if (type !== "input_image" || typeof record.image_url !== "string") {
+    return null
+  }
+
+  const match = record.image_url.match(IMAGE_DATA_URL_PATTERN)
+  if (!match) {
+    return null
+  }
+
+  const mediaType = match[1]
+  const decodedBytes = Buffer.byteLength(match[2], "base64")
+
+  return {
+    decodedBytes,
+    mediaType,
+    record,
+  }
+}
+
+const replaceInputImageWithText = (
+  image: InputImageDataUrl,
+  reason: string,
+): void => {
+  image.record.type = "input_text"
+  image.record.text = `[omitted input image: ${image.mediaType}, ${image.decodedBytes} bytes, ${reason}]`
+  delete image.record.image_url
+  delete image.record.file_id
+  delete image.record.detail
+}
+
 export const resolveResponsesCompactThreshold = (
   maxPromptTokens?: number,
 ): number => {

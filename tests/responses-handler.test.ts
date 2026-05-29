@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { createResponses as createCopilotResponses } from "../src/services/copilot/create-responses"
+import { HTTPError } from "../src/lib/error"
 
 let responsesApiWebSocketEnabled = true
 
@@ -27,6 +28,17 @@ const createResponsesResult = (model: string) => ({
   top_p: null,
   usage: null,
 })
+
+const createPayloadTooLargeError = () =>
+  new HTTPError(
+    "Failed to create responses",
+    new Response(
+      JSON.stringify({
+        error: { code: "", message: "failed to parse request" },
+      }),
+      { status: 413 },
+    ),
+  )
 
 const { state } = await import("../src/lib/state")
 const { closeUsageStore } = await import("../src/lib/token-usage")
@@ -252,6 +264,201 @@ describe("responses handler token usage", () => {
     expect(response.status).toBe(200)
     expect(createResponses).toHaveBeenCalledTimes(1)
     expect(createResponses.mock.calls[0][0].tools?.[0]).toEqual(applyPatchTool)
+  })
+
+  test("omits oversized input images before forwarding to Copilot Responses", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: {
+            limits: {
+              max_prompt_tokens: 128000,
+              vision: {
+                max_prompt_image_size: 8,
+              },
+            },
+          },
+          id: "gpt-test",
+          supported_endpoints: ["/responses"],
+        },
+      ],
+    } as typeof state.models
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const app = createApp()
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify({
+        input: [
+          {
+            content: [
+              { text: "look", type: "input_text" },
+              {
+                image_url: `data:image/png;base64,${"A".repeat(16)}`,
+                type: "input_image",
+              },
+            ],
+            role: "user",
+          },
+        ],
+        model: "gpt-test",
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(1)
+    expect(createResponses.mock.calls[0][0].input).toEqual([
+      {
+        content: [
+          { text: "look", type: "input_text" },
+          {
+            text: "[omitted input image: image/png, 12 bytes, max 8 bytes]",
+            type: "input_text",
+          },
+        ],
+        role: "user",
+      },
+    ])
+  })
+
+  test("preserves multiple input images before forwarding to Copilot Responses", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: {
+            limits: {
+              max_prompt_tokens: 128000,
+              vision: {
+                max_prompt_image_size: 1024,
+                max_prompt_images: 1,
+              },
+            },
+          },
+          id: "gpt-test",
+          supported_endpoints: ["/responses"],
+        },
+      ],
+    } as typeof state.models
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const firstImageUrl = `data:image/png;base64,${"A".repeat(8)}`
+    const secondImageUrl = `data:image/png;base64,${"B".repeat(8)}`
+
+    const app = createApp()
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify({
+        input: [
+          {
+            content: [
+              { text: "look", type: "input_text" },
+              {
+                detail: "low",
+                image_url: firstImageUrl,
+                type: "input_image",
+              },
+              {
+                detail: "low",
+                image_url: secondImageUrl,
+                type: "input_image",
+              },
+            ],
+            role: "user",
+          },
+        ],
+        model: "gpt-test",
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(1)
+    expect(createResponses.mock.calls[0][0].input).toEqual([
+      {
+        content: [
+          { text: "look", type: "input_text" },
+          { detail: "low", image_url: firstImageUrl, type: "input_image" },
+          { detail: "low", image_url: secondImageUrl, type: "input_image" },
+        ],
+        role: "user",
+      },
+    ])
+  })
+
+  test("retries once without remaining input images after Copilot rejects payload as too large", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: {
+            limits: {
+              max_prompt_tokens: 128000,
+              vision: {
+                max_prompt_image_size: 1024,
+                max_prompt_images: 10,
+              },
+            },
+          },
+          id: "gpt-test",
+          supported_endpoints: ["/responses"],
+        },
+      ],
+    } as typeof state.models
+    createResponses
+      .mockImplementationOnce(() =>
+        Promise.reject(createPayloadTooLargeError()),
+      )
+      .mockImplementationOnce((payload) =>
+        Promise.resolve(createResponsesResult(payload.model)),
+      )
+
+    const app = createApp()
+    const imageUrl = `data:image/png;base64,${"A".repeat(8)}`
+    const response = await app.request("/v1/responses", {
+      body: JSON.stringify({
+        input: [
+          {
+            content: [
+              { text: "look", type: "input_text" },
+              { detail: "low", image_url: imageUrl, type: "input_image" },
+            ],
+            role: "user",
+          },
+        ],
+        model: "gpt-test",
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(2)
+    expect(createResponses.mock.calls[1][0].input).toEqual([
+      {
+        content: [
+          { text: "look", type: "input_text" },
+          {
+            text: "[omitted input image: image/png, 6 bytes, upstream rejected payload as too large]",
+            type: "input_text",
+          },
+        ],
+        role: "user",
+      },
+    ])
+    expect(createResponses.mock.calls[1][1]?.vision).toBe(false)
   })
 
   test("records usage from failed streaming responses and falls back to interaction id", async () => {

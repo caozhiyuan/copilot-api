@@ -31,6 +31,11 @@ interface ModelLimits {
   max_output_tokens?: number
   max_prompt_tokens?: number
   max_inputs?: number
+  vision?: {
+    max_prompt_image_size?: number
+    max_prompt_images?: number
+    supported_media_types?: Array<string>
+  }
 }
 
 interface ModelSupports {
