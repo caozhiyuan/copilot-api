@@ -1010,7 +1010,7 @@ describe("sanitizeIdeTools", () => {
 })
 
 describe("prepareMessagesApiPayload", () => {
-  test("strips cache_control scope, filters thinking blocks, and enables adaptive thinking", () => {
+  test("strips scope from cache_control, filters thinking blocks, and enables adaptive thinking", () => {
     const payload: AnthropicMessagesPayload = {
       model: "gpt-5.4",
       max_tokens: 128,
@@ -1071,9 +1071,7 @@ describe("prepareMessagesApiPayload", () => {
     expect(systemBlock).toEqual({
       type: "text",
       text: "system prompt",
-      cache_control: {
-        type: "ephemeral",
-      },
+      cache_control: { type: "ephemeral" },
     })
     expect(payload.messages[0]).toEqual({
       role: "assistant",
@@ -1176,5 +1174,154 @@ describe("prepareMessagesApiPayload", () => {
 
     expect(payload.thinking).toBeUndefined()
     expect(payload.output_config).toBeUndefined()
+  })
+})
+
+describe("stripCacheControlScope (via prepareMessagesApiPayload)", () => {
+  test("strips scope from cache_control on system blocks for all models", () => {
+    for (const model of [
+      "claude-haiku-4.5",
+      "claude-sonnet-4-6",
+      "claude-opus-4-6",
+    ]) {
+      const payload: AnthropicMessagesPayload = {
+        model,
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        system: [
+          {
+            type: "text",
+            text: "sys",
+            cache_control: { type: "ephemeral", scope: "user" },
+          } as AnthropicMessagesPayload["system"] extends Array<infer T> ? T
+          : never,
+        ],
+      }
+
+      prepareMessagesApiPayload(payload, undefined)
+
+      const block = (
+        payload.system as unknown as Array<Record<string, unknown>>
+      )[0]
+      expect(block["cache_control"]).toEqual({ type: "ephemeral" })
+    }
+  })
+
+  test("strips scope from cache_control on tools", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4-6",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+      tools: [
+        {
+          name: "t",
+          description: "t",
+          input_schema: {},
+          cache_control: { type: "ephemeral", scope: "user" },
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, undefined)
+
+    expect(payload.tools![0].cache_control).toEqual({ type: "ephemeral" })
+  })
+
+  test("preserves cache_control without scope", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-haiku-4.5",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+      system: [
+        {
+          type: "text",
+          text: "sys",
+          cache_control: { type: "ephemeral" },
+        } as AnthropicMessagesPayload["system"] extends Array<infer T> ? T
+        : never,
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, undefined)
+
+    const block = (
+      payload.system as unknown as Array<Record<string, unknown>>
+    )[0]
+    expect(block["cache_control"]).toEqual({ type: "ephemeral" })
+  })
+})
+describe("stripToolEagerInputStreaming (via prepareMessagesApiPayload)", () => {
+  test("removes eager_input_streaming from all tool definitions", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4-6",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+      tools: [
+        {
+          name: "edit_file",
+          description: "Edit a file",
+          input_schema: { type: "object", properties: {} },
+          eager_input_streaming: true,
+        },
+        {
+          name: "read_file",
+          description: "Read a file",
+          input_schema: { type: "object", properties: {} },
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, undefined)
+
+    expect(payload.tools).toHaveLength(2)
+    expect(payload.tools![0]).not.toHaveProperty("eager_input_streaming")
+    expect(payload.tools![1]).not.toHaveProperty("eager_input_streaming")
+    expect(payload.tools![0].name).toBe("edit_file")
+    expect(payload.tools![1].name).toBe("read_file")
+  })
+
+  test("does nothing when tools array is absent", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4-6",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+    }
+
+    expect(() => prepareMessagesApiPayload(payload, undefined)).not.toThrow()
+    expect(payload.tools).toBeUndefined()
+  })
+
+  test("preserves all other tool fields", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4-6",
+      max_tokens: 128,
+      messages: [{ role: "user", content: "hello" }],
+      tools: [
+        {
+          name: "write_file",
+          description: "Write a file",
+          input_schema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+          },
+          defer_loading: true,
+          eager_input_streaming: true,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, undefined)
+
+    expect(payload.tools![0]).toEqual({
+      name: "write_file",
+      description: "Write a file",
+      input_schema: {
+        type: "object",
+        properties: { path: { type: "string" } },
+      },
+      defer_loading: true,
+      cache_control: { type: "ephemeral" },
+    })
   })
 })

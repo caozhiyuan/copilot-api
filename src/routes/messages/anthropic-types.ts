@@ -132,6 +132,7 @@ export interface AnthropicTool {
   description?: string
   input_schema: Record<string, unknown>
   defer_loading?: boolean
+  eager_input_streaming?: boolean
   cache_control?: AnthropicCacheControl | null
 }
 

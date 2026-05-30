@@ -733,14 +733,54 @@ const hasToolRef = (block: AnthropicToolResultBlock) => {
 // Strip cache_control from system content blocks as the
 // Copilot Messages API does not support them (rejects extra fields like scope).
 // commit by nicktogo
-const stripCacheControl = (payload: AnthropicMessagesPayload): void => {
+// Strip eager_input_streaming from tool definitions.
+// Copilot's Messages API doesn't accept this field and returns 400.
+const stripToolEagerInputStreaming = (
+  payload: AnthropicMessagesPayload,
+): void => {
+  if (!payload.tools?.length) return
+  payload.tools = payload.tools.map(
+    ({ eager_input_streaming: _, ...rest }) => rest,
+  )
+}
+
+// Strip the scope sub-field from cache_control wherever it appears.
+// Copilot's backend accepts cache_control on all models but rejects scope,
+// which is a newer Anthropic-only beta field (prompt-caching-scope-2026-01-05).
+const stripCacheControlScope = (payload: AnthropicMessagesPayload): void => {
+  const strip = (obj: Record<string, unknown>): void => {
+    if (obj["cache_control"] && typeof obj["cache_control"] === "object") {
+      delete (obj["cache_control"] as Record<string, unknown>)["scope"]
+    }
+  }
+
+  const stripBlock = (block: Record<string, unknown>): void => {
+    strip(block)
+    if (Array.isArray(block["content"])) {
+      for (const inner of block["content"]) {
+        if (inner && typeof inner === "object")
+          strip(inner as Record<string, unknown>)
+      }
+    }
+  }
+
   if (Array.isArray(payload.system)) {
     for (const block of payload.system) {
-      const cacheControl = block.cache_control
-      if (cacheControl && typeof cacheControl === "object") {
-        const { scope, ...rest } = cacheControl
-        block.cache_control = rest
+      strip(block as unknown as Record<string, unknown>)
+    }
+  }
+
+  for (const message of payload.messages) {
+    if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        stripBlock(block as unknown as Record<string, unknown>)
       }
+    }
+  }
+
+  if (payload.tools) {
+    for (const tool of payload.tools) {
+      strip(tool as unknown as Record<string, unknown>)
     }
   }
 }
@@ -769,7 +809,8 @@ export const prepareMessagesApiPayload = (
   payload: AnthropicMessagesPayload,
   selectedModel?: Model,
 ): void => {
-  stripCacheControl(payload)
+  stripCacheControlScope(payload)
+  stripToolEagerInputStreaming(payload)
   filterAssistantThinkingBlocks(payload)
 
   const hasThinking = Boolean(payload.thinking)
