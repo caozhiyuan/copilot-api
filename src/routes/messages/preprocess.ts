@@ -733,14 +733,55 @@ const hasToolRef = (block: AnthropicToolResultBlock) => {
 // Strip cache_control from system content blocks as the
 // Copilot Messages API does not support them (rejects extra fields like scope).
 // commit by nicktogo
+// Strip eager_input_streaming from tool definitions.
+// Copilot's Messages API doesn't accept this field and returns 400.
+const stripToolEagerInputStreaming = (
+  payload: AnthropicMessagesPayload,
+): void => {
+  if (!payload.tools?.length) return
+  payload.tools = payload.tools.map(
+    ({ eager_input_streaming: _, ...rest }) => rest,
+  )
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const stripCacheControlFromObject = (obj: Record<string, any>): void => {
+  delete obj["cache_control"]
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const stripCacheControlFromBlock = (block: Record<string, any>): void => {
+  stripCacheControlFromObject(block)
+  if (Array.isArray(block["content"])) {
+    for (const inner of block["content"]) {
+      if (inner && typeof inner === "object")
+        stripCacheControlFromObject(inner as Record<string, unknown>)
+    }
+  }
+}
+
+// Strip cache_control from the entire payload.
+// Copilot's Messages API rejects it outright and doesn't implement prompt caching.
 const stripCacheControl = (payload: AnthropicMessagesPayload): void => {
+  stripCacheControlFromObject(payload as unknown as Record<string, unknown>)
+
   if (Array.isArray(payload.system)) {
     for (const block of payload.system) {
-      const cacheControl = block.cache_control
-      if (cacheControl && typeof cacheControl === "object") {
-        const { scope, ...rest } = cacheControl
-        block.cache_control = rest
+      stripCacheControlFromObject(block as unknown as Record<string, unknown>)
+    }
+  }
+
+  for (const message of payload.messages) {
+    if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        stripCacheControlFromBlock(block as unknown as Record<string, unknown>)
       }
+    }
+  }
+
+  if (payload.tools) {
+    for (const tool of payload.tools) {
+      stripCacheControlFromObject(tool as unknown as Record<string, unknown>)
     }
   }
 }
@@ -770,6 +811,7 @@ export const prepareMessagesApiPayload = (
   selectedModel?: Model,
 ): void => {
   stripCacheControl(payload)
+  stripToolEagerInputStreaming(payload)
   filterAssistantThinkingBlocks(payload)
 
   const hasThinking = Boolean(payload.thinking)
