@@ -730,18 +730,61 @@ const hasToolRef = (block: AnthropicToolResultBlock) => {
   )
 }
 
-// Strip cache_control from system content blocks as the
-// Copilot Messages API does not support them (rejects extra fields like scope).
-// commit by nicktogo
+// Models whose Copilot Messages API endpoints reject top-level cache_control.
+// Pattern: only Opus 4.6+ reliably accepts top-level cache_control.
+const TOP_LEVEL_CACHE_CONTROL_UNSUPPORTED_MODELS = [
+  "claude-sonnet-4.5",
+  "claude-sonnet-4.6",
+  "claude-opus-4.5",
+  "claude-haiku-4.5",
+]
+
+// Strip unsupported cache_control fields for Copilot Messages API compatibility.
+// - `scope` in block-level cache_control is always rejected and should be stripped everywhere.
+// - Top-level `cache_control` is rejected by some models and should be stripped.
 const stripCacheControl = (payload: AnthropicMessagesPayload): void => {
+  if (
+    payload.cache_control
+    && TOP_LEVEL_CACHE_CONTROL_UNSUPPORTED_MODELS.includes(payload.model)
+  ) {
+    delete payload.cache_control
+  }
   if (Array.isArray(payload.system)) {
     for (const block of payload.system) {
-      const cacheControl = block.cache_control
-      if (cacheControl && typeof cacheControl === "object") {
-        const { scope, ...rest } = cacheControl
-        block.cache_control = rest
+      stripCacheControlScope(block)
+    }
+  }
+
+  for (const message of payload.messages) {
+    if (!Array.isArray(message.content)) {
+      continue
+    }
+    for (const block of message.content) {
+      if ("cache_control" in block) {
+        stripCacheControlScope(block)
       }
     }
+  }
+
+  if (Array.isArray(payload.tools)) {
+    for (const tool of payload.tools) {
+      stripCacheControlScope(tool)
+    }
+  }
+}
+
+// Strip only the `scope` field from cache_control, preserving `type` and `ttl`.
+interface BlockWithCacheControl {
+  cache_control?: AnthropicCacheControl | null
+}
+const stripCacheControlScope = (block: BlockWithCacheControl): void => {
+  const cacheControl = block.cache_control
+  if (!cacheControl || typeof cacheControl !== "object") {
+    return
+  }
+  if ("scope" in cacheControl) {
+    const { scope, ...rest } = cacheControl
+    block.cache_control = rest
   }
 }
 

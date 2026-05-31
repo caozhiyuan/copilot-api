@@ -1096,6 +1096,157 @@ describe("prepareMessagesApiPayload", () => {
     expect(payload.output_config).toEqual({ effort: "xhigh" })
   })
 
+  test("strips top-level cache_control for unsupported models, preserves ttl, strips scope", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-4.6",
+      max_tokens: 128,
+      cache_control: { type: "ephemeral" },
+      system: [
+        {
+          type: "text",
+          text: "system prompt",
+          cache_control: {
+            type: "ephemeral",
+            ttl: "1h",
+            scope: "user",
+          },
+        } as AnthropicMessagesPayload["system"] extends Array<infer T> ? T
+        : never,
+      ],
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "hello",
+              cache_control: { type: "ephemeral", ttl: "1h", scope: "user" },
+            } as never,
+          ],
+        },
+      ],
+      tools: [
+        {
+          name: "test_tool",
+          input_schema: {},
+          cache_control: { type: "ephemeral", ttl: "1h", scope: "user" },
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, {
+      capabilities: {
+        supports: {
+          adaptive_thinking: false,
+        },
+      },
+    } as never)
+
+    // top-level stripped for unsupported model
+    expect(payload.cache_control).toBeUndefined()
+    // ttl preserved, scope stripped on all blocks
+    const systemBlock = (
+      payload.system as unknown as Array<Record<string, unknown>>
+    )[0]
+    expect(systemBlock.cache_control).toEqual({ type: "ephemeral", ttl: "1h" })
+    const userContent = (
+      payload.messages[0].content as unknown as Array<Record<string, unknown>>
+    )[0]
+    expect(userContent.cache_control).toEqual({ type: "ephemeral", ttl: "1h" })
+    expect(payload.tools![0].cache_control).toEqual({
+      type: "ephemeral",
+      ttl: "1h",
+    })
+  })
+
+  test("strips top-level cache_control for haiku-4.5", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-haiku-4.5",
+      max_tokens: 128,
+      cache_control: { type: "ephemeral" },
+      system: "system prompt",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, {
+      capabilities: {
+        supports: {
+          adaptive_thinking: false,
+        },
+      },
+    } as never)
+
+    expect(payload.cache_control).toBeUndefined()
+  })
+
+  test("strips top-level cache_control for opus-4.5", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.5",
+      max_tokens: 128,
+      cache_control: { type: "ephemeral" },
+      system: "system prompt",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, {
+      capabilities: {
+        supports: {
+          adaptive_thinking: false,
+        },
+      },
+    } as never)
+
+    expect(payload.cache_control).toBeUndefined()
+  })
+
+  test("preserves top-level cache_control for supported models", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.7",
+      max_tokens: 128,
+      cache_control: { type: "ephemeral" },
+      system: [
+        {
+          type: "text",
+          text: "system prompt",
+          cache_control: { type: "ephemeral", ttl: "1h", scope: "user" },
+        } as AnthropicMessagesPayload["system"] extends Array<infer T> ? T
+        : never,
+      ],
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, {
+      capabilities: {
+        supports: {
+          adaptive_thinking: true,
+        },
+      },
+    } as never)
+
+    // top-level preserved for supported model
+    expect(payload.cache_control).toEqual({ type: "ephemeral" })
+    // scope still stripped
+    const systemBlock = (
+      payload.system as unknown as Array<Record<string, unknown>>
+    )[0]
+    expect(systemBlock.cache_control).toEqual({ type: "ephemeral", ttl: "1h" })
+  })
+
   test("sets summarized display for Claude versions at least 4.7", () => {
     const models = [
       "claude-opus-4.7",
