@@ -7,9 +7,15 @@ import { serve, type ServerHandler } from "srvx"
 import invariant from "tiny-invariant"
 
 import { mergeConfigWithDefaults } from "./lib/config"
+import {
+  writeEnvFile,
+  sourceEnvFileInShellRc,
+  buildClaudeEnvVars,
+} from "./lib/env-file"
 import { initOpencodeVersion } from "./lib/opencode"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
+import { getConfiguredApiKeys } from "./lib/request-auth"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { logUser, setupCopilotToken, setupGitHubToken } from "./lib/token"
@@ -32,6 +38,10 @@ interface RunServerOptions {
   claudeCode: boolean
   showToken: boolean
   proxyEnv: boolean
+  writeEnv: boolean
+  sourceEnv: boolean
+  model: string
+  smallModel: string
 }
 
 export async function runServer(options: RunServerOptions): Promise<void> {
@@ -86,6 +96,34 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   const serverUrl = `http://localhost:${options.port}`
 
+  if (options.sourceEnv && !options.writeEnv) {
+    consola.warn(
+      "--source-env has no effect without --write-env; skipping shell rc update.",
+    )
+  }
+
+  if (options.writeEnv) {
+    const authToken = getConfiguredApiKeys()[0] ?? "dummy"
+    const written = await writeEnvFile({
+      port: options.port,
+      model: options.model,
+      smallModel: options.smallModel,
+      authToken,
+    })
+    consola.success(`Wrote env file to ${written}`)
+
+    if (options.sourceEnv) {
+      const { rcPath, added } = await sourceEnvFileInShellRc(written)
+      if (added) {
+        consola.success(
+          `Added source block to ${rcPath}. Run \`source ${rcPath}\` or open a new shell to load it.`,
+        )
+      } else {
+        consola.info(`Source block already present in ${rcPath}`)
+      }
+    }
+  }
+
   if (options.claudeCode) {
     consola.log(
       "\n💡 Tip: The --claude-code flag simply generates a clipboard command for launching Claude Code. \n"
@@ -111,20 +149,14 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     )
 
     const command = generateEnvScript(
-      {
-        ANTHROPIC_BASE_URL: serverUrl,
-        ANTHROPIC_AUTH_TOKEN: "dummy",
-        ANTHROPIC_MODEL: selectedModel,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: selectedModel,
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: selectedSmallModel,
-        DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-        CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
-        CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: "false",
-        CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "true",
-        CLAUDE_CODE_ENABLE_AWAY_SUMMARY: "0",
-        CLAUDE_PLUGIN_ENABLE_QUESTION_RULES: "true",
-      },
+      Object.fromEntries(
+        buildClaudeEnvVars({
+          port: options.port,
+          model: selectedModel,
+          smallModel: selectedSmallModel,
+          authToken: "dummy",
+        }),
+      ),
       "claude",
     )
 
@@ -218,6 +250,28 @@ export const start = defineCommand({
       default: false,
       description: "Initialize proxy from environment variables",
     },
+    "write-env": {
+      type: "boolean",
+      default: false,
+      description:
+        "Write a copilot-api.env dotenv file (Claude + OpenAI compatible) to the app dir, then start the server",
+    },
+    "source-env": {
+      type: "boolean",
+      default: false,
+      description:
+        "Append a line to your shell rc (.zshrc/.bash_profile) that sources the generated env file. Requires --write-env",
+    },
+    model: {
+      type: "string",
+      default: "gpt-5.4",
+      description: "Primary model ID for --write-env output",
+    },
+    "small-model": {
+      type: "string",
+      default: "gpt-5-mini",
+      description: "Small/background model ID for --write-env output",
+    },
   },
   run({ args }) {
     const rateLimitRaw = args["rate-limit"]
@@ -236,6 +290,10 @@ export const start = defineCommand({
       claudeCode: args["claude-code"],
       showToken: args["show-token"],
       proxyEnv: args["proxy-env"],
+      writeEnv: args["write-env"],
+      sourceEnv: args["source-env"],
+      model: args["model"],
+      smallModel: args["small-model"],
     })
   },
 })
