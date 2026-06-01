@@ -7,9 +7,15 @@ import { serve, type ServerHandler } from "srvx"
 import invariant from "tiny-invariant"
 
 import { mergeConfigWithDefaults } from "./lib/config"
+import {
+  writeEnvFile,
+  sourceEnvFileInShellRc,
+  buildClaudeEnvVars,
+} from "./lib/env-file"
 import { initOpencodeVersion } from "./lib/opencode"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
+import { getConfiguredApiKeys } from "./lib/request-auth"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { logUser, setupCopilotToken, setupGitHubToken } from "./lib/token"
@@ -32,6 +38,10 @@ interface RunServerOptions {
   claudeCode: boolean
   showToken: boolean
   proxyEnv: boolean
+  sourceEnv: boolean
+  model: string
+  smallModel: string
+  gptModel: string
 }
 
 export async function runServer(options: RunServerOptions): Promise<void> {
@@ -86,6 +96,27 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   const serverUrl = `http://localhost:${options.port}`
 
+  const authToken = getConfiguredApiKeys()[0] ?? "dummy"
+  const { envFilePath, shPath } = await writeEnvFile({
+    port: options.port,
+    model: options.model,
+    smallModel: options.smallModel,
+    gptModel: options.gptModel,
+    authToken,
+  })
+  consola.success(`Wrote env file to ${envFilePath}`)
+
+  if (options.sourceEnv) {
+    const { rcPath, added } = await sourceEnvFileInShellRc(shPath)
+    if (added) {
+      consola.success(
+        `Added source block to ${rcPath}. Run \`source ${rcPath}\` or open a new shell to load it.`,
+      )
+    } else {
+      consola.info(`Source block already present in ${rcPath}`)
+    }
+  }
+
   if (options.claudeCode) {
     consola.log(
       "\n💡 Tip: The --claude-code flag simply generates a clipboard command for launching Claude Code. \n"
@@ -111,20 +142,15 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     )
 
     const command = generateEnvScript(
-      {
-        ANTHROPIC_BASE_URL: serverUrl,
-        ANTHROPIC_AUTH_TOKEN: "dummy",
-        ANTHROPIC_MODEL: selectedModel,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: selectedModel,
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: selectedSmallModel,
-        DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
-        CLAUDE_CODE_ATTRIBUTION_HEADER: "0",
-        CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: "false",
-        CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "true",
-        CLAUDE_CODE_ENABLE_AWAY_SUMMARY: "0",
-        CLAUDE_PLUGIN_ENABLE_QUESTION_RULES: "true",
-      },
+      Object.fromEntries(
+        buildClaudeEnvVars({
+          port: options.port,
+          model: selectedModel,
+          smallModel: selectedSmallModel,
+          gptModel: selectedModel,
+          authToken: "dummy",
+        }),
+      ),
       "claude",
     )
 
@@ -218,6 +244,30 @@ export const start = defineCommand({
       default: false,
       description: "Initialize proxy from environment variables",
     },
+    "source-env": {
+      type: "boolean",
+      default: false,
+      description:
+        "Append a line to your shell rc (.zshrc/.bash_profile) that sources the generated copilot-api.env file",
+    },
+    "claude-model": {
+      type: "string",
+      default: "claude-opus-4.8",
+      description:
+        "Primary model ID written to copilot-api.env (ANTHROPIC_MODEL)",
+    },
+    "claude-small-model": {
+      type: "string",
+      default: "claude-sonnet-4-6",
+      description:
+        "Small/background model ID written to copilot-api.env (ANTHROPIC_DEFAULT_HAIKU_MODEL)",
+    },
+    "gpt-model": {
+      type: "string",
+      default: "gpt-5.5",
+      description:
+        "OpenAI/Codex model ID written to copilot-api.env (OPENAI_MODEL)",
+    },
   },
   run({ args }) {
     const rateLimitRaw = args["rate-limit"]
@@ -236,6 +286,10 @@ export const start = defineCommand({
       claudeCode: args["claude-code"],
       showToken: args["show-token"],
       proxyEnv: args["proxy-env"],
+      sourceEnv: args["source-env"],
+      model: args["claude-model"],
+      smallModel: args["claude-small-model"],
+      gptModel: args["gpt-model"],
     })
   },
 })
