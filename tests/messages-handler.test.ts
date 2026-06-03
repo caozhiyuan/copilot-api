@@ -30,6 +30,7 @@ type SelectedModel = {
 type FlowCallOptions = {
   compactType?: number
   requestId: string
+  requestedModel: string
   sessionId?: string
   subagentMarker?: unknown
   anthropicBetaHeader?: string
@@ -438,6 +439,9 @@ describe("messages handler orchestration", () => {
 
     const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
     expect(forwardedPayload.model).toBe("messages-model")
+
+    const options = handleWithMessagesApi.mock.calls[0][2]
+    expect(options.requestedModel).toBe("claude-opus-4-7")
   })
 
   test("delegates to the Responses API flow when the model supports /responses", async () => {
@@ -584,6 +588,7 @@ describe("messages handler orchestration", () => {
 
     const options = handleWithMessagesApi.mock.calls[0][2]
     expect(options.requestId).toBe(expectedRequestId)
+    expect(options.requestedModel).toBe("original-model")
     expect(options.sessionId).toBe(expectedSessionId)
     expect(options.subagentMarker).toEqual({
       session_id: "sub-session",

@@ -6,6 +6,7 @@ import type {
   ChatCompletionResponse,
   ChatCompletionsPayload,
 } from "../src/services/copilot/create-chat-completions"
+import type { CreateMessagesReturn } from "../src/services/copilot/create-messages"
 import type {
   CreateResponsesReturn,
   ResponsesPayload,
@@ -14,11 +15,16 @@ import type {
 } from "../src/services/copilot/create-responses"
 
 import { COMPACT_REQUEST } from "../src/lib/compact"
+import { formatCopilotModelLog } from "../src/services/copilot/model-log"
 
 let capturedPayload: ChatCompletionsPayload | null = null
 let capturedResponsesPayload: ResponsesPayload | null = null
 let capturedResponsesOptions: {
+  requestedModel?: string
   transport?: ResponsesTransport
+} | null = null
+let capturedMessagesOptions: {
+  requestedModel?: string
 } | null = null
 let responsesApiWebSocketEnabled = true
 
@@ -48,6 +54,7 @@ const createResponses = mock(
   (
     payload: ResponsesPayload,
     options: {
+      requestedModel?: string
       transport?: ResponsesTransport
     },
   ): Promise<CreateResponsesReturn> => {
@@ -56,9 +63,34 @@ const createResponses = mock(
     return Promise.resolve(createResponsesResult(payload.model))
   },
 )
+const createMessages = mock(
+  (
+    payload: AnthropicMessagesPayload,
+    _anthropicBetaHeader: string | undefined,
+    options: {
+      requestedModel?: string
+    },
+  ): Promise<CreateMessagesReturn> => {
+    capturedMessagesOptions = options
+    return Promise.resolve({
+      id: "msg-test",
+      type: "message",
+      role: "assistant",
+      content: [],
+      model: payload.model,
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+      },
+    })
+  },
+)
 
 const {
   handleWithChatCompletions,
+  handleWithMessagesApi,
   handleWithResponsesApi,
   messagesApiFlowDependencies,
   prepareCopilotChatCompletionsPayload,
@@ -85,12 +117,15 @@ beforeEach(() => {
   capturedPayload = null
   capturedResponsesPayload = null
   capturedResponsesOptions = null
+  capturedMessagesOptions = null
   responsesApiWebSocketEnabled = true
   messagesApiFlowDependencies.createChatCompletions = createChatCompletions
+  messagesApiFlowDependencies.createMessages = createMessages
   messagesApiFlowDependencies.createResponses = createResponses
   responsesUtilsDependencies.isResponsesApiWebSocketEnabled = () =>
     responsesApiWebSocketEnabled
   createChatCompletions.mockClear()
+  createMessages.mockClear()
   createResponses.mockClear()
 })
 
@@ -129,6 +164,7 @@ test("messages Chat Completions flow adds Copilot cache control to system and la
   const response = await handleWithChatCompletions(createContext(), payload, {
     logger,
     requestId: "request-1",
+    requestedModel: "gpt-test",
   })
 
   expect(response.status).toBe(200)
@@ -235,6 +271,30 @@ test("Copilot Chat Completions payload preparation marks two system and latest t
   ])
 })
 
+test("messages native flow passes requested model metadata to Copilot messages", async () => {
+  const payload: AnthropicMessagesPayload = {
+    max_tokens: 128,
+    messages: [{ role: "user", content: "hello" }],
+    model: "claude-opus-4.8",
+  }
+
+  const response = await handleWithMessagesApi(createContext(), payload, {
+    logger,
+    requestId: "request-1",
+    requestedModel: "claude-opus-4.7",
+  })
+
+  expect(response.status).toBe(200)
+  expect(createMessages).toHaveBeenCalledTimes(1)
+  expect(capturedMessagesOptions?.requestedModel).toBe("claude-opus-4.7")
+})
+
+test("Copilot model log includes requested model inline when provided", () => {
+  expect(formatCopilotModelLog("claude-opus-4.8", "claude-opus-4.7")).toBe(
+    "<-- model: claude-opus-4.8 <-- requested model: claude-opus-4.7",
+  )
+})
+
 test("messages Responses flow uses websocket transport by default for dual-endpoint models", async () => {
   const payload: AnthropicMessagesPayload = {
     max_tokens: 128,
@@ -245,6 +305,7 @@ test("messages Responses flow uses websocket transport by default for dual-endpo
   const response = await handleWithResponsesApi(createContext(), payload, {
     logger,
     requestId: "request-1",
+    requestedModel: "gpt-test",
     selectedModel: createModel(["/responses", "ws:/responses"]),
   })
 
@@ -264,6 +325,7 @@ test("messages Responses flow keeps HTTP transport for dual-endpoint models when
   const response = await handleWithResponsesApi(createContext(), payload, {
     logger,
     requestId: "request-1",
+    requestedModel: "gpt-test",
     selectedModel: createModel(["/responses", "ws:/responses"]),
   })
 
@@ -283,6 +345,7 @@ test("messages Responses flow keeps HTTP transport for compact requests", async 
     compactType: COMPACT_REQUEST,
     logger,
     requestId: "request-1",
+    requestedModel: "gpt-test",
     selectedModel: createModel(["/responses", "ws:/responses"]),
   })
 
@@ -301,6 +364,7 @@ test("messages Responses flow keeps HTTP transport for /responses-only models", 
   const response = await handleWithResponsesApi(createContext(), payload, {
     logger,
     requestId: "request-1",
+    requestedModel: "gpt-test",
     selectedModel: createModel(["/responses"]),
   })
 
@@ -331,6 +395,7 @@ test("messages Responses flow keeps streaming transport for deferred tool search
   const response = await handleWithResponsesApi(createContext(), payload, {
     logger,
     requestId: "request-1",
+    requestedModel: "gpt-5.4",
     selectedModel: createModel(["/responses", "ws:/responses"]),
   })
 
@@ -344,7 +409,7 @@ test("messages Responses flow preserves the configured tool_search alias in non-
   createResponses.mockImplementationOnce(
     (
       payload: ResponsesPayload,
-      options: { transport?: ResponsesTransport },
+      options: { requestedModel?: string; transport?: ResponsesTransport },
     ) => {
       capturedResponsesPayload = payload
       capturedResponsesOptions = options
@@ -383,6 +448,7 @@ test("messages Responses flow preserves the configured tool_search alias in non-
   const response = await handleWithResponsesApi(createContext(), payload, {
     logger,
     requestId: "request-1",
+    requestedModel: "gpt-5.4",
     selectedModel: createModel(["/responses"]),
   })
 

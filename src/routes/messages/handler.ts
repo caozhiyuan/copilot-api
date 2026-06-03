@@ -141,6 +141,7 @@ export async function handleCompletion(c: Context) {
         sessionId,
         compactType,
         logger,
+        requestedModel,
       },
     )
   }
@@ -156,6 +157,7 @@ export async function handleCompletion(c: Context) {
         sessionId,
         compactType,
         logger,
+        requestedModel,
       },
     )
   }
@@ -169,6 +171,7 @@ export async function handleCompletion(c: Context) {
       sessionId,
       compactType,
       logger,
+      requestedModel,
     },
   )
 }

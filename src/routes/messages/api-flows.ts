@@ -81,6 +81,7 @@ export interface FlowBaseOptions {
   requestId: string
   sessionId?: string
   compactType?: CompactType
+  requestedModel: string
 }
 
 interface ResponsesFlowOptions extends FlowBaseOptions {
@@ -97,7 +98,14 @@ export const handleWithChatCompletions = async (
   anthropicPayload: AnthropicMessagesPayload,
   options: FlowBaseOptions,
 ) => {
-  const { logger, subagentMarker, requestId, sessionId, compactType } = options
+  const {
+    logger,
+    subagentMarker,
+    requestId,
+    sessionId,
+    compactType,
+    requestedModel,
+  } = options
   const openAIPayload = translateToOpenAI(anthropicPayload)
   prepareCopilotChatCompletionsPayload(openAIPayload)
   const recordUsage = createCopilotUsageRecorder({
@@ -115,6 +123,7 @@ export const handleWithChatCompletions = async (
       requestId,
       sessionId,
       compactType,
+      requestedModel,
     },
   )
 
@@ -310,6 +319,7 @@ export const handleWithMessagesApi = async (
     requestId,
     sessionId,
     compactType,
+    requestedModel,
   } = options
 
   prepareMessagesApiPayload(anthropicPayload, selectedModel)
@@ -330,6 +340,7 @@ export const handleWithMessagesApi = async (
       requestId,
       sessionId,
       compactType,
+      requestedModel,
     },
   )
 

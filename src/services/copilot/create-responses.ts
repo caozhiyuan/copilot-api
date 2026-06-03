@@ -20,6 +20,7 @@ import {
 } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import { logCopilotModel } from "~/services/copilot/model-log"
 import {
   createPooledWebSocketStream,
   createWebSocketUrl,
@@ -454,6 +455,7 @@ interface ResponsesRequestOptions {
   sessionId?: string
   compactType?: CompactType
   transport?: ResponsesTransport
+  requestedModel?: string
 }
 
 export const createResponses = async (
@@ -466,6 +468,7 @@ export const createResponses = async (
     sessionId,
     compactType,
     transport = "http",
+    requestedModel,
   }: ResponsesRequestOptions,
 ): Promise<CreateResponsesReturn> => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
@@ -482,7 +485,7 @@ export const createResponses = async (
   // service_tier is not supported by github copilot
   payload.service_tier = undefined
 
-  consola.log(`<-- model: ${payload.model}`)
+  logCopilotModel(payload.model, requestedModel)
 
   const effectiveTransport =
     compactType === COMPACT_REQUEST ? "http" : transport

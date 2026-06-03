@@ -19,6 +19,7 @@ import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 import { parseUserIdMetadata } from "~/lib/utils"
+import { logCopilotModel } from "~/services/copilot/model-log"
 
 export type MessagesStream = ReturnType<typeof events>
 export type CreateMessagesReturn = AnthropicResponse | MessagesStream
@@ -70,6 +71,7 @@ export const createMessages = async (
     requestId: string
     sessionId?: string
     compactType?: CompactType
+    requestedModel?: string
   },
 ): Promise<CreateMessagesReturn> => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
@@ -135,7 +137,7 @@ export const createMessages = async (
     headers["anthropic-beta"] = anthropicBeta
   }
 
-  consola.log(`<-- model: ${payload.model}`)
+  logCopilotModel(payload.model, options.requestedModel)
 
   const response = await fetch(`${copilotBaseUrl(state)}/v1/messages`, {
     method: "POST",

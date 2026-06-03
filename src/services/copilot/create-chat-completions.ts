@@ -13,6 +13,7 @@ import {
 import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import { logCopilotModel } from "~/services/copilot/model-log"
 
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
@@ -21,6 +22,7 @@ export const createChatCompletions = async (
     requestId: string
     sessionId?: string
     compactType?: CompactType
+    requestedModel?: string
   },
 ) => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
@@ -56,7 +58,7 @@ export const createChatCompletions = async (
 
   prepareForCompact(headers, options.compactType)
 
-  consola.log(`<-- model: ${payload.model}`)
+  logCopilotModel(payload.model, options.requestedModel)
 
   const response = await fetch(`${copilotBaseUrl(state)}/chat/completions`, {
     method: "POST",
