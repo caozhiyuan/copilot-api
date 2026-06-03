@@ -4,6 +4,8 @@ import fs from "node:fs"
 
 import { PATHS } from "./paths"
 
+export type ModelMetadataOverride = Record<string, unknown>
+
 export interface AppConfig {
   auth?: {
     apiKeys?: Array<string>
@@ -11,6 +13,7 @@ export interface AppConfig {
   }
   providers?: Record<string, ProviderConfig>
   modelMappings?: Record<string, string>
+  modelOverrides?: Record<string, ModelMetadataOverride>
   extraPrompts?: Record<string, string>
   smallModel?: string
   useResponsesApiContextManagement?: boolean
@@ -380,6 +383,60 @@ export function setModelMappings(
 
 export function resolveMappedModel(model: string): string {
   return getModelMappings()[model] ?? model
+}
+
+function isOverrideObject(value: unknown): value is ModelMetadataOverride {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+export function getModelOverrides(): Record<string, ModelMetadataOverride> {
+  const config = getConfig()
+  const modelOverrides = config.modelOverrides
+  if (!modelOverrides) {
+    return {}
+  }
+
+  const validOverrides: Record<string, ModelMetadataOverride> = {}
+  for (const [modelId, override] of Object.entries(modelOverrides)) {
+    if (!modelId || !isOverrideObject(override)) {
+      continue
+    }
+    validOverrides[modelId] = override
+  }
+
+  return validOverrides
+}
+
+function validateModelOverrides(
+  modelOverrides: Record<string, ModelMetadataOverride>,
+): Record<string, ModelMetadataOverride> {
+  const validatedOverrides: Record<string, ModelMetadataOverride> = {}
+  for (const [modelId, override] of Object.entries(modelOverrides)) {
+    if (!modelId) {
+      throw new Error("Each model override must use a non-empty model id.")
+    }
+    if (!isOverrideObject(override)) {
+      throw new Error(
+        `Model override for '${modelId}' must be an object of metadata fields.`,
+      )
+    }
+    validatedOverrides[modelId] = override
+  }
+
+  return validatedOverrides
+}
+
+export function setModelOverrides(
+  modelOverrides: Record<string, ModelMetadataOverride>,
+): Record<string, ModelMetadataOverride> {
+  const nextConfig = {
+    ...readEditableConfigFromDisk(),
+    modelOverrides: validateModelOverrides(modelOverrides),
+  }
+
+  writeConfigToDisk(nextConfig)
+  cachedConfig = reloadConfig()
+  return getModelOverrides()
 }
 
 export function getSmallModel(): string {

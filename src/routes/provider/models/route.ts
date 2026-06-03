@@ -2,6 +2,7 @@ import { Hono } from "hono"
 
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
+import { applyModelOverrides } from "~/lib/models"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { getModels as getCodexModels } from "~/services/codex/get-models"
 import {
@@ -34,7 +35,7 @@ providerModelRoutes.get("/", async (c) => {
       const models = getCodexModels()
       return c.json({
         object: "list",
-        data: models.data,
+        data: applyModelOverrides(models.data),
         has_more: false,
       })
     }

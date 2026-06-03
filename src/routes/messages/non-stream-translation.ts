@@ -1,6 +1,7 @@
 import type { ToolContentSupportType } from "~/lib/config"
 import type { Model } from "~/services/copilot/get-models"
 
+import { applyModelOverride } from "~/lib/models"
 import { state } from "~/lib/state"
 import {
   type ChatCompletionResponse,
@@ -71,7 +72,8 @@ export function translateToOpenAI(
   options: TranslateToOpenAIOptions = {},
 ): ChatCompletionsPayload {
   const modelId = payload.model
-  const model = state.models?.data.find((m) => m.id === modelId)
+  const foundModel = state.models?.data.find((m) => m.id === modelId)
+  const model = foundModel ? applyModelOverride(foundModel) : undefined
   const thinkingBudget = getThinkingBudget(payload, model)
   const capabilities = {
     supportPdf: options.supportPdf ?? false,

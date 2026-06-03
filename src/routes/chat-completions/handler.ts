@@ -5,6 +5,7 @@ import { streamSSE, type SSEMessage } from "hono/streaming"
 import { awaitApproval } from "~/lib/approval"
 import { resolveMappedModel } from "~/lib/config"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
+import { applyModelOverride } from "~/lib/models"
 import { checkRateLimit } from "~/lib/rate-limit"
 import { state } from "~/lib/state"
 import {
@@ -37,9 +38,10 @@ export async function handleCompletion(c: Context) {
   debugJsonTail(logger, "Request payload:", { value: payload, tailLength: 400 })
 
   // Find the selected model
-  const selectedModel = state.models?.data.find(
+  const foundModel = state.models?.data.find(
     (model) => model.id === payload.model,
   )
+  const selectedModel = foundModel ? applyModelOverride(foundModel) : undefined
 
   if (selectedModel?.id === "gpt-5.4") {
     return c.json(

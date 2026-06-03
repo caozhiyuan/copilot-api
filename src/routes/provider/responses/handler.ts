@@ -6,6 +6,7 @@ import { streamSSE } from "hono/streaming"
 import { logCodexRateLimitsEvent } from "~/lib/codex-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
+import { applyModelOverride } from "~/lib/models"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { requestContext } from "~/lib/request-context"
 import {
@@ -57,10 +58,11 @@ export async function handleProviderResponsesForProvider(
     )
   }
 
-  const model =
+  const foundModel =
     providerConfig.name === "codex" ?
       getCodexModels().data.find((model) => model.id === payload.model)
     : undefined
+  const model = foundModel ? applyModelOverride(foundModel) : undefined
 
   const maxPromptTokens = model?.capabilities.limits.max_prompt_tokens ?? 0
   // Smaller than the client compaction threshold, use server-side compaction to maintain cache hit rate

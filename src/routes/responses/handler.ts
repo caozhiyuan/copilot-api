@@ -8,6 +8,7 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
+import { applyModelOverride } from "~/lib/models"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { checkRateLimit as checkConfiguredRateLimit } from "~/lib/rate-limit"
 import { handleProviderResponsesForProvider } from "~/routes/provider/responses/handler"
@@ -94,9 +95,10 @@ export const handleResponses = async (c: Context) => {
 
   compactInputByLatestCompaction(payload)
 
-  const selectedModel = state.models?.data.find(
+  const foundModel = state.models?.data.find(
     (model) => model.id === payload.model,
   )
+  const selectedModel = foundModel ? applyModelOverride(foundModel) : undefined
   const responsesTransport = getResponsesTransportForModel(selectedModel)
 
   if (!responsesTransport) {

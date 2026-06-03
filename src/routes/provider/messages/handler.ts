@@ -26,6 +26,7 @@ import { type ModelConfig, type ResolvedProviderConfig } from "~/lib/config"
 import { logCodexRateLimitsEvent } from "~/lib/codex-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { createHandlerLogger, debugJson, debugLazy } from "~/lib/logger"
+import { applyModelOverride } from "~/lib/models"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { resolveBridgeToolSearchName } from "~/lib/tool-search"
 import {
@@ -193,10 +194,11 @@ const handleOpenAIResponsesProviderMessages = async (
   },
 ): Promise<Response> => {
   const { payload, provider, providerConfig } = options
-  const selectedModel =
+  const foundModel =
     providerConfig.name === "codex" ?
       getCodexModels().data.find((model) => model.id === payload.model)
     : undefined
+  const selectedModel = foundModel ? applyModelOverride(foundModel) : undefined
   const responsesPayload = translateAnthropicMessagesToResponsesPayload(payload)
 
   applyResponsesApiContextManagement(

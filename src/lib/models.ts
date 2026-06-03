@@ -1,5 +1,7 @@
 import type { Model } from "~/services/copilot/get-models"
 
+import { getModelOverrides } from "~/lib/config"
+import { deepMerge } from "~/lib/deep-merge"
 import { state } from "~/lib/state"
 
 export interface NormalizedSdkModelId {
@@ -7,11 +9,28 @@ export interface NormalizedSdkModelId {
   version: string
 }
 
+/**
+ * Applies any configured metadata override for a model onto a clone of its
+ * metadata. The map key identifies the model, so an `id` field inside an
+ * override is ignored (the original id is always preserved).
+ */
+export const applyModelOverride = (model: Model): Model => {
+  const override = getModelOverrides()[model.id]
+  if (!override) {
+    return model
+  }
+
+  return { ...deepMerge(model, override), id: model.id }
+}
+
+export const applyModelOverrides = (models: Array<Model>): Array<Model> =>
+  models.map((model) => applyModelOverride(model))
+
 export const findEndpointModel = (sdkModelId: string): Model | undefined => {
   const models = state.models?.data ?? []
   const exactMatch = models.find((m) => m.id === sdkModelId)
   if (exactMatch) {
-    return exactMatch
+    return applyModelOverride(exactMatch)
   }
 
   const normalized = normalizeSdkModelId(sdkModelId)
@@ -22,7 +41,7 @@ export const findEndpointModel = (sdkModelId: string): Model | undefined => {
   const modelName = `claude-${normalized.family}-${normalized.version}`
   const model = models.find((m) => m.id === modelName)
   if (model) {
-    return model
+    return applyModelOverride(model)
   }
 
   return undefined
