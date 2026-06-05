@@ -7,6 +7,7 @@ import { COMPACT_REQUEST } from "~/lib/compact"
 import {
   getSmallModel,
   isMessagesApiEnabled,
+  isMessagesApiWebSearchEnabled,
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
@@ -38,6 +39,11 @@ import {
   stripToolReferenceTurnBoundary,
 } from "./preprocess"
 import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
+import {
+  handleWithMessagesApiWebSearch,
+  hasWebSearchServerTool,
+  stripWebSearchServerTool,
+} from "./web-search/fulfill"
 import consola from "consola"
 
 const logger = createHandlerLogger("messages-handler")
@@ -130,7 +136,25 @@ export async function handleCompletion(c: Context) {
   const selectedModel = findEndpointModel(anthropicPayload.model)
   anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
 
+  // Copilot rejects Anthropic's server-side web_search tool on every endpoint,
+  // so when a Claude (Messages API) request asks for it, fulfill the search in
+  // the proxy via the GPT /responses backend. Other paths can't fulfill it, so
+  // the tool is stripped to avoid an upstream 400.
+  const webSearchRequested = hasWebSearchServerTool(anthropicPayload)
+
   if (shouldUseMessagesApi(selectedModel)) {
+    if (webSearchRequested && isMessagesApiWebSearchEnabled()) {
+      return await handleWithMessagesApiWebSearch(c, anthropicPayload, {
+        anthropicBetaHeader: anthropicBeta,
+        subagentMarker,
+        selectedModel,
+        requestId,
+        sessionId,
+        compactType,
+        logger,
+      })
+    }
+    if (webSearchRequested) stripWebSearchServerTool(anthropicPayload)
     return await messagesFlowHandlers.handleWithMessagesApi(
       c,
       anthropicPayload,
@@ -145,6 +169,8 @@ export async function handleCompletion(c: Context) {
       },
     )
   }
+
+  if (webSearchRequested) stripWebSearchServerTool(anthropicPayload)
 
   if (shouldUseResponsesApi(selectedModel, compactType)) {
     return await messagesFlowHandlers.handleWithResponsesApi(

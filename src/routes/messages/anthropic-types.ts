@@ -133,7 +133,50 @@ export interface AnthropicTool {
   input_schema: Record<string, unknown>
   defer_loading?: boolean
   cache_control?: AnthropicCacheControl | null
+  // Server-side tool fields (e.g. web_search_20250305). Server tools carry a
+  // `type` and omit `input_schema`; these stay optional so the same interface
+  // can describe both custom and server tools without rippling type changes.
+  type?: string
+  max_uses?: number
+  allowed_domains?: Array<string>
+  blocked_domains?: Array<string>
+  user_location?: Record<string, unknown>
 }
+
+// --- Web search result blocks (Anthropic server tool shape) ---------------
+// Emitted in the assistant response when the proxy fulfills a web_search tool.
+
+export interface AnthropicWebSearchResultItem {
+  type: "web_search_result"
+  url: string
+  title: string
+  page_age?: string | null
+  encrypted_content?: string
+}
+
+export interface AnthropicServerToolUseBlock {
+  type: "server_tool_use"
+  id: string
+  name: "web_search"
+  input: Record<string, unknown>
+}
+
+export interface AnthropicWebSearchToolResultErrorBlock {
+  type: "web_search_tool_result_error"
+  error_code: string
+}
+
+export interface AnthropicWebSearchToolResultBlock {
+  type: "web_search_tool_result"
+  tool_use_id: string
+  content:
+    | Array<AnthropicWebSearchResultItem>
+    | AnthropicWebSearchToolResultErrorBlock
+}
+
+export type AnthropicWebSearchContentBlock =
+  | AnthropicServerToolUseBlock
+  | AnthropicWebSearchToolResultBlock
 
 export interface AnthropicResponse {
   id: string
