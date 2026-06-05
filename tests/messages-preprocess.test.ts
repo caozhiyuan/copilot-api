@@ -1177,4 +1177,78 @@ describe("prepareMessagesApiPayload", () => {
     expect(payload.thinking).toBeUndefined()
     expect(payload.output_config).toBeUndefined()
   })
+
+  test("strips top-level cache_control sent by Zed (minimal-mode shape)", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-haiku-4.5",
+      max_tokens: 64000,
+      cache_control: { type: "ephemeral" },
+      system: [
+        {
+          type: "text",
+          text: "You are the Zed coding agent ...",
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        },
+      ],
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Hello world!" }],
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload)
+
+    expect(payload.cache_control).toBeUndefined()
+    expect(payload.messages[0].content).toEqual([
+      {
+        type: "text",
+        text: "Hello world!",
+        cache_control: { type: "ephemeral" },
+      },
+    ])
+    expect(
+      (payload.system as unknown as Array<Record<string, unknown>>)[0]
+        .cache_control,
+    ).toEqual({ type: "ephemeral", ttl: "1h" })
+  })
+
+  test("strips tool eager_input_streaming sent by Zed (write-mode shape)", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-haiku-4.5",
+      max_tokens: 64000,
+      cache_control: { type: "ephemeral" },
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Hello World" }],
+        },
+      ],
+      tools: [
+        {
+          name: "edit_file",
+          input_schema: { type: "object" },
+          eager_input_streaming: true,
+        },
+        {
+          name: "write_file",
+          input_schema: { type: "object" },
+          eager_input_streaming: true,
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        },
+      ] as unknown as AnthropicMessagesPayload["tools"],
+    }
+
+    prepareMessagesApiPayload(payload)
+
+    for (const tool of payload.tools ?? []) {
+      expect(tool).not.toHaveProperty("eager_input_streaming")
+    }
+    expect(payload.tools?.[1].cache_control).toEqual({
+      type: "ephemeral",
+      ttl: "1h",
+    })
+    expect(payload.cache_control).toBeUndefined()
+  })
 })
