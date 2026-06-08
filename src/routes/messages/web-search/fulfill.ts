@@ -9,6 +9,10 @@ import type { Model } from "~/services/copilot/get-models"
 
 import { findEndpointModel } from "~/lib/models"
 import {
+  parseProviderModelAlias,
+  type ProviderModelAlias,
+} from "~/lib/provider-model"
+import {
   createCopilotTokenUsageRecorder,
   normalizeResponsesUsage,
   type UsageTokens,
@@ -92,6 +96,39 @@ export const stripWebSearchServerTool = (
 ): void => {
   if (!Array.isArray(payload.tools)) return
   payload.tools = payload.tools.filter((tool) => !isWebSearchServerTool(tool))
+}
+
+/**
+ * Decides how a web-search request should be handled. Pure so the routing is
+ * unit-testable. Assumes the caller already confirmed a web_search tool exists.
+ *
+ * - `provider`: messageApiWebSearchModel is a `provider/model` alias whose
+ *   message API supports websearch natively — pass the tool straight through.
+ * - `responses`: a Copilot GPT model — run it via the /responses web_search.
+ * - `strip`: mixing with other tools, no model configured, or web search off —
+ *   drop the tool and continue normally.
+ */
+export type WebSearchRoute =
+  | { kind: "provider"; alias: ProviderModelAlias }
+  | { kind: "responses"; model: string }
+  | { kind: "strip" }
+
+export const resolveWebSearchRoute = (
+  payload: AnthropicMessagesPayload,
+  options: { webSearchModel?: string; responsesWebSearchEnabled: boolean },
+): WebSearchRoute => {
+  const { webSearchModel, responsesWebSearchEnabled } = options
+  if (!webSearchModel || !isWebSearchOnlyRequest(payload)) {
+    return { kind: "strip" }
+  }
+  const alias = parseProviderModelAlias(webSearchModel)
+  if (alias) {
+    return { kind: "provider", alias }
+  }
+  if (responsesWebSearchEnabled) {
+    return { kind: "responses", model: webSearchModel }
+  }
+  return { kind: "strip" }
 }
 
 const extractWebSearchConfig = (

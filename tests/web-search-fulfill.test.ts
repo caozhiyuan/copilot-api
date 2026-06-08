@@ -15,6 +15,7 @@ import {
   handleWebSearchViaResponses,
   hasWebSearchServerTool,
   isWebSearchOnlyRequest,
+  resolveWebSearchRoute,
   stripWebSearchServerTool,
   webSearchFlowDependencies,
 } from "~/routes/messages/web-search/fulfill"
@@ -144,6 +145,56 @@ describe("web search tool detection", () => {
     stripWebSearchServerTool(payload)
     expect(payload.tools).toHaveLength(1)
     expect(payload.tools?.[0].name).toBe("get_weather")
+  })
+})
+
+describe("resolveWebSearchRoute", () => {
+  const opts = { webSearchModel: "gpt-5-mini", responsesWebSearchEnabled: true }
+
+  it("routes a Copilot model to the responses path", () => {
+    expect(resolveWebSearchRoute(makePayload(), opts)).toEqual({
+      kind: "responses",
+      model: "gpt-5-mini",
+    })
+  })
+
+  it("routes a provider/model alias to provider passthrough", () => {
+    const route = resolveWebSearchRoute(makePayload(), {
+      ...opts,
+      webSearchModel: "anthropic/claude-sonnet-4-5",
+    })
+    expect(route).toEqual({
+      kind: "provider",
+      alias: { provider: "anthropic", model: "claude-sonnet-4-5" },
+    })
+  })
+
+  it("strips when web_search is mixed with other tools", () => {
+    const payload = makePayload({
+      tools: [
+        webSearchTool,
+        { name: "get_weather", input_schema: { type: "object" } },
+      ] as never,
+    })
+    expect(resolveWebSearchRoute(payload, opts).kind).toBe("strip")
+  })
+
+  it("strips when no web search model is configured", () => {
+    expect(
+      resolveWebSearchRoute(makePayload(), {
+        webSearchModel: undefined,
+        responsesWebSearchEnabled: true,
+      }).kind,
+    ).toBe("strip")
+  })
+
+  it("strips a Copilot model when responses web search is disabled", () => {
+    expect(
+      resolveWebSearchRoute(makePayload(), {
+        webSearchModel: "gpt-5-mini",
+        responsesWebSearchEnabled: false,
+      }).kind,
+    ).toBe("strip")
   })
 })
 

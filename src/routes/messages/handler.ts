@@ -43,7 +43,7 @@ import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 import {
   handleWebSearchViaResponses,
   hasWebSearchServerTool,
-  isWebSearchOnlyRequest,
+  resolveWebSearchRoute,
   stripWebSearchServerTool,
 } from "./web-search/fulfill"
 import consola from "consola"
@@ -139,20 +139,28 @@ export async function handleCompletion(c: Context) {
   anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
 
   // Copilot rejects Anthropic's server-side web_search tool on /v1/messages.
-  // A request that asks for ONLY web search is switched to a Responses-capable
-  // GPT model (messageApiWebSearchModel) that runs the search natively. Mixing
-  // web_search with other tools is unsupported, so in that case (or when no
-  // web search model is configured) the tool is stripped to avoid a 400.
+  // A request that asks for ONLY web search is switched to the configured
+  // messageApiWebSearchModel: a `provider/model` alias is passed straight
+  // through to that provider's (websearch-capable) message API, while a Copilot
+  // GPT model runs the search via /responses. Mixing web_search with other
+  // tools is unsupported, so in that case (or when nothing is configured) the
+  // tool is stripped to avoid a 400.
   if (hasWebSearchServerTool(anthropicPayload)) {
-    const webSearchModel = getMessageApiWebSearchModel()
-    if (
-      webSearchModel
-      && isResponsesApiWebSearchEnabled()
-      && isWebSearchOnlyRequest(anthropicPayload)
-    ) {
+    const route = resolveWebSearchRoute(anthropicPayload, {
+      webSearchModel: getMessageApiWebSearchModel(),
+      responsesWebSearchEnabled: isResponsesApiWebSearchEnabled(),
+    })
+    if (route.kind === "provider") {
+      anthropicPayload.model = route.alias.model
+      return await handleProviderMessagesForProvider(c, {
+        payload: anthropicPayload,
+        provider: route.alias.provider,
+      })
+    }
+    if (route.kind === "responses") {
       return await handleWebSearchViaResponses(c, anthropicPayload, {
         subagentMarker,
-        webSearchModel,
+        webSearchModel: route.model,
         requestId,
         sessionId,
         compactType,
