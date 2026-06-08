@@ -5,11 +5,16 @@ import type {
   AnthropicMessagesPayload,
   AnthropicResponse,
 } from "~/routes/messages/anthropic-types"
+import type {
+  ResponsesPayload,
+  ResponsesResult,
+} from "~/services/copilot/create-responses"
 
 import {
   buildSyntheticStreamEvents,
-  handleWithMessagesApiWebSearch,
+  handleWebSearchViaResponses,
   hasWebSearchServerTool,
+  isWebSearchOnlyRequest,
   stripWebSearchServerTool,
   webSearchFlowDependencies,
 } from "~/routes/messages/web-search/fulfill"
@@ -31,40 +36,72 @@ const makePayload = (
     ...overrides,
   }) as unknown as AnthropicMessagesPayload
 
-// Minimal Context stub capturing json() and streamSSE writes.
 const makeContext = () => {
-  const captured: {
-    json?: unknown
-    sse: Array<{ event?: string; data: string }>
-  } = {
-    sse: [],
-  }
+  const captured: { json?: unknown } = {}
   const c = {
     json: (value: unknown) => {
       captured.json = value
       return { __json: value }
     },
-    header: () => undefined,
-    req: { raw: { signal: undefined } },
-    newResponse: (body: unknown) => body,
-    // hono streamSSE uses these; provide enough surface
-    res: {},
-    finalized: false,
   }
   return { c: c as never, captured }
 }
 
+const makeResponsesResult = (
+  overrides: Partial<ResponsesResult> = {},
+): ResponsesResult =>
+  ({
+    id: "resp_1",
+    object: "response",
+    created_at: 0,
+    model: "gpt-5-mini",
+    output: [
+      { type: "web_search_call", action: { query: "node lts version" } },
+      {
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [
+          {
+            type: "output_text",
+            text: "Node.js 24 is the latest LTS.",
+            annotations: [
+              {
+                type: "url_citation",
+                url: "https://nodejs.org",
+                title: "Node.js",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    output_text: "",
+    status: "completed",
+    usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    metadata: null,
+    parallel_tool_calls: true,
+    temperature: 1,
+    tool_choice: null,
+    tools: [],
+    top_p: null,
+    ...overrides,
+  }) as unknown as ResponsesResult
+
 const originalDeps = { ...webSearchFlowDependencies }
 
 afterEach(() => {
-  webSearchFlowDependencies.createMessages = originalDeps.createMessages
-  webSearchFlowDependencies.runWebSearch = originalDeps.runWebSearch
+  webSearchFlowDependencies.createResponses = originalDeps.createResponses
   webSearchFlowDependencies.createUsageRecorder =
     originalDeps.createUsageRecorder
 })
 
 const baseOptions = {
   logger: consola,
+  webSearchModel: "gpt-5-mini",
   requestId: "req-1",
   sessionId: "sess-1",
 }
@@ -74,11 +111,27 @@ describe("web search tool detection", () => {
     expect(hasWebSearchServerTool(makePayload())).toBe(true)
   })
 
+  it("treats a web_search-only request as switchable", () => {
+    expect(isWebSearchOnlyRequest(makePayload())).toBe(true)
+  })
+
+  it("does not switch when web_search is mixed with other tools", () => {
+    const payload = makePayload({
+      tools: [
+        webSearchTool,
+        { name: "get_weather", input_schema: { type: "object" } },
+      ] as never,
+    })
+    expect(hasWebSearchServerTool(payload)).toBe(true)
+    expect(isWebSearchOnlyRequest(payload)).toBe(false)
+  })
+
   it("ignores normal function tools", () => {
     const payload = makePayload({
       tools: [{ name: "get_weather", input_schema: { type: "object" } }],
     })
     expect(hasWebSearchServerTool(payload)).toBe(false)
+    expect(isWebSearchOnlyRequest(payload)).toBe(false)
   })
 
   it("strips only the web_search server tool", () => {
@@ -94,141 +147,73 @@ describe("web search tool detection", () => {
   })
 })
 
-const assistantText = (text: string): AnthropicResponse => ({
-  id: "msg_final",
-  type: "message",
-  role: "assistant",
-  content: [{ type: "text", text }],
-  model: "claude-sonnet-4.5",
-  stop_reason: "end_turn",
-  stop_sequence: null,
-  usage: { input_tokens: 10, output_tokens: 20 },
-})
-
-const assistantSearch = (query: string): AnthropicResponse => ({
-  id: "msg_search",
-  type: "message",
-  role: "assistant",
-  content: [
-    { type: "tool_use", id: "toolu_1", name: "web_search", input: { query } },
-  ],
-  model: "claude-sonnet-4.5",
-  stop_reason: "tool_use",
-  stop_sequence: null,
-  usage: { input_tokens: 5, output_tokens: 8 },
-})
-
-describe("handleWithMessagesApiWebSearch", () => {
-  it("fulfills a search and reconstructs native web search blocks", async () => {
-    const calls: Array<AnthropicMessagesPayload> = []
-    let turn = 0
-    webSearchFlowDependencies.createMessages = ((
-      payload: AnthropicMessagesPayload,
+describe("handleWebSearchViaResponses", () => {
+  it("switches model, runs Responses web_search, and reconstructs blocks", async () => {
+    let sentPayload: ResponsesPayload | undefined
+    webSearchFlowDependencies.createResponses = ((
+      payload: ResponsesPayload,
     ) => {
-      calls.push(payload)
-      turn += 1
-      // First turn: Claude asks to search. Second: final answer.
-      return Promise.resolve(
-        turn === 1 ?
-          assistantSearch("node lts version")
-        : assistantText("Node.js 24 is the latest LTS."),
-      )
-    }) as never
-    const searchArgs: Array<string> = []
-    webSearchFlowDependencies.runWebSearch = ((query: string) => {
-      searchArgs.push(query)
-      return Promise.resolve({
-        answerText: "Node 24 is LTS.",
-        sources: [{ url: "https://nodejs.org", title: "Node.js" }],
-        queriesRun: [query],
-      })
+      sentPayload = payload
+      return Promise.resolve(makeResponsesResult())
     }) as never
     webSearchFlowDependencies.createUsageRecorder = (() => () => {}) as never
 
     const { c, captured } = makeContext()
-    await handleWithMessagesApiWebSearch(c, makePayload(), baseOptions)
+    await handleWebSearchViaResponses(c, makePayload(), baseOptions)
 
-    // Backend received the query Claude requested.
-    expect(searchArgs).toEqual(["node lts version"])
-    // Two Claude calls: search request + final answer.
-    expect(calls).toHaveLength(2)
-    // The injected function tool replaced the server tool for the loop.
-    const loopTool = calls[0].tools?.find((t) => t.name === "web_search")
-    expect(loopTool?.input_schema).toBeDefined()
-    expect(loopTool?.type).toBeUndefined()
+    // Request was switched to the GPT model with a Responses web_search tool.
+    expect(sentPayload?.model).toBe("gpt-5-mini")
+    expect(sentPayload?.tools).toEqual([{ type: "web_search" }])
 
     const response = captured.json as AnthropicResponse
     const types = response.content.map((b) => b.type as string)
     expect(types).toEqual(["server_tool_use", "web_search_tool_result", "text"])
+
     const serverToolUse = response.content[0] as unknown as {
-      input: { query: string }
       name: string
+      input: { query: string }
     }
     expect(serverToolUse.name).toBe("web_search")
     expect(serverToolUse.input.query).toBe("node lts version")
+
     const result = response.content[1] as unknown as {
       content: Array<{ url: string; title: string }>
     }
     expect(result.content[0].url).toBe("https://nodejs.org")
+
+    const text = response.content[2] as unknown as { text: string }
+    expect(text.text).toBe("Node.js 24 is the latest LTS.")
+
+    // Response keeps the original Claude model id.
+    expect(response.model).toBe("claude-sonnet-4.5")
     expect(
       (response.usage as { server_tool_use?: unknown }).server_tool_use,
     ).toEqual({ web_search_requests: 1 })
-    // Usage accumulated across both Claude calls.
-    expect(response.usage.input_tokens).toBe(15)
-    expect(response.usage.output_tokens).toBe(28)
   })
 
-  it("passes through when Claude never searches", async () => {
-    let turn = 0
-    webSearchFlowDependencies.createMessages = (() => {
-      turn += 1
-      return Promise.resolve(assistantText("No search needed."))
-    }) as never
-    let searched = false
-    webSearchFlowDependencies.runWebSearch = (() => {
-      searched = true
-      return Promise.resolve({ answerText: "", sources: [], queriesRun: [] })
-    }) as never
+  it("returns just text when the backend produced no sources", async () => {
+    webSearchFlowDependencies.createResponses = (() =>
+      Promise.resolve(
+        makeResponsesResult({
+          output: [
+            {
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                { type: "output_text", text: "No results.", annotations: [] },
+              ],
+            },
+          ] as never,
+        }),
+      )) as never
     webSearchFlowDependencies.createUsageRecorder = (() => () => {}) as never
 
     const { c, captured } = makeContext()
-    await handleWithMessagesApiWebSearch(c, makePayload(), baseOptions)
-
-    expect(turn).toBe(1)
-    expect(searched).toBe(false)
-    const response = captured.json as AnthropicResponse
-    expect(response.content.map((b) => b.type)).toEqual(["text"])
-  })
-
-  it("surfaces a graceful error block when the backend fails", async () => {
-    let turn = 0
-    webSearchFlowDependencies.createMessages = (() => {
-      turn += 1
-      return Promise.resolve(
-        turn === 1 ?
-          assistantSearch("query")
-        : assistantText("Sorry, no live data."),
-      )
-    }) as never
-    webSearchFlowDependencies.runWebSearch = (() =>
-      Promise.resolve({
-        answerText: "",
-        sources: [],
-        queriesRun: [],
-        error: "boom",
-      })) as never
-    webSearchFlowDependencies.createUsageRecorder = (() => () => {}) as never
-
-    const { c, captured } = makeContext()
-    await handleWithMessagesApiWebSearch(c, makePayload(), baseOptions)
+    await handleWebSearchViaResponses(c, makePayload(), baseOptions)
 
     const response = captured.json as AnthropicResponse
-    const resultBlock = response.content[1] as unknown as {
-      type: string
-      content: { type: string; error_code: string }
-    }
-    expect(resultBlock.type).toBe("web_search_tool_result")
-    expect(resultBlock.content.type).toBe("web_search_tool_result_error")
+    expect(response.content.map((b) => b.type as string)).toEqual(["text"])
   })
 })
 
@@ -270,18 +255,15 @@ describe("buildSyntheticStreamEvents", () => {
     expect(types[0]).toBe("message_start")
     expect(types.at(-1)).toBe("message_stop")
     expect(types.at(-2)).toBe("message_delta")
-    // server_tool_use: start, delta(input_json), stop
     expect(types.slice(1, 4)).toEqual([
       "content_block_start",
       "content_block_delta",
       "content_block_stop",
     ])
-    // web_search_tool_result: start (full block), stop
     expect(types.slice(4, 6)).toEqual([
       "content_block_start",
       "content_block_stop",
     ])
-    // text: start, delta, stop
     expect(types.slice(6, 9)).toEqual([
       "content_block_start",
       "content_block_delta",

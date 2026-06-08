@@ -7,7 +7,8 @@ import { COMPACT_REQUEST } from "~/lib/compact"
 import {
   getSmallModel,
   isMessagesApiEnabled,
-  isMessagesApiWebSearchEnabled,
+  getMessageApiWebSearchModel,
+  isResponsesApiWebSearchEnabled,
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
@@ -40,8 +41,9 @@ import {
 } from "./preprocess"
 import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 import {
-  handleWithMessagesApiWebSearch,
+  handleWebSearchViaResponses,
   hasWebSearchServerTool,
+  isWebSearchOnlyRequest,
   stripWebSearchServerTool,
 } from "./web-search/fulfill"
 import consola from "consola"
@@ -136,25 +138,31 @@ export async function handleCompletion(c: Context) {
   const selectedModel = findEndpointModel(anthropicPayload.model)
   anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
 
-  // Copilot rejects Anthropic's server-side web_search tool on every endpoint,
-  // so when a Claude (Messages API) request asks for it, fulfill the search in
-  // the proxy via the GPT /responses backend. Other paths can't fulfill it, so
-  // the tool is stripped to avoid an upstream 400.
-  const webSearchRequested = hasWebSearchServerTool(anthropicPayload)
-
-  if (shouldUseMessagesApi(selectedModel)) {
-    if (webSearchRequested && isMessagesApiWebSearchEnabled()) {
-      return await handleWithMessagesApiWebSearch(c, anthropicPayload, {
-        anthropicBetaHeader: anthropicBeta,
+  // Copilot rejects Anthropic's server-side web_search tool on /v1/messages.
+  // A request that asks for ONLY web search is switched to a Responses-capable
+  // GPT model (messageApiWebSearchModel) that runs the search natively. Mixing
+  // web_search with other tools is unsupported, so in that case (or when no
+  // web search model is configured) the tool is stripped to avoid a 400.
+  if (hasWebSearchServerTool(anthropicPayload)) {
+    const webSearchModel = getMessageApiWebSearchModel()
+    if (
+      webSearchModel
+      && isResponsesApiWebSearchEnabled()
+      && isWebSearchOnlyRequest(anthropicPayload)
+    ) {
+      return await handleWebSearchViaResponses(c, anthropicPayload, {
         subagentMarker,
-        selectedModel,
+        webSearchModel,
         requestId,
         sessionId,
         compactType,
         logger,
       })
     }
-    if (webSearchRequested) stripWebSearchServerTool(anthropicPayload)
+    stripWebSearchServerTool(anthropicPayload)
+  }
+
+  if (shouldUseMessagesApi(selectedModel)) {
     return await messagesFlowHandlers.handleWithMessagesApi(
       c,
       anthropicPayload,
@@ -169,8 +177,6 @@ export async function handleCompletion(c: Context) {
       },
     )
   }
-
-  if (webSearchRequested) stripWebSearchServerTool(anthropicPayload)
 
   if (shouldUseResponsesApi(selectedModel, compactType)) {
     return await messagesFlowHandlers.handleWithResponsesApi(
