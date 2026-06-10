@@ -40,6 +40,7 @@ export const getResponsesRequestOptions = (
 export const getResponsesTransportForModel = (
   selectedModel:
     | {
+        id?: string
         supported_endpoints?: Array<string>
       }
     | undefined,
@@ -48,8 +49,15 @@ export const getResponsesTransportForModel = (
   } = {},
 ): ResponsesTransport | null => {
   const supportedEndpoints = selectedModel?.supported_endpoints ?? []
+  const modelId = selectedModel?.id ?? ''
+
+  // GPT-5 models have a known WebSocket issue with GitHub Copilot's
+  // Responses API — the WebSocket opens but delivers zero tokens before
+  // closing. Force HTTP transport so streaming uses SSE over fetch instead.
+  // See: https://github.com/caozhiyuan/copilot-api/issues/246
   const useWebSocket =
     responsesUtilsDependencies.isResponsesApiWebSocketEnabled()
+    && !modelId.startsWith('gpt-5')
 
   if (
     options.compactType !== COMPACT_REQUEST
