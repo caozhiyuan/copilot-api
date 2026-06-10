@@ -486,6 +486,12 @@ export const createResponses = async (
   // service_tier is not supported by github copilot
   payload.service_tier = undefined
 
+  // GPT-5 models reject temperature and top_p in the Responses API
+  if (payload.model?.startsWith('gpt-5')) {
+    delete payload.temperature
+    delete payload.top_p
+  }
+
   consola.log(`<-- model: ${payload.model}`)
 
   const effectiveTransport =
