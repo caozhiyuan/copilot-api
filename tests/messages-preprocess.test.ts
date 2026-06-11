@@ -418,6 +418,138 @@ describe("mergeToolResultForClaude", () => {
     })
   })
 
+  test("does not add default last-message cache_control when the request already has four breakpoints", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.7",
+      max_tokens: 128,
+      tools: [
+        {
+          name: "web_search",
+          input_schema: {},
+          cache_control: {
+            type: "ephemeral",
+          },
+        },
+      ],
+      system: [
+        {
+          type: "text",
+          text: "system prompt",
+          cache_control: {
+            type: "ephemeral",
+          },
+        },
+      ],
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "older cached answer",
+              cache_control: {
+                type: "ephemeral",
+              },
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "newer cached answer",
+              cache_control: {
+                type: "ephemeral",
+              },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "latest user message",
+            },
+          ],
+        },
+      ],
+    }
+
+    const lastMessageCacheControl = getLastMessageContentCacheControl(
+      payload.messages.at(-1),
+    )
+    applyLastMessageCacheControl(payload, lastMessageCacheControl)
+
+    expect(payload.messages.at(-1)).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "latest user message",
+        },
+      ],
+    })
+  })
+
+  test("adds default last-message cache_control when the request has budget left", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.7",
+      max_tokens: 128,
+      system: [
+        {
+          type: "text",
+          text: "system prompt",
+          cache_control: {
+            type: "ephemeral",
+          },
+        },
+      ],
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "cached answer",
+              cache_control: {
+                type: "ephemeral",
+              },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "latest user message",
+            },
+          ],
+        },
+      ],
+    }
+
+    const lastMessageCacheControl = getLastMessageContentCacheControl(
+      payload.messages.at(-1),
+    )
+    applyLastMessageCacheControl(payload, lastMessageCacheControl)
+
+    expect(payload.messages.at(-1)).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "latest user message",
+          cache_control: {
+            type: "ephemeral",
+          },
+        },
+      ],
+    })
+  })
+
   test("strips cache_control from blocks absorbed into tool_result content", () => {
     const payload: AnthropicMessagesPayload = {
       model: "claude-opus-4.6",

@@ -247,6 +247,13 @@ export const applyLastMessageCacheControl = (
   anthropicPayload: AnthropicMessagesPayload,
   lastMessageCacheControl: AnthropicCacheControl | undefined,
 ): void => {
+  if (
+    !lastMessageCacheControl
+    && countCacheControlBlocks(anthropicPayload) >= 4
+  ) {
+    return
+  }
+
   const cacheControl = lastMessageCacheControl ?? {
     type: "ephemeral",
   }
@@ -262,6 +269,35 @@ export const applyLastMessageCacheControl = (
   }
 
   lastBlock.cache_control = { ...cacheControl }
+}
+
+const countCacheControlBlocks = (payload: AnthropicMessagesPayload): number => {
+  let count = 0
+
+  const visitBlock = (block: unknown): void => {
+    if (block && typeof block === "object" && "cache_control" in block) {
+      count++
+    }
+  }
+
+  if (Array.isArray(payload.tools)) {
+    for (const tool of payload.tools) {
+      visitBlock(tool)
+    }
+  }
+  if (Array.isArray(payload.system)) {
+    for (const block of payload.system) {
+      visitBlock(block)
+    }
+  }
+  for (const message of payload.messages) {
+    if (!Array.isArray(message.content)) continue
+    for (const block of message.content) {
+      visitBlock(block)
+    }
+  }
+
+  return count
 }
 
 const getCompactCandidateText = (message: AnthropicInputMessage): string => {
