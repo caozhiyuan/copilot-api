@@ -41,7 +41,9 @@ interface CodexResponsesHeaderOptions {
 }
 
 const STRIPPED_CODEX_REQUEST_HEADERS = new Set([
+  "accept-encoding",
   "authorization",
+  "cdn-loop",
   "connection",
   "content-length",
   "host",
@@ -51,8 +53,11 @@ const STRIPPED_CODEX_REQUEST_HEADERS = new Set([
   "te",
   "trailer",
   "transfer-encoding",
+  "true-client-ip",
   "upgrade",
   "x-api-key",
+  "x-forwarded-for",
+  "x-forwarded-proto",
 ])
 
 const STRIPPED_CODEX_WEBSOCKET_HEADERS = new Set(["accept", "content-type"])
@@ -106,6 +111,9 @@ export function buildCodexResponsesHeaders(
       continue
     }
     if (headerNameLower.includes("trace")) {
+      continue
+    }
+    if (headerNameLower.startsWith("cf-")) {
       continue
     }
     headers.set(headerName, headerValue)
