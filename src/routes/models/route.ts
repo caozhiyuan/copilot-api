@@ -14,12 +14,9 @@ modelRoutes.get("/", async (c) => {
     }
 
     const models = state.models?.data.map((model) => {
-      const capabilities = model.capabilities
-      const contextWindow = capabilities?.limits?.max_context_window_tokens ?? 0
-      const clientId = toClientModelId(model.id)
       return {
         ...model,
-        id: contextWindow > 1_000_000 ? `${clientId}[1m]` : clientId,
+        id: toClientModelId(model.id),
         object: "model",
         type: "model",
         created: 0,
