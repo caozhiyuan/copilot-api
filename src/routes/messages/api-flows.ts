@@ -15,6 +15,7 @@ import {
   normalizeAnthropicUsage,
   normalizeOpenAIUsage,
   normalizeResponsesUsage,
+  copilotUsageToTokens,
   type CopilotUsageTokens,
   type TokenUsageEndpoint,
   type UsageTokens,
@@ -40,13 +41,11 @@ import {
   type ChatCompletionChunk,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
-  type CopilotUsage,
   type Message,
 } from "~/services/copilot/create-chat-completions"
 import { createMessages as createCopilotMessages } from "~/services/copilot/create-messages"
 import {
   createResponses as createCopilotResponses,
-  type CopilotUsage as ResponsesCopilotUsage,
   type ResponsesResult,
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
@@ -125,7 +124,7 @@ export const handleWithChatCompletions = async (
     debugJson(logger, "Non-streaming response from Copilot:", response)
     recordUsage(
       normalizeOpenAIUsage(response.usage),
-      copilotUsageFromResponse(response.copilot_usage),
+      copilotUsageToTokens(response.copilot_usage),
     )
     const anthropicResponse = translateToAnthropic(response)
     debugJson(logger, "Translated Anthropic response:", anthropicResponse)
@@ -159,7 +158,7 @@ export const handleWithChatCompletions = async (
         usage = normalizeOpenAIUsage(chunk.usage)
       }
       if (chunk.copilot_usage) {
-        copilotUsage = copilotUsageFromResponse(chunk.copilot_usage)
+        copilotUsage = copilotUsageToTokens(chunk.copilot_usage)
       }
       const events = translateChunkToAnthropicEvents(chunk, streamState)
 
@@ -258,7 +257,7 @@ export const handleWithResponsesApi = async (
           || responseEvent.type === "response.incomplete"
         ) {
           usage = normalizeResponsesUsage(responseEvent.response.usage)
-          copilotUsage = responsesCopilotUsageFromResponse(
+          copilotUsage = copilotUsageToTokens(
             responseEvent.response.copilot_usage,
           )
         }
@@ -306,7 +305,7 @@ export const handleWithResponsesApi = async (
   })
   recordUsage(
     normalizeResponsesUsage(result.usage),
-    responsesCopilotUsageFromResponse(result.copilot_usage),
+    copilotUsageToTokens(result.copilot_usage),
   )
   debugJson(logger, "Translated Anthropic response:", anthropicResponse)
   return c.json(anthropicResponse)
@@ -370,15 +369,13 @@ export const handleWithMessagesApi = async (
             usage,
             normalizeAnthropicUsage(parsedEvent.message.usage),
           )
-          copilotUsage = copilotUsageFromResponse(
-            parsedEvent.message.copilot_usage,
-          )
+          copilotUsage = copilotUsageToTokens(parsedEvent.message.copilot_usage)
         } else if (parsedEvent?.type === "message_delta") {
           usage = mergeAnthropicUsage(
             usage,
             normalizeAnthropicUsage(parsedEvent.usage),
           )
-          copilotUsage = copilotUsageFromResponse(parsedEvent.copilot_usage)
+          copilotUsage = copilotUsageToTokens(parsedEvent.copilot_usage)
         }
         await stream.writeSSE({
           event: eventName,
@@ -396,7 +393,7 @@ export const handleWithMessagesApi = async (
   })
   recordUsage(
     normalizeAnthropicUsage(response.usage),
-    copilotUsageFromResponse(response.copilot_usage),
+    copilotUsageToTokens(response.copilot_usage),
   )
   return c.json(response)
 }
@@ -473,32 +470,6 @@ const createCopilotUsageRecorder = (options: {
     model: options.model,
     sessionId: getMetadataSessionId(options.payload),
   })
-
-function copilotUsageFromResponse(
-  copilotUsage: CopilotUsage | undefined,
-): CopilotUsageTokens {
-  if (!copilotUsage) {
-    return {}
-  }
-
-  return {
-    token_details: copilotUsage.token_details,
-    total_nano_aiu: copilotUsage.total_nano_aiu,
-  }
-}
-
-function responsesCopilotUsageFromResponse(
-  copilotUsage: ResponsesCopilotUsage | null | undefined,
-): CopilotUsageTokens {
-  if (!copilotUsage) {
-    return {}
-  }
-
-  return {
-    token_details: copilotUsage.token_details,
-    total_nano_aiu: copilotUsage.total_nano_aiu,
-  }
-}
 
 const getMetadataSessionId = (
   payload: AnthropicMessagesPayload,

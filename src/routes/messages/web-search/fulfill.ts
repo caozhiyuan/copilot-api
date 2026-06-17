@@ -19,6 +19,7 @@ import {
 import {
   createCopilotTokenUsageRecorder,
   normalizeResponsesUsage,
+  copilotUsageToTokens,
   type CopilotUsageTokens,
   type UsageTokens,
 } from "~/lib/token-usage"
@@ -30,7 +31,6 @@ import {
 } from "~/lib/utils"
 import {
   createResponses as createCopilotResponses,
-  type CopilotUsage,
   type ResponseStreamEvent,
   type ResponsesPayload,
   type ResponsesResult,
@@ -721,7 +721,7 @@ export const handleWebSearchViaResponses = async (
   )
   recordUsage(
     normalizeResponsesUsage(result.usage),
-    copilotUsageFromResponse(result.copilot_usage),
+    copilotUsageToTokens(result.copilot_usage),
   )
 
   if (!wantsStream) {
@@ -736,19 +736,6 @@ export const handleWebSearchViaResponses = async (
       })
     }
   })
-}
-
-function copilotUsageFromResponse(
-  copilotUsage: CopilotUsage | null | undefined,
-): CopilotUsageTokens {
-  if (!copilotUsage) {
-    return {}
-  }
-
-  return {
-    token_details: copilotUsage.token_details,
-    total_nano_aiu: copilotUsage.total_nano_aiu,
-  }
 }
 
 // --- Synthetic SSE replay -------------------------------------------------

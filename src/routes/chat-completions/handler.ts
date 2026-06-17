@@ -12,6 +12,7 @@ import { state } from "~/lib/state"
 import {
   createCopilotTokenUsageRecorder,
   normalizeOpenAIUsage,
+  copilotUsageToTokens,
   type CopilotUsageTokens,
   type UsageTokens,
 } from "~/lib/token-usage"
@@ -22,7 +23,6 @@ import {
   type ChatCompletionChunk,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
-  type CopilotUsage,
 } from "~/services/copilot/create-chat-completions"
 
 const logger = createHandlerLogger("chat-completions-handler")
@@ -98,7 +98,7 @@ export async function handleCompletion(c: Context) {
     debugJson(logger, "Non-streaming response:", response)
     recordUsage(
       normalizeOpenAIUsage(response.usage),
-      copilotUsageFromResponse(response.copilot_usage),
+      copilotUsageToTokens(response.copilot_usage),
     )
     return c.json(response)
   }
@@ -115,7 +115,7 @@ export async function handleCompletion(c: Context) {
         usage = normalizeOpenAIUsage(parsedChunk.usage)
       }
       if (parsedChunk?.copilot_usage) {
-        copilotUsage = copilotUsageFromResponse(parsedChunk.copilot_usage)
+        copilotUsage = copilotUsageToTokens(parsedChunk.copilot_usage)
       }
       await stream.writeSSE(chunk as SSEMessage)
     }
@@ -140,18 +140,5 @@ const parseChatCompletionChunk = (
     return JSON.parse(data) as ChatCompletionChunk
   } catch {
     return null
-  }
-}
-
-function copilotUsageFromResponse(
-  copilotUsage: CopilotUsage | undefined,
-): CopilotUsageTokens {
-  if (!copilotUsage) {
-    return {}
-  }
-
-  return {
-    token_details: copilotUsage.token_details,
-    total_nano_aiu: copilotUsage.total_nano_aiu,
   }
 }

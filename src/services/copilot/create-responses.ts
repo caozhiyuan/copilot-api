@@ -24,6 +24,9 @@ import {
   createPooledWebSocketStream,
   createWebSocketUrl,
 } from "~/services/responses-websocket"
+import type { CopilotUsage } from "~/lib/token-usage"
+
+export type { CopilotUsage }
 
 export interface ResponsesPayload {
   model: string
@@ -199,18 +202,6 @@ export interface ResponseInputFile {
   file_data?: string | null
   file_id?: string | null
   filename?: string | null
-}
-
-export interface CopilotUsageTokenDetail {
-  batch_size: number
-  cost_per_batch: number
-  token_count: number
-  token_type: string
-}
-
-export interface CopilotUsage {
-  token_details?: Array<CopilotUsageTokenDetail>
-  total_nano_aiu?: number
 }
 
 export interface ResponsesResult {

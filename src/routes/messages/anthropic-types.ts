@@ -1,5 +1,7 @@
 // Anthropic API Types
 
+import type { CopilotUsage } from "~/lib/token-usage"
+
 export interface AnthropicMessagesPayload {
   model: string
   messages: Array<AnthropicInputMessage>
@@ -202,15 +204,7 @@ export interface AnthropicResponse {
     cache_read_input_tokens?: number
     service_tier?: "standard" | "priority" | "batch"
   }
-  copilot_usage?: {
-    token_details?: Array<{
-      batch_size: number
-      cost_per_batch: number
-      token_count: number
-      token_type: string
-    }>
-    total_nano_aiu?: number
-  }
+  copilot_usage?: CopilotUsage | null
 }
 
 export type AnthropicResponseContentBlock =
@@ -268,15 +262,7 @@ export interface AnthropicMessageDeltaEvent {
     cache_creation_input_tokens?: number
     cache_read_input_tokens?: number
   }
-  copilot_usage?: {
-    token_details?: Array<{
-      batch_size: number
-      cost_per_batch: number
-      token_count: number
-      token_type: string
-    }>
-    total_nano_aiu?: number
-  }
+  copilot_usage?: CopilotUsage | null
 }
 
 export interface AnthropicMessageStopEvent {

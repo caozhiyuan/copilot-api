@@ -13,6 +13,9 @@ import {
 import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import type { CopilotUsage } from "~/lib/token-usage"
+
+export type { CopilotUsage }
 
 export const createChatCompletions = async (
   payload: ChatCompletionsPayload,
@@ -79,18 +82,6 @@ export const createChatCompletions = async (
 }
 
 // Streaming types
-
-export interface CopilotUsageTokenDetail {
-  batch_size: number
-  cost_per_batch: number
-  token_count: number
-  token_type: string
-}
-
-export interface CopilotUsage {
-  token_details?: Array<CopilotUsageTokenDetail>
-  total_nano_aiu?: number
-}
 
 export interface ChatCompletionChunk {
   id: string

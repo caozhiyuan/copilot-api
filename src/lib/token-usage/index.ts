@@ -8,6 +8,7 @@ import {
   normalizeOptionalToken,
   normalizeToken,
   resolveTotalTokens,
+  type CopilotUsage,
   type CopilotUsageTokens,
   type PersistedTokenUsageEvent,
   type TokenUsageEndpoint,
@@ -24,6 +25,7 @@ export {
 } from "./store"
 
 export type {
+  CopilotUsage,
   CopilotUsageTokens,
   TokenUsageDailyBucket,
   TokenUsageDailySummary,
@@ -342,5 +344,21 @@ export function mergeAnthropicUsage(
     input_tokens: next.input_tokens ?? current.input_tokens,
     output_tokens: next.output_tokens ?? current.output_tokens,
     total_tokens: next.total_tokens ?? current.total_tokens,
+  }
+}
+
+/**
+ * Convert API response CopilotUsage field to CopilotUsageTokens for recorder.
+ * Returns empty object when input is absent.
+ */
+export function copilotUsageToTokens(
+  copilotUsage: CopilotUsage | null | undefined,
+): CopilotUsageTokens {
+  if (!copilotUsage) {
+    return {}
+  }
+  return {
+    token_details: copilotUsage.token_details,
+    total_nano_aiu: copilotUsage.total_nano_aiu,
   }
 }

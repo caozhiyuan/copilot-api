@@ -16,6 +16,7 @@ import type { SubagentMarker } from "~/lib/subagent"
 import {
   createCopilotTokenUsageRecorder,
   normalizeResponsesUsage,
+  copilotUsageToTokens,
   type CopilotUsageTokens,
   type UsageTokens,
 } from "~/lib/token-usage"
@@ -23,7 +24,6 @@ import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
 import { handleProviderResponsesForProvider } from "~/routes/provider/responses/handler"
 import {
   createResponses as createCopilotResponses,
-  type CopilotUsage,
   type ResponsesPayload,
   type ResponsesResult,
   type ResponseStreamEvent,
@@ -164,7 +164,7 @@ export const handleResponses = async (c: Context) => {
           || parsedEvent?.type === "response.incomplete"
         ) {
           usage = normalizeResponsesUsage(parsedEvent.response.usage)
-          copilotUsage = copilotUsageFromResponse(
+          copilotUsage = copilotUsageToTokens(
             parsedEvent.response.copilot_usage,
           )
         }
@@ -193,7 +193,7 @@ export const handleResponses = async (c: Context) => {
   const result = response as ResponsesResult
   recordUsage(
     normalizeResponsesUsage(result.usage),
-    copilotUsageFromResponse(result.copilot_usage),
+    copilotUsageToTokens(result.copilot_usage),
   )
   return c.json(result)
 }
@@ -217,19 +217,6 @@ const parseResponsesStreamEvent = (
     return JSON.parse(data) as ResponseStreamEvent
   } catch {
     return null
-  }
-}
-
-function copilotUsageFromResponse(
-  copilotUsage: CopilotUsage | null | undefined,
-): CopilotUsageTokens {
-  if (!copilotUsage) {
-    return {}
-  }
-
-  return {
-    token_details: copilotUsage.token_details,
-    total_nano_aiu: copilotUsage.total_nano_aiu,
   }
 }
 
