@@ -16,6 +16,7 @@ import {
   normalizeOpenAIUsage,
   normalizeResponsesUsage,
   copilotUsageToTokens,
+  type CopilotUsage,
   type CopilotUsageTokens,
   type TokenUsageEndpoint,
   type UsageTokens,
@@ -257,9 +258,8 @@ export const handleWithResponsesApi = async (
           || responseEvent.type === "response.incomplete"
         ) {
           usage = normalizeResponsesUsage(responseEvent.response.usage)
-          copilotUsage = copilotUsageToTokens(
-            responseEvent.response.copilot_usage,
-          )
+          copilotUsage =
+            copilotUsageFromResponsesEvent(responseEvent) ?? copilotUsage
         }
 
         const events = translateResponsesStreamEvent(responseEvent, streamState)
@@ -474,6 +474,32 @@ const createCopilotUsageRecorder = (options: {
 const getMetadataSessionId = (
   payload: AnthropicMessagesPayload,
 ): string | null => parseUserIdMetadata(payload.metadata?.user_id).sessionId
+
+const copilotUsageFromResponsesEvent = (
+  event: ResponseStreamEvent,
+): CopilotUsageTokens | null => {
+  const topLevelUsage = nonEmptyCopilotUsageTokens(
+    (event as { copilot_usage?: CopilotUsage | null }).copilot_usage,
+  )
+  if (topLevelUsage) {
+    return topLevelUsage
+  }
+
+  const response = (
+    event as {
+      response?: { copilot_usage?: CopilotUsage | null }
+    }
+  ).response
+
+  return nonEmptyCopilotUsageTokens(response?.copilot_usage)
+}
+
+const nonEmptyCopilotUsageTokens = (
+  usage: CopilotUsage | null | undefined,
+): CopilotUsageTokens | null => {
+  const tokens = copilotUsageToTokens(usage)
+  return Object.keys(tokens).length > 0 ? tokens : null
+}
 
 const parseAnthropicStreamEvent = (
   data: string,

@@ -702,6 +702,29 @@ describe("responses handler token usage", () => {
         streamChunks([
           {
             data: JSON.stringify({
+              copilot_usage: {
+                token_details: [
+                  {
+                    batch_size: 1_000_000,
+                    cost_per_batch: 25_000_000_000,
+                    token_count: 4,
+                    token_type: "input",
+                  },
+                  {
+                    batch_size: 1_000_000,
+                    cost_per_batch: 2_500_000_000,
+                    token_count: 1,
+                    token_type: "cache_read",
+                  },
+                  {
+                    batch_size: 1_000_000,
+                    cost_per_batch: 200_000_000_000,
+                    token_count: 2,
+                    token_type: "output",
+                  },
+                ],
+                total_nano_aiu: 502_500,
+              },
               response: {
                 created_at: 0,
                 error: {
@@ -767,8 +790,12 @@ describe("responses handler token usage", () => {
       items: Array<{
         cache_read_input_tokens: number
         input_tokens: number
+        nano_cost_cache_read: number | null
+        nano_cost_input: number | null
+        nano_cost_output: number | null
         output_tokens: number
         session_id: string
+        total_nano_aiu: number | null
         total_tokens: number
       }>
     }
@@ -782,7 +809,11 @@ describe("responses handler token usage", () => {
     expect(page.items[0]?.session_id).toBe(expectedInteractionId)
     expect(page.items[0]?.cache_read_input_tokens).toBe(1)
     expect(page.items[0]?.input_tokens).toBe(4)
+    expect(page.items[0]?.nano_cost_cache_read).toBe(2_500)
+    expect(page.items[0]?.nano_cost_input).toBe(100_000)
+    expect(page.items[0]?.nano_cost_output).toBe(400_000)
     expect(page.items[0]?.output_tokens).toBe(2)
+    expect(page.items[0]?.total_nano_aiu).toBe(502_500)
     expect(page.items[0]?.total_tokens).toBe(7)
   })
 })

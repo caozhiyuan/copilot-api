@@ -17,6 +17,7 @@ import {
   createCopilotTokenUsageRecorder,
   normalizeResponsesUsage,
   copilotUsageToTokens,
+  type CopilotUsage,
   type CopilotUsageTokens,
   type UsageTokens,
 } from "~/lib/token-usage"
@@ -164,9 +165,8 @@ export const handleResponses = async (c: Context) => {
           || parsedEvent?.type === "response.incomplete"
         ) {
           usage = normalizeResponsesUsage(parsedEvent.response.usage)
-          copilotUsage = copilotUsageToTokens(
-            parsedEvent.response.copilot_usage,
-          )
+          copilotUsage =
+            copilotUsageFromResponsesEvent(parsedEvent) ?? copilotUsage
         }
 
         const processedData = fixStreamIds(
@@ -218,6 +218,32 @@ const parseResponsesStreamEvent = (
   } catch {
     return null
   }
+}
+
+const copilotUsageFromResponsesEvent = (
+  event: ResponseStreamEvent,
+): CopilotUsageTokens | null => {
+  const topLevelUsage = nonEmptyCopilotUsageTokens(
+    (event as { copilot_usage?: CopilotUsage | null }).copilot_usage,
+  )
+  if (topLevelUsage) {
+    return topLevelUsage
+  }
+
+  const response = (
+    event as {
+      response?: { copilot_usage?: CopilotUsage | null }
+    }
+  ).response
+
+  return nonEmptyCopilotUsageTokens(response?.copilot_usage)
+}
+
+const nonEmptyCopilotUsageTokens = (
+  usage: CopilotUsage | null | undefined,
+): CopilotUsageTokens | null => {
+  const tokens = copilotUsageToTokens(usage)
+  return Object.keys(tokens).length > 0 ? tokens : null
 }
 
 const removeWebSearchTool = (payload: ResponsesPayload): void => {

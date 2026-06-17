@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { Hono } from "hono"
 
 import type { AnthropicMessagesPayload } from "../src/routes/messages/anthropic-types"
 import type { Model } from "../src/services/copilot/get-models"
@@ -63,12 +64,15 @@ const {
   messagesApiFlowDependencies,
   prepareCopilotChatCompletionsPayload,
 } = await import("../src/routes/messages/api-flows")
+const { closeUsageStore } = await import("../src/lib/token-usage")
 const { responsesUtilsDependencies } = await import(
   "../src/routes/responses/utils"
 )
+const { tokenUsageRoute } = await import("../src/routes/token-usage/route")
 
 const defaultMessagesApiFlowDependencies = { ...messagesApiFlowDependencies }
 const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
+const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 
 const logger = {
   debug: () => {},
@@ -81,7 +85,16 @@ const createContext = () =>
     json: (body: unknown) => Response.json(body),
   }) as Parameters<typeof handleWithChatCompletions>[0]
 
-beforeEach(() => {
+async function* streamChunks(items: Array<Record<string, unknown>>) {
+  await Promise.resolve()
+  for (const item of items) {
+    yield item
+  }
+}
+
+beforeEach(async () => {
+  process.env[DB_PATH_ENV] = ":memory:"
+  await closeUsageStore()
   capturedPayload = null
   capturedResponsesPayload = null
   capturedResponsesOptions = null
@@ -94,7 +107,9 @@ beforeEach(() => {
   createResponses.mockClear()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await closeUsageStore()
+  Reflect.deleteProperty(process.env, DB_PATH_ENV)
   Object.assign(messagesApiFlowDependencies, defaultMessagesApiFlowDependencies)
   Object.assign(responsesUtilsDependencies, defaultResponsesUtilsDependencies)
 })
@@ -338,6 +353,107 @@ test("messages Responses flow keeps streaming transport for deferred tool search
   expect(createResponses).toHaveBeenCalledTimes(1)
   expect(capturedResponsesPayload?.stream).toBe(true)
   expect(capturedResponsesOptions?.transport).toBe("websocket")
+})
+
+test("messages Responses flow records top-level copilot_usage from terminal stream events", async () => {
+  createResponses.mockImplementationOnce(
+    (
+      payload: ResponsesPayload,
+      options: { transport?: ResponsesTransport },
+    ) => {
+      capturedResponsesPayload = payload
+      capturedResponsesOptions = options
+      return Promise.resolve(
+        streamChunks([
+          {
+            event: "response.completed",
+            data: JSON.stringify({
+              type: "response.completed",
+              copilot_usage: {
+                token_details: [
+                  {
+                    batch_size: 1_000_000,
+                    cost_per_batch: 25_000_000_000,
+                    token_count: 4,
+                    token_type: "input",
+                  },
+                  {
+                    batch_size: 1_000_000,
+                    cost_per_batch: 2_500_000_000,
+                    token_count: 1,
+                    token_type: "cache_read",
+                  },
+                  {
+                    batch_size: 1_000_000,
+                    cost_per_batch: 200_000_000_000,
+                    token_count: 2,
+                    token_type: "output",
+                  },
+                ],
+                total_nano_aiu: 502_500,
+              },
+              response: {
+                ...createResponsesResult(payload.model),
+                usage: {
+                  input_tokens: 5,
+                  input_tokens_details: { cached_tokens: 1 },
+                  output_tokens: 2,
+                  total_tokens: 7,
+                },
+              },
+            }),
+          },
+        ]),
+      )
+    },
+  )
+
+  const payload: AnthropicMessagesPayload = {
+    max_tokens: 128,
+    stream: true,
+    messages: [{ role: "user", content: "hello" }],
+    model: "gpt-test",
+  }
+
+  const app = new Hono()
+  app.post("/messages-responses", (c) =>
+    handleWithResponsesApi(c, payload, {
+      logger,
+      requestId: "request-1",
+      selectedModel: createModel(["/responses"]),
+      sessionId: "stream-session",
+    }),
+  )
+  app.route("/token-usage", tokenUsageRoute)
+
+  const response = await app.request("/messages-responses", {
+    method: "POST",
+  })
+
+  expect(response.status).toBe(200)
+  await response.text()
+
+  const eventsResponse = await app.request(
+    "/token-usage/events?period=day&page=1&page_size=10",
+  )
+  expect(eventsResponse.status).toBe(200)
+
+  const page = (await eventsResponse.json()) as {
+    items: Array<{
+      nano_cost_cache_read: number | null
+      nano_cost_input: number | null
+      nano_cost_output: number | null
+      session_id: string
+      total_nano_aiu: number | null
+    }>
+  }
+
+  expect(page.items).toHaveLength(1)
+  expect(page.items[0]?.session_id).toBe("stream-session")
+  expect(page.items[0]?.nano_cost_cache_read).toBe(2_500)
+  expect(page.items[0]?.nano_cost_input).toBe(100_000)
+  expect(page.items[0]?.nano_cost_output).toBe(400_000)
+  expect(page.items[0]?.total_nano_aiu).toBe(502_500)
 })
 
 test("messages Responses flow preserves the configured tool_search alias in non-streaming responses", async () => {
