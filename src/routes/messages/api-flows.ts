@@ -15,6 +15,7 @@ import {
   normalizeAnthropicUsage,
   normalizeOpenAIUsage,
   normalizeResponsesUsage,
+  type CopilotUsageTokens,
   type TokenUsageEndpoint,
   type UsageTokens,
 } from "~/lib/token-usage"
@@ -39,11 +40,13 @@ import {
   type ChatCompletionChunk,
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
+  type CopilotUsage,
   type Message,
 } from "~/services/copilot/create-chat-completions"
 import { createMessages as createCopilotMessages } from "~/services/copilot/create-messages"
 import {
   createResponses as createCopilotResponses,
+  type CopilotUsage as ResponsesCopilotUsage,
   type ResponsesResult,
   type ResponseStreamEvent,
 } from "~/services/copilot/create-responses"
@@ -120,7 +123,10 @@ export const handleWithChatCompletions = async (
 
   if (isNonStreaming(response)) {
     debugJson(logger, "Non-streaming response from Copilot:", response)
-    recordUsage(normalizeOpenAIUsage(response.usage))
+    recordUsage(
+      normalizeOpenAIUsage(response.usage),
+      copilotUsageFromResponse(response.copilot_usage),
+    )
     const anthropicResponse = translateToAnthropic(response)
     debugJson(logger, "Translated Anthropic response:", anthropicResponse)
     return c.json(anthropicResponse)
@@ -129,6 +135,7 @@ export const handleWithChatCompletions = async (
   logger.debug("Streaming response from Copilot")
   return streamSSE(c, async (stream) => {
     let usage: UsageTokens = {}
+    let copilotUsage: CopilotUsageTokens = {}
     const streamState: AnthropicStreamState = {
       messageStartSent: false,
       contentBlockIndex: 0,
@@ -151,6 +158,9 @@ export const handleWithChatCompletions = async (
       if (chunk.usage) {
         usage = normalizeOpenAIUsage(chunk.usage)
       }
+      if (chunk.copilot_usage) {
+        copilotUsage = copilotUsageFromResponse(chunk.copilot_usage)
+      }
       const events = translateChunkToAnthropicEvents(chunk, streamState)
 
       for (const event of events) {
@@ -172,7 +182,7 @@ export const handleWithChatCompletions = async (
       })
     }
 
-    recordUsage(usage)
+    recordUsage(usage, copilotUsage)
   })
 }
 
@@ -225,6 +235,7 @@ export const handleWithResponsesApi = async (
         toolSearchName: resolveBridgeToolSearchName(anthropicPayload.tools),
       })
       let usage: UsageTokens = {}
+      let copilotUsage: CopilotUsageTokens = {}
 
       for await (const chunk of response) {
         const eventName = chunk.event
@@ -247,6 +258,9 @@ export const handleWithResponsesApi = async (
           || responseEvent.type === "response.incomplete"
         ) {
           usage = normalizeResponsesUsage(responseEvent.response.usage)
+          copilotUsage = responsesCopilotUsageFromResponse(
+            responseEvent.response.copilot_usage,
+          )
         }
 
         const events = translateResponsesStreamEvent(responseEvent, streamState)
@@ -278,7 +292,7 @@ export const handleWithResponsesApi = async (
         })
       }
 
-      recordUsage(usage)
+      recordUsage(usage, copilotUsage)
     })
   }
 
@@ -286,13 +300,14 @@ export const handleWithResponsesApi = async (
     value: response,
     tailLength: 400,
   })
-  const anthropicResponse = translateResponsesResultToAnthropic(
-    response as ResponsesResult,
-    {
-      toolSearchName: resolveBridgeToolSearchName(anthropicPayload.tools),
-    },
+  const result = response as ResponsesResult
+  const anthropicResponse = translateResponsesResultToAnthropic(result, {
+    toolSearchName: resolveBridgeToolSearchName(anthropicPayload.tools),
+  })
+  recordUsage(
+    normalizeResponsesUsage(result.usage),
+    responsesCopilotUsageFromResponse(result.copilot_usage),
   )
-  recordUsage(normalizeResponsesUsage((response as ResponsesResult).usage))
   debugJson(logger, "Translated Anthropic response:", anthropicResponse)
   return c.json(anthropicResponse)
 }
@@ -337,6 +352,7 @@ export const handleWithMessagesApi = async (
     logger.debug("Streaming response from Copilot (Messages API)")
     return streamSSE(c, async (stream) => {
       let usage: UsageTokens = {}
+      let copilotUsage: CopilotUsageTokens = {}
 
       for await (const event of response) {
         const eventName = event.event
@@ -354,11 +370,15 @@ export const handleWithMessagesApi = async (
             usage,
             normalizeAnthropicUsage(parsedEvent.message.usage),
           )
+          copilotUsage = copilotUsageFromResponse(
+            parsedEvent.message.copilot_usage,
+          )
         } else if (parsedEvent?.type === "message_delta") {
           usage = mergeAnthropicUsage(
             usage,
             normalizeAnthropicUsage(parsedEvent.usage),
           )
+          copilotUsage = copilotUsageFromResponse(parsedEvent.copilot_usage)
         }
         await stream.writeSSE({
           event: eventName,
@@ -366,7 +386,7 @@ export const handleWithMessagesApi = async (
         })
       }
 
-      recordUsage(usage)
+      recordUsage(usage, copilotUsage)
     })
   }
 
@@ -374,7 +394,10 @@ export const handleWithMessagesApi = async (
     value: response,
     tailLength: 400,
   })
-  recordUsage(normalizeAnthropicUsage(response.usage))
+  recordUsage(
+    normalizeAnthropicUsage(response.usage),
+    copilotUsageFromResponse(response.copilot_usage),
+  )
   return c.json(response)
 }
 
@@ -443,13 +466,39 @@ const createCopilotUsageRecorder = (options: {
   fallbackSessionId?: string
   model: string
   payload: AnthropicMessagesPayload
-}): ((usage: UsageTokens) => void) =>
+}): ((usage: UsageTokens, copilotUsage?: CopilotUsageTokens | null) => void) =>
   createCopilotTokenUsageRecorder({
     endpoint: options.endpoint,
     fallbackSessionId: options.fallbackSessionId,
     model: options.model,
     sessionId: getMetadataSessionId(options.payload),
   })
+
+function copilotUsageFromResponse(
+  copilotUsage: CopilotUsage | undefined,
+): CopilotUsageTokens {
+  if (!copilotUsage) {
+    return {}
+  }
+
+  return {
+    token_details: copilotUsage.token_details,
+    total_nano_aiu: copilotUsage.total_nano_aiu,
+  }
+}
+
+function responsesCopilotUsageFromResponse(
+  copilotUsage: ResponsesCopilotUsage | null | undefined,
+): CopilotUsageTokens {
+  if (!copilotUsage) {
+    return {}
+  }
+
+  return {
+    token_details: copilotUsage.token_details,
+    total_nano_aiu: copilotUsage.total_nano_aiu,
+  }
+}
 
 const getMetadataSessionId = (
   payload: AnthropicMessagesPayload,

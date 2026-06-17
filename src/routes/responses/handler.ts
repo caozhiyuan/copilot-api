@@ -2,6 +2,7 @@ import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
 
+import consola from "consola"
 import { awaitApproval } from "~/lib/approval"
 import {
   isResponsesApiWebSearchEnabled as isConfiguredResponsesApiWebSearchEnabled,
@@ -10,17 +11,19 @@ import {
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { checkRateLimit as checkConfiguredRateLimit } from "~/lib/rate-limit"
-import { handleProviderResponsesForProvider } from "~/routes/provider/responses/handler"
 import { state } from "~/lib/state"
+import type { SubagentMarker } from "~/lib/subagent"
 import {
   createCopilotTokenUsageRecorder,
   normalizeResponsesUsage,
+  type CopilotUsageTokens,
   type UsageTokens,
 } from "~/lib/token-usage"
 import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
-import type { SubagentMarker } from "~/lib/subagent"
+import { handleProviderResponsesForProvider } from "~/routes/provider/responses/handler"
 import {
   createResponses as createCopilotResponses,
+  type CopilotUsage,
   type ResponsesPayload,
   type ResponsesResult,
   type ResponseStreamEvent,
@@ -30,11 +33,10 @@ import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
 import {
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
-  getResponsesTransportForModel,
   getResponsesRequestOptions,
+  getResponsesTransportForModel,
   sanitizeOversizedInputImages,
 } from "./utils"
-import consola from "consola"
 
 const logger = createHandlerLogger("responses-handler")
 
@@ -151,6 +153,7 @@ export const handleResponses = async (c: Context) => {
     return streamSSE(c, async (stream) => {
       const idTracker = createStreamIdTracker()
       let usage: UsageTokens = {}
+      let copilotUsage: CopilotUsageTokens = {}
 
       for await (const chunk of response) {
         debugJson(logger, "Responses stream chunk:", chunk)
@@ -161,6 +164,9 @@ export const handleResponses = async (c: Context) => {
           || parsedEvent?.type === "response.incomplete"
         ) {
           usage = normalizeResponsesUsage(parsedEvent.response.usage)
+          copilotUsage = copilotUsageFromResponse(
+            parsedEvent.response.copilot_usage,
+          )
         }
 
         const processedData = fixStreamIds(
@@ -176,7 +182,7 @@ export const handleResponses = async (c: Context) => {
         })
       }
 
-      recordUsage(usage)
+      recordUsage(usage, copilotUsage)
     })
   }
 
@@ -184,8 +190,12 @@ export const handleResponses = async (c: Context) => {
     value: response,
     tailLength: 400,
   })
-  recordUsage(normalizeResponsesUsage((response as ResponsesResult).usage))
-  return c.json(response as ResponsesResult)
+  const result = response as ResponsesResult
+  recordUsage(
+    normalizeResponsesUsage(result.usage),
+    copilotUsageFromResponse(result.copilot_usage),
+  )
+  return c.json(result)
 }
 
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
@@ -207,6 +217,19 @@ const parseResponsesStreamEvent = (
     return JSON.parse(data) as ResponseStreamEvent
   } catch {
     return null
+  }
+}
+
+function copilotUsageFromResponse(
+  copilotUsage: CopilotUsage | null | undefined,
+): CopilotUsageTokens {
+  if (!copilotUsage) {
+    return {}
+  }
+
+  return {
+    token_details: copilotUsage.token_details,
+    total_nano_aiu: copilotUsage.total_nano_aiu,
   }
 }
 
