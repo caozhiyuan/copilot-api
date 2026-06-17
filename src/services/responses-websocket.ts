@@ -1,7 +1,6 @@
 import consola from "consola"
+import { getProxyForUrl } from "proxy-from-env"
 import { WebSocket } from "undici"
-
-import { getProxyEnvDispatcher } from "~/lib/proxy"
 
 export interface PooledWebSocketRequest<TPayload> {
   headers: Record<string, string>
@@ -307,8 +306,8 @@ const openWebSocket = async ({
   url: string
 }): Promise<InstanceType<typeof WebSocket>> =>
   await new Promise((resolve, reject) => {
-    const dispatcher = getProxyEnvDispatcher()
-    const init = dispatcher ? { dispatcher, headers } : { headers }
+    const proxy = typeof Bun === "undefined" ? undefined : getProxyUrl(url)
+    const init = { headers, ...(proxy ? { proxy } : {}) }
     const websocket = new WebSocket(url, init)
 
     const cleanup = () => {
@@ -444,4 +443,8 @@ const closeWebSocket = (websocket: InstanceType<typeof WebSocket>): void => {
   ) {
     websocket.close()
   }
+}
+
+const getProxyUrl = (url: string): string => {
+  return getProxyForUrl(url.replace(/^wss:/, "https:").replace(/^ws:/, "http:"))
 }
