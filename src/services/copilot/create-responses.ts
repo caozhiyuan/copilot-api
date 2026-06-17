@@ -201,6 +201,18 @@ export interface ResponseInputFile {
   filename?: string | null
 }
 
+export interface CopilotUsageTokenDetail {
+  batch_size: number
+  cost_per_batch: number
+  token_count: number
+  token_type: string
+}
+
+export interface CopilotUsage {
+  token_details?: Array<CopilotUsageTokenDetail>
+  total_nano_aiu?: number
+}
+
 export interface ResponsesResult {
   id: string
   object: "response"
@@ -210,6 +222,7 @@ export interface ResponsesResult {
   output_text: string
   status: string
   usage?: ResponseUsage | null
+  copilot_usage?: CopilotUsage | null
   error: ResponseError | null
   incomplete_details: IncompleteDetails | null
   instructions: string | null

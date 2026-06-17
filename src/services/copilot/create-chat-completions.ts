@@ -80,6 +80,18 @@ export const createChatCompletions = async (
 
 // Streaming types
 
+export interface CopilotUsageTokenDetail {
+  batch_size: number
+  cost_per_batch: number
+  token_count: number
+  token_type: string
+}
+
+export interface CopilotUsage {
+  token_details?: Array<CopilotUsageTokenDetail>
+  total_nano_aiu?: number
+}
+
 export interface ChatCompletionChunk {
   id: string
   object: "chat.completion.chunk"
@@ -100,6 +112,7 @@ export interface ChatCompletionChunk {
       rejected_prediction_tokens: number
     }
   }
+  copilot_usage?: CopilotUsage
 }
 
 export interface Delta {
@@ -144,6 +157,7 @@ export interface ChatCompletionResponse {
       cached_tokens?: number
     }
   }
+  copilot_usage?: CopilotUsage
 }
 
 interface ResponseMessage {
