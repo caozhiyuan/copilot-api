@@ -275,6 +275,18 @@ The following command line options are available for the `start` command:
 - **messageApiWebSearchModel:** Global fallback model used when a top-level Copilot `/v1/messages` request contains only the server-side `web_search` tool. Defaults to `gpt-5-mini`. If the value is a `provider/model` alias, the request is routed into that provider's Messages API path with the provider prefix stripped. For Copilot GPT models, web search runs through `/responses`. Mixed `web_search` plus custom tools are not supported and the server-side `web_search` tool is stripped.
 - **claudeTokenMultiplier:** Multiplier applied to the fallback GPT-tokenizer estimate for Claude `/v1/messages/count_tokens` requests. Defaults to `1.15`. Increase it if your client is still compacting too late. This setting is only used when the proxy is estimating Claude tokens locally; if `anthropicApiKey` is configured and Anthropic token counting succeeds, the exact Anthropic count is returned instead.
 - **anthropicApiKey:** Anthropic API key used to forward Claude `/v1/messages/count_tokens` requests to Anthropic's real token counting endpoint, which returns exact counts instead of GPT tokenizer estimates. Can also be set via the `ANTHROPIC_API_KEY` environment variable. If not set, or if the upstream call fails, token counting falls back to local GPT tokenizer estimation controlled by `claudeTokenMultiplier`.
+- **database:** Where token usage events are stored. Two backends are supported and selected by a single connection string whose scheme is inferred — a `libsql://`, `ws(s)://`, or `http(s)://` URL means **Turso/libsql** (remote), anything else (a file path or `:memory:`) means **local SQLite**.
+  - `database.url` — the connection string. A Turso/libsql URL (e.g. `libsql://my-db.turso.io`) stores usage remotely; a local path (e.g. `/data/usage.sqlite`) stores it in that file. When unset, a local file under the API home directory is used.
+  - `database.authToken` — Turso auth token (or set it via the `TURSO_AUTH_TOKEN` environment variable, which takes precedence and keeps the secret out of `config.json`).
+
+  The `COPILOT_API_DATABASE_URL` environment variable overrides `database.url`. Example using Turso entirely from the environment:
+
+  ```sh
+  export COPILOT_API_DATABASE_URL=libsql://my-db.turso.io
+  export TURSO_AUTH_TOKEN=your-turso-token
+  ```
+
+  The remote backend uses `@libsql/client/web` (pure fetch, no native bindings), so it works under both Bun and Node.js regardless of the Node version.
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
 

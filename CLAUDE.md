@@ -63,6 +63,22 @@ This is a reverse-engineered proxy that exposes the GitHub Copilot API as both a
 
 `/v1/messages/count_tokens`: when `anthropicApiKey` is configured, forwards Claude model requests to Anthropic's free `/v1/messages/count_tokens` endpoint for exact counts. Otherwise falls back to GPT `o200k_base` tokenizer with 1.15x multiplier (`src/lib/tokenizer.ts`).
 
+### Token usage storage
+
+Token usage events are persisted through an async DB abstraction (`src/lib/sqlite.ts`, `AsyncDatabase`) with two interchangeable backends, consumed only by `src/lib/token-usage/store.ts`:
+
+- **Local SQLite** (default) — `bun:sqlite` or `node:sqlite` (Node >= 22.13.0), wrapped as async.
+- **Turso / libsql** (remote) — `src/lib/turso.ts`, dynamically imports `@libsql/client/web` (pure fetch, no native bindings). `intMode: "number"` is mandatory so INTEGER columns never come back as BigInt.
+
+`getDatabaseConfig()` in `src/lib/config.ts` resolves the backend from a single connection string; the type is **inferred from its scheme** (`libsql://`, `ws(s)://`, `http(s)://` → turso; otherwise local sqlite), so there is no explicit type flag. Resolution precedence:
+
+1. Env: `COPILOT_API_DATABASE_URL` → `COPILOT_API_SQLITE_DB_PATH` (legacy alias).
+2. `config.json` `database` block — `{ url?, authToken? }`. `url` is the connection string (a libsql URL or a local path); `authToken` is the Turso token.
+3. Default: local sqlite at `<APP_DIR>/copilot-api.sqlite`.
+
+Turso auth token: `TURSO_AUTH_TOKEN` → `database.authToken`. SQLite-only PRAGMAs (`journal_mode=WAL`, `busy_timeout`, `wal_checkpoint`) are gated on `db.kind === "sqlite"`.
+
+
 ## Code Style
 
 - **Imports:** Use `~/` alias for `src/` (e.g., `import { foo } from '~/lib/foo'`)

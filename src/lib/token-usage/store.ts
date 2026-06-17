@@ -1,13 +1,14 @@
 import consola from "consola"
-import path from "node:path"
 
-import { PATHS } from "~/lib/paths"
+import { getDatabaseConfig } from "~/lib/config"
 import { registerProcessCleanup } from "~/lib/process-cleanup"
 import {
+  AsyncDbStore,
+  type AsyncDatabase,
   isSqliteRuntimeSupported,
-  SqliteDbStore,
-  type SqliteDatabase,
+  openSqliteDatabase,
 } from "~/lib/sqlite"
+import { openTursoDatabase } from "~/lib/turso"
 
 export type TokenUsageSource = "copilot" | "provider"
 
@@ -124,34 +125,44 @@ export interface TokenUsageEventsPage {
   total_pages: number
 }
 
-const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
-const DEFAULT_DB_FILENAME = "copilot-api.sqlite"
-
 let writeQueue: Promise<void> = Promise.resolve()
 
-function getDbPath(): string {
-  return (
-    process.env[DB_PATH_ENV] ?? path.join(PATHS.APP_DIR, DEFAULT_DB_FILENAME)
-  )
-}
-
-const tokenUsageDbStore = new SqliteDbStore({
-  getPath: getDbPath,
+const tokenUsageDbStore = new AsyncDbStore({
+  open: () => {
+    const dbConfig = getDatabaseConfig()
+    return dbConfig.type === "turso" ?
+        openTursoDatabase(dbConfig)
+      : openSqliteDatabase(dbConfig.path)
+  },
   initialize: initializeTokenUsageDb,
 })
 
-function getDb(): Promise<SqliteDatabase> {
+function getDb(): Promise<AsyncDatabase> {
   return tokenUsageDbStore.getDb()
 }
 
 export function isTokenUsageStorageEnabled(): boolean {
-  return isSqliteRuntimeSupported()
+  return getDatabaseConfig().type === "turso" || isSqliteRuntimeSupported()
 }
 
-function initializeTokenUsageDb(db: SqliteDatabase): void {
-  db.exec("PRAGMA journal_mode = WAL")
-  db.exec("PRAGMA busy_timeout = 5000")
-  db.exec(`
+// Human-readable description of where token usage is stored, for startup logs.
+// Reads config only — does not open the database.
+export function describeTokenUsageStorage(): string {
+  if (!isTokenUsageStorageEnabled()) {
+    return "disabled (requires Bun or Node.js >= 22.13.0)"
+  }
+  const dbConfig = getDatabaseConfig()
+  return dbConfig.type === "turso" ?
+      `Turso/libsql remote (${dbConfig.url})`
+    : `local SQLite (${dbConfig.path})`
+}
+
+async function initializeTokenUsageDb(db: AsyncDatabase): Promise<void> {
+  if (db.kind === "sqlite") {
+    await db.exec("PRAGMA journal_mode = WAL")
+    await db.exec("PRAGMA busy_timeout = 5000")
+  }
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS token_usage_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       created_at_ms INTEGER NOT NULL,
@@ -170,41 +181,41 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
       total_tokens INTEGER NOT NULL DEFAULT 0
     )
   `)
-  ensureColumn(db, "user_id", "TEXT NOT NULL DEFAULT ''")
-  ensureColumn(db, "total_tokens", "INTEGER NOT NULL DEFAULT 0")
-  db.exec(`
+  await ensureColumn(db, "user_id", "TEXT NOT NULL DEFAULT ''")
+  await ensureColumn(db, "total_tokens", "INTEGER NOT NULL DEFAULT 0")
+  await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_created_at_ms
     ON token_usage_events(created_at_ms)
   `)
-  db.exec(`
+  await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_model
     ON token_usage_events(model)
   `)
-  db.exec(`
+  await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_trace_id
     ON token_usage_events(trace_id)
   `)
-  db.exec(`
+  await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_session_id
     ON token_usage_events(session_id)
   `)
-  db.exec(`
+  await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_user_id
     ON token_usage_events(user_id)
   `)
 }
 
-function ensureColumn(
-  db: SqliteDatabase,
+async function ensureColumn(
+  db: AsyncDatabase,
   name: string,
   definition: string,
-): void {
-  const rows = db
-    .prepare("PRAGMA table_info(token_usage_events)")
-    .all() as Array<Record<string, unknown>>
+): Promise<void> {
+  const rows = await db.prepare("PRAGMA table_info(token_usage_events)").all()
   const hasColumn = rows.some((row) => row.name === name)
   if (!hasColumn) {
-    db.exec(`ALTER TABLE token_usage_events ADD COLUMN ${name} ${definition}`)
+    await db.exec(
+      `ALTER TABLE token_usage_events ADD COLUMN ${name} ${definition}`,
+    )
   }
 }
 
@@ -250,8 +261,9 @@ async function writeTokenUsageEvent(
   event: PersistedTokenUsageEvent,
 ): Promise<void> {
   const db = await getDb()
-  db.prepare(
-    `
+  await db
+    .prepare(
+      `
       INSERT INTO token_usage_events (
         created_at_ms,
         created_at_utc,
@@ -269,22 +281,23 @@ async function writeTokenUsageEvent(
         total_tokens
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-  ).run(
-    event.created_at_ms,
-    event.created_at_utc,
-    event.trace_id,
-    event.session_id,
-    event.user_id,
-    event.source,
-    event.endpoint,
-    event.provider_name,
-    event.model,
-    event.input_tokens,
-    event.output_tokens,
-    event.cache_read_input_tokens,
-    event.cache_creation_input_tokens,
-    event.total_tokens,
-  )
+    )
+    .run(
+      event.created_at_ms,
+      event.created_at_utc,
+      event.trace_id,
+      event.session_id,
+      event.user_id,
+      event.source,
+      event.endpoint,
+      event.provider_name,
+      event.model,
+      event.input_tokens,
+      event.output_tokens,
+      event.cache_read_input_tokens,
+      event.cache_creation_input_tokens,
+      event.total_tokens,
+    )
 }
 
 export function enqueueTokenUsageWrite(event: PersistedTokenUsageEvent): void {
@@ -553,10 +566,10 @@ function usageEventFromRow(
   }
 }
 
-function getTotalsRow(
-  db: SqliteDatabase,
+async function getTotalsRow(
+  db: AsyncDatabase,
   range: { endMs: number; startMs: number },
-): Record<string, unknown> | undefined {
+): Promise<Record<string, unknown> | undefined> {
   return db
     .prepare(
       `
@@ -571,13 +584,13 @@ function getTotalsRow(
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
-    .get(range.startMs, range.endMs) as Record<string, unknown> | undefined
+    .get(range.startMs, range.endMs)
 }
 
-function getModelRows(
-  db: SqliteDatabase,
+async function getModelRows(
+  db: AsyncDatabase,
   range: { endMs: number; startMs: number },
-): Array<Record<string, unknown>> {
+): Promise<Array<Record<string, unknown>>> {
   return db
     .prepare(
       `
@@ -597,7 +610,7 @@ function getModelRows(
       model ASC
   `,
     )
-    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+    .all(range.startMs, range.endMs)
 }
 
 function createDailyBucket(
@@ -629,8 +642,10 @@ export async function getTokenUsageSummary(
   await flushTokenUsageEvents()
   const range = getPeriodRange(period)
   const db = await getDb()
-  const totalsRow = getTotalsRow(db, range)
-  const byModelRows = getModelRows(db, range)
+  const [totalsRow, byModelRows] = await Promise.all([
+    getTotalsRow(db, range),
+    getModelRows(db, range),
+  ])
 
   return {
     byModel: byModelRows.map((row) => modelSummaryFromRow(row)),
@@ -652,14 +667,22 @@ export async function getTokenUsageDailySummary(
   const db = await getDb()
   const intervals = createDailyIntervals(range)
 
-  return {
-    byModel: getModelRows(db, range).map((row) => modelSummaryFromRow(row)),
-    days: intervals.map((interval) =>
-      createDailyBucket(interval, getModelRows(db, interval)),
+  const [byModelRows, totalsRow, days] = await Promise.all([
+    getModelRows(db, range),
+    getTotalsRow(db, range),
+    Promise.all(
+      intervals.map(async (interval) =>
+        createDailyBucket(interval, await getModelRows(db, interval)),
+      ),
     ),
+  ])
+
+  return {
+    byModel: byModelRows.map((row) => modelSummaryFromRow(row)),
+    days,
     period,
     range: rangePayload(range),
-    totals: totalsFromRow(getTotalsRow(db, range)),
+    totals: totalsFromRow(totalsRow),
   }
 }
 
@@ -679,7 +702,7 @@ export async function getTokenUsageEventsPage(input: {
   const offset = (page - 1) * pageSize
   const db = await getDb()
 
-  const totalRow = db
+  const totalRow = await db
     .prepare(
       `
     SELECT COUNT(*) AS total
@@ -687,9 +710,9 @@ export async function getTokenUsageEventsPage(input: {
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
-    .get(range.startMs, range.endMs) as Record<string, unknown> | undefined
+    .get(range.startMs, range.endMs)
 
-  const rows = db
+  const rows = await db
     .prepare(
       `
     SELECT
@@ -714,9 +737,7 @@ export async function getTokenUsageEventsPage(input: {
     LIMIT ? OFFSET ?
   `,
     )
-    .all(range.startMs, range.endMs, pageSize, offset) as Array<
-    Record<string, unknown>
-  >
+    .all(range.startMs, range.endMs, pageSize, offset)
 
   const total = numberFromRow(totalRow, "total")
 
@@ -739,9 +760,12 @@ export async function getTokenUsageEventsPage(input: {
 export async function closeUsageStore(): Promise<void> {
   await flushTokenUsageEvents()
   await tokenUsageDbStore.close({
-    beforeClose: (db) => {
+    beforeClose: async (db) => {
+      if (db.kind !== "sqlite") {
+        return
+      }
       try {
-        db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+        await db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
       } catch {
         // Ignore cleanup errors in tests.
       }

@@ -13,6 +13,7 @@ import { initProxyFromEnv } from "./lib/proxy"
 import { generateEnvScript } from "./lib/shell"
 import { state } from "./lib/state"
 import { logUser, setupCopilotToken, setupGitHubToken } from "./lib/token"
+import { describeTokenUsageStorage } from "./lib/token-usage"
 import {
   cacheMacMachineId,
   cacheModels,
@@ -43,6 +44,8 @@ export async function runServer(options: RunServerOptions): Promise<void> {
 
   // Ensure config is merged with defaults at startup
   mergeConfigWithDefaults()
+
+  consola.info(`Token usage storage: ${describeTokenUsageStorage()}`)
 
   await initOpencodeVersion()
 

@@ -16,6 +16,7 @@ import {
 
 export {
   closeUsageStore,
+  describeTokenUsageStorage,
   getTokenUsageDailySummary,
   getTokenUsageEventsPage,
   getTokenUsageSummary,

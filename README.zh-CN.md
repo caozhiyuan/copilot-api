@@ -277,6 +277,18 @@ Copilot API 现在使用子命令结构，主要命令包括：
 - **messageApiWebSearchModel：** 顶层 Copilot `/v1/messages` 请求只包含服务端 `web_search` 工具时使用的全局模型，默认值为 `gpt-5-mini`。如果该值是 `provider/model` 别名，请求会进入对应 provider 的 Messages API 路径，并在转发前移除 provider 前缀。对于 Copilot GPT 模型，web search 会通过 `/responses` 执行。混合 `web_search` 与自定义工具的场景暂不支持，服务端会移除 server-side `web_search`。
 - **claudeTokenMultiplier：** 用于 Claude `/v1/messages/count_tokens` 请求在本地走 GPT tokenizer 估算时的乘数。默认值为 `1.15`。如果你的客户端仍然过晚触发上下文压缩，可以适当调大。这个配置只会在代理本地估算 Claude token 时生效；如果已经配置 `anthropicApiKey` 且 Anthropic token counting 调用成功，则会直接返回 Anthropic 的精确计数，不会使用这个乘数。
 - **anthropicApiKey：** 用于把 Claude `/v1/messages/count_tokens` 请求转发到 Anthropic 真实 token counting 端点的 API key，这样会返回精确计数，而不是 GPT tokenizer 估算值。也可通过环境变量 `ANTHROPIC_API_KEY` 设置。若未配置，或上游调用失败，则回退到由 `claudeTokenMultiplier` 控制的本地 GPT tokenizer 估算。
+- **database：** token usage 事件的存储位置。支持两种后端，由**单个连接字符串**按 scheme 推断选择——`libsql://`、`ws(s)://`、`http(s)://` 开头的 URL 表示 **Turso/libsql**（远程），其它（文件路径或 `:memory:`）表示**本地 SQLite**。
+  - `database.url`——连接字符串。填 Turso/libsql 的 URL（如 `libsql://my-db.turso.io`）即写入远程数据库；填本地路径（如 `/data/usage.sqlite`）即写入该文件。不填时使用 API home 目录下的本地文件。
+  - `database.authToken`——Turso 鉴权 token（也可用环境变量 `TURSO_AUTH_TOKEN` 设置，环境变量优先，可避免把密钥写进 `config.json`）。
+
+  环境变量 `COPILOT_API_DATABASE_URL` 会覆盖 `database.url`。完全用环境变量配置 Turso 的示例：
+
+  ```sh
+  export COPILOT_API_DATABASE_URL=libsql://my-db.turso.io
+  export TURSO_AUTH_TOKEN=your-turso-token
+  ```
+
+  远程后端使用 `@libsql/client/web`（纯 fetch，无原生绑定），因此在 Bun 和 Node.js 下均可用，且不受 Node 版本限制。
 
 编辑此文件后即可自定义 prompts，或替换为你自己的快速模型。修改完成后请重启服务（或重新执行命令），让缓存中的配置刷新生效。
 

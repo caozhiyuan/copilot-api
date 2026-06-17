@@ -48,6 +48,7 @@
     "rolldown": "1.0.0-rc.18"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "citty": "^0.1.6",
     "clipboardy": "^5.0.0",

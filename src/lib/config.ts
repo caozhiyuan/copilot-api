@@ -1,74 +1,90 @@
-import consola from "consola"
-import { randomBytes } from "node:crypto"
-import fs from "node:fs"
+import consola from "consola";
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 
-import { PATHS } from "./paths"
+import { PATHS } from "./paths";
 
 export interface AppConfig {
   auth?: {
-    apiKeys?: Array<string>
-    adminApiKey?: string
-  }
-  providers?: Record<string, ProviderConfig>
-  modelMappings?: Record<string, string>
-  extraPrompts?: Record<string, string>
-  smallModel?: string
-  useResponsesApiContextManagement?: boolean
-  modelResponsesApiCompactThresholds?: Record<string, number>
+    apiKeys?: Array<string>;
+    adminApiKey?: string;
+  };
+  providers?: Record<string, ProviderConfig>;
+  modelMappings?: Record<string, string>;
+  extraPrompts?: Record<string, string>;
+  smallModel?: string;
+  useResponsesApiContextManagement?: boolean;
+  modelResponsesApiCompactThresholds?: Record<string, number>;
   modelReasoningEfforts?: Record<
     string,
     "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
-  >
-  useMessagesApi?: boolean
-  useResponsesApiWebSocket?: boolean
-  anthropicApiKey?: string
-  useResponsesApiWebSearch?: boolean
+  >;
+  useMessagesApi?: boolean;
+  useResponsesApiWebSocket?: boolean;
+  anthropicApiKey?: string;
+  useResponsesApiWebSearch?: boolean;
   // Copilot rejects Anthropic's web_search server tool on /v1/messages, so a
   // Claude request that only asks for web search is switched to this model.
   // A `provider/model` alias is passed straight through to that provider's
   // (websearch-capable) message API, while a plain GPT model runs the search
   // via /responses. Leave unset to disable (the tool is then stripped).
   // Mixing web_search with other tools is not supported.
-  messageApiWebSearchModel?: string
-  claudeTokenMultiplier?: number
-  copilotUseLocalModels?: boolean
+  messageApiWebSearchModel?: string;
+  claudeTokenMultiplier?: number;
+  copilotUseLocalModels?: boolean;
+  database?: DatabaseConfig;
 }
+
+export interface DatabaseConfig {
+  // Connection string. A libsql://, ws(s)://, or http(s):// URL selects the
+  // remote Turso backend; anything else (a local file path or ":memory:") is a
+  // local SQLite database. When unset, a local file under APP_DIR is used.
+  url?: string;
+  // Turso auth token, used when `url` points at a remote database. Prefer the
+  // TURSO_AUTH_TOKEN env var to keep the secret out of config.json.
+  authToken?: string;
+}
+
+export type ResolvedDatabaseConfig =
+  | { type: "sqlite"; path: string }
+  | { type: "turso"; url: string; authToken?: string };
 
 export interface ModelConfig {
-  temperature?: number
-  topP?: number
-  topK?: number
-  extraBody?: Record<string, unknown>
-  contextCache?: boolean
-  supportPdf?: boolean
-  toolContentSupportType?: Array<ToolContentSupportType>
+  temperature?: number;
+  topP?: number;
+  topK?: number;
+  extraBody?: Record<string, unknown>;
+  contextCache?: boolean;
+  supportPdf?: boolean;
+  toolContentSupportType?: Array<ToolContentSupportType>;
 }
 
-export type ProviderAuthType = "authorization" | "oauth2" | "x-api-key"
+export type ProviderAuthType = "authorization" | "oauth2" | "x-api-key";
 export type ProviderType =
   | "anthropic"
   | "openai-compatible"
-  | "openai-responses"
-export type ToolContentSupportType = "array" | "image" | "pdf"
+  | "openai-responses";
+export type ToolContentSupportType = "array" | "image" | "pdf";
 
 export interface ProviderConfig {
-  type?: string
-  enabled?: boolean
-  baseUrl?: string
-  apiKey?: string
-  authType?: ProviderAuthType
-  models?: Record<string, ModelConfig>
-  adjustInputTokens?: boolean
+  type?: string;
+  enabled?: boolean;
+  baseUrl?: string;
+  apiKey?: string;
+  authType?: ProviderAuthType;
+  models?: Record<string, ModelConfig>;
+  adjustInputTokens?: boolean;
 }
 
 export interface ResolvedProviderConfig {
-  name: string
-  type: ProviderType
-  baseUrl: string
-  apiKey: string
-  authType: ProviderAuthType
-  models?: Record<string, ModelConfig>
-  adjustInputTokens?: boolean
+  name: string;
+  type: ProviderType;
+  baseUrl: string;
+  apiKey: string;
+  authType: ProviderAuthType;
+  models?: Record<string, ModelConfig>;
+  adjustInputTokens?: boolean;
 }
 
 const gpt5ExplorationPrompt = `## Exploration and reading files
@@ -76,7 +92,7 @@ const gpt5ExplorationPrompt = `## Exploration and reading files
 - **Batch everything.** If you need multiple files (even from different places), read them together.
 - **multi_tool_use.parallel** Use multi_tool_use.parallel to parallelize tool calls and only this.
 - **Only make sequential calls if you truly cannot know the next file without seeing a result first.**
-- **Workflow:** (a) plan all needed reads → (b) issue one parallel batch → (c) analyze results → (d) repeat if new, unpredictable reads arise.`
+- **Workflow:** (a) plan all needed reads → (b) issue one parallel batch → (c) analyze results → (d) repeat if new, unpredictable reads arise.`;
 
 const gpt5CommentaryPrompt = `# Working with the user
 
@@ -96,12 +112,12 @@ You interact with the user through a terminal. You have 2 ways of communicating 
 - After you have sufficient context, and the work is substantial, you provide a longer plan (this is the only user update that may be longer than 2 sentences and can contain formatting).
 - Before performing file edits of any kind, you provide updates explaining what edits you are making.
 - As you are thinking, you very frequently provide updates even if not taking any actions, informing the user of your progress. You interrupt your thinking and send multiple updates in a row if thinking for more than 100 words.
-- Tone of your updates MUST match your personality.`
+- Tone of your updates MUST match your personality.`;
 
 const modelResponsesApiCompactThresholds = {
   "gpt-5.4": 272_000 * 0.8,
   "gpt-5.5": 272_000 * 0.8,
-}
+};
 
 const defaultConfig: AppConfig = {
   auth: {
@@ -131,138 +147,139 @@ const defaultConfig: AppConfig = {
   useResponsesApiWebSearch: true,
   messageApiWebSearchModel: "gpt-5-mini",
   copilotUseLocalModels: false,
-}
+};
 
-let cachedConfig: AppConfig | null = null
+let cachedConfig: AppConfig | null = null;
 
 function normalizeAdminApiKey(adminApiKey: unknown): string | null {
   if (typeof adminApiKey !== "string") {
     if (adminApiKey !== undefined) {
       consola.warn(
         "Invalid auth.adminApiKey config. Expected a non-empty string.",
-      )
+      );
     }
-    return null
+    return null;
   }
 
-  const normalizedAdminApiKey = adminApiKey.trim()
+  const normalizedAdminApiKey = adminApiKey.trim();
   if (!normalizedAdminApiKey) {
     consola.warn(
       "Invalid auth.adminApiKey config. Expected a non-empty string.",
-    )
-    return null
+    );
+    return null;
   }
 
-  return normalizedAdminApiKey
+  return normalizedAdminApiKey;
 }
 
 function generateAdminApiKey(): string {
-  return randomBytes(32).toString("hex")
+  return randomBytes(32).toString("hex");
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error
+  return error instanceof Error && "code" in error;
 }
 
 function ensureConfigFile(): void {
   try {
-    fs.accessSync(PATHS.CONFIG_PATH, fs.constants.R_OK | fs.constants.W_OK)
+    fs.accessSync(PATHS.CONFIG_PATH, fs.constants.R_OK | fs.constants.W_OK);
   } catch {
-    fs.mkdirSync(PATHS.APP_DIR, { recursive: true })
+    fs.mkdirSync(PATHS.APP_DIR, { recursive: true });
     fs.writeFileSync(
       PATHS.CONFIG_PATH,
       `${JSON.stringify(defaultConfig, null, 2)}\n`,
       "utf8",
-    )
+    );
     try {
-      fs.chmodSync(PATHS.CONFIG_PATH, 0o600)
+      fs.chmodSync(PATHS.CONFIG_PATH, 0o600);
     } catch {
-      return
+      return;
     }
   }
 }
 
 function readConfigFromDisk(): AppConfig {
-  ensureConfigFile()
+  ensureConfigFile();
   try {
-    const raw = fs.readFileSync(PATHS.CONFIG_PATH, "utf8")
+    const raw = fs.readFileSync(PATHS.CONFIG_PATH, "utf8");
     if (!raw.trim()) {
       fs.writeFileSync(
         PATHS.CONFIG_PATH,
         `${JSON.stringify(defaultConfig, null, 2)}\n`,
         "utf8",
-      )
-      return defaultConfig
+      );
+      return defaultConfig;
     }
-    return JSON.parse(raw) as AppConfig
+    return JSON.parse(raw) as AppConfig;
   } catch (error) {
-    consola.error("Failed to read config file, using default config", error)
-    return defaultConfig
+    consola.error("Failed to read config file, using default config", error);
+    return defaultConfig;
   }
 }
 
 function readEditableConfigFromDisk(): AppConfig {
   try {
-    const raw = fs.readFileSync(PATHS.CONFIG_PATH, "utf8")
+    const raw = fs.readFileSync(PATHS.CONFIG_PATH, "utf8");
     if (!raw.trim()) {
-      return {}
+      return {};
     }
-    return JSON.parse(raw) as AppConfig
+    return JSON.parse(raw) as AppConfig;
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
-      return {}
+      return {};
     }
     if (error instanceof SyntaxError) {
-      throw new Error(`Config file is not valid JSON: ${PATHS.CONFIG_PATH}`)
+      throw new Error(`Config file is not valid JSON: ${PATHS.CONFIG_PATH}`);
     }
-    throw error
+    throw error;
   }
 }
 
 function writeConfigToDisk(config: AppConfig): void {
-  fs.mkdirSync(PATHS.APP_DIR, { recursive: true })
+  fs.mkdirSync(PATHS.APP_DIR, { recursive: true });
   fs.writeFileSync(
     PATHS.CONFIG_PATH,
     `${JSON.stringify(config, null, 2)}\n`,
     "utf8",
-  )
+  );
 }
 
 function mergeDefaultConfig(config: AppConfig): {
-  mergedConfig: AppConfig
-  changed: boolean
+  mergedConfig: AppConfig;
+  changed: boolean;
 } {
-  const extraPrompts = config.extraPrompts ?? {}
-  const defaultExtraPrompts = defaultConfig.extraPrompts ?? {}
+  const extraPrompts = config.extraPrompts ?? {};
+  const defaultExtraPrompts = defaultConfig.extraPrompts ?? {};
   const responsesApiCompactThresholds =
-    config.modelResponsesApiCompactThresholds ?? {}
+    config.modelResponsesApiCompactThresholds ?? {};
   const defaultResponsesApiCompactThresholds =
-    defaultConfig.modelResponsesApiCompactThresholds ?? {}
-  const modelReasoningEfforts = config.modelReasoningEfforts ?? {}
-  const defaultModelReasoningEfforts = defaultConfig.modelReasoningEfforts ?? {}
+    defaultConfig.modelResponsesApiCompactThresholds ?? {};
+  const modelReasoningEfforts = config.modelReasoningEfforts ?? {};
+  const defaultModelReasoningEfforts =
+    defaultConfig.modelReasoningEfforts ?? {};
 
   const missingExtraPromptModels = Object.keys(defaultExtraPrompts).filter(
     (model) => !Object.hasOwn(extraPrompts, model),
-  )
+  );
 
   const missingReasoningEffortModels = Object.keys(
     defaultModelReasoningEfforts,
-  ).filter((model) => !Object.hasOwn(modelReasoningEfforts, model))
+  ).filter((model) => !Object.hasOwn(modelReasoningEfforts, model));
   const missingResponsesApiCompactThresholdModels = Object.keys(
     defaultResponsesApiCompactThresholds,
-  ).filter((model) => !Object.hasOwn(responsesApiCompactThresholds, model))
+  ).filter((model) => !Object.hasOwn(responsesApiCompactThresholds, model));
 
-  const hasExtraPromptChanges = missingExtraPromptModels.length > 0
-  const hasReasoningEffortChanges = missingReasoningEffortModels.length > 0
+  const hasExtraPromptChanges = missingExtraPromptModels.length > 0;
+  const hasReasoningEffortChanges = missingReasoningEffortModels.length > 0;
   const hasResponsesApiCompactThresholdChanges =
-    missingResponsesApiCompactThresholdModels.length > 0
+    missingResponsesApiCompactThresholdModels.length > 0;
 
   if (
-    !hasExtraPromptChanges
-    && !hasReasoningEffortChanges
-    && !hasResponsesApiCompactThresholdChanges
+    !hasExtraPromptChanges &&
+    !hasReasoningEffortChanges &&
+    !hasResponsesApiCompactThresholdChanges
   ) {
-    return { mergedConfig: config, changed: false }
+    return { mergedConfig: config, changed: false };
   }
 
   return {
@@ -282,17 +299,17 @@ function mergeDefaultConfig(config: AppConfig): {
       },
     },
     changed: true,
-  }
+  };
 }
 
 function ensureAdminApiKey(config: AppConfig): {
-  mergedConfig: AppConfig
-  changed: boolean
+  mergedConfig: AppConfig;
+  changed: boolean;
 } {
-  const normalizedAdminApiKey = normalizeAdminApiKey(config.auth?.adminApiKey)
+  const normalizedAdminApiKey = normalizeAdminApiKey(config.auth?.adminApiKey);
   if (normalizedAdminApiKey) {
     if (config.auth?.adminApiKey === normalizedAdminApiKey) {
-      return { mergedConfig: config, changed: false }
+      return { mergedConfig: config, changed: false };
     }
 
     return {
@@ -304,99 +321,99 @@ function ensureAdminApiKey(config: AppConfig): {
         },
       },
       changed: true,
-    }
+    };
   }
 
-  const editableConfig = readEditableConfigFromDisk()
+  const editableConfig = readEditableConfigFromDisk();
   const { mergedConfig } = mergeDefaultConfig({
     ...editableConfig,
     auth: {
       ...editableConfig.auth,
       adminApiKey: generateAdminApiKey(),
     },
-  })
+  });
 
-  return { mergedConfig, changed: true }
+  return { mergedConfig, changed: true };
 }
 
 export function mergeConfigWithDefaults(): AppConfig {
-  const config = readConfigFromDisk()
-  const { mergedConfig, changed } = mergeDefaultConfig(config)
+  const config = readConfigFromDisk();
+  const { mergedConfig, changed } = mergeDefaultConfig(config);
   const {
     mergedConfig: mergedConfigWithAdminApiKey,
     changed: adminApiKeyChanged,
-  } = ensureAdminApiKey(mergedConfig)
-  const shouldPersistConfig = changed || adminApiKeyChanged
+  } = ensureAdminApiKey(mergedConfig);
+  const shouldPersistConfig = changed || adminApiKeyChanged;
 
   if (shouldPersistConfig) {
     try {
-      writeConfigToDisk(mergedConfigWithAdminApiKey)
+      writeConfigToDisk(mergedConfigWithAdminApiKey);
     } catch (writeError) {
       if (adminApiKeyChanged) {
-        throw writeError
+        throw writeError;
       }
 
       consola.warn(
         "Failed to write merged default config to config file",
         writeError,
-      )
+      );
     }
   }
 
-  cachedConfig = mergedConfigWithAdminApiKey
-  return mergedConfigWithAdminApiKey
+  cachedConfig = mergedConfigWithAdminApiKey;
+  return mergedConfigWithAdminApiKey;
 }
 
 export function getConfig(): AppConfig {
-  cachedConfig ??= mergeDefaultConfig(readConfigFromDisk()).mergedConfig
-  return cachedConfig
+  cachedConfig ??= mergeDefaultConfig(readConfigFromDisk()).mergedConfig;
+  return cachedConfig;
 }
 
 export function reloadConfig(): AppConfig {
-  return mergeConfigWithDefaults()
+  return mergeConfigWithDefaults();
 }
 
 export function getExtraPromptForModel(model: string): string {
-  const config = getConfig()
-  return config.extraPrompts?.[model] ?? ""
+  const config = getConfig();
+  return config.extraPrompts?.[model] ?? "";
 }
 
 export function getModelMappings(): Record<string, string> {
-  const config = getConfig()
-  const modelMappings = config.modelMappings
+  const config = getConfig();
+  const modelMappings = config.modelMappings;
   if (!modelMappings) {
-    return { ...defaultConfig.modelMappings }
+    return { ...defaultConfig.modelMappings };
   }
 
-  const validMappings: Record<string, string> = {}
+  const validMappings: Record<string, string> = {};
   for (const [sourceModel, targetModel] of Object.entries(modelMappings)) {
     if (
-      !sourceModel
-      || typeof targetModel !== "string"
-      || targetModel.length === 0
+      !sourceModel ||
+      typeof targetModel !== "string" ||
+      targetModel.length === 0
     ) {
-      continue
+      continue;
     }
-    validMappings[sourceModel] = targetModel
+    validMappings[sourceModel] = targetModel;
   }
 
-  return validMappings
+  return validMappings;
 }
 
 function validateModelMappings(
   modelMappings: Record<string, string>,
 ): Record<string, string> {
-  const validatedMappings: Record<string, string> = {}
+  const validatedMappings: Record<string, string> = {};
   for (const [sourceModel, targetModel] of Object.entries(modelMappings)) {
     if (!sourceModel || !targetModel) {
       throw new Error(
         "Each model mapping must use non-empty source and target values.",
-      )
+      );
     }
-    validatedMappings[sourceModel] = targetModel
+    validatedMappings[sourceModel] = targetModel;
   }
 
-  return validatedMappings
+  return validatedMappings;
 }
 
 export function setModelMappings(
@@ -405,59 +422,59 @@ export function setModelMappings(
   const nextConfig = {
     ...readEditableConfigFromDisk(),
     modelMappings: validateModelMappings(modelMappings),
-  }
+  };
 
-  writeConfigToDisk(nextConfig)
-  cachedConfig = reloadConfig()
-  return getModelMappings()
+  writeConfigToDisk(nextConfig);
+  cachedConfig = reloadConfig();
+  return getModelMappings();
 }
 
 export function resolveMappedModel(model: string): string {
-  return getModelMappings()[model] ?? model
+  return getModelMappings()[model] ?? model;
 }
 
 export function getSmallModel(): string {
-  const config = getConfig()
-  return config.smallModel ?? "gpt-5-mini"
+  const config = getConfig();
+  return config.smallModel ?? "gpt-5-mini";
 }
 
 export function isResponsesApiContextManagementEnabled(): boolean {
-  const config = getConfig()
-  return config.useResponsesApiContextManagement ?? true
+  const config = getConfig();
+  return config.useResponsesApiContextManagement ?? true;
 }
 
 export function getModelResponsesApiCompactThreshold(
   model: string,
 ): number | undefined {
-  const config = getConfig()
-  const threshold = config.modelResponsesApiCompactThresholds?.[model]
+  const config = getConfig();
+  const threshold = config.modelResponsesApiCompactThresholds?.[model];
 
   if (
-    typeof threshold !== "number"
-    || !Number.isFinite(threshold)
-    || threshold <= 0
+    typeof threshold !== "number" ||
+    !Number.isFinite(threshold) ||
+    threshold <= 0
   ) {
-    return undefined
+    return undefined;
   }
 
-  return threshold
+  return threshold;
 }
 
 export function getReasoningEffortForModel(
   model: string,
 ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
-  const config = getConfig()
-  return config.modelReasoningEfforts?.[model] ?? "high"
+  const config = getConfig();
+  return config.modelReasoningEfforts?.[model] ?? "high";
 }
 
 export function normalizeProviderBaseUrl(url: string): string {
-  return url.trim().replace(/\/+$/u, "")
+  return url.trim().replace(/\/+$/u, "");
 }
 
 function getDefaultProviderAuthType(
   providerType: ProviderType,
 ): ProviderAuthType {
-  return providerType === "anthropic" ? "x-api-key" : "authorization"
+  return providerType === "anthropic" ? "x-api-key" : "authorization";
 }
 
 export function resolveProviderAuthType(
@@ -465,135 +482,135 @@ export function resolveProviderAuthType(
   authType: string | undefined,
   providerType: ProviderType,
 ): ProviderAuthType {
-  const defaultAuthType = getDefaultProviderAuthType(providerType)
+  const defaultAuthType = getDefaultProviderAuthType(providerType);
   if (authType === undefined) {
-    return defaultAuthType
+    return defaultAuthType;
   }
 
   if (authType === "x-api-key") {
-    return "x-api-key"
+    return "x-api-key";
   }
 
   if (authType === "oauth2") {
     if (providerName === "codex") {
-      return authType
+      return authType;
     }
 
     consola.warn(
       `Provider ${providerName} has authType 'oauth2', which is only supported by the builtin codex provider, falling back to ${defaultAuthType}`,
-    )
-    return defaultAuthType
+    );
+    return defaultAuthType;
   }
 
   if (authType === "authorization") {
-    return authType
+    return authType;
   }
 
   consola.warn(
     `Provider ${providerName} has invalid authType '${authType}', falling back to ${defaultAuthType}`,
-  )
-  return defaultAuthType
+  );
+  return defaultAuthType;
 }
 
 function isProviderApiKeyRequired(
   providerName: string,
   authType: ProviderAuthType,
 ): boolean {
-  return !(providerName === "codex" && authType === "oauth2")
+  return !(providerName === "codex" && authType === "oauth2");
 }
 
 export function getRawProviderConfig(name: string): ProviderConfig | null {
-  const providerName = name.trim()
+  const providerName = name.trim();
   if (!providerName) {
-    return null
+    return null;
   }
 
-  const config = getConfig()
-  return config.providers?.[providerName] ?? null
+  const config = getConfig();
+  return config.providers?.[providerName] ?? null;
 }
 
 export function setProviderConfig(
   name: string,
   provider: ProviderConfig,
 ): ProviderConfig {
-  const providerName = name.trim()
+  const providerName = name.trim();
   if (!providerName) {
-    throw new Error("Provider name must be a non-empty string")
+    throw new Error("Provider name must be a non-empty string");
   }
 
   if (isReservedProviderName(providerName)) {
     throw new Error(
       `Provider ${providerName} is reserved and cannot be configured in config.providers`,
-    )
+    );
   }
 
-  const editableConfig = readEditableConfigFromDisk()
+  const editableConfig = readEditableConfigFromDisk();
   const nextConfig = {
     ...editableConfig,
     providers: {
       ...editableConfig.providers,
       [providerName]: provider,
     },
-  }
+  };
 
-  writeConfigToDisk(nextConfig)
-  cachedConfig = reloadConfig()
-  return getRawProviderConfig(providerName) ?? provider
+  writeConfigToDisk(nextConfig);
+  cachedConfig = reloadConfig();
+  return getRawProviderConfig(providerName) ?? provider;
 }
 
 export function getProviderConfig(name: string): ResolvedProviderConfig | null {
-  const providerName = name.trim()
+  const providerName = name.trim();
   if (!providerName) {
-    return null
+    return null;
   }
 
   if (isReservedProviderName(providerName)) {
     consola.warn(
       `Provider ${providerName} is reserved and cannot be configured in config.providers`,
-    )
-    return null
+    );
+    return null;
   }
 
-  const provider = getRawProviderConfig(providerName)
+  const provider = getRawProviderConfig(providerName);
   if (!provider) {
-    return null
+    return null;
   }
 
   if (provider.enabled === false) {
-    return null
+    return null;
   }
 
-  const type = provider.type ?? "anthropic"
+  const type = provider.type ?? "anthropic";
   if (
-    type !== "anthropic"
-    && type !== "openai-compatible"
-    && type !== "openai-responses"
+    type !== "anthropic" &&
+    type !== "openai-compatible" &&
+    type !== "openai-responses"
   ) {
     consola.warn(
       `Provider ${providerName} is ignored because type '${type}' is not supported`,
-    )
-    return null
+    );
+    return null;
   }
 
-  const baseUrl = normalizeProviderBaseUrl(provider.baseUrl ?? "")
+  const baseUrl = normalizeProviderBaseUrl(provider.baseUrl ?? "");
   const authType = resolveProviderAuthType(
     providerName,
     provider.authType,
     type,
-  )
-  const apiKey = (provider.apiKey ?? "").trim()
+  );
+  const apiKey = (provider.apiKey ?? "").trim();
   const missingFields = [
     ...(baseUrl ? [] : ["baseUrl"]),
-    ...(isProviderApiKeyRequired(providerName, authType) && !apiKey ?
-      ["apiKey"]
-    : []),
-  ]
+    ...(isProviderApiKeyRequired(providerName, authType) && !apiKey
+      ? ["apiKey"]
+      : []),
+  ];
 
   if (missingFields.length > 0) {
     consola.warn(
       `Provider ${providerName} is enabled but missing ${missingFields.join(" or ")}`,
-    )
-    return null
+    );
+    return null;
   }
 
   return {
@@ -604,51 +621,93 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     authType,
     models: provider.models,
     adjustInputTokens: provider.adjustInputTokens,
-  }
+  };
 }
 
 export function listEnabledProviders(): Array<string> {
-  const config = getConfig()
-  const providerNames = Object.keys(config.providers ?? {})
-  return providerNames.filter((name) => getProviderConfig(name) !== null)
+  const config = getConfig();
+  const providerNames = Object.keys(config.providers ?? {});
+  return providerNames.filter((name) => getProviderConfig(name) !== null);
 }
 
 export function isReservedProviderName(name: string): boolean {
-  return name.trim() === "copilot"
+  return name.trim() === "copilot";
 }
 
 export function isMessagesApiEnabled(): boolean {
-  const config = getConfig()
-  return config.useMessagesApi ?? true
+  const config = getConfig();
+  return config.useMessagesApi ?? true;
 }
 
 export function isResponsesApiWebSocketEnabled(): boolean {
-  const config = getConfig()
-  return config.useResponsesApiWebSocket ?? true
+  const config = getConfig();
+  return config.useResponsesApiWebSocket ?? true;
 }
 
 export function getAnthropicApiKey(): string | undefined {
-  const config = getConfig()
-  return config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined
+  const config = getConfig();
+  return config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined;
 }
 
 export function isResponsesApiWebSearchEnabled(): boolean {
-  const config = getConfig()
-  return config.useResponsesApiWebSearch ?? true
+  const config = getConfig();
+  return config.useResponsesApiWebSearch ?? true;
 }
 
 export function getMessageApiWebSearchModel(): string | undefined {
-  const config = getConfig()
-  const model = config.messageApiWebSearchModel ?? "gpt-5-mini"
-  return model && model.trim().length > 0 ? model : undefined
+  const config = getConfig();
+  const model = config.messageApiWebSearchModel ?? "gpt-5-mini";
+  return model && model.trim().length > 0 ? model : undefined;
 }
 
 export function getClaudeTokenMultiplier(): number {
-  const config = getConfig()
-  return config.claudeTokenMultiplier ?? 1.15
+  const config = getConfig();
+  return config.claudeTokenMultiplier ?? 1.15;
 }
 
 export function isCopilotUseLocalModelsEnabled(): boolean {
-  const config = getConfig()
-  return config.copilotUseLocalModels ?? false
+  const config = getConfig();
+  return config.copilotUseLocalModels ?? false;
+}
+
+const DEFAULT_DB_FILENAME = "copilot-api.sqlite";
+
+// libsql remote URL schemes. The backend is inferred from the connection
+// string's scheme — libsql://, ws(s)://, http(s):// → Turso. Anything else (a
+// filesystem path or ":memory:") is a local SQLite database, so no separate
+// type flag is required.
+const TURSO_URL_PATTERN = /^(?:libsql|wss?|https?):\/\//iu;
+
+function inferDatabaseType(value: string): "sqlite" | "turso" {
+  return TURSO_URL_PATTERN.test(value.trim()) ? "turso" : "sqlite";
+}
+
+function resolveTursoAuthToken(database?: DatabaseConfig): string | undefined {
+  return process.env.TURSO_AUTH_TOKEN ?? database?.authToken;
+}
+
+export function getDatabaseConfig(): ResolvedDatabaseConfig {
+  const database = getConfig().database;
+
+  // A single connection string selects the backend by its scheme: a libsql://,
+  // ws(s)://, or http(s):// URL → Turso; anything else (a file path or
+  // ":memory:") → local SQLite. The env var overrides config.json;
+  // COPILOT_API_SQLITE_DB_PATH is still honored as a legacy alias.
+  const connection =
+    process.env.COPILOT_API_DATABASE_URL ??
+    process.env.COPILOT_API_SQLITE_DB_PATH ??
+    database?.url;
+
+  if (connection && inferDatabaseType(connection) === "turso") {
+    return {
+      type: "turso",
+      url: connection,
+      authToken: resolveTursoAuthToken(database),
+    };
+  }
+
+  return {
+    type: "sqlite",
+    path: connection ?? path.join(PATHS.APP_DIR, DEFAULT_DB_FILENAME),
+  };
 }

@@ -1,25 +1,45 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-type SqliteValue = string | number | null
+export type SqlValue = string | number | null
 
 export const MINIMUM_NODE_SQLITE_VERSION = "22.13.0"
 
-export interface SqliteStatement {
-  all: (...values: Array<SqliteValue>) => Array<unknown>
-  get: (...values: Array<SqliteValue>) => unknown
-  run: (...values: Array<SqliteValue>) => unknown
+// Async database abstraction shared by every backend (local SQLite and remote
+// Turso/libsql). `prepare()` stays synchronous and returns a statement whose
+// `all/get/run` are async, so call sites only need to add `await`.
+export interface AsyncStatement {
+  all: (...values: Array<SqlValue>) => Promise<Array<Record<string, unknown>>>
+  get: (
+    ...values: Array<SqlValue>
+  ) => Promise<Record<string, unknown> | undefined>
+  run: (...values: Array<SqlValue>) => Promise<void>
 }
 
-export interface SqliteDatabase {
+export interface AsyncDatabase {
+  // Distinguishes backends so SQLite-only PRAGMAs can be gated out for Turso.
+  kind: "sqlite" | "turso"
+  exec: (sql: string) => Promise<void>
+  prepare: (sql: string) => AsyncStatement
+  close: () => Promise<void>
+}
+
+// Shape of the native synchronous SQLite drivers (`bun:sqlite` / `node:sqlite`).
+interface RawSqliteStatement {
+  all: (...values: Array<SqlValue>) => Array<unknown>
+  get: (...values: Array<SqlValue>) => unknown
+  run: (...values: Array<SqlValue>) => unknown
+}
+
+interface RawSqliteDatabase {
   close?: () => void
   exec: (sql: string) => unknown
-  prepare: (sql: string) => SqliteStatement
+  prepare: (sql: string) => RawSqliteStatement
 }
 
-interface SqliteDbStoreOptions {
-  getPath: () => string
-  initialize?: (db: SqliteDatabase) => void
+interface AsyncDbStoreOptions {
+  open: () => Promise<AsyncDatabase>
+  initialize?: (db: AsyncDatabase) => void | Promise<void>
 }
 
 const isBunRuntime = (): boolean =>
@@ -77,16 +97,16 @@ export class UnsupportedNodeSqliteRuntimeError extends Error {
   }
 }
 
-async function openBunDatabase(dbPath: string): Promise<SqliteDatabase> {
+async function openBunDatabase(dbPath: string): Promise<RawSqliteDatabase> {
   const specifier = ["bun", "sqlite"].join(":")
   const sqlite = (await import(specifier)) as {
-    Database: new (filename: string) => SqliteDatabase
+    Database: new (filename: string) => RawSqliteDatabase
   }
   return new sqlite.Database(dbPath)
 }
 
 async function loadNodeSqliteModule(): Promise<{
-  DatabaseSync: new (location: string) => SqliteDatabase
+  DatabaseSync: new (location: string) => RawSqliteDatabase
 }> {
   const nodeVersion = process.versions.node
   if (!isNodeSqliteSupportedVersion(nodeVersion)) {
@@ -96,43 +116,70 @@ async function loadNodeSqliteModule(): Promise<{
   const specifier = ["node", "sqlite"].join(":")
   try {
     return (await import(specifier)) as {
-      DatabaseSync: new (location: string) => SqliteDatabase
+      DatabaseSync: new (location: string) => RawSqliteDatabase
     }
   } catch (error) {
     throw new UnsupportedNodeSqliteRuntimeError(nodeVersion, error)
   }
 }
 
-async function openNodeDatabase(dbPath: string): Promise<SqliteDatabase> {
+async function openNodeDatabase(dbPath: string): Promise<RawSqliteDatabase> {
   const sqlite = await loadNodeSqliteModule()
   return new sqlite.DatabaseSync(dbPath)
 }
 
+function wrapRawSqliteDatabase(raw: RawSqliteDatabase): AsyncDatabase {
+  return {
+    kind: "sqlite",
+    exec: (sql) => Promise.resolve(raw.exec(sql)).then(() => undefined),
+    prepare: (sql) => {
+      const statement = raw.prepare(sql)
+      return {
+        all: (...values) =>
+          Promise.resolve(
+            statement.all(...values) as Array<Record<string, unknown>>,
+          ),
+        get: (...values) =>
+          Promise.resolve(
+            statement.get(...values) as Record<string, unknown> | undefined,
+          ),
+        run: (...values) =>
+          Promise.resolve(statement.run(...values)).then(() => undefined),
+      }
+    },
+    close: () => Promise.resolve(raw.close?.()).then(() => undefined),
+  }
+}
+
 export async function openSqliteDatabase(
   dbPath: string,
-): Promise<SqliteDatabase> {
+): Promise<AsyncDatabase> {
   const dir = path.dirname(dbPath)
   if (dbPath !== ":memory:" && dir !== ".") {
     await fs.mkdir(dir, { recursive: true })
   }
-  return isBunRuntime() ? openBunDatabase(dbPath) : openNodeDatabase(dbPath)
+  const raw =
+    isBunRuntime() ?
+      await openBunDatabase(dbPath)
+    : await openNodeDatabase(dbPath)
+  return wrapRawSqliteDatabase(raw)
 }
 
-export class SqliteDbStore {
-  private dbPromise: Promise<SqliteDatabase> | null = null
-  private readonly options: SqliteDbStoreOptions
+export class AsyncDbStore {
+  private dbPromise: Promise<AsyncDatabase> | null = null
+  private readonly options: AsyncDbStoreOptions
 
-  constructor(options: SqliteDbStoreOptions) {
+  constructor(options: AsyncDbStoreOptions) {
     this.options = options
   }
 
-  getDb(): Promise<SqliteDatabase> {
+  getDb(): Promise<AsyncDatabase> {
     this.dbPromise ??= this.open()
     return this.dbPromise
   }
 
   async close(input?: {
-    beforeClose?: (db: SqliteDatabase) => void
+    beforeClose?: (db: AsyncDatabase) => void | Promise<void>
   }): Promise<void> {
     const currentDbPromise = this.dbPromise
     this.dbPromise = null
@@ -142,13 +189,13 @@ export class SqliteDbStore {
     }
 
     const db = await currentDbPromise
-    input?.beforeClose?.(db)
-    db.close?.()
+    await input?.beforeClose?.(db)
+    await db.close()
   }
 
-  private async open(): Promise<SqliteDatabase> {
-    const db = await openSqliteDatabase(this.options.getPath())
-    this.options.initialize?.(db)
+  private async open(): Promise<AsyncDatabase> {
+    const db = await this.options.open()
+    await this.options.initialize?.(db)
     return db
   }
 }
