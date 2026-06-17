@@ -20,6 +20,18 @@ export type TokenUsageEndpoint =
 
 export type TokenUsagePeriod = "day" | "week" | "month"
 
+export interface TokenUsageTokenDetail {
+  batch_size: number
+  cost_per_batch: number
+  token_count: number
+  token_type: string
+}
+
+export interface CopilotUsageTokens {
+  token_details?: Array<TokenUsageTokenDetail> | null
+  total_nano_aiu?: number | null
+}
+
 export interface UsageTokens {
   cache_creation_input_tokens?: number | null
   cache_read_input_tokens?: number | null
@@ -36,10 +48,16 @@ export interface PersistedTokenUsageEvent {
   endpoint: TokenUsageEndpoint
   input_tokens: number
   model: string
+  nano_cost_cache_creation: number | null
+  nano_cost_cache_read: number | null
+  nano_cost_cache_write: number | null
+  nano_cost_input: number | null
+  nano_cost_output: number | null
   output_tokens: number
   provider_name: string | null
   session_id: string
   source: TokenUsageSource
+  total_nano_aiu: number | null
   total_tokens: number
   trace_id: string
   user_id: string
@@ -49,8 +67,14 @@ export interface TokenUsageTotals {
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
   input_tokens: number
+  nano_cost_cache_creation: number | null
+  nano_cost_cache_read: number | null
+  nano_cost_cache_write: number | null
+  nano_cost_input: number | null
+  nano_cost_output: number | null
   output_tokens: number
   request_count: number
+  total_nano_aiu: number | null
   total_tokens: number
 }
 
@@ -67,10 +91,16 @@ export interface TokenUsageEventRecord {
   id: number
   input_tokens: number
   model: string
+  nano_cost_cache_creation: number | null
+  nano_cost_cache_read: number | null
+  nano_cost_cache_write: number | null
+  nano_cost_input: number | null
+  nano_cost_output: number | null
   output_tokens: number
   provider_name: string | null
   session_id: string
   source: TokenUsageSource
+  total_nano_aiu: number | null
   total_tokens: number
   trace_id: string
   user_id: string
@@ -167,11 +197,23 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
       cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
-      total_tokens INTEGER NOT NULL DEFAULT 0
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      total_nano_aiu INTEGER,
+      nano_cost_input INTEGER,
+      nano_cost_cache_read INTEGER,
+      nano_cost_cache_write INTEGER,
+      nano_cost_cache_creation INTEGER,
+      nano_cost_output INTEGER
     )
   `)
   ensureColumn(db, "user_id", "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, "total_tokens", "INTEGER NOT NULL DEFAULT 0")
+  ensureColumn(db, "total_nano_aiu", "INTEGER")
+  ensureColumn(db, "nano_cost_input", "INTEGER")
+  ensureColumn(db, "nano_cost_cache_read", "INTEGER")
+  ensureColumn(db, "nano_cost_cache_write", "INTEGER")
+  ensureColumn(db, "nano_cost_cache_creation", "INTEGER")
+  ensureColumn(db, "nano_cost_output", "INTEGER")
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_created_at_ms
     ON token_usage_events(created_at_ms)
@@ -266,8 +308,14 @@ async function writeTokenUsageEvent(
         output_tokens,
         cache_read_input_tokens,
         cache_creation_input_tokens,
-        total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_tokens,
+        total_nano_aiu,
+        nano_cost_input,
+        nano_cost_cache_read,
+        nano_cost_cache_write,
+        nano_cost_cache_creation,
+        nano_cost_output
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     event.created_at_ms,
@@ -284,6 +332,12 @@ async function writeTokenUsageEvent(
     event.cache_read_input_tokens,
     event.cache_creation_input_tokens,
     event.total_tokens,
+    event.total_nano_aiu,
+    event.nano_cost_input,
+    event.nano_cost_cache_read,
+    event.nano_cost_cache_write,
+    event.nano_cost_cache_creation,
+    event.nano_cost_output,
   )
 }
 
@@ -392,8 +446,14 @@ function createEmptyTotals(): TokenUsageTotals {
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
     input_tokens: 0,
+    nano_cost_cache_creation: null,
+    nano_cost_cache_read: null,
+    nano_cost_cache_write: null,
+    nano_cost_input: null,
+    nano_cost_output: null,
     output_tokens: 0,
     request_count: 0,
+    total_nano_aiu: null,
     total_tokens: 0,
   }
 }
@@ -402,8 +462,32 @@ function addTotals(target: TokenUsageTotals, next: TokenUsageTotals): void {
   target.cache_creation_input_tokens += next.cache_creation_input_tokens
   target.cache_read_input_tokens += next.cache_read_input_tokens
   target.input_tokens += next.input_tokens
+  target.nano_cost_cache_creation = addNullableNumbers(
+    target.nano_cost_cache_creation,
+    next.nano_cost_cache_creation,
+  )
+  target.nano_cost_cache_read = addNullableNumbers(
+    target.nano_cost_cache_read,
+    next.nano_cost_cache_read,
+  )
+  target.nano_cost_cache_write = addNullableNumbers(
+    target.nano_cost_cache_write,
+    next.nano_cost_cache_write,
+  )
+  target.nano_cost_input = addNullableNumbers(
+    target.nano_cost_input,
+    next.nano_cost_input,
+  )
+  target.nano_cost_output = addNullableNumbers(
+    target.nano_cost_output,
+    next.nano_cost_output,
+  )
   target.output_tokens += next.output_tokens
   target.request_count += next.request_count
+  target.total_nano_aiu = addNullableNumbers(
+    target.total_nano_aiu,
+    next.total_nano_aiu,
+  )
   target.total_tokens += next.total_tokens
 }
 
@@ -490,6 +574,27 @@ function numberFromRow(
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
+function nullableNumberFromRow(
+  row: Record<string, unknown> | undefined,
+  key: string,
+): number | null {
+  const value = row?.[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function addNullableNumbers(
+  current: number | null,
+  next: number | null,
+): number | null {
+  if (current === null) {
+    return next
+  }
+  if (next === null) {
+    return current
+  }
+  return current + next
+}
+
 function totalsFromRow(
   row: Record<string, unknown> | undefined,
 ): TokenUsageTotals {
@@ -500,8 +605,17 @@ function totalsFromRow(
     ),
     cache_read_input_tokens: numberFromRow(row, "cache_read_input_tokens"),
     input_tokens: numberFromRow(row, "input_tokens"),
+    nano_cost_cache_creation: nullableNumberFromRow(
+      row,
+      "nano_cost_cache_creation",
+    ),
+    nano_cost_cache_read: nullableNumberFromRow(row, "nano_cost_cache_read"),
+    nano_cost_cache_write: nullableNumberFromRow(row, "nano_cost_cache_write"),
+    nano_cost_input: nullableNumberFromRow(row, "nano_cost_input"),
+    nano_cost_output: nullableNumberFromRow(row, "nano_cost_output"),
     output_tokens: numberFromRow(row, "output_tokens"),
     request_count: numberFromRow(row, "request_count"),
+    total_nano_aiu: nullableNumberFromRow(row, "total_nano_aiu"),
     total_tokens: numberFromRow(row, "total_tokens"),
   }
 }
@@ -543,10 +657,19 @@ function usageEventFromRow(
     id: numberFromRow(row, "id"),
     input_tokens: numberFromRow(row, "input_tokens"),
     model: stringFromRow(row, "model") || "unknown",
+    nano_cost_cache_creation: nullableNumberFromRow(
+      row,
+      "nano_cost_cache_creation",
+    ),
+    nano_cost_cache_read: nullableNumberFromRow(row, "nano_cost_cache_read"),
+    nano_cost_cache_write: nullableNumberFromRow(row, "nano_cost_cache_write"),
+    nano_cost_input: nullableNumberFromRow(row, "nano_cost_input"),
+    nano_cost_output: nullableNumberFromRow(row, "nano_cost_output"),
     output_tokens: numberFromRow(row, "output_tokens"),
     provider_name: nullableStringFromRow(row, "provider_name"),
     session_id: stringFromRow(row, "session_id"),
     source: stringFromRow(row, "source") as TokenUsageSource,
+    total_nano_aiu: nullableNumberFromRow(row, "total_nano_aiu"),
     total_tokens: numberFromRow(row, "total_tokens"),
     trace_id: stringFromRow(row, "trace_id"),
     user_id: stringFromRow(row, "user_id"),
@@ -566,7 +689,13 @@ function getTotalsRow(
       COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
       COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
-      COALESCE(SUM(total_tokens), 0) AS total_tokens
+      COALESCE(SUM(total_tokens), 0) AS total_tokens,
+      SUM(total_nano_aiu) AS total_nano_aiu,
+      SUM(nano_cost_input) AS nano_cost_input,
+      SUM(nano_cost_cache_read) AS nano_cost_cache_read,
+      SUM(nano_cost_cache_write) AS nano_cost_cache_write,
+      SUM(nano_cost_cache_creation) AS nano_cost_cache_creation,
+      SUM(nano_cost_output) AS nano_cost_output
     FROM token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
@@ -588,7 +717,13 @@ function getModelRows(
       COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
       COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
-      COALESCE(SUM(total_tokens), 0) AS total_tokens
+      COALESCE(SUM(total_tokens), 0) AS total_tokens,
+      SUM(total_nano_aiu) AS total_nano_aiu,
+      SUM(nano_cost_input) AS nano_cost_input,
+      SUM(nano_cost_cache_read) AS nano_cost_cache_read,
+      SUM(nano_cost_cache_write) AS nano_cost_cache_write,
+      SUM(nano_cost_cache_creation) AS nano_cost_cache_creation,
+      SUM(nano_cost_output) AS nano_cost_output
     FROM token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
     GROUP BY model
@@ -707,7 +842,13 @@ export async function getTokenUsageEventsPage(input: {
       output_tokens,
       cache_read_input_tokens,
       cache_creation_input_tokens,
-      total_tokens
+      total_tokens,
+      total_nano_aiu,
+      nano_cost_input,
+      nano_cost_cache_read,
+      nano_cost_cache_write,
+      nano_cost_cache_creation,
+      nano_cost_output
     FROM token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
     ORDER BY created_at_ms DESC, id DESC

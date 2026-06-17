@@ -179,8 +179,14 @@ describe("token usage storage", () => {
       cache_creation_input_tokens: 1,
       cache_read_input_tokens: 6,
       input_tokens: 30,
+      nano_cost_cache_creation: null,
+      nano_cost_cache_read: null,
+      nano_cost_cache_write: null,
+      nano_cost_input: null,
+      nano_cost_output: null,
       output_tokens: 9,
       request_count: 2,
+      total_nano_aiu: null,
       total_tokens: 46,
     })
     expect(summary.totals.total_tokens).toBe(46)
@@ -222,6 +228,78 @@ describe("token usage storage", () => {
     expect(page.items[0]?.trace_id).toBe("trace-provider")
     expect(page.items[0]?.session_id).toBe("claude-session")
     expect(page.items[0]?.total_tokens).toBe(25)
+  })
+
+  test("records copilot nano cost totals and category breakdowns", async () => {
+    const recordUsage = createCopilotTokenUsageRecorder({
+      endpoint: "chat_completions",
+      fallbackSessionId: "cost-session",
+      model: "gpt-cost",
+    })
+
+    recordUsage(
+      {
+        cache_read_input_tokens: 3,
+        cache_creation_input_tokens: 4,
+        input_tokens: 18,
+        output_tokens: 75,
+        total_tokens: 100,
+      },
+      {
+        token_details: [
+          {
+            batch_size: 1_000_000,
+            cost_per_batch: 25_000_000_000,
+            token_count: 18,
+            token_type: "input",
+          },
+          {
+            batch_size: 1_000_000,
+            cost_per_batch: 2_500_000_000,
+            token_count: 3,
+            token_type: "cache_read",
+          },
+          {
+            batch_size: 1_000_000,
+            cost_per_batch: 0,
+            token_count: 2,
+            token_type: "cache_write",
+          },
+          {
+            batch_size: 1_000_000,
+            cost_per_batch: 5_000_000_000,
+            token_count: 4,
+            token_type: "cache_creation",
+          },
+          {
+            batch_size: 1_000_000,
+            cost_per_batch: 200_000_000_000,
+            token_count: 75,
+            token_type: "output",
+          },
+        ],
+        total_nano_aiu: 15_477_500,
+      },
+    )
+
+    const summaryResponse = await createTokenUsageApp().request(
+      "/token-usage?period=day",
+    )
+    expect(summaryResponse.status).toBe(200)
+    const summary = (await summaryResponse.json()) as TokenUsageSummary
+    expect(summary.totals.total_nano_aiu).toBe(15_477_500)
+    expect(summary.totals.nano_cost_input).toBe(450_000)
+    expect(summary.totals.nano_cost_cache_read).toBe(7_500)
+    expect(summary.totals.nano_cost_cache_write).toBe(0)
+    expect(summary.totals.nano_cost_cache_creation).toBe(20_000)
+    expect(summary.totals.nano_cost_output).toBe(15_000_000)
+    expect(summary.byModel[0]?.total_nano_aiu).toBe(15_477_500)
+    expect(summary.byModel[0]?.nano_cost_cache_creation).toBe(20_000)
+
+    const eventsPage = await fetchEventsPage()
+    expect(eventsPage.items[0]?.total_nano_aiu).toBe(15_477_500)
+    expect(eventsPage.items[0]?.nano_cost_cache_creation).toBe(20_000)
+    expect(eventsPage.items[0]?.nano_cost_output).toBe(15_000_000)
   })
 
   test("only falls back to interaction id when no real session id exists", async () => {
@@ -302,8 +380,14 @@ describe("token usage storage", () => {
       cache_creation_input_tokens: 1,
       cache_read_input_tokens: 6,
       input_tokens: 36,
+      nano_cost_cache_creation: null,
+      nano_cost_cache_read: null,
+      nano_cost_cache_write: null,
+      nano_cost_input: null,
+      nano_cost_output: null,
       output_tokens: 12,
       request_count: 3,
+      total_nano_aiu: null,
       total_tokens: 145,
     })
     expect(daily.byModel.map((model) => model.model)).toEqual([
@@ -323,8 +407,14 @@ describe("token usage storage", () => {
       cache_creation_input_tokens: 1,
       cache_read_input_tokens: 6,
       input_tokens: 30,
+      nano_cost_cache_creation: null,
+      nano_cost_cache_read: null,
+      nano_cost_cache_write: null,
+      nano_cost_input: null,
+      nano_cost_output: null,
       output_tokens: 8,
       request_count: 2,
+      total_nano_aiu: null,
       total_tokens: 45,
     })
     expect(may12?.byModel.map((model) => model.model)).toEqual([

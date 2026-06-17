@@ -8,9 +8,11 @@ import {
   normalizeOptionalToken,
   normalizeToken,
   resolveTotalTokens,
+  type CopilotUsageTokens,
   type PersistedTokenUsageEvent,
   type TokenUsageEndpoint,
   type TokenUsageSource,
+  type TokenUsageTokenDetail,
   type UsageTokens,
 } from "./store"
 
@@ -22,6 +24,7 @@ export {
 } from "./store"
 
 export type {
+  CopilotUsageTokens,
   TokenUsageDailyBucket,
   TokenUsageDailySummary,
   TokenUsageEndpoint,
@@ -30,12 +33,14 @@ export type {
   TokenUsageModelSummary,
   TokenUsagePeriod,
   TokenUsageSource,
+  TokenUsageTokenDetail,
   TokenUsageSummary,
   TokenUsageTotals,
   UsageTokens,
 } from "./store"
 
 export interface TokenUsageEventInput extends UsageTokens {
+  copilotUsage?: CopilotUsageTokens | null
   endpoint: TokenUsageEndpoint
   fallbackSessionId?: string | null
   model: string
@@ -96,6 +101,71 @@ function resolveUserId(input: TokenUsageEventInput): string {
   return state.userName?.trim() || ""
 }
 
+function resolveTokenDetails(
+  details: Array<TokenUsageTokenDetail> | null | undefined,
+): {
+  nano_cost_cache_creation: number | null
+  nano_cost_cache_read: number | null
+  nano_cost_cache_write: number | null
+  nano_cost_input: number | null
+  nano_cost_output: number | null
+} {
+  if (!Array.isArray(details)) {
+    return {
+      nano_cost_cache_creation: null,
+      nano_cost_cache_read: null,
+      nano_cost_cache_write: null,
+      nano_cost_input: null,
+      nano_cost_output: null,
+    }
+  }
+
+  const result = {
+    nano_cost_cache_creation: 0,
+    nano_cost_cache_read: 0,
+    nano_cost_cache_write: 0,
+    nano_cost_input: 0,
+    nano_cost_output: 0,
+  }
+
+  for (const detail of details) {
+    if (!detail || typeof detail.token_count !== "number") {
+      continue
+    }
+
+    const cost =
+      Math.round(
+        (detail.token_count / Math.max(1, detail.batch_size || 1))
+          * (detail.cost_per_batch || 0),
+      ) || 0
+
+    switch (detail.token_type) {
+      case "input": {
+        result.nano_cost_input += cost
+        break
+      }
+      case "cache_read": {
+        result.nano_cost_cache_read += cost
+        break
+      }
+      case "cache_write": {
+        result.nano_cost_cache_write += cost
+        break
+      }
+      case "cache_creation": {
+        result.nano_cost_cache_creation += cost
+        break
+      }
+      case "output": {
+        result.nano_cost_output += cost
+        break
+      }
+    }
+  }
+
+  return result
+}
+
 function toPersistedEvent(
   input: TokenUsageEventInput,
 ): PersistedTokenUsageEvent | null {
@@ -104,6 +174,7 @@ function toPersistedEvent(
   }
 
   const now = new Date()
+  const cost = resolveTokenDetails(input.copilotUsage?.token_details)
   return {
     cache_creation_input_tokens: normalizeToken(
       input.cache_creation_input_tokens,
@@ -114,6 +185,7 @@ function toPersistedEvent(
     endpoint: input.endpoint,
     input_tokens: normalizeToken(input.input_tokens),
     model: input.model.trim() || "unknown",
+    ...cost,
     output_tokens: normalizeToken(input.output_tokens),
     provider_name: input.providerName?.trim() || null,
     session_id: resolveTokenUsageSessionId(
@@ -121,6 +193,13 @@ function toPersistedEvent(
       input.fallbackSessionId,
     ),
     source: input.source,
+    total_nano_aiu:
+      (
+        input.copilotUsage?.total_nano_aiu === undefined
+        || input.copilotUsage.total_nano_aiu === null
+      ) ?
+        null
+      : normalizeToken(input.copilotUsage.total_nano_aiu),
     total_tokens: resolveTotalTokens(input),
     trace_id: resolveTraceId(input.traceId),
     user_id: resolveUserId(input),
@@ -140,18 +219,19 @@ export function recordTokenUsageEvent(input: TokenUsageEventInput): void {
 
 export function createTokenUsageRecorder(
   options: TokenUsageRecorderOptions,
-): (usage: UsageTokens) => void {
-  return (usage) => {
+): (usage: UsageTokens, copilotUsage?: CopilotUsageTokens | null) => void {
+  return (usage, copilotUsage) => {
     recordTokenUsageEvent({
       ...usage,
       ...options,
+      copilotUsage,
     })
   }
 }
 
 export function createCopilotTokenUsageRecorder(
   options: CopilotTokenUsageRecorderOptions,
-): (usage: UsageTokens) => void {
+): (usage: UsageTokens, copilotUsage?: CopilotUsageTokens | null) => void {
   return createTokenUsageRecorder({
     ...options,
     source: "copilot",
@@ -160,7 +240,7 @@ export function createCopilotTokenUsageRecorder(
 
 export function createProviderTokenUsageRecorder(
   options: ProviderTokenUsageRecorderOptions,
-): (usage: UsageTokens) => void {
+): (usage: UsageTokens, copilotUsage?: CopilotUsageTokens | null) => void {
   return createTokenUsageRecorder({
     ...options,
     source: "provider",
