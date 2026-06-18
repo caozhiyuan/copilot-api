@@ -10,13 +10,13 @@ import type { Model } from "~/services/copilot/get-models"
 import { debugJson, debugJsonTail, debugLazy } from "~/lib/logger"
 import { resolveBridgeToolSearchName } from "~/lib/tool-search"
 import {
+  copilotUsageFromResponsesEvent,
   createCopilotTokenUsageRecorder,
   mergeAnthropicUsage,
   normalizeAnthropicUsage,
   normalizeOpenAIUsage,
   normalizeResponsesUsage,
   copilotUsageToTokens,
-  type CopilotUsage,
   type CopilotUsageTokens,
   type TokenUsageEndpoint,
   type UsageTokens,
@@ -474,32 +474,6 @@ const createCopilotUsageRecorder = (options: {
 const getMetadataSessionId = (
   payload: AnthropicMessagesPayload,
 ): string | null => parseUserIdMetadata(payload.metadata?.user_id).sessionId
-
-const copilotUsageFromResponsesEvent = (
-  event: ResponseStreamEvent,
-): CopilotUsageTokens | null => {
-  const topLevelUsage = nonEmptyCopilotUsageTokens(
-    (event as { copilot_usage?: CopilotUsage | null }).copilot_usage,
-  )
-  if (topLevelUsage) {
-    return topLevelUsage
-  }
-
-  const response = (
-    event as {
-      response?: { copilot_usage?: CopilotUsage | null }
-    }
-  ).response
-
-  return nonEmptyCopilotUsageTokens(response?.copilot_usage)
-}
-
-const nonEmptyCopilotUsageTokens = (
-  usage: CopilotUsage | null | undefined,
-): CopilotUsageTokens | null => {
-  const tokens = copilotUsageToTokens(usage)
-  return Object.keys(tokens).length > 0 ? tokens : null
-}
 
 const parseAnthropicStreamEvent = (
   data: string,

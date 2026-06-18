@@ -816,4 +816,183 @@ describe("responses handler token usage", () => {
     expect(page.items[0]?.total_nano_aiu).toBe(502_500)
     expect(page.items[0]?.total_tokens).toBe(7)
   })
+
+  test("records usage from incomplete streaming responses with top-level copilot_usage", async () => {
+    createResponses.mockImplementation(() =>
+      Promise.resolve(
+        streamChunks([
+          {
+            data: JSON.stringify({
+              copilot_usage: {
+                token_details: [
+                  {
+                    batch_size: 1_000_000,
+                    cost_per_batch: 30_000_000_000,
+                    token_count: 2,
+                    token_type: "input",
+                  },
+                ],
+                total_nano_aiu: 60_000,
+              },
+              response: {
+                created_at: 0,
+                error: null,
+                id: "resp_234",
+                incomplete_details: { reason: "max_output_tokens" },
+                instructions: null,
+                metadata: null,
+                model: "gpt-test",
+                object: "response",
+                output: [],
+                output_text: "",
+                parallel_tool_calls: false,
+                status: "incomplete",
+                temperature: null,
+                tool_choice: "auto",
+                tools: [],
+                top_p: null,
+                usage: {
+                  input_tokens: 2,
+                  output_tokens: 0,
+                  total_tokens: 2,
+                },
+              },
+              sequence_number: 1,
+              type: "response.incomplete",
+            }),
+            event: "response.incomplete",
+            id: "event_2",
+          },
+        ]),
+      ),
+    )
+
+    const app = createApp()
+    const payload = {
+      input: "hello",
+      model: "gpt-test",
+      stream: true,
+    }
+
+    const response = await app.request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    expect(response.status).toBe(200)
+    await response.text()
+
+    const eventsResponse = await app.request(
+      "/token-usage/events?period=day&page=1&page_size=10",
+    )
+    expect(eventsResponse.status).toBe(200)
+
+    const page = (await eventsResponse.json()) as {
+      items: Array<{
+        input_tokens: number
+        nano_cost_input: number | null
+        total_nano_aiu: number | null
+        total_tokens: number
+      }>
+    }
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]?.input_tokens).toBe(2)
+    expect(page.items[0]?.nano_cost_input).toBe(60_000)
+    expect(page.items[0]?.total_nano_aiu).toBe(60_000)
+    expect(page.items[0]?.total_tokens).toBe(2)
+  })
+
+  test("falls back to nested copilot_usage when top-level streaming payload is empty", async () => {
+    createResponses.mockImplementation(() =>
+      Promise.resolve(
+        streamChunks([
+          {
+            data: JSON.stringify({
+              copilot_usage: {},
+              response: {
+                created_at: 0,
+                error: {
+                  message: "request failed",
+                },
+                id: "resp_345",
+                incomplete_details: null,
+                instructions: null,
+                metadata: null,
+                model: "gpt-test",
+                object: "response",
+                output: [],
+                output_text: "",
+                parallel_tool_calls: false,
+                status: "failed",
+                temperature: null,
+                tool_choice: "auto",
+                tools: [],
+                top_p: null,
+                copilot_usage: {
+                  token_details: [
+                    {
+                      batch_size: 1_000_000,
+                      cost_per_batch: 15_000_000_000,
+                      token_count: 2,
+                      token_type: "input",
+                    },
+                  ],
+                  total_nano_aiu: 30_000,
+                },
+                usage: {
+                  input_tokens: 2,
+                  output_tokens: 0,
+                  total_tokens: 2,
+                },
+              },
+              sequence_number: 1,
+              type: "response.failed",
+            }),
+            event: "response.failed",
+            id: "event_3",
+          },
+        ]),
+      ),
+    )
+
+    const app = createApp()
+    const payload = {
+      input: "hello",
+      model: "gpt-test",
+      stream: true,
+    }
+
+    const response = await app.request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    expect(response.status).toBe(200)
+    await response.text()
+
+    const eventsResponse = await app.request(
+      "/token-usage/events?period=day&page=1&page_size=10",
+    )
+    expect(eventsResponse.status).toBe(200)
+
+    const page = (await eventsResponse.json()) as {
+      items: Array<{
+        input_tokens: number
+        nano_cost_input: number | null
+        total_nano_aiu: number | null
+        total_tokens: number
+      }>
+    }
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]?.input_tokens).toBe(2)
+    expect(page.items[0]?.nano_cost_input).toBe(30_000)
+    expect(page.items[0]?.total_nano_aiu).toBe(30_000)
+    expect(page.items[0]?.total_tokens).toBe(2)
+  })
 })

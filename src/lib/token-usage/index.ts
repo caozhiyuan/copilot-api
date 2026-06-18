@@ -362,3 +362,26 @@ export function copilotUsageToTokens(
     total_nano_aiu: copilotUsage.total_nano_aiu,
   }
 }
+
+export function nonEmptyCopilotUsageTokens(
+  usage: CopilotUsage | null | undefined,
+): CopilotUsageTokens | null {
+  const tokens = copilotUsageToTokens(usage)
+  return (
+      tokens.token_details !== undefined || tokens.total_nano_aiu !== undefined
+    ) ?
+      tokens
+    : null
+}
+
+export function copilotUsageFromResponsesEvent(event: {
+  copilot_usage?: CopilotUsage | null
+  response?: { copilot_usage?: CopilotUsage | null }
+}): CopilotUsageTokens | null {
+  const topLevelUsage = nonEmptyCopilotUsageTokens(event.copilot_usage)
+  if (topLevelUsage) {
+    return topLevelUsage
+  }
+
+  return nonEmptyCopilotUsageTokens(event.response?.copilot_usage)
+}

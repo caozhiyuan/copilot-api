@@ -456,6 +456,92 @@ test("messages Responses flow records top-level copilot_usage from terminal stre
   expect(page.items[0]?.total_nano_aiu).toBe(502_500)
 })
 
+test("messages Responses flow falls back to nested copilot_usage when top-level payload is empty", async () => {
+  createResponses.mockImplementationOnce(
+    (
+      payload: ResponsesPayload,
+      options: { transport?: ResponsesTransport },
+    ) => {
+      capturedResponsesPayload = payload
+      capturedResponsesOptions = options
+      return Promise.resolve(
+        streamChunks([
+          {
+            event: "response.incomplete",
+            data: JSON.stringify({
+              type: "response.incomplete",
+              copilot_usage: {},
+              response: {
+                ...createResponsesResult(payload.model),
+                copilot_usage: {
+                  token_details: [
+                    {
+                      batch_size: 1_000_000,
+                      cost_per_batch: 12_500_000_000,
+                      token_count: 3,
+                      token_type: "input",
+                    },
+                  ],
+                  total_nano_aiu: 37_500,
+                },
+                status: "incomplete",
+                usage: {
+                  input_tokens: 3,
+                  output_tokens: 0,
+                  total_tokens: 3,
+                },
+              },
+            }),
+          },
+        ]),
+      )
+    },
+  )
+
+  const payload: AnthropicMessagesPayload = {
+    max_tokens: 128,
+    stream: true,
+    messages: [{ role: "user", content: "hello" }],
+    model: "gpt-test",
+  }
+
+  const app = new Hono()
+  app.post("/messages-responses", (c) =>
+    handleWithResponsesApi(c, payload, {
+      logger,
+      requestId: "request-2",
+      selectedModel: createModel(["/responses"]),
+      sessionId: "nested-session",
+    }),
+  )
+  app.route("/token-usage", tokenUsageRoute)
+
+  const response = await app.request("/messages-responses", {
+    method: "POST",
+  })
+
+  expect(response.status).toBe(200)
+  await response.text()
+
+  const eventsResponse = await app.request(
+    "/token-usage/events?period=day&page=1&page_size=10",
+  )
+  expect(eventsResponse.status).toBe(200)
+
+  const page = (await eventsResponse.json()) as {
+    items: Array<{
+      nano_cost_input: number | null
+      session_id: string
+      total_nano_aiu: number | null
+    }>
+  }
+
+  expect(page.items).toHaveLength(1)
+  expect(page.items[0]?.session_id).toBe("nested-session")
+  expect(page.items[0]?.nano_cost_input).toBe(37_500)
+  expect(page.items[0]?.total_nano_aiu).toBe(37_500)
+})
+
 test("messages Responses flow preserves the configured tool_search alias in non-streaming responses", async () => {
   createResponses.mockImplementationOnce(
     (
