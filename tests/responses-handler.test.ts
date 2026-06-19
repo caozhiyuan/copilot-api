@@ -721,6 +721,9 @@ describe("responses handler token usage", () => {
                 tool_choice: "auto",
                 tools: [],
                 top_p: null,
+                copilot_usage: {
+                  total_nano_aiu: 1234,
+                },
                 usage: {
                   input_tokens: 5,
                   input_tokens_details: {
@@ -769,6 +772,7 @@ describe("responses handler token usage", () => {
         input_tokens: number
         output_tokens: number
         session_id: string
+        total_nano_aiu: number | null
         total_tokens: number
       }>
     }
@@ -783,6 +787,7 @@ describe("responses handler token usage", () => {
     expect(page.items[0]?.cache_read_input_tokens).toBe(1)
     expect(page.items[0]?.input_tokens).toBe(4)
     expect(page.items[0]?.output_tokens).toBe(2)
+    expect(page.items[0]?.total_nano_aiu).toBe(1234)
     expect(page.items[0]?.total_tokens).toBe(7)
   })
 })

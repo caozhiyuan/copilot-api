@@ -14,6 +14,7 @@ import { handleProviderResponsesForProvider } from "~/routes/provider/responses/
 import { state } from "~/lib/state"
 import {
   createCopilotTokenUsageRecorder,
+  normalizeOptionalToken,
   normalizeResponsesUsage,
   type UsageTokens,
 } from "~/lib/token-usage"
@@ -160,7 +161,12 @@ export const handleResponses = async (c: Context) => {
           || parsedEvent?.type === "response.failed"
           || parsedEvent?.type === "response.incomplete"
         ) {
-          usage = normalizeResponsesUsage(parsedEvent.response.usage)
+          usage = {
+            ...normalizeResponsesUsage(parsedEvent.response.usage),
+            total_nano_aiu: normalizeOptionalToken(
+              parsedEvent.response.copilot_usage?.total_nano_aiu,
+            ),
+          }
         }
 
         const processedData = fixStreamIds(
@@ -184,8 +190,14 @@ export const handleResponses = async (c: Context) => {
     value: response,
     tailLength: 400,
   })
-  recordUsage(normalizeResponsesUsage((response as ResponsesResult).usage))
-  return c.json(response as ResponsesResult)
+  const result = response as ResponsesResult
+  recordUsage({
+    ...normalizeResponsesUsage(result.usage),
+    total_nano_aiu: normalizeOptionalToken(
+      result.copilot_usage?.total_nano_aiu,
+    ),
+  })
+  return c.json(result)
 }
 
 const isAsyncIterable = <T>(value: unknown): value is AsyncIterable<T> =>
