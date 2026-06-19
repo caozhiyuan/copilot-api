@@ -53,7 +53,6 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
           completion_tokens: 2,
           total_tokens: 10,
           prompt_tokens_details: {
-            cache_creation_input_tokens: 2,
             cached_tokens: 1,
           },
         },
@@ -217,9 +216,8 @@ describe("openai-compatible provider messages", () => {
       role: "assistant",
       stop_reason: "end_turn",
       usage: {
-        cache_creation_input_tokens: 2,
         cache_read_input_tokens: 1,
-        input_tokens: 5,
+        input_tokens: 7,
         output_tokens: 2,
       },
     })

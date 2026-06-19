@@ -556,18 +556,11 @@ function mapOpenAIChatCompletionUsage(
   const promptDetails = response.usage?.prompt_tokens_details
   const promptTokens = response.usage?.prompt_tokens ?? 0
   const cachedTokens = promptDetails?.cached_tokens ?? 0
-  const cacheCreationTokens = promptDetails?.cache_creation_input_tokens ?? 0
   const usage: AnthropicResponse["usage"] = {
-    input_tokens: Math.max(
-      0,
-      promptTokens - cachedTokens - cacheCreationTokens,
-    ),
+    input_tokens: Math.max(0, promptTokens - cachedTokens),
     output_tokens: response.usage?.completion_tokens ?? 0,
   }
 
-  if (promptDetails?.cache_creation_input_tokens !== undefined) {
-    usage.cache_creation_input_tokens = cacheCreationTokens
-  }
   if (promptDetails?.cached_tokens !== undefined) {
     usage.cache_read_input_tokens = cachedTokens
   }

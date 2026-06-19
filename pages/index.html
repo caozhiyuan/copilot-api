@@ -278,7 +278,6 @@
         const API_KEY_STORAGE_KEY = "copilot-api.usage-viewer.x-api-key";
         const VALID_PERIODS = new Set(["day", "week", "month"]);
         const EMPTY_TOKEN_USAGE_TOTALS = {
-          cache_creation_input_tokens: 0,
           cache_read_input_tokens: 0,
           input_tokens: 0,
           nano_cost_cache_read: null,
@@ -873,11 +872,6 @@
               key: "cache_read_input_tokens",
               label: "Cache Read",
             },
-            {
-              color: "var(--color-yellow-accent)",
-              key: "cache_creation_input_tokens",
-              label: "Cache Write",
-            },
           ];
         }
 
@@ -1226,9 +1220,6 @@
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     model.cache_read_input_tokens
                   )}</td>
-                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    model.cache_creation_input_tokens
-                  )}</td>
                 </tr>
               `;
             })
@@ -1246,7 +1237,6 @@
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
-                    <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1305,9 +1295,6 @@
                   )}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     event.cache_read_input_tokens
-                  )}</td>
-                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    event.cache_creation_input_tokens
                   )}</td>
                 </tr>
               `;

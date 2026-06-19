@@ -39,7 +39,6 @@ export interface CopilotUsageTokens {
 export type CopilotUsage = CopilotUsageTokens
 
 export interface UsageTokens {
-  cache_creation_input_tokens?: number | null
   cache_read_input_tokens?: number | null
   input_tokens?: number | null
   output_tokens?: number | null
@@ -47,7 +46,6 @@ export interface UsageTokens {
 }
 
 export interface PersistedTokenUsageEvent {
-  cache_creation_input_tokens: number
   cache_read_input_tokens: number
   created_at_ms: number
   created_at_utc: string
@@ -69,7 +67,6 @@ export interface PersistedTokenUsageEvent {
 }
 
 export interface TokenUsageTotals {
-  cache_creation_input_tokens: number
   cache_read_input_tokens: number
   input_tokens: number
   nano_cost_cache_read: number | null
@@ -87,7 +84,6 @@ export interface TokenUsageModelSummary extends TokenUsageTotals {
 }
 
 export interface TokenUsageEventRecord {
-  cache_creation_input_tokens: number
   cache_read_input_tokens: number
   created_at_ms: number
   created_at_utc: string
@@ -199,7 +195,6 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
       input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
-      cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
       total_tokens INTEGER NOT NULL DEFAULT 0,
       total_nano_aiu INTEGER,
       nano_cost_input INTEGER,
@@ -271,7 +266,6 @@ export function hasAnyToken(tokens: UsageTokens): boolean {
     normalizeToken(tokens.input_tokens) > 0
     || normalizeToken(tokens.output_tokens) > 0
     || normalizeToken(tokens.cache_read_input_tokens) > 0
-    || normalizeToken(tokens.cache_creation_input_tokens) > 0
     || normalizeToken(tokens.total_tokens) > 0
   )
 }
@@ -285,7 +279,6 @@ export function resolveTotalTokens(input: UsageTokens): number {
     normalizeToken(input.input_tokens)
     + normalizeToken(input.output_tokens)
     + normalizeToken(input.cache_read_input_tokens)
-    + normalizeToken(input.cache_creation_input_tokens)
   )
 }
 
@@ -308,14 +301,13 @@ async function writeTokenUsageEvent(
         input_tokens,
         output_tokens,
         cache_read_input_tokens,
-        cache_creation_input_tokens,
         total_tokens,
         total_nano_aiu,
         nano_cost_input,
         nano_cost_cache_read,
         nano_cost_cache_write,
         nano_cost_output
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     event.created_at_ms,
@@ -330,7 +322,6 @@ async function writeTokenUsageEvent(
     event.input_tokens,
     event.output_tokens,
     event.cache_read_input_tokens,
-    event.cache_creation_input_tokens,
     event.total_tokens,
     event.total_nano_aiu,
     event.nano_cost_input,
@@ -442,7 +433,6 @@ function createDailyIntervals(range: { endMs: number; startMs: number }) {
 
 function createEmptyTotals(): TokenUsageTotals {
   return {
-    cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
     input_tokens: 0,
     nano_cost_cache_read: null,
@@ -457,7 +447,6 @@ function createEmptyTotals(): TokenUsageTotals {
 }
 
 function addTotals(target: TokenUsageTotals, next: TokenUsageTotals): void {
-  target.cache_creation_input_tokens += next.cache_creation_input_tokens
   target.cache_read_input_tokens += next.cache_read_input_tokens
   target.input_tokens += next.input_tokens
   target.nano_cost_cache_read = addNullableNumbers(
@@ -593,10 +582,6 @@ function totalsFromRow(
   row: Record<string, unknown> | undefined,
 ): TokenUsageTotals {
   return {
-    cache_creation_input_tokens: numberFromRow(
-      row,
-      "cache_creation_input_tokens",
-    ),
     cache_read_input_tokens: numberFromRow(row, "cache_read_input_tokens"),
     input_tokens: numberFromRow(row, "input_tokens"),
     nano_cost_cache_read: nullableNumberFromRow(row, "nano_cost_cache_read"),
@@ -636,10 +621,6 @@ function usageEventFromRow(
   row: Record<string, unknown>,
 ): TokenUsageEventRecord {
   return {
-    cache_creation_input_tokens: numberFromRow(
-      row,
-      "cache_creation_input_tokens",
-    ),
     cache_read_input_tokens: numberFromRow(row, "cache_read_input_tokens"),
     created_at_ms: numberFromRow(row, "created_at_ms"),
     created_at_utc: stringFromRow(row, "created_at_utc"),
@@ -674,7 +655,6 @@ function getTotalsRow(
       COALESCE(SUM(input_tokens), 0) AS input_tokens,
       COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
-      COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
       COALESCE(SUM(total_tokens), 0) AS total_tokens,
       SUM(total_nano_aiu) AS total_nano_aiu,
       SUM(nano_cost_input) AS nano_cost_input,
@@ -701,7 +681,6 @@ function getModelRows(
       COALESCE(SUM(input_tokens), 0) AS input_tokens,
       COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
-      COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
       COALESCE(SUM(total_tokens), 0) AS total_tokens,
       SUM(total_nano_aiu) AS total_nano_aiu,
       SUM(nano_cost_input) AS nano_cost_input,
@@ -825,7 +804,6 @@ export async function getTokenUsageEventsPage(input: {
       input_tokens,
       output_tokens,
       cache_read_input_tokens,
-      cache_creation_input_tokens,
       total_tokens,
       total_nano_aiu,
       nano_cost_input,

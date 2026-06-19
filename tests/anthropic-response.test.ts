@@ -193,7 +193,7 @@ describe("OpenAI to Anthropic Non-Streaming Response Translation", () => {
     expect(anthropicResponse.stop_reason).toBe("max_tokens")
   })
 
-  test("should translate OpenAI cache creation usage details", () => {
+  test("should translate OpenAI cached usage details", () => {
     const openAIResponse: ChatCompletionResponse = {
       id: "chatcmpl-cache",
       object: "chat.completion",
@@ -215,7 +215,6 @@ describe("OpenAI to Anthropic Non-Streaming Response Translation", () => {
         completion_tokens: 10,
         total_tokens: 110,
         prompt_tokens_details: {
-          cache_creation_input_tokens: 20,
           cached_tokens: 12,
         },
       },
@@ -224,9 +223,8 @@ describe("OpenAI to Anthropic Non-Streaming Response Translation", () => {
     const anthropicResponse = translateToAnthropic(openAIResponse)
 
     expect(anthropicResponse.usage).toEqual({
-      cache_creation_input_tokens: 20,
       cache_read_input_tokens: 12,
-      input_tokens: 68,
+      input_tokens: 88,
       output_tokens: 10,
     })
   })
@@ -599,7 +597,6 @@ describe("OpenAI usage-only stream translation", () => {
           completion_tokens: 20,
           total_tokens: 120,
           prompt_tokens_details: {
-            cache_creation_input_tokens: 3,
             cached_tokens: 12,
           },
         },
@@ -629,9 +626,8 @@ describe("OpenAI usage-only stream translation", () => {
         stop_sequence: null,
       },
       usage: {
-        input_tokens: 85,
+        input_tokens: 88,
         output_tokens: 20,
-        cache_creation_input_tokens: 3,
         cache_read_input_tokens: 12,
       },
     })

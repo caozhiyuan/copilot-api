@@ -1053,7 +1053,6 @@ const adjustInputTokens = (
   usage?: {
     input_tokens?: number
     cache_read_input_tokens?: number
-    cache_creation_input_tokens?: number
   },
 ): void => {
   if (!providerConfig.adjustInputTokens || !usage) {
@@ -1061,9 +1060,7 @@ const adjustInputTokens = (
   }
   const adjustedInput = Math.max(
     0,
-    (usage.input_tokens ?? 0)
-      - (usage.cache_read_input_tokens ?? 0)
-      - (usage.cache_creation_input_tokens ?? 0),
+    (usage.input_tokens ?? 0) - (usage.cache_read_input_tokens ?? 0),
   )
   usage.input_tokens = adjustedInput
   debugJson(logger, "provider.messages.adjusted_usage:", usage)
