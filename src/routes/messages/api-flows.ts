@@ -14,6 +14,7 @@ import {
   mergeAnthropicUsage,
   normalizeAnthropicUsage,
   normalizeOpenAIUsage,
+  normalizeOptionalToken,
   normalizeResponsesUsage,
   type TokenUsageEndpoint,
   type UsageTokens,
@@ -135,7 +136,12 @@ export const handleWithChatCompletions = async (
 
   if (isNonStreaming(response)) {
     debugJson(logger, "Non-streaming response from Copilot:", response)
-    recordUsage(normalizeOpenAIUsage(response.usage))
+    recordUsage({
+      ...normalizeOpenAIUsage(response.usage),
+      total_nano_aiu: normalizeOptionalToken(
+        response.copilot_usage?.total_nano_aiu,
+      ),
+    })
     const anthropicResponse = translateToAnthropic(response)
     debugJson(logger, "Translated Anthropic response:", anthropicResponse)
     return c.json(anthropicResponse)
@@ -163,8 +169,13 @@ export const handleWithChatCompletions = async (
       }
 
       const chunk = JSON.parse(rawEvent.data) as ChatCompletionChunk
-      if (chunk.usage) {
-        usage = normalizeOpenAIUsage(chunk.usage)
+      if (chunk.usage || chunk.copilot_usage) {
+        usage = {
+          ...normalizeOpenAIUsage(chunk.usage),
+          total_nano_aiu: normalizeOptionalToken(
+            chunk.copilot_usage?.total_nano_aiu,
+          ),
+        }
       }
       const events = translateChunkToAnthropicEvents(chunk, streamState)
 
@@ -261,7 +272,12 @@ export const handleWithResponsesApi = async (
           || responseEvent.type === "response.failed"
           || responseEvent.type === "response.incomplete"
         ) {
-          usage = normalizeResponsesUsage(responseEvent.response.usage)
+          usage = {
+            ...normalizeResponsesUsage(responseEvent.response.usage),
+            total_nano_aiu: normalizeOptionalToken(
+              responseEvent.response.copilot_usage?.total_nano_aiu,
+            ),
+          }
         }
 
         const events = translateResponsesStreamEvent(responseEvent, streamState)
@@ -307,7 +323,13 @@ export const handleWithResponsesApi = async (
       toolSearchName: resolveBridgeToolSearchName(anthropicPayload.tools),
     },
   )
-  recordUsage(normalizeResponsesUsage((response as ResponsesResult).usage))
+  const responsesResult = response as ResponsesResult
+  recordUsage({
+    ...normalizeResponsesUsage(responsesResult.usage),
+    total_nano_aiu: normalizeOptionalToken(
+      responsesResult.copilot_usage?.total_nano_aiu,
+    ),
+  })
   debugJson(logger, "Translated Anthropic response:", anthropicResponse)
   return c.json(anthropicResponse)
 }
