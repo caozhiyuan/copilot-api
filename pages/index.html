@@ -281,7 +281,6 @@
           cache_creation_input_tokens: 0,
           cache_read_input_tokens: 0,
           input_tokens: 0,
-          nano_cost_cache_creation: null,
           nano_cost_cache_read: null,
           nano_cost_cache_write: null,
           nano_cost_input: null,
@@ -512,22 +511,12 @@
           return `$${(Number(value) / 100000000000).toFixed(6)}`;
         }
 
-        function getCacheWriteNanoCost(totals) {
-          const cacheWrite = Number.isFinite(totals?.nano_cost_cache_write)
-            ? totals.nano_cost_cache_write
-            : 0;
-          const cacheCreation = Number.isFinite(totals?.nano_cost_cache_creation)
-            ? totals.nano_cost_cache_creation
-            : 0;
-          return cacheWrite + cacheCreation;
-        }
-
         function getTokenUsageCostLines(totals) {
           return [
             `Input Cost: ${formatUsdFromNano(totals?.nano_cost_input)}`,
             `Output Cost: ${formatUsdFromNano(totals?.nano_cost_output)}`,
             `Cache Read Cost: ${formatUsdFromNano(totals?.nano_cost_cache_read)}`,
-            `Cache Write Cost: ${formatUsdFromNano(getCacheWriteNanoCost(totals))}`,
+            `Cache Write Cost: ${formatUsdFromNano(totals?.nano_cost_cache_write)}`,
           ];
         }
 

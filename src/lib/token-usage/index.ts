@@ -106,7 +106,6 @@ function resolveUserId(input: TokenUsageEventInput): string {
 function resolveTokenDetails(
   details: Array<TokenUsageTokenDetail> | null | undefined,
 ): {
-  nano_cost_cache_creation: number | null
   nano_cost_cache_read: number | null
   nano_cost_cache_write: number | null
   nano_cost_input: number | null
@@ -114,7 +113,6 @@ function resolveTokenDetails(
 } {
   if (!Array.isArray(details)) {
     return {
-      nano_cost_cache_creation: null,
       nano_cost_cache_read: null,
       nano_cost_cache_write: null,
       nano_cost_input: null,
@@ -123,7 +121,6 @@ function resolveTokenDetails(
   }
 
   const result = {
-    nano_cost_cache_creation: 0,
     nano_cost_cache_read: 0,
     nano_cost_cache_write: 0,
     nano_cost_input: 0,
@@ -152,10 +149,6 @@ function resolveTokenDetails(
       }
       case "cache_write": {
         result.nano_cost_cache_write += cost
-        break
-      }
-      case "cache_creation": {
-        result.nano_cost_cache_creation += cost
         break
       }
       case "output": {

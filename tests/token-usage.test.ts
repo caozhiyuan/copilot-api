@@ -179,7 +179,6 @@ describe("token usage storage", () => {
       cache_creation_input_tokens: 1,
       cache_read_input_tokens: 6,
       input_tokens: 30,
-      nano_cost_cache_creation: null,
       nano_cost_cache_read: null,
       nano_cost_cache_write: null,
       nano_cost_input: null,
@@ -269,7 +268,7 @@ describe("token usage storage", () => {
             batch_size: 1_000_000,
             cost_per_batch: 5_000_000_000,
             token_count: 4,
-            token_type: "cache_creation",
+            token_type: "cache_write",
           },
           {
             batch_size: 1_000_000,
@@ -290,15 +289,14 @@ describe("token usage storage", () => {
     expect(summary.totals.total_nano_aiu).toBe(15_477_500)
     expect(summary.totals.nano_cost_input).toBe(450_000)
     expect(summary.totals.nano_cost_cache_read).toBe(7_500)
-    expect(summary.totals.nano_cost_cache_write).toBe(0)
-    expect(summary.totals.nano_cost_cache_creation).toBe(20_000)
+    expect(summary.totals.nano_cost_cache_write).toBe(20_000)
     expect(summary.totals.nano_cost_output).toBe(15_000_000)
     expect(summary.byModel[0]?.total_nano_aiu).toBe(15_477_500)
-    expect(summary.byModel[0]?.nano_cost_cache_creation).toBe(20_000)
+    expect(summary.byModel[0]?.nano_cost_cache_write).toBe(20_000)
 
     const eventsPage = await fetchEventsPage()
     expect(eventsPage.items[0]?.total_nano_aiu).toBe(15_477_500)
-    expect(eventsPage.items[0]?.nano_cost_cache_creation).toBe(20_000)
+    expect(eventsPage.items[0]?.nano_cost_cache_write).toBe(20_000)
     expect(eventsPage.items[0]?.nano_cost_output).toBe(15_000_000)
   })
 
@@ -380,7 +378,6 @@ describe("token usage storage", () => {
       cache_creation_input_tokens: 1,
       cache_read_input_tokens: 6,
       input_tokens: 36,
-      nano_cost_cache_creation: null,
       nano_cost_cache_read: null,
       nano_cost_cache_write: null,
       nano_cost_input: null,
@@ -407,7 +404,6 @@ describe("token usage storage", () => {
       cache_creation_input_tokens: 1,
       cache_read_input_tokens: 6,
       input_tokens: 30,
-      nano_cost_cache_creation: null,
       nano_cost_cache_read: null,
       nano_cost_cache_write: null,
       nano_cost_input: null,
