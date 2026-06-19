@@ -12,6 +12,7 @@ import { state } from "~/lib/state"
 import {
   createCopilotTokenUsageRecorder,
   normalizeOpenAIUsage,
+  normalizeOptionalToken,
   type UsageTokens,
 } from "~/lib/token-usage"
 import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
@@ -92,7 +93,12 @@ export async function handleCompletion(c: Context) {
 
   if (isNonStreaming(response)) {
     debugJson(logger, "Non-streaming response:", response)
-    recordUsage(normalizeOpenAIUsage(response.usage))
+    recordUsage({
+      ...normalizeOpenAIUsage(response.usage),
+      total_nano_aiu: normalizeOptionalToken(
+        response.copilot_usage?.total_nano_aiu,
+      ),
+    })
     return c.json(response)
   }
 
@@ -103,8 +109,13 @@ export async function handleCompletion(c: Context) {
     for await (const chunk of response) {
       debugJson(logger, "Streaming chunk:", chunk)
       const parsedChunk = parseChatCompletionChunk(chunk)
-      if (parsedChunk?.usage) {
-        usage = normalizeOpenAIUsage(parsedChunk.usage)
+      if (parsedChunk?.usage || parsedChunk?.copilot_usage) {
+        usage = {
+          ...normalizeOpenAIUsage(parsedChunk.usage),
+          total_nano_aiu: normalizeOptionalToken(
+            parsedChunk.copilot_usage?.total_nano_aiu,
+          ),
+        }
       }
       await stream.writeSSE(chunk as SSEMessage)
     }
