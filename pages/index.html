@@ -283,6 +283,7 @@
           input_tokens: 0,
           output_tokens: 0,
           request_count: 0,
+          total_nano_aiu: null,
           total_tokens: 0,
         };
 
@@ -497,6 +498,12 @@
 
         function formatNumber(value) {
           return Number.isFinite(value) ? Number(value).toLocaleString() : "0";
+        }
+
+        function formatNanoAiuCost(value) {
+          return Number.isFinite(value)
+            ? `$${(Number(value) / 100_000_000_000).toFixed(6)}`
+            : "—";
         }
 
         function formatDateTime(value) {
@@ -1215,6 +1222,9 @@
                   <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
                     model.total_tokens
                   )}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNanoAiuCost(
+                    model.total_nano_aiu
+                  )}</td>
                 </tr>
               `;
             })
@@ -1222,7 +1232,7 @@
 
           return `
             <div class="overflow-auto ${state.isTokenUsageLoading ? "opacity-60" : ""}">
-              <table class="w-full min-w-[760px] text-left text-xs sm:text-sm">
+              <table class="w-full min-w-[860px] text-left text-xs sm:text-sm">
                 <thead style="background-color: var(--color-bg-light-1); color: var(--color-fg-medium);">
                   <tr>
                     <th class="px-4 py-2 font-semibold">Model</th>
@@ -1231,7 +1241,8 @@
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
-                    <th class="px-4 py-2 text-right font-semibold">Total</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Tokens</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1290,6 +1301,9 @@
                   <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
                     event.total_tokens
                   )}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNanoAiuCost(
+                    event.total_nano_aiu
+                  )}</td>
                 </tr>
               `;
             })
@@ -1297,7 +1311,7 @@
 
           return `
             <div class="overflow-auto ${state.isEventsLoading ? "opacity-60" : ""}">
-              <table class="w-full min-w-[1180px] text-left text-xs sm:text-sm">
+              <table class="w-full min-w-[1280px] text-left text-xs sm:text-sm">
                 <thead style="background-color: var(--color-bg-light-1); color: var(--color-fg-medium);">
                   <tr>
                     <th class="px-4 py-2 font-semibold">Time</th>
@@ -1310,7 +1324,8 @@
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
-                    <th class="px-4 py-2 text-right font-semibold">Total</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Tokens</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
                   </tr>
                 </thead>
                 <tbody>
