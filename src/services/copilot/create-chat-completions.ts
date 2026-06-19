@@ -86,6 +86,7 @@ export interface ChatCompletionChunk {
   created: number
   model: string
   choices: Array<Choice>
+  copilot_usage?: CopilotUsage | null
   system_fingerprint?: string
   usage?: {
     prompt_tokens: number
@@ -134,6 +135,7 @@ export interface ChatCompletionResponse {
   created: number
   model: string
   choices: Array<ChoiceNonStreaming>
+  copilot_usage?: CopilotUsage | null
   system_fingerprint?: string
   usage?: {
     prompt_tokens: number
@@ -144,6 +146,10 @@ export interface ChatCompletionResponse {
       cached_tokens?: number
     }
   }
+}
+
+export interface CopilotUsage {
+  total_nano_aiu?: number | null
 }
 
 interface ResponseMessage {
