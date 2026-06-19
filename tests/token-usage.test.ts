@@ -159,6 +159,7 @@ describe("token usage storage", () => {
       model: "gpt-a",
       output_tokens: 3,
       source: "copilot",
+      total_nano_aiu: 1000,
     })
     recordTokenUsageEvent({
       cache_read_input_tokens: 4,
@@ -167,6 +168,7 @@ describe("token usage storage", () => {
       model: "gpt-b",
       output_tokens: 6,
       source: "copilot",
+      total_nano_aiu: 2500,
     })
 
     const response = await createTokenUsageApp().request(
@@ -181,11 +183,16 @@ describe("token usage storage", () => {
       input_tokens: 30,
       output_tokens: 9,
       request_count: 2,
+      total_nano_aiu: 3500,
       total_tokens: 46,
     })
     expect(summary.totals.total_tokens).toBe(46)
+    expect(summary.totals.total_nano_aiu).toBe(3500)
     expect(summary.byModel).toHaveLength(2)
     expect(summary.byModel.every((row) => row.total_tokens > 0)).toBe(true)
+    expect(summary.byModel.map((row) => row.total_nano_aiu)).toEqual([
+      2500, 1000,
+    ])
   })
 
   test("returns paginated usage events with user id", async () => {
@@ -195,6 +202,7 @@ describe("token usage storage", () => {
       model: "gpt-a",
       output_tokens: 2,
       source: "copilot",
+      total_nano_aiu: 1200,
     })
     recordTokenUsageEvent({
       endpoint: "provider_messages",
@@ -218,6 +226,7 @@ describe("token usage storage", () => {
     expect(page.page_size).toBe(1)
     expect(page.total_pages).toBe(2)
     expect(page.items).toHaveLength(1)
+    expect(page.items[0]?.total_nano_aiu).toBe(null)
     expect(page.items[0]?.user_id).toBe("anthropic")
     expect(page.items[0]?.trace_id).toBe("trace-provider")
     expect(page.items[0]?.session_id).toBe("claude-session")
@@ -269,6 +278,7 @@ describe("token usage storage", () => {
       model: "gpt-a",
       output_tokens: 3,
       source: "copilot",
+      total_nano_aiu: 100,
     })
     recordTokenUsageEvent({
       cache_read_input_tokens: 4,
@@ -277,6 +287,7 @@ describe("token usage storage", () => {
       model: "gpt-b",
       output_tokens: 5,
       source: "copilot",
+      total_nano_aiu: 200,
     })
 
     setSystemTime(localDate(2026, 4, 14, 9))
@@ -286,6 +297,7 @@ describe("token usage storage", () => {
       model: "gpt-a",
       output_tokens: 4,
       source: "copilot",
+      total_nano_aiu: 300,
       total_tokens: 100,
     })
 
@@ -304,6 +316,7 @@ describe("token usage storage", () => {
       input_tokens: 36,
       output_tokens: 12,
       request_count: 3,
+      total_nano_aiu: 600,
       total_tokens: 145,
     })
     expect(daily.byModel.map((model) => model.model)).toEqual([
@@ -311,6 +324,7 @@ describe("token usage storage", () => {
       "gpt-b",
     ])
     expect(daily.byModel[0]?.total_tokens).toBe(116)
+    expect(daily.byModel[0]?.total_nano_aiu).toBe(400)
 
     const firstDay = daily.days[0]
     expect(firstDay?.date).toBe(localDateLabel(localDate(2026, 4, 9)))
@@ -325,6 +339,7 @@ describe("token usage storage", () => {
       input_tokens: 30,
       output_tokens: 8,
       request_count: 2,
+      total_nano_aiu: 300,
       total_tokens: 45,
     })
     expect(may12?.byModel.map((model) => model.model)).toEqual([

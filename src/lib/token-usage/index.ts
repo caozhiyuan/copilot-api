@@ -19,6 +19,8 @@ export {
   getTokenUsageDailySummary,
   getTokenUsageEventsPage,
   getTokenUsageSummary,
+  normalizeOptionalToken,
+  normalizeToken,
 } from "./store"
 
 export type {
@@ -121,6 +123,10 @@ function toPersistedEvent(
       input.fallbackSessionId,
     ),
     source: input.source,
+    total_nano_aiu:
+      input.total_nano_aiu === undefined || input.total_nano_aiu === null ?
+        null
+      : normalizeToken(input.total_nano_aiu),
     total_tokens: resolveTotalTokens(input),
     trace_id: resolveTraceId(input.traceId),
     user_id: resolveUserId(input),

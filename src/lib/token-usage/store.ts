@@ -25,6 +25,7 @@ export interface UsageTokens {
   cache_read_input_tokens?: number | null
   input_tokens?: number | null
   output_tokens?: number | null
+  total_nano_aiu?: number | null
   total_tokens?: number | null
 }
 
@@ -40,6 +41,7 @@ export interface PersistedTokenUsageEvent {
   provider_name: string | null
   session_id: string
   source: TokenUsageSource
+  total_nano_aiu: number | null
   total_tokens: number
   trace_id: string
   user_id: string
@@ -51,6 +53,7 @@ export interface TokenUsageTotals {
   input_tokens: number
   output_tokens: number
   request_count: number
+  total_nano_aiu: number | null
   total_tokens: number
 }
 
@@ -71,6 +74,7 @@ export interface TokenUsageEventRecord {
   provider_name: string | null
   session_id: string
   source: TokenUsageSource
+  total_nano_aiu: number | null
   total_tokens: number
   trace_id: string
   user_id: string
@@ -167,11 +171,13 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
       cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
-      total_tokens INTEGER NOT NULL DEFAULT 0
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      total_nano_aiu INTEGER
     )
   `)
   ensureColumn(db, "user_id", "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, "total_tokens", "INTEGER NOT NULL DEFAULT 0")
+  ensureColumn(db, "total_nano_aiu", "INTEGER")
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_created_at_ms
     ON token_usage_events(created_at_ms)
@@ -230,6 +236,7 @@ export function hasAnyToken(tokens: UsageTokens): boolean {
     || normalizeToken(tokens.cache_read_input_tokens) > 0
     || normalizeToken(tokens.cache_creation_input_tokens) > 0
     || normalizeToken(tokens.total_tokens) > 0
+    || normalizeToken(tokens.total_nano_aiu) > 0
   )
 }
 
@@ -266,8 +273,9 @@ async function writeTokenUsageEvent(
         output_tokens,
         cache_read_input_tokens,
         cache_creation_input_tokens,
-        total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_tokens,
+        total_nano_aiu
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     event.created_at_ms,
@@ -284,6 +292,7 @@ async function writeTokenUsageEvent(
     event.cache_read_input_tokens,
     event.cache_creation_input_tokens,
     event.total_tokens,
+    event.total_nano_aiu,
   )
 }
 
@@ -394,6 +403,7 @@ function createEmptyTotals(): TokenUsageTotals {
     input_tokens: 0,
     output_tokens: 0,
     request_count: 0,
+    total_nano_aiu: null,
     total_tokens: 0,
   }
 }
@@ -404,7 +414,20 @@ function addTotals(target: TokenUsageTotals, next: TokenUsageTotals): void {
   target.input_tokens += next.input_tokens
   target.output_tokens += next.output_tokens
   target.request_count += next.request_count
+  target.total_nano_aiu = addNullableNumbers(
+    target.total_nano_aiu,
+    next.total_nano_aiu,
+  )
   target.total_tokens += next.total_tokens
+}
+
+function addNullableNumbers(
+  current: number | null,
+  next: number | null,
+): number | null {
+  if (current === null) return next
+  if (next === null) return current
+  return current + next
 }
 
 function createEmptySummary(period: TokenUsagePeriod): TokenUsageSummary {
@@ -490,6 +513,14 @@ function numberFromRow(
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
+function nullableNumberFromRow(
+  row: Record<string, unknown> | undefined,
+  key: string,
+): number | null {
+  const value = row?.[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
 function totalsFromRow(
   row: Record<string, unknown> | undefined,
 ): TokenUsageTotals {
@@ -502,6 +533,7 @@ function totalsFromRow(
     input_tokens: numberFromRow(row, "input_tokens"),
     output_tokens: numberFromRow(row, "output_tokens"),
     request_count: numberFromRow(row, "request_count"),
+    total_nano_aiu: nullableNumberFromRow(row, "total_nano_aiu"),
     total_tokens: numberFromRow(row, "total_tokens"),
   }
 }
@@ -547,6 +579,7 @@ function usageEventFromRow(
     provider_name: nullableStringFromRow(row, "provider_name"),
     session_id: stringFromRow(row, "session_id"),
     source: stringFromRow(row, "source") as TokenUsageSource,
+    total_nano_aiu: nullableNumberFromRow(row, "total_nano_aiu"),
     total_tokens: numberFromRow(row, "total_tokens"),
     trace_id: stringFromRow(row, "trace_id"),
     user_id: stringFromRow(row, "user_id"),
@@ -566,6 +599,7 @@ function getTotalsRow(
       COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
       COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+      SUM(total_nano_aiu) AS total_nano_aiu,
       COALESCE(SUM(total_tokens), 0) AS total_tokens
     FROM token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
@@ -588,6 +622,7 @@ function getModelRows(
       COALESCE(SUM(output_tokens), 0) AS output_tokens,
       COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
       COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+      SUM(total_nano_aiu) AS total_nano_aiu,
       COALESCE(SUM(total_tokens), 0) AS total_tokens
     FROM token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
@@ -707,6 +742,7 @@ export async function getTokenUsageEventsPage(input: {
       output_tokens,
       cache_read_input_tokens,
       cache_creation_input_tokens,
+      total_nano_aiu,
       total_tokens
     FROM token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
