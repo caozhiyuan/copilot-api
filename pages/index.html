@@ -512,14 +512,22 @@
           return `$${(Number(value) / 100000000000).toFixed(6)}`;
         }
 
+        function getCacheWriteNanoCost(totals) {
+          const cacheWrite = Number.isFinite(totals?.nano_cost_cache_write)
+            ? totals.nano_cost_cache_write
+            : 0;
+          const cacheCreation = Number.isFinite(totals?.nano_cost_cache_creation)
+            ? totals.nano_cost_cache_creation
+            : 0;
+          return cacheWrite + cacheCreation;
+        }
+
         function getTokenUsageCostLines(totals) {
           return [
-            `Total Cost: ${formatUsdFromNano(totals?.total_nano_aiu)}`,
             `Input Cost: ${formatUsdFromNano(totals?.nano_cost_input)}`,
             `Output Cost: ${formatUsdFromNano(totals?.nano_cost_output)}`,
             `Cache Read Cost: ${formatUsdFromNano(totals?.nano_cost_cache_read)}`,
-            `Cache Write Cost: ${formatUsdFromNano(totals?.nano_cost_cache_write)}`,
-            `Cache Creation Cost: ${formatUsdFromNano(totals?.nano_cost_cache_creation)}`,
+            `Cache Write Cost: ${formatUsdFromNano(getCacheWriteNanoCost(totals))}`,
           ];
         }
 
@@ -792,68 +800,13 @@
                   : ""
               }
 
-              <div class="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 ${
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ${
                 state.isTokenUsageLoading ? "opacity-60" : ""
               }">
                 ${renderTokenUsageUsdMetric(
                   "Total Cost",
                   totals.total_nano_aiu,
                   "var(--color-yellow-accent)"
-                )}
-                ${renderTokenUsageUsdMetric(
-                  "Input Cost",
-                  totals.nano_cost_input,
-                  "var(--color-blue-accent)"
-                )}
-                ${renderTokenUsageUsdMetric(
-                  "Output Cost",
-                  totals.nano_cost_output,
-                  "var(--color-green-accent)"
-                )}
-                ${renderTokenUsageUsdMetric(
-                  "Cache Read Cost",
-                  totals.nano_cost_cache_read,
-                  "var(--color-aqua-accent)"
-                )}
-                ${renderTokenUsageUsdMetric(
-                  "Cache Write Cost",
-                  totals.nano_cost_cache_write,
-                  "var(--color-yellow-accent)"
-                )}
-                ${renderTokenUsageUsdMetric(
-                  "Cache Creation Cost",
-                  totals.nano_cost_cache_creation,
-                  "var(--color-orange-accent)"
-                )}
-                ${renderTokenUsageMetric(
-                  "Total",
-                  totals.total_tokens,
-                  "var(--color-fg-lightest)"
-                )}
-                ${renderTokenUsageMetric(
-                  "Input",
-                  totals.input_tokens,
-                  "var(--color-blue-accent)"
-                )}
-                ${renderTokenUsageMetric(
-                  "Output",
-                  totals.output_tokens,
-                  "var(--color-green-accent)"
-                )}
-                ${renderTokenUsageMetric(
-                  "Cache Read",
-                  totals.cache_read_input_tokens,
-                  "var(--color-aqua-accent)"
-                )}
-                ${renderTokenUsageMetric(
-                  "Cache Write",
-                  totals.cache_creation_input_tokens,
-                  "var(--color-yellow-accent)"
-                )}
-                ${renderTokenUsageMetric(
-                  "Requests",
-                  totals.request_count,
-                  "var(--color-purple-accent)"
                 )}
               </div>
 
@@ -1196,9 +1149,6 @@
                 <span class="font-semibold" style="color: var(--color-fg-lightest);">${escapeHtml(
                   formatChartDate(activeDay.date)
                 )}</span>
-                ${getTokenUsageCostLines(activeTotals)
-                  .map((line) => `<span>${escapeHtml(line)}</span>`)
-                  .join("")}
                 ${visibleMetrics
                   .map(
                     (metric) =>
@@ -1263,11 +1213,18 @@
 
           const rows = summary.byModel
             .map((model) => {
+              const costBreakdown = getTokenUsageCostLines(model).join("\n");
               return `
                 <tr class="border-b last:border-b-0" style="border-color: var(--color-bg-light-1);">
                   <td class="px-4 py-2 max-w-[280px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(
                     model.model
                   )}">${escapeHtml(model.model)}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);" title="${escapeHtml(costBreakdown)}">${formatUsdFromNano(
+                    model.total_nano_aiu
+                  )}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
+                    model.total_tokens
+                  )}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     model.request_count
                   )}</td>
@@ -1283,27 +1240,6 @@
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     model.cache_creation_input_tokens
                   )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-blue-accent);">${formatUsdFromNano(
-                    model.nano_cost_input
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-green-accent);">${formatUsdFromNano(
-                    model.nano_cost_output
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-aqua-accent);">${formatUsdFromNano(
-                    model.nano_cost_cache_read
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatUsdFromNano(
-                    model.nano_cost_cache_write
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-orange-accent);">${formatUsdFromNano(
-                    model.nano_cost_cache_creation
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatUsdFromNano(
-                    model.total_nano_aiu
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
-                    model.total_tokens
-                  )}</td>
                 </tr>
               `;
             })
@@ -1311,21 +1247,17 @@
 
           return `
             <div class="overflow-auto ${state.isTokenUsageLoading ? "opacity-60" : ""}">
-              <table class="w-full min-w-[1320px] text-left text-xs sm:text-sm">
+              <table class="w-full min-w-[880px] text-left text-xs sm:text-sm">
                 <thead style="background-color: var(--color-bg-light-1); color: var(--color-fg-medium);">
                   <tr>
                     <th class="px-4 py-2 font-semibold">Model</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total</th>
                     <th class="px-4 py-2 text-right font-semibold">Requests</th>
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
-                    <th class="px-4 py-2 text-right font-semibold">Input Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Output Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Cache Read Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Cache Write Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Cache Creation Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1348,6 +1280,7 @@
               const userId = formatCellText(event.user_id);
               const sessionId = formatCellText(event.session_id);
               const traceId = formatCellText(event.trace_id);
+              const costBreakdown = getTokenUsageCostLines(event).join("\n");
 
               return `
                 <tr class="border-b last:border-b-0" style="border-color: var(--color-bg-light-1);">
@@ -1369,6 +1302,12 @@
                   <td class="px-4 py-2 max-w-[200px] truncate font-mono" style="color: var(--color-fg-dark);" title="${escapeHtml(
                     traceId
                   )}">${escapeHtml(traceId)}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);" title="${escapeHtml(costBreakdown)}">${formatUsdFromNano(
+                    event.total_nano_aiu
+                  )}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
+                    event.total_tokens
+                  )}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     event.input_tokens
                   )}</td>
@@ -1381,27 +1320,6 @@
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     event.cache_creation_input_tokens
                   )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-blue-accent);">${formatUsdFromNano(
-                    event.nano_cost_input
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-green-accent);">${formatUsdFromNano(
-                    event.nano_cost_output
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-aqua-accent);">${formatUsdFromNano(
-                    event.nano_cost_cache_read
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatUsdFromNano(
-                    event.nano_cost_cache_write
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-orange-accent);">${formatUsdFromNano(
-                    event.nano_cost_cache_creation
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatUsdFromNano(
-                    event.total_nano_aiu
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
-                    event.total_tokens
-                  )}</td>
                 </tr>
               `;
             })
@@ -1409,7 +1327,7 @@
 
           return `
             <div class="overflow-auto ${state.isEventsLoading ? "opacity-60" : ""}">
-              <table class="w-full min-w-[1720px] text-left text-xs sm:text-sm">
+              <table class="w-full min-w-[1280px] text-left text-xs sm:text-sm">
                 <thead style="background-color: var(--color-bg-light-1); color: var(--color-fg-medium);">
                   <tr>
                     <th class="px-4 py-2 font-semibold">Time</th>
@@ -1418,16 +1336,12 @@
                     <th class="px-4 py-2 font-semibold">Model</th>
                     <th class="px-4 py-2 font-semibold">Session</th>
                     <th class="px-4 py-2 font-semibold">Trace</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total</th>
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
-                    <th class="px-4 py-2 text-right font-semibold">Input Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Output Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Cache Read Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Cache Write Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Cache Creation Cost</th>
-                    <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
                   </tr>
                 </thead>
                 <tbody>
