@@ -900,4 +900,19 @@ export const prepareMessagesApiPayload = (
       effort: effort,
     }
   }
+
+  // Drop reasoning effort for models that can't use it. A model that supports
+  // adaptive_thinking accepts an effort (handled in the branch above), so this
+  // only targets non-adaptive_thinking models (e.g. claude-haiku-4.5) that also
+  // declare no supported efforts. For those, an effort arriving on the request
+  // would otherwise be forwarded and rejected with `invalid_reasoning_effort`.
+  if (
+    !selectedModel?.capabilities.supports.adaptive_thinking
+    && payload.output_config?.effort
+  ) {
+    const supported = selectedModel?.capabilities.supports.reasoning_effort
+    if (!supported || supported.length === 0) {
+      delete payload.output_config
+    }
+  }
 }
