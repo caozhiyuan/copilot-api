@@ -113,6 +113,37 @@ const REDACTED_IMAGE_PLACEHOLDER_DATA_URL =
     "OAuj2SEAAAAASUVORK5CYII=",
   ].join("")
 
+const COPILOT_UNSUPPORTED_INPUT_ITEM_FIELDS = [
+  "internal_chat_message_metadata_passthrough",
+] as const
+
+export const sanitizeUnsupportedInputFields = (
+  payload: ResponsesPayload,
+): number => {
+  if (!Array.isArray(payload.input)) {
+    return 0
+  }
+
+  let removedFieldCount = 0
+  for (const item of payload.input) {
+    if (typeof item !== "object" || item === null) {
+      continue
+    }
+
+    const record = item as Record<string, unknown>
+    for (const field of COPILOT_UNSUPPORTED_INPUT_ITEM_FIELDS) {
+      if (!Object.hasOwn(record, field)) {
+        continue
+      }
+
+      delete record[field]
+      removedFieldCount += 1
+    }
+  }
+
+  return removedFieldCount
+}
+
 export const sanitizeOversizedInputImages = (
   payload: ResponsesPayload,
   maxPromptImageSize?: number,
