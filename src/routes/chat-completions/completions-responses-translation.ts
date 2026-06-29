@@ -307,8 +307,15 @@ type ResponseFormat = JsonSchemaResponseFormat | JsonObjectResponseFormat
 /**
  * Recursively inject `additionalProperties: false` into every object-type
  * node of a JSON Schema. The Responses API requires this at every level
- * when `strict: true` is set, but callers (e.g. the OpenAI Python SDK)
- * often omit it.
+ * when `strict: true` is set, but callers (e.g. the OpenAI Python SDK,
+ * Pydantic v2 model_json_schema()) often omit it.
+ *
+ * Handles:
+ * - Direct object nodes (type: "object" with properties)
+ * - Nested properties and array items
+ * - $defs blocks (Pydantic v2 puts all nested models here)
+ * - anyOf/oneOf/allOf variants (Pydantic uses anyOf for Optional fields)
+ * - required array enforcement (strict mode demands all property keys listed)
  */
 const ensureAdditionalPropertiesFalse = (
   schema: Record<string, unknown>,
@@ -319,6 +326,10 @@ const ensureAdditionalPropertiesFalse = (
     clone.additionalProperties = false
 
     if (clone.properties && typeof clone.properties === "object") {
+      const propKeys = Object.keys(clone.properties as Record<string, unknown>)
+      // Strict mode requires every property key in required
+      clone.required = propKeys
+
       const props: Record<string, unknown> = {}
       for (const [key, value] of Object.entries(
         clone.properties as Record<string, unknown>,
@@ -340,6 +351,31 @@ const ensureAdditionalPropertiesFalse = (
     clone.items = ensureAdditionalPropertiesFalse(
       clone.items as Record<string, unknown>,
     )
+  }
+
+  // Recurse into $defs (Pydantic v2 schemas reference nested models via $defs)
+  if (clone.$defs && typeof clone.$defs === "object") {
+    const defs: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(
+      clone.$defs as Record<string, unknown>,
+    )) {
+      defs[key] =
+        value && typeof value === "object" && !Array.isArray(value) ?
+          ensureAdditionalPropertiesFalse(value as Record<string, unknown>)
+        : value
+    }
+    clone.$defs = defs
+  }
+
+  // Recurse into anyOf/oneOf/allOf (Pydantic uses anyOf for Optional/Union fields)
+  for (const keyword of ["anyOf", "oneOf", "allOf"]) {
+    if (Array.isArray(clone[keyword])) {
+      clone[keyword] = (clone[keyword] as unknown[]).map((variant) =>
+        variant && typeof variant === "object" && !Array.isArray(variant) ?
+          ensureAdditionalPropertiesFalse(variant as Record<string, unknown>)
+        : variant,
+      )
+    }
   }
 
   return clone

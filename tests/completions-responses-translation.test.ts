@@ -538,6 +538,274 @@ describe("translateCompletionsToResponsesPayload", () => {
     })
   })
 
+  describe("ensureAdditionalPropertiesFalse — $defs, anyOf, and required", () => {
+    it("patches object schemas inside $defs", () => {
+      const result = translateCompletionsToResponsesPayload(
+        basePayload({
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "response",
+              schema: {
+                $defs: {
+                  Entity: {
+                    type: "object",
+                    properties: {
+                      text: { type: "string" },
+                    },
+                    required: ["text"],
+                  },
+                },
+                type: "object",
+                properties: {
+                  entities: {
+                    type: "array",
+                    items: { $ref: "#/$defs/Entity" },
+                  },
+                },
+                required: ["entities"],
+              },
+              strict: true,
+            },
+          },
+        }),
+      )
+      const text = result.text as {
+        format: { schema: Record<string, unknown> }
+      }
+      const defs = text.format.schema.$defs as Record<
+        string,
+        Record<string, unknown>
+      >
+      expect(defs.Entity.additionalProperties).toBe(false)
+      expect(text.format.schema.additionalProperties).toBe(false)
+    })
+
+    it("recurses into anyOf variants", () => {
+      const result = translateCompletionsToResponsesPayload(
+        basePayload({
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "response",
+              schema: {
+                type: "object",
+                properties: {
+                  value: {
+                    anyOf: [
+                      {
+                        type: "object",
+                        properties: { name: { type: "string" } },
+                        required: ["name"],
+                      },
+                      { type: "null" },
+                    ],
+                  },
+                },
+                required: ["value"],
+              },
+              strict: true,
+            },
+          },
+        }),
+      )
+      const text = result.text as {
+        format: { schema: Record<string, unknown> }
+      }
+      const valueField = (
+        text.format.schema.properties as Record<string, Record<string, unknown>>
+      ).value
+      const variants = valueField.anyOf as Record<string, unknown>[]
+      const objectVariant = variants.find((v) => v.type === "object")
+      expect(objectVariant!.additionalProperties).toBe(false)
+    })
+
+    it("handles Pydantic v2 style schema with $defs and $ref at root", () => {
+      const pydanticSchema = {
+        $defs: {
+          Entity: {
+            description: "An entity extracted from text.",
+            properties: {
+              text: { type: "string", title: "Text" },
+            },
+            required: ["text"],
+            title: "Entity",
+            type: "object",
+          },
+          Fact: {
+            description: "A single extracted fact.",
+            properties: {
+              what: { type: "string", title: "What" },
+              entities: {
+                anyOf: [
+                  { items: { $ref: "#/$defs/Entity" }, type: "array" },
+                  { type: "null" },
+                ],
+                default: null,
+                title: "Entities",
+              },
+            },
+            required: ["what"],
+            title: "Fact",
+            type: "object",
+          },
+        },
+        properties: {
+          facts: {
+            items: { $ref: "#/$defs/Fact" },
+            title: "Facts",
+            type: "array",
+          },
+        },
+        required: ["facts"],
+        title: "FactExtractionResponse",
+        type: "object",
+      }
+
+      const result = translateCompletionsToResponsesPayload(
+        basePayload({
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "response",
+              schema: pydanticSchema,
+              strict: true,
+            },
+          },
+        }),
+      )
+      const text = result.text as {
+        format: { schema: Record<string, unknown> }
+      }
+      const schema = text.format.schema
+      const defs = schema.$defs as Record<string, Record<string, unknown>>
+
+      expect(schema.additionalProperties).toBe(false)
+      expect(defs.Entity.additionalProperties).toBe(false)
+      expect(defs.Fact.additionalProperties).toBe(false)
+    })
+
+    it("recurses into oneOf and allOf variants", () => {
+      const result = translateCompletionsToResponsesPayload(
+        basePayload({
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "response",
+              schema: {
+                type: "object",
+                properties: {
+                  a: {
+                    oneOf: [
+                      { type: "object", properties: { x: { type: "string" } } },
+                      { type: "string" },
+                    ],
+                  },
+                  b: {
+                    allOf: [
+                      { type: "object", properties: { y: { type: "number" } } },
+                    ],
+                  },
+                },
+              },
+              strict: true,
+            },
+          },
+        }),
+      )
+      const text = result.text as {
+        format: { schema: Record<string, unknown> }
+      }
+      const props = text.format.schema.properties as Record<
+        string,
+        Record<string, unknown>
+      >
+      const oneOfVariants = props.a.oneOf as Record<string, unknown>[]
+      const allOfVariants = props.b.allOf as Record<string, unknown>[]
+      expect(oneOfVariants[0].additionalProperties).toBe(false)
+      expect(allOfVariants[0].additionalProperties).toBe(false)
+    })
+
+    it("ensures required includes all property keys for strict mode", () => {
+      const result = translateCompletionsToResponsesPayload(
+        basePayload({
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "response",
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  kind: { type: "string", default: "default" },
+                  score: { type: "number" },
+                },
+                required: ["name"],
+              },
+              strict: true,
+            },
+          },
+        }),
+      )
+      const text = result.text as {
+        format: { schema: Record<string, unknown> }
+      }
+      const required = text.format.schema.required as string[]
+      expect(required).toContain("name")
+      expect(required).toContain("kind")
+      expect(required).toContain("score")
+      expect(required).toHaveLength(3)
+    })
+
+    it("fills required in $defs objects with default fields", () => {
+      const result = translateCompletionsToResponsesPayload(
+        basePayload({
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "response",
+              schema: {
+                $defs: {
+                  Fact: {
+                    type: "object",
+                    properties: {
+                      what: { type: "string" },
+                      fact_kind: {
+                        type: "string",
+                        default: "conversation",
+                      },
+                    },
+                    required: ["what"],
+                  },
+                },
+                type: "object",
+                properties: {
+                  facts: {
+                    type: "array",
+                    items: { $ref: "#/$defs/Fact" },
+                  },
+                },
+                required: ["facts"],
+              },
+              strict: true,
+            },
+          },
+        }),
+      )
+      const text = result.text as {
+        format: { schema: Record<string, unknown> }
+      }
+      const defs = text.format.schema.$defs as Record<
+        string,
+        Record<string, unknown>
+      >
+      const factRequired = defs.Fact.required as string[]
+      expect(factRequired).toContain("what")
+      expect(factRequired).toContain("fact_kind")
+      expect(factRequired).toHaveLength(2)
+    })
+  })
+
   describe("parallel_tool_calls", () => {
     it("defaults to true when absent", () => {
       const result = translateCompletionsToResponsesPayload(basePayload())
