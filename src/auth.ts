@@ -383,6 +383,9 @@ function buildCustomProviderConfig(
     ...(options.authType ? { authType: options.authType } : {}),
     pricingCurrency:
       options.pricingCurrency ?? existingProviderConfig.pricingCurrency,
+    ...(existingProviderConfig.imageEndpoints ?
+      { imageEndpoints: existingProviderConfig.imageEndpoints }
+    : {}),
     ...(existingProviderConfig.models ?
       { models: existingProviderConfig.models }
     : {}),

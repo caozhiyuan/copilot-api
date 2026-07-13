@@ -547,11 +547,12 @@ Copilot API 现在使用子命令结构，主要命令包括：
 - **auth.adminApiKey：** 仅用于 `/admin/*` 路由的单个 admin key。若未配置，服务会在启动时自动生成一个随机 key，并回写到 `config.json`。它同样使用 `x-api-key` 或 `Authorization: Bearer` 这两种头，但普通 `auth.apiKeys` 不能访问 `/admin/*`。
 - **modelMappings：** 用于顶层 `POST /v1/messages`、`POST /v1/messages/count_tokens`、`POST /v1/responses` 和 `POST /v1/chat/completions` 请求的精确 `sourceModel -> targetModel` 重写映射，这几类接口共用同一份规则。省略该字段或保留为 `{}` 时，不会做模型重写。`source` 和 `target` 都必须是非空字符串。`target` 可以是普通模型 ID，也可以是 `provider/model` 形式的别名，例如 `dashscope/qwen3.6-plus`；重写发生在 provider alias 解析之前。这些映射不再按接口区分。`GET/POST /admin/config/model-mappings` 管理接口读写的也只有这个字段。
 - **extraPrompts：** `model -> prompt` 的映射。把 Anthropic 风格请求翻译为 Responses API 时，会将其附加到第一条 system prompt 后面。你可以借此为不同模型注入护栏或指引。缺失的默认项会自动补齐，但不会覆盖你自定义的 prompt。对于 GPT-5.3+ 模型（如 `gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5`），未显式配置时会自动使用内置的 commentary prompt。内置 prompt 会启用带阶段感知的 commentary，让模型在工具调用或更深层推理前先发出简短的用户可见进度说明。
-- **providers：** 全局上游 provider 映射。每个 provider key（例如 `dashscope`）都会变成一个路由前缀（`/dashscope/v1/messages`）。支持 `type: "anthropic"`、`type: "openai-compatible"` 和 `type: "openai-responses"`。顶层客户端也可以在 `/v1/messages`、`/v1/messages/count_tokens`、`/v1/responses` 和 `/v1/chat/completions` 中使用 `model: "dashscope/model-id"`；AI gateway 会在转发上游前移除 `dashscope/` 前缀。`openai-compatible` provider 同时支持 chat 和 Messages 流程：`/v1/chat/completions` 会直连上游 `/v1/chat/completions`，而 `/v1/messages` 和 `/:provider/v1/messages` 会先翻译为上游 Chat Completions，再把响应翻译回 Anthropic Messages。`GET /v1/models` 会聚合已启用 provider 的模型，并以 `provider/model-id` 形式返回；单个 provider 的原始模型列表仍可使用 `GET /dashscope/v1/models`。
+- **providers：** 全局上游 provider 映射。每个 provider key（例如 `dashscope`）都会变成一个路由前缀（`/dashscope/v1/messages`）。支持 `type: "anthropic"`、`type: "openai-compatible"` 和 `type: "openai-responses"`。顶层客户端也可以在 `/v1/messages`、`/v1/messages/count_tokens`、`/v1/responses` 和 `/v1/chat/completions` 中使用 `model: "dashscope/model-id"`；AI gateway 会在转发上游前移除 `dashscope/` 前缀。`openai-compatible` provider 同时支持 chat 和 Messages 流程：`/v1/chat/completions` 会直连上游 `/v1/chat/completions`，而 `/v1/messages` 和 `/:provider/v1/messages` 会先翻译为上游 Chat Completions，再把响应翻译回 Anthropic Messages。provider-scoped Images 请求可通过 `imageEndpoints` 显式启用，其请求体会以流式方式转发到原生上游端点，不会转换为 Responses API。`GET /v1/models` 会聚合已启用 provider 的模型，并以 `provider/model-id` 形式返回；单个 provider 的原始模型列表仍可使用 `GET /dashscope/v1/models`。
   - `enabled`：可选，若省略则默认为 `true`。
-  - `baseUrl`：provider API 的基础 URL，不要带结尾的 endpoint。Anthropic provider 不要带 `/v1/messages`；OpenAI 兼容 provider 不要带 `/v1/chat/completions`；OpenAI Responses provider 不要带 `/v1/responses`。
+  - `baseUrl`：provider API 的基础 URL，不要带结尾的 endpoint。Anthropic provider 不要带 `/v1/messages`；OpenAI 兼容 provider 不要带 `/v1/chat/completions` 和 `/v1/images/*`；OpenAI Responses provider 不要带 `/v1/responses`。
   - `apiKey`：作为上游凭据值使用；普通 provider 必须配置。
   - `authType`：可选，控制 `apiKey` 如何发送到上游。普通 provider 支持 `x-api-key` 和 `authorization`。Anthropic provider 默认 `x-api-key`；OpenAI 兼容和 OpenAI Responses provider 默认 `authorization`。当设置为 `authorization` 时，代理会发送 `Authorization: Bearer <apiKey>`。`oauth2` 仅保留给内置 `codex` provider，并由 `auth login --provider codex` 自动写入。
+  - `imageEndpoints`：可选，显式声明该 provider 开放的原生 OpenAI Images 端点。仅支持 `generations` 和 `edits`。省略或设为 `[]` 时禁用 Images。它是 provider 级能力，不会根据 `type` 或 `models` 配置自动推断。
   - `pricingCurrency`：可选，provider 维度的 token 费用币种，例如 `USD` 或 `CNY`。快捷 provider 默认 DashScope、DeepSeek 为 `CNY`，Codex/OpenRouter 为 `USD`。费用按币种分别汇总，不做汇率换算。
   - `models`：可选，按模型 ID 配置的映射。每个键为请求中的模型名，值支持：
     - `temperature`：可选，当请求未指定时使用的默认温度。
@@ -671,6 +672,8 @@ curl http://localhost:4141/admin/config/model-mappings \
 | `POST /v1/chat/completions` | `POST` | 为给定聊天对话创建模型响应。支持 `openai-compatible` provider 的 `provider/model` 别名；目标 provider 已配置时可在没有 Copilot 的情况下使用。 |
 | `GET /v1/models` | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求会转发到 Codex Models 上游。 |
 | `POST /v1/embeddings` | `POST` | 创建表示输入文本的向量嵌入。 |
+| `POST /:provider/v1/images/generations` | `POST` | 当 `imageEndpoints` 启用该能力时，将 OpenAI Images 生成请求流式转发到 provider 原生 `/v1/images/generations` 端点，并保留上游状态码和响应体。 |
+| `POST /:provider/v1/images/edits` | `POST` | 当 `imageEndpoints` 启用该能力时，将 OpenAI Images 编辑请求流式转发到 provider 原生 `/v1/images/edits` 端点，并保留上游状态码和响应体。 |
 
 ### Codex 后端代理端点
 
@@ -743,6 +746,44 @@ curl http://localhost:4141/v1/chat/completions \
 curl http://localhost:4141/dashscope/v1/messages \
   -H "content-type: application/json" \
   -d '{"model":"qwen3.6-plus","max_tokens":1024,"messages":[{"role":"user","content":"hello"}]}'
+```
+
+只启用该 provider 实际实现的原生 Images 端点。`config.json` 中相关配置如下：
+
+```json
+{
+  "auth": {
+    "apiKeys": ["local-gateway-key"]
+  },
+  "providers": {
+    "my-provider": {
+      "type": "openai-compatible",
+      "baseUrl": "https://images.example.com",
+      "apiKey": "upstream-provider-key",
+      "imageEndpoints": ["generations", "edits"]
+    }
+  }
+}
+```
+
+仅生成使用 `["generations"]`，仅编辑使用 `["edits"]`；省略 `imageEndpoints` 或设为 `[]` 时两个端点均禁用。网关固定转发到 `${baseUrl}/v1/images/<endpoint>`；如果 Images 使用不同的上游 base URL，应单独配置一个 provider。内置 `codex` OAuth provider 不支持 Images。`auth.apiKeys` 用于客户端访问本地网关，而 provider 的 `apiKey` 只用于访问上游。
+
+OpenAI Images 客户端应把 provider 放入 base URL。当配置了 `auth.apiKeys` 时，`OPENAI_API_KEY` 必须匹配其中一个网关 key：
+
+```sh
+export OPENAI_BASE_URL="http://localhost:4141/my-provider/v1"
+export OPENAI_API_KEY="your_local_gateway_key"
+
+curl "$OPENAI_BASE_URL/images/generations" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-image-2","prompt":"A red circle on a white background","quality":"low","size":"1024x1024"}'
+
+curl "$OPENAI_BASE_URL/images/edits" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F "model=gpt-image-2" \
+  -F "prompt=Change only the background" \
+  -F "image=@input.png"
 ```
 
 ## 使用建议

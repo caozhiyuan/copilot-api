@@ -541,11 +541,12 @@ Use `copilot-api auth login --provider custom` to add or update another third-pa
 - **auth.adminApiKey:** Single admin key used only for `/admin/*` routes. If missing, the server generates a random key at startup and writes it back to `config.json`. Requests use the same `x-api-key` or `Authorization: Bearer` headers, but regular `auth.apiKeys` never grant access to `/admin/*`.
 - **modelMappings:** Exact `sourceModel -> targetModel` rewrites shared by top-level `POST /v1/messages`, `POST /v1/messages/count_tokens`, `POST /v1/responses`, and `POST /v1/chat/completions` requests. Omit it or leave it as `{}` to disable rewrites. Both the source and target must be non-empty strings. Targets can be regular model IDs or `provider/model` aliases such as `dashscope/qwen3.6-plus`, and the rewrite happens before provider alias parsing. These mappings are not split per interface. The admin endpoints `GET/POST /admin/config/model-mappings` read and update only this field.
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Responses API. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts. For GPT-5.3+ models (e.g. `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`), a built-in commentary prompt is used as fallback when not explicitly configured. The built-in prompts enable phase-aware commentary, which lets the model emit a short user-facing progress update before tools or deeper reasoning.
-- **providers:** Global upstream provider map. Each provider key (for example `dashscope`) becomes a route prefix (`/dashscope/v1/messages`). Supports `type: "anthropic"`, `type: "openai-compatible"`, and `type: "openai-responses"`. Top-level clients can also use `model: "dashscope/model-id"` with `/v1/messages`, `/v1/messages/count_tokens`, `/v1/responses`, and `/v1/chat/completions`; the gateway strips the `dashscope/` prefix before forwarding upstream. `openai-compatible` providers support both chat and Messages flows: `/v1/chat/completions` is proxied to upstream `/v1/chat/completions`, while `/v1/messages` and `/:provider/v1/messages` are translated to upstream chat completions and translated back to Anthropic Messages responses. `GET /v1/models` aggregates enabled provider models with `provider/model-id` IDs; use `GET /dashscope/v1/models` for a single provider's raw model list.
+- **providers:** Global upstream provider map. Each provider key (for example `dashscope`) becomes a route prefix (`/dashscope/v1/messages`). Supports `type: "anthropic"`, `type: "openai-compatible"`, and `type: "openai-responses"`. Top-level clients can also use `model: "dashscope/model-id"` with `/v1/messages`, `/v1/messages/count_tokens`, `/v1/responses`, and `/v1/chat/completions`; the gateway strips the `dashscope/` prefix before forwarding upstream. `openai-compatible` providers support both chat and Messages flows: `/v1/chat/completions` is proxied to upstream `/v1/chat/completions`, while `/v1/messages` and `/:provider/v1/messages` are translated to upstream chat completions and translated back to Anthropic Messages responses. Provider-scoped Images requests can be enabled explicitly with `imageEndpoints`; their bodies are streamed to the native upstream endpoints without Responses API translation. `GET /v1/models` aggregates enabled provider models with `provider/model-id` IDs; use `GET /dashscope/v1/models` for a single provider's raw model list.
   - `enabled` defaults to `true` if omitted.
-  - `baseUrl` should be provider API base URL without the final endpoint. For Anthropic providers, omit `/v1/messages`; for OpenAI-compatible providers, omit `/v1/chat/completions`; for OpenAI Responses providers, omit `/v1/responses`.
+  - `baseUrl` should be provider API base URL without the final endpoint. For Anthropic providers, omit `/v1/messages`; for OpenAI-compatible providers, omit `/v1/chat/completions` and `/v1/images/*`; for OpenAI Responses providers, omit `/v1/responses`.
   - `apiKey` is used as the upstream credential value and is required for regular providers.
   - `authType` (optional): Controls how `apiKey` is sent upstream. Supports `x-api-key` and `authorization` for regular providers. Anthropic providers default to `x-api-key`; OpenAI-compatible and OpenAI Responses providers default to `authorization`. When set to `authorization`, the proxy sends `Authorization: Bearer <apiKey>`. `oauth2` is reserved for the built-in `codex` provider and is written automatically by `auth login --provider codex`.
+  - `imageEndpoints` (optional): Explicit allowlist of native OpenAI Images endpoints exposed for this provider. Supported values are `generations` and `edits`. Omit it or use `[]` to disable Images. This is a provider-level capability and is not inferred from `type` or the configured `models` map.
   - `pricingCurrency` (optional): Provider-level currency used for token cost calculation, for example `USD` or `CNY`. Quick providers default to `CNY` for DashScope and DeepSeek, and `USD` for Codex/OpenRouter. Costs are grouped by currency and are not exchange-rate converted.
   - `models` (optional): Per-model configuration map. Each key is a model ID (matching the model name in requests), and the value is:
     - `temperature` (optional): Default temperature value used when the request does not specify one.
@@ -665,6 +666,8 @@ These endpoints mimic the OpenAI API structure.
 | `POST /v1/chat/completions` | `POST` | Creates a model response for the given chat conversation. Supports `provider/model` aliases for `openai-compatible` providers and can be used without Copilot when the target provider is configured. |
 | `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) are forwarded to the Codex Models upstream. |
 | `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
+| `POST /:provider/v1/images/generations` | `POST` | When enabled by `imageEndpoints`, streams an OpenAI Images generation request to the provider's native `/v1/images/generations` endpoint and preserves its status and body. |
+| `POST /:provider/v1/images/edits` | `POST` | When enabled by `imageEndpoints`, streams an OpenAI Images edit request to the provider's native `/v1/images/edits` endpoint and preserves its status and body. |
 
 ### Codex Backend Proxy Endpoints
 
@@ -737,6 +740,44 @@ curl http://localhost:4141/v1/chat/completions \
 curl http://localhost:4141/dashscope/v1/messages \
   -H "content-type: application/json" \
   -d '{"model":"qwen3.6-plus","max_tokens":1024,"messages":[{"role":"user","content":"hello"}]}'
+```
+
+Enable only the native Images endpoints that the provider implements. The relevant `config.json` fields are:
+
+```json
+{
+  "auth": {
+    "apiKeys": ["local-gateway-key"]
+  },
+  "providers": {
+    "my-provider": {
+      "type": "openai-compatible",
+      "baseUrl": "https://images.example.com",
+      "apiKey": "upstream-provider-key",
+      "imageEndpoints": ["generations", "edits"]
+    }
+  }
+}
+```
+
+Use `["generations"]` for generation only, `["edits"]` for editing only, and omit `imageEndpoints` or use `[]` to disable both. The gateway always forwards to `${baseUrl}/v1/images/<endpoint>`; configure a separate provider when Images uses a different upstream base URL. The built-in `codex` OAuth provider is not supported. `auth.apiKeys` controls client access to the gateway, while the provider's `apiKey` is used only upstream.
+
+OpenAI Images clients should put the provider in the base URL. When `auth.apiKeys` is configured, `OPENAI_API_KEY` must match one of those gateway keys:
+
+```sh
+export OPENAI_BASE_URL="http://localhost:4141/my-provider/v1"
+export OPENAI_API_KEY="your_local_gateway_key"
+
+curl "$OPENAI_BASE_URL/images/generations" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-image-2","prompt":"A red circle on a white background","quality":"low","size":"1024x1024"}'
+
+curl "$OPENAI_BASE_URL/images/edits" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -F "model=gpt-image-2" \
+  -F "prompt=Change only the background" \
+  -F "image=@input.png"
 ```
 
 ## Usage Tips

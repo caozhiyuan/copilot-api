@@ -61,6 +61,7 @@ describe('desktop provider auth', () => {
       {
         getEnabledProviders: () => ['custom_deepseek'],
         getRawProviderConfig: () => ({
+          imageEndpoints: ['generations', 'edits'],
           models: {
             'deepseek-v4-pro': {
               temperature: 0.2,
@@ -86,6 +87,7 @@ describe('desktop provider auth', () => {
       apiKey: 'custom-key',
       baseUrl: 'https://custom.example/api',
       enabled: true,
+      imageEndpoints: ['generations', 'edits'],
       models: {
         'deepseek-v4-pro': {
           temperature: 0.2,

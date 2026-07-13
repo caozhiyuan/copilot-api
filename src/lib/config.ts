@@ -64,6 +64,12 @@ export interface TokenUsagePricingConfig extends TokenUsagePricingTier {
 }
 
 export type ProviderAuthType = "authorization" | "oauth2" | "x-api-key"
+export const SUPPORTED_PROVIDER_IMAGE_ENDPOINTS = [
+  "generations",
+  "edits",
+] as const
+export type ProviderImageEndpoint =
+  (typeof SUPPORTED_PROVIDER_IMAGE_ENDPOINTS)[number]
 export const SUPPORTED_PROVIDER_TYPES = [
   "anthropic",
   "openai-compatible",
@@ -78,6 +84,7 @@ export interface ProviderConfig {
   baseUrl?: string
   apiKey?: string
   authType?: ProviderAuthType
+  imageEndpoints?: Array<ProviderImageEndpoint>
   pricingCurrency?: string
   models?: Record<string, ModelConfig>
 }
@@ -88,6 +95,7 @@ export interface ResolvedProviderConfig {
   baseUrl: string
   apiKey: string
   authType: ProviderAuthType
+  imageEndpoints?: Array<ProviderImageEndpoint>
   pricingCurrency?: string
   models?: Record<string, ModelConfig>
 }
@@ -557,6 +565,39 @@ export function isSupportedProviderType(value: string): value is ProviderType {
   return SUPPORTED_PROVIDER_TYPES.includes(value as ProviderType)
 }
 
+function normalizeProviderImageEndpoints(
+  providerName: string,
+  value: unknown,
+): Array<ProviderImageEndpoint> {
+  if (value === undefined) {
+    return []
+  }
+
+  if (!Array.isArray(value)) {
+    consola.warn(
+      `Provider ${providerName} has invalid imageEndpoints; expected an array containing 'generations' and/or 'edits'`,
+    )
+    return []
+  }
+
+  const validEndpoints = value.filter(
+    (endpoint): endpoint is ProviderImageEndpoint =>
+      typeof endpoint === "string"
+      && SUPPORTED_PROVIDER_IMAGE_ENDPOINTS.includes(
+        endpoint as ProviderImageEndpoint,
+      ),
+  )
+  const normalizedEndpoints = [...new Set(validEndpoints)]
+
+  if (normalizedEndpoints.length !== value.length) {
+    consola.warn(
+      `Provider ${providerName} has invalid or duplicate imageEndpoints entries; only 'generations' and 'edits' are supported`,
+    )
+  }
+
+  return normalizedEndpoints
+}
+
 function getDefaultProviderAuthType(
   providerType: ProviderType,
 ): ProviderAuthType {
@@ -701,6 +742,10 @@ export function getProviderConfig(name: string): ResolvedProviderConfig | null {
     baseUrl,
     apiKey,
     authType,
+    imageEndpoints: normalizeProviderImageEndpoints(
+      providerName,
+      provider.imageEndpoints,
+    ),
     pricingCurrency: normalizePricingCurrency(provider.pricingCurrency),
     models: provider.models,
   }

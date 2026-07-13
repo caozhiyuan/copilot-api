@@ -15,6 +15,7 @@ import { configRoutes } from "./routes/admin/config/route"
 import { embeddingRoutes } from "./routes/embeddings/route"
 import { messageRoutes } from "./routes/messages/route"
 import { modelRoutes } from "./routes/models/route"
+import { providerImageRoutes } from "./routes/provider/images/route"
 import { providerMessageRoutes } from "./routes/provider/messages/route"
 import { providerModelRoutes } from "./routes/provider/models/route"
 import { responsesRoutes } from "./routes/responses/route"
@@ -70,6 +71,7 @@ server.route("/v1/responses", responsesRoutes)
 // Anthropic compatible endpoints
 server.route("/v1/messages", messageRoutes)
 
-// Provider scoped Anthropic-compatible endpoints
+// Provider-scoped endpoints
 server.route("/:provider/v1/messages", providerMessageRoutes)
 server.route("/:provider/v1/models", providerModelRoutes)
+server.route("/:provider/v1/images", providerImageRoutes)

@@ -21,6 +21,7 @@ interface ConfigFileShape {
       baseUrl?: string
       apiKey?: string
       authType?: string
+      imageEndpoints?: unknown
     }
   >
 }
@@ -137,6 +138,47 @@ describe("builtin provider config", () => {
     )
 
     expect(readConfigFile(configPath).providers).toEqual({})
+  })
+
+  test("normalizes provider image endpoint capabilities", () => {
+    const tempDir = createTempConfigDir()
+    writeConfigFile(tempDir, {
+      providers: {
+        invalid: {
+          apiKey: "provider-key",
+          baseUrl: "https://invalid.example",
+          imageEndpoints: "generations",
+          type: "openai-compatible",
+        },
+        missing: {
+          apiKey: "provider-key",
+          baseUrl: "https://missing.example",
+          type: "openai-compatible",
+        },
+        valid: {
+          apiKey: "provider-key",
+          baseUrl: "https://valid.example",
+          imageEndpoints: [
+            "generations",
+            "unsupported",
+            "edits",
+            "generations",
+          ],
+          type: "openai-compatible",
+        },
+      },
+    })
+
+    const output = runScript(
+      tempDir,
+      'const { getProviderConfig } = await import("./src/lib/config"); console.log(JSON.stringify({ invalid: getProviderConfig("invalid")?.imageEndpoints, missing: getProviderConfig("missing")?.imageEndpoints, valid: getProviderConfig("valid")?.imageEndpoints }));',
+    )
+
+    expect(JSON.parse(output)).toEqual({
+      invalid: [],
+      missing: [],
+      valid: ["generations", "edits"],
+    })
   })
 
   test("isGpt56OrAbove detects gpt-5.6 and above models", () => {

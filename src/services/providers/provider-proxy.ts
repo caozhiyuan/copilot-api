@@ -1,5 +1,8 @@
 import consola from "consola"
-import type { ResolvedProviderConfig } from "~/lib/config"
+import type {
+  ProviderImageEndpoint,
+  ResolvedProviderConfig,
+} from "~/lib/config"
 import type { AnthropicMessagesPayload } from "~/routes/messages/anthropic-types"
 import type { ChatCompletionsPayload } from "~/services/copilot/create-chat-completions"
 import type { ResponsesPayload } from "~/services/copilot/create-responses"
@@ -24,9 +27,19 @@ const STRIPPED_RESPONSE_HEADERS = [
   "upgrade",
 ] as const
 
+interface ProviderUpstreamHeaderOptions {
+  contentEncoding?: string
+  contentType?: string
+}
+
+type StreamingRequestInit = RequestInit & {
+  duplex?: "half"
+}
+
 export function buildProviderUpstreamHeaders(
   providerConfig: ResolvedProviderConfig,
   requestHeaders: Headers,
+  options: ProviderUpstreamHeaderOptions = {},
 ): Record<string, string> {
   const authHeaders: Record<string, string> = {}
   if (providerConfig.authType === "x-api-key") {
@@ -36,7 +49,10 @@ export function buildProviderUpstreamHeaders(
   }
 
   const headers: Record<string, string> = {
-    "content-type": "application/json",
+    "content-type": options.contentType ?? "application/json",
+    ...(options.contentEncoding ?
+      { "content-encoding": options.contentEncoding }
+    : {}),
     accept: "application/json",
     ...authHeaders,
   }
@@ -126,4 +142,30 @@ export async function forwardProviderModels(
     method: "GET",
     headers: buildProviderUpstreamHeaders(providerConfig, requestHeaders),
   })
+}
+
+export async function forwardProviderImageRequest(
+  providerConfig: ResolvedProviderConfig,
+  endpoint: ProviderImageEndpoint,
+  request: Request,
+): Promise<Response> {
+  const body = request.body
+  const requestInit: StreamingRequestInit = {
+    method: "POST",
+    headers: buildProviderUpstreamHeaders(providerConfig, request.headers, {
+      contentEncoding: request.headers.get("content-encoding") ?? undefined,
+      contentType: request.headers.get("content-type") ?? "application/json",
+    }),
+    body,
+    signal: request.signal,
+  }
+
+  if (body) {
+    requestInit.duplex = "half"
+  }
+
+  return await fetch(
+    `${providerConfig.baseUrl}/v1/images/${endpoint}`,
+    requestInit,
+  )
 }

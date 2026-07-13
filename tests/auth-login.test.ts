@@ -12,6 +12,7 @@ interface ConfigFileShape {
       authType?: string
       baseUrl?: string
       enabled?: boolean
+      imageEndpoints?: Array<string>
       models?: Record<string, unknown>
       pricingCurrency?: string
       type?: string
@@ -392,6 +393,7 @@ describe("auth login validation", () => {
           apiKey: "old-key",
           baseUrl: "https://old.example",
           enabled: true,
+          imageEndpoints: ["generations", "edits"],
           models: {
             "qwen-plus": {
               temperature: 0.2,
@@ -420,6 +422,7 @@ describe("auth login validation", () => {
       apiKey: "new-key",
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode",
       enabled: true,
+      imageEndpoints: ["generations", "edits"],
       models: {
         "qwen-plus": {
           temperature: 0.2,
