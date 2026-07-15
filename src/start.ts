@@ -9,6 +9,7 @@ import invariant from "tiny-invariant"
 import { runProviderSetup } from "./auth"
 import { listEnabledProviders, mergeConfigWithDefaults } from "./lib/config"
 import { readGitHubToken } from "./lib/credential-store"
+import { getLatestModelForFamily } from "./lib/models"
 import { initOpencodeVersion } from "./lib/opencode"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
@@ -60,11 +61,11 @@ async function setupCopilotMode(
   )
 
   if (claudeCode) {
-    await runClaudeCode(serverUrl)
+    runClaudeCode(serverUrl)
   }
 }
 
-async function runClaudeCode(serverUrl: string): Promise<void> {
+function runClaudeCode(serverUrl: string): void {
   consola.log(
     "\n💡 Tip: The --claude-code flag simply generates a clipboard command for launching Claude Code. \n"
       + "All models remain fully accessible without this flag, just configure the model ID directly in your settings.json file.",
@@ -72,29 +73,27 @@ async function runClaudeCode(serverUrl: string): Promise<void> {
 
   invariant(state.models, "Models should be loaded by now")
 
-  const selectedModel = await consola.prompt(
-    "Select a model to use with Claude Code",
-    {
-      type: "select",
-      options: state.models.data.map((model) => model.id),
-    },
-  )
+  // Default to the latest available model for each Claude Code size tier so
+  // opus maps to opus, sonnet maps to sonnet, and haiku maps to haiku.
+  const opusModel = getLatestModelForFamily("opus")?.id
+  const sonnetModel = getLatestModelForFamily("sonnet")?.id
+  const haikuModel = getLatestModelForFamily("haiku")?.id
 
-  const selectedSmallModel = await consola.prompt(
-    "Select a small model to use with Claude Code",
-    {
-      type: "select",
-      options: state.models.data.map((model) => model.id),
-    },
+  consola.info(
+    "Selected default Claude Code models:\n"
+      + `- Opus:   ${opusModel ?? "(none available)"}\n`
+      + `- Sonnet: ${sonnetModel ?? "(none available)"}\n`
+      + `- Haiku:  ${haikuModel ?? "(none available)"}`,
   )
 
   const command = generateEnvScript(
     {
       ANTHROPIC_BASE_URL: serverUrl,
       ANTHROPIC_AUTH_TOKEN: "dummy",
-      ANTHROPIC_MODEL: selectedModel,
-      ANTHROPIC_DEFAULT_SONNET_MODEL: selectedModel,
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: selectedSmallModel,
+      ANTHROPIC_MODEL: sonnetModel ?? opusModel,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: opusModel,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetModel,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: haikuModel,
       DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       CLAUDE_CODE_ATTRIBUTION_HEADER: "0",

@@ -42,6 +42,42 @@ export const findEndpointModel = (sdkModelId: string): Model | undefined => {
 }
 
 /**
+ * Finds the latest available model for a given Claude family (e.g. "opus",
+ * "sonnet", "haiku") among the models currently cached in `state.models`.
+ * "Latest" is determined by the highest semantic version parsed from the model
+ * ID. Returns `undefined` when no model of that family is available.
+ */
+export const getLatestModelForFamily = (family: string): Model | undefined => {
+  const models = state.models?.data ?? []
+
+  let best: { model: Model; major: number; minor: number } | undefined
+
+  for (const model of models) {
+    const normalized = normalizeSdkModelId(model.id)
+    if (!normalized || normalized.family !== family) {
+      continue
+    }
+
+    const [majorPart, minorPart = "0"] = normalized.version.split(".")
+    const major = Number.parseInt(majorPart, 10)
+    const minor = Number.parseInt(minorPart, 10)
+    if (Number.isNaN(major) || Number.isNaN(minor)) {
+      continue
+    }
+
+    if (
+      !best
+      || major > best.major
+      || (major === best.major && minor > best.minor)
+    ) {
+      best = { model, major, minor }
+    }
+  }
+
+  return best?.model
+}
+
+/**
  * Normalizes an SDK model ID to extract the model family and version.
  * this method from github copilot extension
  * Examples:

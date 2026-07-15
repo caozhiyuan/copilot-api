@@ -162,7 +162,7 @@ https://github.com/caozhiyuan/copilot-api/releases
 npx @jeffreycao/copilot-api@latest start --claude-code
 ```
 
-你会被提示选择一个主模型，以及一个用于后台任务的 "small, fast" 模型。选择完成后，会有一条命令被复制到剪贴板中。该命令会设置 Claude Code 使用这个 AI gateway 所需的环境变量。
+你不再需要手动选择模型。Gateway 会自动检测每个 Claude Code 尺寸档位对应的最新可用模型——opus 映射到最新的 Opus 模型，sonnet 映射到最新的 Sonnet 模型，haiku 映射到最新的 Haiku 模型——并生成相应设置 `ANTHROPIC_DEFAULT_OPUS_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL` 和 `ANTHROPIC_DEFAULT_HAIKU_MODEL` 的命令。若某个档位没有匹配的可用模型，则会被省略。该命令会被复制到剪贴板，并设置 Claude Code 使用这个 AI gateway 所需的环境变量。
 
 在新的终端中粘贴并执行这条命令，即可启动 Claude Code。
 
