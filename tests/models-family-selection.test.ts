@@ -46,12 +46,15 @@ test("returns the highest version model for a family", () => {
     "claude-opus-4.5",
     "claude-opus-4.8",
     "claude-sonnet-4.6",
+    "claude-sonnet-5",
     "claude-haiku-4.5",
+    "claude-fable-5",
   ])
 
   expect(getLatestModelForFamily("opus")?.id).toBe("claude-opus-4.8")
-  expect(getLatestModelForFamily("sonnet")?.id).toBe("claude-sonnet-4.6")
+  expect(getLatestModelForFamily("sonnet")?.id).toBe("claude-sonnet-5")
   expect(getLatestModelForFamily("haiku")?.id).toBe("claude-haiku-4.5")
+  expect(getLatestModelForFamily("fable")?.id).toBe("claude-fable-5")
 })
 
 test("compares major before minor version", () => {
