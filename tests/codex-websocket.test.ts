@@ -120,8 +120,10 @@ const setGlobalDispatcherMock = mock((_dispatcher: unknown) => {})
 const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
   Promise.resolve(new Response("unexpected http", { status: 500 })),
 )
+const actualUndici = await import("undici")
 
 await mock.module("undici", () => ({
+  ...actualUndici,
   Agent: MockAgent,
   ProxyAgent: MockProxyAgent,
   setGlobalDispatcher: setGlobalDispatcherMock,
