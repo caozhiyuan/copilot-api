@@ -155,8 +155,10 @@ class MockProxyAgent extends MockAgent {
 }
 
 const setGlobalDispatcherMock = mock((_dispatcher: unknown) => {})
+const actualUndici = await import("undici")
 
 await mock.module("undici", () => ({
+  ...actualUndici,
   Agent: MockAgent,
   ProxyAgent: MockProxyAgent,
   setGlobalDispatcher: setGlobalDispatcherMock,
