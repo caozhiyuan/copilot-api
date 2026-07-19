@@ -142,6 +142,9 @@ const zh: Locale = {
     restartAppPrompt:
       '设置已保存。OAuth App、API Home 和 Enterprise URL 需重启应用后才能生效。',
     sectionGeneral: '通用',
+    launchAtLogin: '登录时启动',
+    launchAtLoginDesc:
+      '登录操作系统时启动 Copilot API；启用“最小化到托盘”后将静默启动',
     minimizeToTray: '最小化到托盘',
     minimizeToTrayDesc: '关闭窗口时隐藏到系统托盘，不退出程序',
     sectionNetwork: '网络',

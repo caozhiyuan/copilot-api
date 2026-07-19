@@ -147,6 +147,9 @@ const en: Locale = {
     restartAppPrompt:
       'Saved. Restart the app for OAuth App, API Home, and Enterprise URL changes to take effect.',
     sectionGeneral: 'General',
+    launchAtLogin: 'Launch at login',
+    launchAtLoginDesc:
+      'Launch Copilot API when you sign in; starts hidden when Minimize to tray is enabled',
     minimizeToTray: 'Minimize to tray',
     minimizeToTrayDesc: "Hide to system tray when closing, don't quit",
     sectionNetwork: 'Network',

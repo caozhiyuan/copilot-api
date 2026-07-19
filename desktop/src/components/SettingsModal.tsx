@@ -206,6 +206,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     oauthApp: 'default',
     enterpriseUrl: '',
     lastPort: 4141,
+    launchAtLogin: false,
     minimizeToTray: false,
     accountType: 'individual',
     verbose: false,
@@ -416,6 +417,22 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                     ))}
                   </div>
                 </div>
+
+                {(window.electronAPI.platform === 'win32'
+                  || window.electronAPI.platform === 'darwin'
+                  || window.electronAPI.platform === 'linux') && (
+                  <SettingRow
+                    label={t('settings.launchAtLogin')}
+                    description={t('settings.launchAtLoginDesc')}
+                  >
+                    <Toggle
+                      checked={settings.launchAtLogin}
+                      onChange={(v) =>
+                        setSettings((s) => ({ ...s, launchAtLogin: v }))
+                      }
+                    />
+                  </SettingRow>
+                )}
 
                 <SettingRow
                   label={t('settings.minimizeToTray')}

@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   oauthApp: 'default',
   enterpriseUrl: '',
   lastPort: 4141,
+  launchAtLogin: false,
   minimizeToTray: false,
   accountType: 'individual',
   verbose: false,
@@ -81,6 +82,7 @@ export function normalizeSettings(
       typeof settings?.lastPort === 'number' ?
         settings.lastPort
       : DEFAULT_SETTINGS.lastPort,
+    launchAtLogin: settings?.launchAtLogin === true,
     minimizeToTray:
       typeof settings?.minimizeToTray === 'boolean' ?
         settings.minimizeToTray
