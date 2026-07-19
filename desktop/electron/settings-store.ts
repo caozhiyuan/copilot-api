@@ -136,7 +136,7 @@ export function readSettingsSync(): DesktopSettings {
     const raw = fsSync.readFileSync(SETTINGS_PATH, 'utf8')
     return normalizeSettings(JSON.parse(raw) as Partial<DesktopSettings>)
   } catch {
-    return { ...DEFAULT_SETTINGS, proxy: { ...DEFAULT_SETTINGS.proxy } }
+    return normalizeSettings(null)
   }
 }
 
@@ -145,7 +145,7 @@ export async function readSettings(): Promise<DesktopSettings> {
     const raw = await fs.readFile(SETTINGS_PATH, 'utf8')
     return normalizeSettings(JSON.parse(raw) as Partial<DesktopSettings>)
   } catch {
-    return { ...DEFAULT_SETTINGS, proxy: { ...DEFAULT_SETTINGS.proxy } }
+    return normalizeSettings(null)
   }
 }
 
