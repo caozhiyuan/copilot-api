@@ -349,11 +349,13 @@ async function initializeApplication(): Promise<void> {
   registerIpcHandlers(win, {
     getEffectiveProxySettings,
     onQuit: quitApplication,
-    onSettingsChange: async (settings, prevSettings) => {
-      await applyElectronProxy(getEffectiveProxySettings(settings))
+    onBeforeSettingsSave: async (settings, prevSettings) => {
       if (settings.launchAtLogin !== prevSettings.launchAtLogin) {
         await applyLaunchAtLogin(app, settings)
       }
+    },
+    onSettingsChange: async (settings, prevSettings) => {
+      await applyElectronProxy(getEffectiveProxySettings(settings))
 
       if (
         settings.theme !== prevSettings.theme

@@ -257,7 +257,14 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
 
       onClose()
     } catch (error) {
-      if (initialSettings) setSettings(initialSettings)
+      const savedSettings = await window.electronAPI
+        .getSettings()
+        .catch(() => initialSettings)
+      if (savedSettings) {
+        setSettings(savedSettings)
+        setLangPref(savedSettings.language)
+        setThemePref(savedSettings.theme)
+      }
       window.alert(error instanceof Error ? error.message : String(error))
     } finally {
       setSaving(false)
