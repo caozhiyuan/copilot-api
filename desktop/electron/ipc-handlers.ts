@@ -291,10 +291,20 @@ export function registerIpcHandlers(
   ipcMain.handle('settings:get', async () => readSettings())
   ipcMain.handle('settings:save', async (_event, settings: DesktopSettings) => {
     const prev = await readSettings()
-    await writeSettings(settings)
-    // Notify the main process after settings are saved so tray state and labels stay in sync.
-    if (options.onSettingsChange) {
-      await options.onSettingsChange(settings, prev)
+    try {
+      if (options.onSettingsChange) {
+        await options.onSettingsChange(settings, prev)
+      }
+      await writeSettings(settings)
+    } catch (error) {
+      if (options.onSettingsChange) {
+        try {
+          await options.onSettingsChange(prev, settings)
+        } catch (rollbackError) {
+          console.error('Failed to roll back desktop settings:', rollbackError)
+        }
+      }
+      throw error
     }
   })
   ipcMain.handle('config:get-model-mappings', async () =>

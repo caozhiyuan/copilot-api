@@ -256,6 +256,9 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
       }
 
       onClose()
+    } catch (error) {
+      if (initialSettings) setSettings(initialSettings)
+      window.alert(error instanceof Error ? error.message : String(error))
     } finally {
       setSaving(false)
     }
