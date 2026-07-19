@@ -23,6 +23,7 @@ import {
   hasNoProxyServerSwitch,
 } from './electron-proxy-config'
 import { tMain } from './i18n'
+import { applyLaunchAtLogin, wasLaunchedAtLogin } from './login-item'
 import { readSettings, readSettingsSync } from './settings-store'
 
 const CLI_ENV_FLAGS = {
@@ -235,7 +236,7 @@ function destroyTray(): void {
   }
 }
 
-function createWindow(): BrowserWindow {
+function createWindow(startHidden = false): BrowserWindow {
   const win = new BrowserWindow({
     width: 1000,
     height: 650,
@@ -255,9 +256,14 @@ function createWindow(): BrowserWindow {
   win.removeMenu()
 
   mainWindow = win
-  win.maximize()
+  if (startHidden) win.once('show', () => win.maximize())
+  else win.maximize()
 
-  win.once('ready-to-show', () => win.show())
+  win.once('ready-to-show', () => {
+    if (!startHidden) {
+      win.show()
+    }
+  })
 
   win.on('closed', () => {
     if (mainWindow === win) {
@@ -314,13 +320,20 @@ void app.whenReady().then(async () => {
   const settings = await readSettings()
   await applyElectronProxy(getEffectiveProxySettings(settings))
 
-  const win = createWindow()
+  const launchedAtLogin = wasLaunchedAtLogin(app)
+  await applyLaunchAtLogin(app, settings).catch((error: unknown) => {
+    console.error('Failed to apply launch-at-login setting:', error)
+  })
+
+  const startHidden = settings.minimizeToTray && launchedAtLogin
+  const win = createWindow(startHidden)
 
   registerIpcHandlers(win, {
     getEffectiveProxySettings,
     onQuit: quitApplication,
     onSettingsChange: async (settings, prevSettings) => {
       await applyElectronProxy(getEffectiveProxySettings(settings))
+      await applyLaunchAtLogin(app, settings)
 
       if (
         settings.theme !== prevSettings.theme
@@ -351,6 +364,9 @@ void app.whenReady().then(async () => {
   // Only create the tray when minimize-to-tray is enabled.
   if (settings.minimizeToTray) {
     await createTray(win)
+    if (startHidden && process.platform === 'darwin') {
+      app.dock?.hide()
+    }
   }
 
   onStatusChange((status) => {
