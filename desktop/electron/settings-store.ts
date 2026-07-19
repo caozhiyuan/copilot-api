@@ -33,6 +33,12 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   },
 }
 
+let launchAtLoginFallback = DEFAULT_SETTINGS.launchAtLogin
+
+export function setLaunchAtLoginFallback(enabled: boolean): void {
+  launchAtLoginFallback = enabled
+}
+
 function isDesktopProxyMode(
   value: unknown,
 ): value is DesktopProxySettings['mode'] {
@@ -82,7 +88,10 @@ export function normalizeSettings(
       typeof settings?.lastPort === 'number' ?
         settings.lastPort
       : DEFAULT_SETTINGS.lastPort,
-    launchAtLogin: settings?.launchAtLogin === true,
+    launchAtLogin:
+      typeof settings?.launchAtLogin === 'boolean' ?
+        settings.launchAtLogin
+      : launchAtLoginFallback,
     minimizeToTray:
       typeof settings?.minimizeToTray === 'boolean' ?
         settings.minimizeToTray

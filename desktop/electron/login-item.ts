@@ -10,7 +10,10 @@ const WINDOWS_LOGIN_ITEM_NAME = 'com.copilot-api.desktop'
 interface LoginItemController {
   readonly isPackaged: boolean
   setLoginItemSettings(settings: Electron.Settings): void
-  getLoginItemSettings(): { wasOpenedAtLogin: boolean }
+  getLoginItemSettings(): Pick<
+    Electron.LoginItemSettings,
+    'openAtLogin' | 'wasOpenedAtLogin' | 'launchItems'
+  >
 }
 
 interface LoginItemRuntime {
@@ -40,6 +43,11 @@ function supportsLaunchAtLogin(platform: NodeJS.Platform): boolean {
   return platform === 'win32' || platform === 'darwin' || platform === 'linux'
 }
 
+function getLinuxAutostartPath(runtime: LoginItemRuntime): string {
+  const configHome = runtime.configHome ?? path.join(os.homedir(), '.config')
+  return path.join(configHome, 'autostart', 'copilot-api.desktop')
+}
+
 function quoteDesktopExecArg(value: string): string {
   // GLib rejects percent signs in executable paths even when escaped as %%.
   // eslint-disable-next-line no-control-regex
@@ -64,12 +72,7 @@ export async function applyLaunchAtLogin(
   }
 
   if (runtime.platform === 'linux') {
-    const configHome = runtime.configHome ?? path.join(os.homedir(), '.config')
-    const autostartPath = path.join(
-      configHome,
-      'autostart',
-      'copilot-api.desktop',
-    )
+    const autostartPath = getLinuxAutostartPath(runtime)
 
     if (!settings.launchAtLogin) {
       await fs.rm(autostartPath, { force: true })
@@ -103,6 +106,59 @@ Terminal=false
     openAtLogin: settings.launchAtLogin,
     openAsHidden: settings.minimizeToTray,
   })
+}
+
+export async function initializeLaunchAtLogin(
+  controller: LoginItemController,
+  runtime: LoginItemRuntime = getCurrentRuntime(),
+): Promise<boolean> {
+  if (!controller.isPackaged || !supportsLaunchAtLogin(runtime.platform)) {
+    return false
+  }
+
+  if (runtime.platform === 'linux') {
+    try {
+      const entry = await fs.readFile(getLinuxAutostartPath(runtime), 'utf8')
+      return !/^\s*(?:Hidden\s*=\s*true|X-GNOME-Autostart-enabled\s*=\s*false)\s*$/im.test(
+        entry,
+      )
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+      throw error
+    }
+  }
+
+  const current = controller.getLoginItemSettings()
+  if (runtime.platform === 'win32') {
+    const item =
+      current.launchItems.find(
+        ({ name, scope }) =>
+          name === WINDOWS_LOGIN_ITEM_NAME && scope === 'user',
+      )
+      ?? current.launchItems.find(
+        ({ name }) => name === WINDOWS_LOGIN_ITEM_NAME,
+      )
+
+    if (!item) return false
+
+    if (
+      item.path !== runtime.execPath
+      || item.args.length !== 1
+      || item.args[0] !== LOGIN_ITEM_ARG
+    ) {
+      controller.setLoginItemSettings({
+        openAtLogin: true,
+        path: runtime.execPath,
+        args: [LOGIN_ITEM_ARG],
+        enabled: item.enabled,
+        name: WINDOWS_LOGIN_ITEM_NAME,
+      })
+    }
+
+    return item.enabled
+  }
+
+  return current.openAtLogin
 }
 
 export function wasLaunchedAtLogin(

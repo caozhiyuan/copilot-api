@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import {
   applyLaunchAtLogin,
+  initializeLaunchAtLogin,
   LOGIN_ITEM_ARG,
   wasLaunchedAtLogin,
 } from '../electron/login-item'
@@ -12,6 +13,8 @@ import {
 function createController(
   options: {
     isPackaged?: boolean
+    launchItems?: Electron.LaunchItems[]
+    openAtLogin?: boolean
     wasOpenedAtLogin?: boolean
   } = {},
 ) {
@@ -23,6 +26,8 @@ function createController(
       calls.push(settings)
     },
     getLoginItemSettings: () => ({
+      launchItems: options.launchItems ?? [],
+      openAtLogin: options.openAtLogin ?? false,
       wasOpenedAtLogin: options.wasOpenedAtLogin ?? false,
     }),
   }
@@ -64,6 +69,53 @@ describe('desktop login item', () => {
     ])
   })
 
+  test('preserves a disabled Windows login item while refreshing its path', async () => {
+    const runtime = {
+      platform: 'win32' as const,
+      execPath: 'C:\\Program Files\\Copilot API\\Copilot API.exe',
+      argv: [],
+    }
+    const controller = createController({
+      launchItems: [
+        {
+          name: 'com.copilot-api.desktop',
+          path: 'C:\\Old\\Copilot API.exe',
+          args: [],
+          scope: 'user',
+          enabled: false,
+        },
+      ],
+    })
+
+    expect(await initializeLaunchAtLogin(controller, runtime)).toBe(false)
+    expect(controller.calls).toEqual([
+      {
+        openAtLogin: true,
+        path: runtime.execPath,
+        args: [LOGIN_ITEM_ARG],
+        enabled: false,
+        name: 'com.copilot-api.desktop',
+      },
+    ])
+
+    const current = createController({
+      launchItems: [
+        {
+          name: 'com.copilot-api.desktop',
+          path: runtime.execPath,
+          args: [LOGIN_ITEM_ARG],
+          scope: 'user',
+          enabled: true,
+        },
+      ],
+    })
+    expect(await initializeLaunchAtLogin(current, runtime)).toBe(true)
+    expect(current.calls).toEqual([])
+    expect(await initializeLaunchAtLogin(createController(), runtime)).toBe(
+      false,
+    )
+  })
+
   test('configures macOS to open hidden with minimize-to-tray', async () => {
     const controller = createController()
     const runtime = {
@@ -81,6 +133,13 @@ describe('desktop login item', () => {
     expect(controller.calls).toEqual([
       { openAtLogin: true, openAsHidden: true },
     ])
+
+    expect(
+      await initializeLaunchAtLogin(
+        createController({ openAtLogin: true }),
+        runtime,
+      ),
+    ).toBe(true)
   })
 
   test('manages the packaged Linux XDG autostart entry', async () => {
@@ -113,6 +172,10 @@ Name=Copilot API
 Exec="/home/jay/Copilot API.AppImage" ${LOGIN_ITEM_ARG}
 Terminal=false
 `)
+      expect(await initializeLaunchAtLogin(controller, runtime)).toBe(true)
+
+      await fs.appendFile(autostartPath, 'Hidden=true\n')
+      expect(await initializeLaunchAtLogin(controller, runtime)).toBe(false)
       expect(controller.calls).toEqual([])
 
       await applyLaunchAtLogin(controller, enabled, {
@@ -147,6 +210,7 @@ Terminal=false
         runtime,
       )
       expect(await Bun.file(autostartPath).exists()).toBe(false)
+      expect(await initializeLaunchAtLogin(controller, runtime)).toBe(false)
     } finally {
       await fs.rm(configHome, { recursive: true, force: true })
     }
@@ -166,6 +230,14 @@ Terminal=false
 
     expect(unsupported.calls).toEqual([])
     expect(unpackaged.calls).toEqual([])
+    expect(
+      await initializeLaunchAtLogin(unsupported, {
+        platform: 'freebsd',
+        execPath: '/opt/copilot-api',
+        argv: [],
+      }),
+    ).toBe(false)
+    expect(await initializeLaunchAtLogin(unpackaged)).toBe(false)
   })
 
   test('detects login launches by platform', () => {

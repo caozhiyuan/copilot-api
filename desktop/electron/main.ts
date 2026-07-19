@@ -25,10 +25,15 @@ import {
 import { tMain } from './i18n'
 import {
   applyLaunchAtLogin,
+  initializeLaunchAtLogin,
   LOGIN_ITEM_ARG,
   wasLaunchedAtLogin,
 } from './login-item'
-import { readSettings, readSettingsSync } from './settings-store'
+import {
+  readSettings,
+  readSettingsSync,
+  setLaunchAtLoginFallback,
+} from './settings-store'
 
 const CLI_ENV_FLAGS = {
   '--api-home': 'COPILOT_API_HOME',
@@ -323,15 +328,18 @@ function createWindow(startHidden = false): BrowserWindow {
 }
 
 async function initializeApplication(): Promise<void> {
+  try {
+    setLaunchAtLoginFallback(await initializeLaunchAtLogin(app))
+  } catch (error) {
+    console.error('Failed to read launch-at-login setting:', error)
+  }
+
   const { registerIpcHandlers, readSettings, onStatusChange, onLog } =
     await getRuntimeDependencies()
   const settings = await readSettings()
   await applyElectronProxy(getEffectiveProxySettings(settings))
 
   const launchedAtLogin = wasLaunchedAtLogin(app)
-  await applyLaunchAtLogin(app, settings).catch((error: unknown) => {
-    console.error('Failed to apply launch-at-login setting:', error)
-  })
 
   const startHidden =
     settings.minimizeToTray && launchedAtLogin && !showWindowWhenReady
@@ -343,7 +351,9 @@ async function initializeApplication(): Promise<void> {
     onQuit: quitApplication,
     onSettingsChange: async (settings, prevSettings) => {
       await applyElectronProxy(getEffectiveProxySettings(settings))
-      await applyLaunchAtLogin(app, settings)
+      if (settings.launchAtLogin !== prevSettings.launchAtLogin) {
+        await applyLaunchAtLogin(app, settings)
+      }
 
       if (
         settings.theme !== prevSettings.theme
