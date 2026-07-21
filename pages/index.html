@@ -3,76 +3,184 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Copilot API Usage Dashboard</title>
+    <title>Copilot API Dashboard</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="https://github.githubassets.com/favicons/favicon.svg"
+    />
 
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://cdn.jsdelivr.net/npm/@fontsource/geist-mono@5.2.6/index.css"
       rel="stylesheet"
     />
+
+    <script>
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem("copilot-api.usage-viewer.theme") === "light"
+            ? "light"
+            : "dark";
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
 
     <script src="https://unpkg.com/lucide@0.378.0/dist/umd/lucide.min.js"></script>
 
     <style>
       :root {
-        --color-red: #dc2626;
-        --color-green: #16a34a;
-        --color-yellow: #d97706;
-        --color-blue: #2563eb;
-        --color-purple: #7c3aed;
-        --color-aqua: #0891b2;
-        --color-orange: #ea580c;
-        --color-gray: #64748b;
+        color-scheme: dark;
+        --background: #09090b;
+        --foreground: #fafafa;
+        --card: #0c0c0f;
+        --card-foreground: #fafafa;
+        --popover: #0c0c0f;
+        --popover-foreground: #fafafa;
+        --primary: #fafafa;
+        --primary-foreground: #18181b;
+        --secondary: #18181b;
+        --secondary-foreground: #f4f4f5;
+        --muted: #18181b;
+        --muted-foreground: #a1a1aa;
+        --accent: #27272a;
+        --accent-foreground: #fafafa;
+        --destructive: #ef4444;
+        --destructive-foreground: #fef2f2;
+        --destructive-muted: rgba(239, 68, 68, 0.1);
+        --destructive-border: rgba(239, 68, 68, 0.28);
+        --border: #27272a;
+        --input: #27272a;
+        --ring: #a1a1aa;
+        --surface-raised: #111114;
+        --surface-hover: #18181b;
+        --surface-subtle: #101012;
+        --shadow: rgba(0, 0, 0, 0.24);
+        --overlay: rgba(9, 9, 11, 0.72);
+        --chart-grid: #27272a;
+        --chart-muted: #71717a;
+        --chart-1: #60a5fa;
+        --chart-2: #4ade80;
+        --chart-3: #fbbf24;
+        --chart-4: #c084fc;
+        --chart-5: #22d3ee;
+        --success: #4ade80;
+        --warning: #fbbf24;
+        --info: #60a5fa;
+        --info-muted: rgba(96, 165, 250, 0.1);
+        --info-border: rgba(96, 165, 250, 0.28);
+        --radius: 6px;
 
-        --color-red-accent: #ef4444;
-        --color-green-accent: #22c55e;
-        --color-yellow-accent: #f59e0b;
-        --color-blue-accent: #1d4ed8;
-        --color-purple-accent: #8b5cf6;
-        --color-aqua-accent: #0ea5e9;
-        --color-orange-accent: #f97316;
-        --color-gray-accent: #94a3b8;
+        /* Compatibility aliases used by the existing render functions. */
+        --color-red: var(--destructive);
+        --color-green: var(--success);
+        --color-yellow: var(--warning);
+        --color-blue: var(--info);
+        --color-purple: var(--chart-4);
+        --color-aqua: var(--chart-5);
+        --color-orange: #fb923c;
+        --color-gray: var(--muted-foreground);
+        --color-red-accent: var(--destructive);
+        --color-green-accent: var(--chart-2);
+        --color-yellow-accent: var(--chart-3);
+        --color-blue-accent: var(--chart-1);
+        --color-purple-accent: var(--chart-4);
+        --color-aqua-accent: var(--chart-5);
+        --color-orange-accent: #fb923c;
+        --color-gray-accent: var(--chart-muted);
+        --color-bg-darkest: var(--background);
+        --color-bg: var(--card);
+        --color-bg-light-1: var(--surface-subtle);
+        --color-bg-light-2: var(--border);
+        --color-bg-light-3: #3f3f46;
+        --color-bg-light-4: var(--chart-muted);
+        --color-bg-soft: var(--muted);
+        --color-fg-darker: var(--muted-foreground);
+        --color-fg-dark: #d4d4d8;
+        --color-fg-medium: #e4e4e7;
+        --color-fg-light: var(--foreground);
+        --color-fg-lightest: var(--foreground);
+      }
 
-        --color-bg-darkest: #0f172a;
-        --color-bg: #ffffff;
-        --color-bg-light-1: #f8fafc;
-        --color-bg-light-2: #e2e8f0;
-        --color-bg-light-3: #cbd5e1;
-        --color-bg-light-4: #94a3b8;
-        --color-bg-soft: #f1f5f9;
-
-        --color-fg-darker: #64748b;
-        --color-fg-dark: #475569;
-        --color-fg-medium: #334155;
-        --color-fg-light: #1e293b;
-        --color-fg-lightest: #0f172a;
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --background: #fafafa;
+        --foreground: #18181b;
+        --card: #ffffff;
+        --card-foreground: #18181b;
+        --popover: #ffffff;
+        --popover-foreground: #18181b;
+        --primary: #18181b;
+        --primary-foreground: #fafafa;
+        --secondary: #f4f4f5;
+        --secondary-foreground: #27272a;
+        --muted: #f4f4f5;
+        --muted-foreground: #71717a;
+        --accent: #e4e4e7;
+        --accent-foreground: #18181b;
+        --destructive: #dc2626;
+        --destructive-foreground: #7f1d1d;
+        --destructive-muted: rgba(220, 38, 38, 0.07);
+        --destructive-border: rgba(220, 38, 38, 0.22);
+        --border: #e4e4e7;
+        --input: #d4d4d8;
+        --ring: #71717a;
+        --surface-raised: #ffffff;
+        --surface-hover: #f4f4f5;
+        --surface-subtle: #fafafa;
+        --shadow: rgba(24, 24, 27, 0.06);
+        --overlay: rgba(255, 255, 255, 0.76);
+        --chart-grid: #e4e4e7;
+        --chart-muted: #a1a1aa;
+        --chart-1: #2563eb;
+        --chart-2: #16a34a;
+        --chart-3: #d97706;
+        --chart-4: #7c3aed;
+        --chart-5: #0891b2;
+        --success: #16a34a;
+        --warning: #d97706;
+        --info: #2563eb;
+        --info-muted: rgba(37, 99, 235, 0.08);
+        --info-border: rgba(37, 99, 235, 0.22);
+        --color-bg-light-3: #d4d4d8;
+        --color-fg-dark: #52525b;
+        --color-fg-medium: #3f3f46;
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html {
+        background: var(--background);
+      }
+
       body {
-        font-family: "Inter", sans-serif;
-        background-color: #eef2f7;
-        color: var(--color-fg-light);
+        margin: 0;
+        font-family:
+          "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          monospace;
+        background: var(--background);
+        color: var(--foreground);
+        transition:
+          background-color 0.18s ease,
+          color 0.18s ease;
       }
 
       .app-shell {
         min-height: 100vh;
-        background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+        background: var(--background);
       }
 
       .main-shell {
         min-width: 0;
-        padding: 16px 24px 24px;
+        padding: 40px 48px 56px;
       }
 
       .topbar {
-        margin: 0 auto 10px;
+        margin: 0 auto 32px;
         max-width: 1720px;
       }
 
@@ -80,32 +188,278 @@
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 14px;
-        margin-bottom: 10px;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .theme-toggle {
+        width: 36px;
+        height: 36px;
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--card);
+        color: var(--muted-foreground);
+        cursor: pointer;
+        transition:
+          background-color 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease,
+          transform 0.15s ease;
+      }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .config-toggle {
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--card);
+        color: var(--muted-foreground);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition:
+          background-color 0.15s ease,
+          color 0.15s ease,
+          border-color 0.15s ease;
+      }
+
+      .config-chevron {
+        transition: transform 0.22s ease;
+      }
+
+      .config-toggle[aria-expanded="true"] .config-chevron {
+        transform: rotate(180deg);
+      }
+
+      .config-toggle:hover {
+        border-color: var(--ring);
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+
+      .theme-toggle:hover {
+        border-color: var(--ring);
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+
+      .theme-toggle:active,
+      .primary-action:active,
+      .pill-button:active {
+        transform: translateY(1px);
       }
 
       .page-title {
-        font-size: clamp(28px, 3vw, 38px);
-        font-weight: 750;
-        line-height: 1.05;
+        margin: 0;
+        max-width: 920px;
+        font-size: clamp(30px, 3vw, 42px);
+        font-weight: 650;
+        line-height: 1.1;
+        letter-spacing: 0.025em;
         color: var(--color-fg-lightest);
       }
 
+      .brand-heading {
+        min-width: 0;
+      }
+
+      .title-line {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .brand-logo {
+        width: 36px;
+        height: 36px;
+        flex: 0 0 auto;
+        filter: invert(1);
+      }
+
+      :root[data-theme="light"] .brand-logo {
+        filter: none;
+      }
+
+      .page-kicker {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+        color: var(--color-blue);
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .page-kicker::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--success);
+        box-shadow: 0 0 0 3px
+          color-mix(in srgb, var(--success) 14%, transparent);
+        content: "";
+      }
+
       .page-subtitle {
-        margin-top: 4px;
+        max-width: 720px;
+        margin: 10px 0 0;
         color: var(--color-gray);
-        font-size: 14px;
+        font-size: 13px;
+        line-height: 1.65;
       }
 
       .control-surface {
         display: grid;
         grid-template-columns:
           minmax(320px, 1fr)
-          minmax(220px, 320px)
-          150px
-          132px;
-        gap: 12px;
+          minmax(220px, 360px);
+        gap: 16px;
         align-items: end;
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 2px);
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--shadow);
+        max-height: 520px;
+        opacity: 1;
+        overflow: hidden;
+        transform: translateY(0);
+        transition:
+          max-height 0.28s ease,
+          padding 0.28s ease,
+          border-color 0.2s ease,
+          opacity 0.2s ease,
+          transform 0.28s ease;
+      }
+
+      .control-surface.is-collapsed {
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        border-color: transparent;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-8px);
+      }
+
+      .control-surface:not(.is-collapsed) {
+        margin-bottom: 12px;
+      }
+
+      .report-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 8px 10px 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 2px);
+        background: var(--card);
+        box-shadow: none;
+      }
+
+      .report-premium-row {
+        display: grid;
+        grid-template-columns: minmax(420px, 1.2fr) minmax(320px, 0.8fr);
+        gap: 12px;
+        align-items: stretch;
+      }
+
+      .report-premium-row:has(#premium-toolbar-slot:empty) {
+        grid-template-columns: 1fr;
+      }
+
+      #premium-toolbar-slot {
+        display: flex;
+        min-width: 0;
+      }
+
+      #premium-toolbar-slot:empty {
+        display: none;
+      }
+
+      .premium-toolbar {
+        display: flex;
+        width: 100%;
+        min-width: 0;
+        flex-direction: column;
+        justify-content: center;
+        padding: 8px 14px;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 2px);
+        background: var(--card);
+      }
+
+      .premium-toolbar-topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 7px;
+        font-size: 11px;
+      }
+
+      .premium-toolbar-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--foreground);
+        font-weight: 650;
+      }
+
+      .premium-toolbar-meta {
+        color: var(--muted-foreground);
+        white-space: nowrap;
+      }
+
+      .report-toolbar-title {
+        margin: 0;
+        color: var(--foreground);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .report-toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .period-control {
+        width: 150px;
+      }
+
+      .report-toolbar .select-control,
+      .report-toolbar .primary-action {
+        height: 36px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
 
       .field-label {
@@ -121,8 +475,8 @@
         width: 100%;
         height: 42px;
         border: 1px solid var(--color-bg-light-3);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.88);
+        border-radius: var(--radius);
+        background: var(--surface-subtle);
         color: var(--color-fg-lightest);
         font-size: 14px;
         outline: none;
@@ -133,15 +487,39 @@
       }
 
       .input-control {
-        padding: 0 12px;
+        padding: 0 14px;
       }
 
       .select-control {
-        padding: 0 34px 0 12px;
+        appearance: none;
+        padding: 0 46px 0 14px;
+        cursor: pointer;
+      }
+
+      .select-shell {
+        position: relative;
+      }
+
+      .select-shell > svg,
+      .select-shell > i {
+        position: absolute;
+        top: 50%;
+        right: 16px;
+        width: 16px;
+        height: 16px;
+        color: var(--muted-foreground);
+        pointer-events: none;
+        transform: translateY(-50%);
       }
 
       .input-control::placeholder {
-        color: #94a3b8;
+        color: var(--muted-foreground);
+      }
+
+      .input-control:hover,
+      .select-control:hover {
+        border-color: var(--ring);
+        background: var(--surface-hover);
       }
 
       .primary-action {
@@ -150,10 +528,12 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
+        min-width: 120px;
+        padding: 0 20px;
         border: 1px solid transparent;
-        border-radius: 8px;
-        background: var(--color-blue);
-        color: #ffffff;
+        border-radius: var(--radius);
+        background: var(--primary);
+        color: var(--primary-foreground);
         font-size: 14px;
         font-weight: 700;
         transition:
@@ -162,7 +542,7 @@
       }
 
       .primary-action:hover {
-        background: var(--color-blue-accent);
+        opacity: 0.88;
       }
 
       .content-area {
@@ -171,31 +551,56 @@
       }
 
       .dashboard-section {
-        margin-bottom: 10px;
+        margin-bottom: 32px;
       }
 
       .section-heading {
         display: flex;
         align-items: center;
-        gap: 6px;
-        margin-bottom: 8px;
+        gap: 8px;
+        margin-bottom: 12px;
         color: var(--color-fg-lightest);
         font-size: 16px;
         font-weight: 750;
+        letter-spacing: 0.015em;
       }
 
       .section-subtitle {
-        margin-top: -4px;
-        margin-bottom: 8px;
+        margin-top: -6px;
+        margin-bottom: 16px;
         color: var(--color-gray);
         font-size: 12px;
       }
 
+      .range-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 2px;
+        padding: 6px 9px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface-subtle);
+        color: var(--color-fg-dark);
+      }
+
+      .token-usage-heading {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .token-usage-heading .section-heading,
+      .token-usage-heading .range-label {
+        margin: 0;
+      }
+
       .panel {
         border: 1px solid var(--color-bg-light-2);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.94);
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+        border-radius: var(--radius);
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--shadow);
       }
 
       .panel-header {
@@ -204,7 +609,7 @@
         justify-content: space-between;
         gap: 12px;
         min-height: 44px;
-        padding: 10px 14px;
+        padding: 14px 18px;
         border-bottom: 1px solid var(--color-bg-light-2);
       }
 
@@ -212,6 +617,7 @@
         color: var(--color-fg-lightest);
         font-size: 14px;
         font-weight: 750;
+        letter-spacing: 0.012em;
       }
 
       .panel-meta {
@@ -223,20 +629,43 @@
       .metric-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 10px;
+        gap: 16px;
       }
 
       .metric-grid-tight {
         grid-template-columns: repeat(7, minmax(0, 1fr));
       }
 
+      .quota-standard-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .quota-card-wide {
+        min-height: 0;
+        padding: 12px 16px;
+        background: var(--surface-raised);
+      }
+
+      .quota-card-wide .progress-bar-bg,
+      .quota-card-wide .progress-bar-fg {
+        height: 6px;
+      }
+
+      .quota-card-wide .mt-5 {
+        margin-top: 10px;
+      }
+
+      .quota-card-wide .mt-2 {
+        margin-top: 6px;
+      }
+
       .metric-card {
         min-height: 88px;
-        padding: 12px;
+        padding: 16px;
         border: 1px solid var(--color-bg-light-2);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.96);
-        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+        border-radius: var(--radius);
+        background: var(--card);
+        box-shadow: 0 1px 2px var(--shadow);
       }
 
       .metric-label {
@@ -298,8 +727,8 @@
       }
 
       .input-focus:focus {
-        border-color: var(--color-blue);
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+        border-color: var(--ring);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 24%, transparent);
       }
 
       button:disabled,
@@ -319,6 +748,14 @@
         color: var(--color-fg-medium);
       }
 
+      .data-table tbody tr {
+        transition: background-color 0.12s ease;
+      }
+
+      .data-table tbody tr:hover {
+        background: var(--surface-hover);
+      }
+
       .data-table th {
         font-size: 12px;
         font-weight: 750;
@@ -335,15 +772,147 @@
 
       .pill-button {
         border: 1px solid var(--color-bg-light-2);
-        border-radius: 7px;
+        border-radius: var(--radius);
         background: var(--color-bg);
         color: var(--color-fg-medium);
+        cursor: pointer;
+        transition:
+          background-color 0.15s ease,
+          border-color 0.15s ease,
+          color 0.15s ease,
+          transform 0.15s ease;
+      }
+
+      .pill-button:hover:not(:disabled) {
+        border-color: var(--ring);
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+
+      .code-block {
+        background: var(--surface-subtle);
+        color: var(--card-foreground);
+      }
+
+      .animate-pulse,
+      .opacity-60 {
+        color: var(--muted-foreground);
+      }
+
+      [role="alert"] {
+        background: var(--destructive-muted) !important;
+        border-color: var(--destructive-border) !important;
+        color: var(--destructive) !important;
       }
 
       .quick-state-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 10px;
+        gap: 16px;
+      }
+
+      .insights-block {
+        margin-top: 24px;
+      }
+
+      .insight-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 12px;
+      }
+
+      .insight-card {
+        min-height: 96px;
+      }
+
+      .insight-value {
+        margin-top: 9px;
+        color: var(--foreground);
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+      }
+
+      .context-strip {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin-bottom: 16px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface-subtle);
+        color: var(--muted-foreground);
+        font-size: 11px;
+      }
+
+      .context-strip strong {
+        color: var(--foreground);
+        font-weight: 650;
+      }
+
+      .insight-note {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-left: 2px solid var(--warning);
+        background: var(--surface-subtle);
+        color: var(--color-fg-dark);
+        font-size: 11px;
+        line-height: 1.55;
+      }
+
+      .trend-chart-wrap {
+        position: relative;
+      }
+
+      .trend-tooltip {
+        position: absolute;
+        z-index: 2;
+        top: 12px;
+        left: clamp(104px, var(--tooltip-x), calc(100% - 104px));
+        min-width: 168px;
+        padding: 9px 11px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--popover);
+        box-shadow: 0 10px 28px var(--shadow);
+        color: var(--popover-foreground);
+        pointer-events: none;
+        transform: translateX(-50%);
+      }
+
+      .trend-tooltip-date {
+        margin-bottom: 6px;
+        color: var(--foreground);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .trend-tooltip-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        color: var(--muted-foreground);
+        font-size: 10px;
+        line-height: 1.65;
+      }
+
+      .trend-tooltip-row strong {
+        color: var(--foreground);
+        font-weight: 650;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+        }
       }
 
       @media (max-width: 1280px) {
@@ -353,22 +922,18 @@
       }
 
       @media (max-width: 1100px) {
-        .control-surface {
-          grid-template-columns: minmax(0, 1fr) 170px 132px;
+        .main-shell {
+          padding: 32px 28px 44px;
         }
 
-        .endpoint-field {
-          grid-column: 1 / -1;
+        .control-surface {
+          grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
         }
       }
 
       @media (max-width: 640px) {
         .main-shell {
-          padding: 12px 14px 18px;
-        }
-
-        .topbar-row {
-          display: block;
+          padding: 24px 18px 36px;
         }
 
         .control-surface {
@@ -382,6 +947,50 @@
         .metric-grid-tight {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+
+        .quota-standard-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .control-surface {
+          padding: 16px;
+        }
+
+        .page-title {
+          font-size: 30px;
+        }
+
+        .title-line {
+          gap: 10px;
+        }
+
+        .brand-logo {
+          width: 30px;
+          height: 30px;
+        }
+
+        .config-toggle span {
+          display: none;
+        }
+
+        .report-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+          gap: 14px;
+        }
+
+        .report-premium-row {
+          grid-template-columns: 1fr;
+        }
+
+        .report-toolbar-actions {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        .period-control {
+          width: auto;
+        }
       }
     </style>
   </head>
@@ -390,48 +999,108 @@
       <div class="main-shell">
         <header class="topbar">
           <div class="topbar-row">
-            <div>
-              <h1 class="page-title">Token Usage</h1>
-              <p class="page-subtitle">Copilot quota and token billing dashboard</p>
+            <div class="brand-heading">
+              <p class="page-kicker">Usage analytics</p>
+              <div class="title-line">
+                <img
+                  class="brand-logo"
+                  src="https://cdn.simpleicons.org/github/18181b"
+                  alt="GitHub"
+                  width="36"
+                  height="36"
+                />
+                <h1 class="page-title">Copilot API Dashboard</h1>
+              </div>
+              <p class="page-subtitle">
+                Monitor quota health, token consumption, estimated cost, and
+                request activity.
+              </p>
+            </div>
+            <div class="topbar-actions">
+              <button
+                id="config-toggle"
+                class="config-toggle"
+                type="button"
+                aria-controls="endpoint-config"
+                aria-expanded="false"
+                title="Show endpoint configuration"
+              >
+                <span>Setup</span>
+                <i
+                  data-lucide="chevron-down"
+                  class="config-chevron h-4 w-4"
+                ></i>
+              </button>
+              <button
+                id="theme-toggle"
+                class="theme-toggle"
+                type="button"
+                aria-label="Switch to light theme"
+                title="Switch to light theme"
+              >
+                <i data-lucide="sun" class="h-4 w-4"></i>
+              </button>
             </div>
           </div>
 
-          <form id="endpoint-form" class="control-surface">
-            <div class="endpoint-field">
-              <label for="endpoint-url" class="field-label">Usage Endpoint URL</label>
-              <input
-                type="text"
-                id="endpoint-url"
-                class="input-control input-focus"
-                placeholder="http://localhost:4141/usage"
-              />
+          <form id="endpoint-form">
+            <div id="endpoint-config" class="control-surface is-collapsed">
+              <div class="endpoint-field">
+                <label for="endpoint-url" class="field-label"
+                  >Usage Endpoint URL</label
+                >
+                <input
+                  type="text"
+                  id="endpoint-url"
+                  class="input-control input-focus"
+                  placeholder="http://localhost:4141/usage"
+                />
+              </div>
+              <div>
+                <label for="x-api-key" class="field-label">x-api-key</label>
+                <input
+                  type="password"
+                  id="x-api-key"
+                  class="input-control input-focus"
+                  placeholder="Optional when auth is enabled"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
             </div>
-            <div>
-              <label for="x-api-key" class="field-label">x-api-key</label>
-              <input
-                type="password"
-                id="x-api-key"
-                class="input-control input-focus"
-                placeholder="Optional when auth is enabled"
-                autocomplete="off"
-                spellcheck="false"
-              />
+
+            <div class="report-premium-row">
+              <div id="premium-toolbar-slot"></div>
+              <div class="report-toolbar">
+                <p class="report-toolbar-title">Usage report</p>
+                <div class="report-toolbar-actions">
+                  <div class="period-control">
+                    <label for="token-usage-period" class="sr-only"
+                      >Period</label
+                    >
+                    <div class="select-shell">
+                      <select
+                        id="token-usage-period"
+                        class="select-control input-focus"
+                      >
+                        <option value="day">Day</option>
+                        <option value="week">Week</option>
+                        <option value="month">Month</option>
+                      </select>
+                      <i data-lucide="chevron-down" aria-hidden="true"></i>
+                    </div>
+                  </div>
+                  <button
+                    id="fetch-button"
+                    type="submit"
+                    class="primary-action"
+                  >
+                    <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div>
-              <label for="token-usage-period" class="field-label">Period</label>
-              <select
-                id="token-usage-period"
-                class="select-control input-focus"
-              >
-                <option value="day">Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-              </select>
-            </div>
-            <button id="fetch-button" type="submit" class="primary-action">
-              <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-              <span>Refresh</span>
-            </button>
           </form>
         </header>
 
@@ -442,29 +1111,27 @@
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const endpointForm = document.getElementById("endpoint-form");
+        const endpointConfig = document.getElementById("endpoint-config");
         const endpointUrlInput = document.getElementById("endpoint-url");
         const apiKeyInput = document.getElementById("x-api-key");
-        const tokenUsagePeriodSelect = document.getElementById(
-          "token-usage-period"
-        );
+        const tokenUsagePeriodSelect =
+          document.getElementById("token-usage-period");
         const contentArea = document.getElementById("content-area");
+        const premiumToolbarSlot = document.getElementById(
+          "premium-toolbar-slot",
+        );
         const fetchButton = document.getElementById("fetch-button");
         const fetchButtonLabel = fetchButton.querySelector("span");
-
-        // Apply hover effect for fetch button via JS
-        fetchButton.addEventListener("mouseenter", () => {
-          fetchButton.style.backgroundColor = "var(--color-blue-accent)";
-        });
-        fetchButton.addEventListener("mouseleave", () => {
-          fetchButton.style.backgroundColor = "var(--color-blue)";
-        });
+        const configToggle = document.getElementById("config-toggle");
+        const themeToggle = document.getElementById("theme-toggle");
 
         const DEFAULT_ENDPOINT = "http://localhost:4141/usage";
-        const DEFAULT_TOKEN_USAGE_PERIOD = "day";
-        const DEFAULT_TOKEN_USAGE_EVENTS_PAGE_SIZE = 20;
+        const DEFAULT_TOKEN_USAGE_PERIOD = "month";
+        const DEFAULT_TOKEN_USAGE_EVENTS_PAGE_SIZE = 100;
         const ALL_METRICS_VALUE = "__all__";
         const ALL_MODELS_VALUE = "__all__";
         const API_KEY_STORAGE_KEY = "copilot-api.usage-viewer.x-api-key";
+        const THEME_STORAGE_KEY = "copilot-api.usage-viewer.theme";
         const VALID_PERIODS = new Set(["day", "week", "month"]);
         const EMPTY_TOKEN_USAGE_TOTALS = {
           cache_creation_input_tokens: 0,
@@ -507,6 +1174,52 @@
           }
         }
 
+        function getCurrentTheme() {
+          return document.documentElement.dataset.theme === "light"
+            ? "light"
+            : "dark";
+        }
+
+        function applyTheme(theme, persist = true) {
+          const normalizedTheme = theme === "light" ? "light" : "dark";
+          const nextTheme = normalizedTheme === "dark" ? "light" : "dark";
+          document.documentElement.dataset.theme = normalizedTheme;
+          themeToggle.setAttribute(
+            "aria-label",
+            `Switch to ${nextTheme} theme`,
+          );
+          themeToggle.title = `Switch to ${nextTheme} theme`;
+          themeToggle.innerHTML = `<i data-lucide="${
+            normalizedTheme === "dark" ? "sun" : "moon"
+          }" class="h-4 w-4"></i>`;
+
+          if (persist) {
+            try {
+              localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+            } catch (error) {
+              console.warn(
+                "Could not store theme preference:",
+                getErrorMessage(error),
+              );
+            }
+          }
+
+          createIcons();
+        }
+
+        function handleThemeToggle() {
+          applyTheme(getCurrentTheme() === "dark" ? "light" : "dark");
+        }
+
+        function handleConfigToggle() {
+          const willShow = endpointConfig.classList.contains("is-collapsed");
+          endpointConfig.classList.toggle("is-collapsed", !willShow);
+          configToggle.setAttribute("aria-expanded", String(willShow));
+          configToggle.title = willShow
+            ? "Hide endpoint configuration"
+            : "Show endpoint configuration";
+        }
+
         function escapeHtml(value) {
           return String(value)
             .replaceAll("&", "&amp;")
@@ -525,17 +1238,15 @@
 
         function isMissingTokenUsageEndpointError(error) {
           return Boolean(
-            error
-              && typeof error === "object"
-              && "status" in error
-              && error.status === 404
+            error &&
+              typeof error === "object" &&
+              "status" in error &&
+              error.status === 404,
           );
         }
 
         function normalizePeriod(value) {
-          return VALID_PERIODS.has(value)
-            ? value
-            : DEFAULT_TOKEN_USAGE_PERIOD;
+          return VALID_PERIODS.has(value) ? value : DEFAULT_TOKEN_USAGE_PERIOD;
         }
 
         function getSelectedPeriod() {
@@ -549,7 +1260,10 @@
           try {
             return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
           } catch (error) {
-            console.warn("Could not read stored API key:", getErrorMessage(error));
+            console.warn(
+              "Could not read stored API key:",
+              getErrorMessage(error),
+            );
             return "";
           }
         }
@@ -602,7 +1316,7 @@
 
         function buildTokenUsageDailyUrl(usageEndpoint, period) {
           const url = new URL(
-            deriveEndpointUrl(usageEndpoint, "token-usage/daily")
+            deriveEndpointUrl(usageEndpoint, "token-usage/daily"),
           );
           url.searchParams.set("period", period);
           return url.toString();
@@ -610,13 +1324,13 @@
 
         function buildTokenUsageEventsUrl(usageEndpoint, period, page) {
           const url = new URL(
-            deriveEndpointUrl(usageEndpoint, "token-usage/events")
+            deriveEndpointUrl(usageEndpoint, "token-usage/events"),
           );
           url.searchParams.set("period", period);
           url.searchParams.set("page", String(page));
           url.searchParams.set(
             "page_size",
-            String(DEFAULT_TOKEN_USAGE_EVENTS_PAGE_SIZE)
+            String(DEFAULT_TOKEN_USAGE_EVENTS_PAGE_SIZE),
           );
           return url.toString();
         }
@@ -646,12 +1360,12 @@
             } catch (error) {
               console.warn(
                 "Could not parse error response:",
-                getErrorMessage(error)
+                getErrorMessage(error),
               );
             }
 
             const error = new Error(
-              `Request failed with status ${response.status}: ${message}`
+              `Request failed with status ${response.status}: ${message}`,
             );
             error.status = response.status;
             throw error;
@@ -747,20 +1461,116 @@
           return trimmed || "—";
         }
 
+        function formatRangeDate(value) {
+          if (!Number.isFinite(value)) {
+            return "N/A";
+          }
+
+          return new Date(value).toLocaleDateString(undefined, {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          });
+        }
+
         function renderTokenUsageRangeText(period, range) {
           const labels = {
-            day: "Day window",
-            week: "Last 7 days",
-            month: "Last 30 days",
+            day: "Day",
+            week: "Week",
+            month: "Month",
           };
 
           if (!range) {
-            return labels[period] || labels.day;
+            return `${labels[period] || labels.day} range unavailable`;
           }
 
-          return `${labels[period] || labels.day}: ${formatDateTime(
-            range.start_ms
-          )} - ${formatDateTime(range.end_ms)}`;
+          const inclusiveEnd = Math.max(range.start_ms, range.end_ms - 1);
+          return `${labels[period] || labels.day} · ${formatRangeDate(
+            range.start_ms,
+          )} – ${formatRangeDate(inclusiveEnd)}`;
+        }
+
+        function aggregateTokenUsageRows(rows) {
+          const totals = {
+            ...EMPTY_TOKEN_USAGE_TOTALS,
+            costs: [],
+          };
+          const costsByCurrency = new Map();
+          let hasAiu = false;
+
+          rows.forEach((row) => {
+            totals.cache_creation_input_tokens +=
+              row.cache_creation_input_tokens || 0;
+            totals.cache_read_input_tokens += row.cache_read_input_tokens || 0;
+            totals.input_tokens += row.input_tokens || 0;
+            totals.output_tokens += row.output_tokens || 0;
+            totals.request_count += row.request_count || 0;
+            totals.total_tokens += row.total_tokens || 0;
+            if (Number.isFinite(row.total_nano_aiu)) {
+              totals.total_nano_aiu =
+                (totals.total_nano_aiu || 0) + row.total_nano_aiu;
+              hasAiu = true;
+            }
+            (row.costs || []).forEach((cost) => {
+              const currency = cost.currency || "";
+              const current = costsByCurrency.get(currency) || {
+                amount: 0,
+                currency,
+                total_cost_nanos: 0,
+              };
+              current.amount += getCostAmount(cost) || 0;
+              current.total_cost_nanos += cost.total_cost_nanos || 0;
+              costsByCurrency.set(currency, current);
+            });
+          });
+
+          totals.total_nano_aiu = hasAiu ? totals.total_nano_aiu : null;
+          totals.costs = [...costsByCurrency.values()];
+          return totals;
+        }
+
+        function getDisplayedMonthData(dailySummary) {
+          if (state.tokenUsagePeriod !== "month" || !dailySummary) {
+            return dailySummary;
+          }
+
+          const now = new Date();
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          const end = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() + 1,
+          );
+          const days = (dailySummary.days || []).filter(
+            (day) => day.start_ms >= start.getTime() && day.start_ms < end,
+          );
+          const modelRows = new Map();
+          days.forEach((day) => {
+            (day.byModel || []).forEach((model) => {
+              const rows = modelRows.get(model.model) || [];
+              rows.push(model);
+              modelRows.set(model.model, rows);
+            });
+          });
+          const byModel = [...modelRows.entries()]
+            .map(([model, rows]) => ({
+              ...aggregateTokenUsageRows(rows),
+              model,
+            }))
+            .sort((left, right) => right.total_tokens - left.total_tokens);
+
+          return {
+            ...dailySummary,
+            byModel,
+            days,
+            range: {
+              end_ms: end.getTime(),
+              end_utc: end.toISOString(),
+              start_ms: start.getTime(),
+              start_utc: start.toISOString(),
+            },
+            totals: aggregateTokenUsageRows(days.map((day) => day.totals)),
+          };
         }
 
         /**
@@ -768,6 +1578,9 @@
          */
         function render() {
           updateControls();
+          premiumToolbarSlot.innerHTML = renderPremiumQuota(
+            state.data?.quota_snapshots,
+          );
 
           if (state.isLoading) {
             contentArea.innerHTML = renderSpinner();
@@ -776,29 +1589,29 @@
           }
 
           const hasContent = Boolean(
-            state.error
-              || state.data
-              || state.isTokenUsageLoading
-              || state.isEventsLoading
-              || state.tokenUsageDailySummary
-              || state.tokenUsageSummary
-              || state.tokenUsageEventsPage
-              || state.tokenUsageDailyError
-              || state.tokenUsageSummaryError
-              || state.tokenUsageEventsError
+            state.error ||
+              state.data ||
+              state.isTokenUsageLoading ||
+              state.isEventsLoading ||
+              state.tokenUsageDailySummary ||
+              state.tokenUsageSummary ||
+              state.tokenUsageEventsPage ||
+              state.tokenUsageDailyError ||
+              state.tokenUsageSummaryError ||
+              state.tokenUsageEventsError,
           );
 
           if (!hasContent) {
             contentArea.innerHTML = renderWelcomeMessage();
           } else if (state.error && !state.data) {
             contentArea.innerHTML = `
-              ${renderTokenUsageSection()}
               ${renderUsageErrorSection()}
+              ${renderTokenUsageSection()}
             `;
           } else if (state.data) {
             contentArea.innerHTML = `
               ${renderTokenUsageSection()}
-              ${renderUsageQuotas(state.data.quota_snapshots)}
+              ${renderChatQuotas(state.data.quota_snapshots)}
               ${renderDetailedData(state.data)}
             `;
           } else {
@@ -810,26 +1623,67 @@
         }
 
         /**
-         * Renders the "Usage Quotas" section with progress bars.
+         * Renders the premium interactions quota near the top of the page.
          * @param {object} snapshots - The quota_snapshots object from the API response.
-         * @returns {string} HTML string for the usage quotas section.
+         * @returns {string} HTML string for the premium quota section.
          */
-        function renderUsageQuotas(snapshots) {
+        function renderPremiumQuota(snapshots) {
+          const premiumQuota = snapshots?.premium_interactions;
+          if (!premiumQuota) return "";
+
+          const { entitlement, remaining, percent_remaining, unlimited } =
+            premiumQuota;
+          const percentUsed = unlimited ? 0 : 100 - percent_remaining;
+          const used = unlimited ? "N/A" : entitlement - remaining;
+          let progressBarColor = "var(--color-green)";
+          if (percentUsed > 75) progressBarColor = "var(--color-yellow)";
+          if (percentUsed > 90) progressBarColor = "var(--color-red)";
+          if (unlimited) progressBarColor = "var(--color-blue)";
+
+          return `
+            <section id="premium-quota" class="premium-toolbar">
+              <div class="premium-toolbar-topline">
+                <span class="premium-toolbar-title">
+                  <i data-lucide="crown" class="h-4 w-4" style="color: var(--color-yellow);"></i>
+                  <span>Copilot Premium Quota</span>
+                </span>
+                <span class="premium-toolbar-meta">
+                  ${used.toLocaleString()} / ${unlimited ? "∞" : entitlement.toLocaleString()} · ${unlimited ? "Unlimited" : `${remaining.toLocaleString()} remaining`}
+                </span>
+              </div>
+              <div class="progress-bar-bg h-1.5">
+                <div
+                  class="progress-bar-fg h-1.5"
+                  style="width: ${unlimited ? 100 : percentUsed}%; background-color: ${progressBarColor};"
+                ></div>
+              </div>
+            </section>
+          `;
+        }
+
+        /**
+         * Renders chat and completions quotas near the raw API response.
+         * @param {object} snapshots - The quota_snapshots object from the API response.
+         * @returns {string} HTML string for the chat quota section.
+         */
+        function renderChatQuotas(snapshots) {
           if (!snapshots) return "";
 
           const quotaCards = Object.entries(snapshots)
-            .map(([key, value]) => {
-              return renderQuotaCard(key, value);
-            })
+            .filter(([key]) => key !== "premium_interactions")
+            .map(([key, value]) => renderQuotaCard(key, value))
             .join("");
 
+          if (!quotaCards) return "";
+
           return `
-            <section id="usage-quotas" class="dashboard-section">
+            <section id="chat-quotas" class="dashboard-section">
               <h2 class="section-heading">
-                <i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i>
-                <span>Copilot Quotas</span>
+                <i data-lucide="messages-square" class="h-5 w-5" style="color: var(--color-blue);"></i>
+                <span>Copilot Chat Quotas</span>
               </h2>
-              <div class="metric-grid">
+              <p class="section-subtitle">Chat and completions entitlement usage.</p>
+              <div class="metric-grid quota-standard-grid">
                 ${quotaCards}
               </div>
             </section>
@@ -845,7 +1699,7 @@
             <section id="usage-quotas" class="dashboard-section">
               <h2 class="section-heading">
                 <i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i>
-                <span>Copilot Quotas</span>
+                <span>Copilot Chat Quotas</span>
               </h2>
               ${renderError(state.error, "Usage request failed")}
             </section>
@@ -856,9 +1710,10 @@
          * Renders a single quota card.
          * @param {string} title - The name of the quota (e.g., 'chat').
          * @param {object} details - The details object for the quota.
+         * @param {string} className - Optional presentation class.
          * @returns {string} HTML string for a single card.
          */
-        function renderQuotaCard(title, details) {
+        function renderQuotaCard(title, details, className = "") {
           const { entitlement, remaining, percent_remaining, unlimited } =
             details;
 
@@ -873,7 +1728,7 @@
           if (unlimited) progressBarColor = "var(--color-blue)";
 
           return `
-            <div class="metric-card">
+            <div class="metric-card ${className}">
               <div class="flex items-center justify-between gap-3">
                 <div class="metric-label capitalize">
                   <span class="metric-dot" style="background-color: ${progressBarColor};"></span>
@@ -881,7 +1736,7 @@
                 </div>
                 ${
                   unlimited
-                    ? `<span class="rounded-md px-2 py-1 text-xs font-semibold" style="background-color: rgba(37, 99, 235, 0.1); color: var(--color-blue);">Unlimited</span>`
+                    ? `<span class="rounded-md px-2 py-1 text-xs font-semibold" style="background-color: var(--info-muted); color: var(--color-blue);">Unlimited</span>`
                     : `<span class="text-xs font-semibold" style="color: var(--color-gray);">${percentUsed.toFixed(1)}% used</span>`
                 }
               </div>
@@ -964,54 +1819,73 @@
 
         function renderTokenUsageSection() {
           const hasTokenUsageContent = Boolean(
-            state.isTokenUsageLoading
-              || state.isEventsLoading
-              || state.tokenUsageDailySummary
-              || state.tokenUsageSummary
-              || state.tokenUsageEventsPage
-              || state.tokenUsageDailyError
-              || state.tokenUsageSummaryError
-              || state.tokenUsageEventsError
+            state.isTokenUsageLoading ||
+              state.isEventsLoading ||
+              state.tokenUsageDailySummary ||
+              state.tokenUsageSummary ||
+              state.tokenUsageEventsPage ||
+              state.tokenUsageDailyError ||
+              state.tokenUsageSummaryError ||
+              state.tokenUsageEventsError,
           );
 
           if (!hasTokenUsageContent) {
             return "";
           }
 
-          const summary = state.tokenUsageSummary;
-          const dailySummary = state.tokenUsageDailySummary;
+          const dailySummary = getDisplayedMonthData(
+            state.tokenUsageDailySummary,
+          );
+          const summary =
+            state.tokenUsagePeriod === "month" && dailySummary
+              ? {
+                  ...state.tokenUsageSummary,
+                  byModel: dailySummary.byModel,
+                  range: dailySummary.range,
+                  totals: dailySummary.totals,
+                }
+              : state.tokenUsageSummary;
           const eventsPage = state.tokenUsageEventsPage;
+          const sessionRows = getSessionUsageRows(eventsPage?.items || []);
           const totals = summary?.totals || EMPTY_TOKEN_USAGE_TOTALS;
           const activeRange =
             summary?.range || dailySummary?.range || eventsPage?.range || null;
-          const totalPages = eventsPage ? Math.max(eventsPage.total_pages, 1) : 1;
+          const totalPages = eventsPage
+            ? Math.max(eventsPage.total_pages, 1)
+            : 1;
           const eventsMeta = eventsPage
-            ? `Page ${eventsPage.page} / ${totalPages} - ${formatNumber(
-                eventsPage.total
-              )} events`
-            : "No detail page loaded yet.";
+            ? `${formatNumber(sessionRows.length)} sessions from ${formatNumber(
+                eventsPage.items.length,
+              )} events · Page ${eventsPage.page} / ${totalPages}`
+            : "No session data loaded yet.";
 
           return `
             <section id="token-usage" class="dashboard-section">
               <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 class="section-heading mb-1">
+                <div class="token-usage-heading">
+                  <h2 class="section-heading mb-0">
                     <i data-lucide="database" class="h-5 w-5" style="color: var(--color-blue);"></i>
                     <span>Token Usage</span>
                   </h2>
-                  <p class="section-subtitle mb-0">${escapeHtml(
-                    renderTokenUsageRangeText(state.tokenUsagePeriod, activeRange)
-                  )}</p>
+                  <p class="section-subtitle range-label mb-0">
+                    <i data-lucide="calendar-range" class="h-3.5 w-3.5"></i>
+                    <span>${escapeHtml(
+                      renderTokenUsageRangeText(
+                        state.tokenUsagePeriod,
+                        activeRange,
+                      ),
+                    )}</span>
+                  </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2 text-xs font-medium" style="color: var(--color-gray);">
                   ${
                     state.isTokenUsageLoading
-                      ? `<span class="rounded-md px-2 py-1" style="background-color: rgba(37, 99, 235, 0.08); color: var(--color-blue);">Refreshing summary...</span>`
+                      ? `<span class="rounded-md px-2 py-1" style="background-color: var(--info-muted); color: var(--color-blue);">Refreshing summary...</span>`
                       : ""
                   }
                   ${
                     state.isEventsLoading
-                      ? `<span class="rounded-md px-2 py-1" style="background-color: rgba(37, 99, 235, 0.08); color: var(--color-blue);">Refreshing details...</span>`
+                      ? `<span class="rounded-md px-2 py-1" style="background-color: var(--info-muted); color: var(--color-blue);">Refreshing details...</span>`
                       : ""
                   }
                 </div>
@@ -1021,7 +1895,7 @@
                 state.tokenUsageSummaryError
                   ? renderError(
                       state.tokenUsageSummaryError,
-                      "Token usage summary failed"
+                      "Token usage summary failed",
                     )
                   : ""
               }
@@ -1032,74 +1906,68 @@
                 ${renderTokenUsageMetric(
                   "Total",
                   totals.total_tokens,
-                  "var(--color-fg-lightest)"
+                  "var(--color-fg-lightest)",
                 )}
                 ${renderTokenUsageMetric(
                   "Input",
                   totals.input_tokens,
-                  "var(--color-blue-accent)"
+                  "var(--color-blue-accent)",
                 )}
                 ${renderTokenUsageMetric(
                   "Output",
                   totals.output_tokens,
-                  "var(--color-green-accent)"
+                  "var(--color-green-accent)",
                 )}
                 ${renderTokenUsageMetric(
                   "Cache Read",
                   totals.cache_read_input_tokens,
-                  "var(--color-aqua-accent)"
+                  "var(--color-aqua-accent)",
                 )}
                 ${renderTokenUsageMetric(
                   "Cache Write",
                   totals.cache_creation_input_tokens,
-                  "var(--color-yellow-accent)"
+                  "var(--color-yellow-accent)",
                 )}
                 ${renderTokenUsageMetric(
                   "Requests",
                   totals.request_count,
-                  "var(--color-purple-accent)"
+                  "var(--color-purple-accent)",
                 )}
                 ${renderTokenUsageCostMetric(
                   "Cost",
                   formatTokenUsageCosts(totals.costs),
-                  "var(--color-yellow-accent)"
+                  "var(--color-yellow-accent)",
                 )}
               </div>
 
               ${renderTokenUsageDailyTrend(
                 dailySummary,
-                state.tokenUsageDailyError
+                state.tokenUsageDailyError,
               )}
 
-              <div class="mt-3 grid grid-cols-1 gap-3">
-                <div class="panel">
-                  <div class="panel-header">
-                    <div>
-                      <p class="panel-title">Model Breakdown</p>
-                      <p class="panel-meta">${summary ? `${formatNumber(summary.byModel.length)} models` : "No summary rows loaded."}</p>
-                    </div>
-                  </div>
-                  ${renderTokenUsageModelBreakdown(summary)}
-                </div>
+              ${renderDeveloperInsights(summary, dailySummary, state.data)}
 
+              <div class="mt-5 grid grid-cols-1 gap-4">
                 <div class="panel">
                   <div class="panel-header flex-col items-start sm:flex-row sm:items-center">
                     <div>
-                      <p class="panel-title">Request Events</p>
+                      <p class="panel-title">Session Usage</p>
                       <p class="panel-meta">${escapeHtml(eventsMeta)}</p>
                     </div>
                     <div class="flex items-center gap-2">
                       ${renderPaginationButton(
                         "previous",
                         "Previous",
-                        !eventsPage || state.isEventsLoading || eventsPage.page <= 1
+                        !eventsPage ||
+                          state.isEventsLoading ||
+                          eventsPage.page <= 1,
                       )}
                       ${renderPaginationButton(
                         "next",
                         "Next",
-                        !eventsPage
-                          || state.isEventsLoading
-                          || eventsPage.page >= totalPages
+                        !eventsPage ||
+                          state.isEventsLoading ||
+                          eventsPage.page >= totalPages,
                       )}
                     </div>
                   </div>
@@ -1107,15 +1975,169 @@
                     state.tokenUsageEventsError
                       ? `<div class="p-4">${renderError(
                           state.tokenUsageEventsError,
-                          "Token usage details failed"
+                          "Session usage failed",
                         )}</div>`
                       : ""
                   }
-                  ${renderTokenUsageEventsTable(eventsPage)}
+                  ${renderTokenUsageSessionsTable(sessionRows)}
                 </div>
               </div>
             </section>
           `;
+        }
+
+        function calculateCacheReuse(totals) {
+          const workload =
+            (totals.input_tokens || 0) +
+            (totals.cache_read_input_tokens || 0) +
+            (totals.cache_creation_input_tokens || 0);
+          return workload > 0
+            ? ((totals.cache_read_input_tokens || 0) / workload) * 100
+            : 0;
+        }
+
+        function formatAverage(value, count) {
+          return count > 0 ? formatNumber(Math.round(value / count)) : "—";
+        }
+
+        function formatCostAverage(costs, count) {
+          if (!Array.isArray(costs) || costs.length === 0 || count <= 0) {
+            return "—";
+          }
+          return costs
+            .map(
+              (cost) =>
+                `${cost.currency} ${(Number(cost.amount || 0) / count).toFixed(4)}`,
+            )
+            .join(" · ");
+        }
+
+        function renderInsightCard(label, value, note, color) {
+          return `
+            <div class="metric-card insight-card">
+              <div class="metric-label">
+                <span class="metric-dot" style="background-color: ${color};"></span>
+                <span>${escapeHtml(label)}</span>
+              </div>
+              <div class="insight-value">${escapeHtml(value)}</div>
+              <div class="metric-note">${escapeHtml(note)}</div>
+            </div>
+          `;
+        }
+
+        function renderUsageContext(data) {
+          if (!data) return "";
+          const resetDate = new Date(data.quota_reset_date);
+          const resetText = Number.isNaN(resetDate.getTime())
+            ? "Unknown"
+            : resetDate.toLocaleString();
+          return `
+            <div class="context-strip">
+              <span>Account <strong>${escapeHtml(data.login || "Unknown")}</strong></span>
+              <span>Plan <strong>${escapeHtml(data.copilot_plan || data.access_type_sku || "Unknown")}</strong></span>
+              <span>Quota reset <strong>${escapeHtml(resetText)}</strong></span>
+              <span>Token billing <strong>${data.token_based_billing ? "Enabled" : "Not reported"}</strong></span>
+              <span>Chat <strong>${data.chat_enabled ? "Enabled" : "Disabled"}</strong></span>
+            </div>
+          `;
+        }
+
+        function getBurnProjection(summary) {
+          const costs = summary?.totals?.costs || [];
+          const range = summary?.range;
+          if (!range || costs.length === 0) return "—";
+          const now = Date.now();
+          const elapsed = Math.max(
+            1,
+            Math.min(now, range.end_ms) - range.start_ms,
+          );
+          const duration = Math.max(1, range.end_ms - range.start_ms);
+          return costs
+            .map((cost) => {
+              const projected = Number(cost.amount || 0) * (duration / elapsed);
+              return `${cost.currency} ${projected.toFixed(2)}`;
+            })
+            .join(" · ");
+        }
+
+        function getUsageAnomaly(dailySummary) {
+          const activeDays = (dailySummary?.days || []).filter(
+            (day) => day.totals?.request_count > 0,
+          );
+          if (activeDays.length < 2) return "";
+          const average =
+            activeDays.reduce(
+              (sum, day) => sum + (day.totals.total_tokens || 0),
+              0,
+            ) / activeDays.length;
+          const peak = activeDays.reduce((current, day) =>
+            (day.totals.total_tokens || 0) > (current.totals.total_tokens || 0)
+              ? day
+              : current,
+          );
+          if ((peak.totals.total_tokens || 0) < average * 1.5) return "";
+          return `${formatChartDate(peak.date)} used ${formatNumber(
+            peak.totals.total_tokens,
+          )} tokens—${((peak.totals.total_tokens || 0) / average).toFixed(
+            1,
+          )}× the active-day average.`;
+        }
+
+        function renderModelEfficiency(summary) {
+          if (!summary?.byModel?.length) return "";
+          const rows = summary.byModel
+            .map(
+              (model) => `
+                <tr>
+                  <td class="px-4 py-2 font-semibold" style="color: var(--foreground);">${escapeHtml(model.model)}</td>
+                  <td class="px-4 py-2 text-right">${formatNumber(model.request_count)}</td>
+                  <td class="px-4 py-2 text-right">${formatAverage(model.total_tokens, model.request_count)}</td>
+                  <td class="px-4 py-2 text-right">${calculateCacheReuse(model).toFixed(1)}%</td>
+                  <td class="px-4 py-2 text-right">${escapeHtml(formatCostAverage(model.costs, model.request_count))}</td>
+                  <td class="px-4 py-2 text-right">${model.total_nano_aiu === null ? "—" : formatAverage(model.total_nano_aiu, model.request_count)}</td>
+                </tr>`,
+            )
+            .join("");
+          return `
+            <div class="panel">
+              <div class="panel-header"><div><p class="panel-title">Model Efficiency</p><p class="panel-meta">Compare cost and context efficiency before choosing an agent model.</p></div></div>
+              <div class="overflow-auto">
+                <table class="data-table min-w-[760px] text-left">
+                  <thead><tr>
+                    <th class="px-4 py-2">Model</th><th class="px-4 py-2 text-right">Requests</th>
+                    <th class="px-4 py-2 text-right">Tokens / req</th><th class="px-4 py-2 text-right">Cache reuse</th>
+                    <th class="px-4 py-2 text-right">Cost / req</th><th class="px-4 py-2 text-right">AIU / req</th>
+                  </tr></thead><tbody>${rows}</tbody>
+                </table>
+              </div>
+            </div>`;
+        }
+
+        function renderDeveloperInsights(summary, dailySummary, usageData) {
+          if (!summary) return "";
+          const totals = summary.totals || EMPTY_TOKEN_USAGE_TOTALS;
+          const mostExpensiveModel = [...(summary.byModel || [])].sort(
+            (left, right) =>
+              (right.costs?.[0]?.amount || 0) - (left.costs?.[0]?.amount || 0),
+          )[0];
+          const anomaly = getUsageAnomaly(dailySummary);
+          return `
+            <div class="insights-block">
+              <h3 class="section-heading"><i data-lucide="activity" class="h-5 w-5" style="color: var(--color-green);"></i><span>Agent Efficiency</span></h3>
+              ${renderUsageContext(usageData)}
+              <div class="insight-grid">
+                ${renderInsightCard("Cache reuse", `${calculateCacheReuse(totals).toFixed(1)}%`, "Higher is better for long agent sessions", "var(--color-aqua)")}
+                ${renderInsightCard("Tokens / request", formatAverage(totals.total_tokens, totals.request_count), "Average context and output footprint", "var(--color-blue)")}
+                ${renderInsightCard("Cost / request", formatCostAverage(totals.costs, totals.request_count), "Average estimated request cost", "var(--color-yellow)")}
+                ${renderInsightCard("AIU / request", totals.total_nano_aiu === null ? "—" : formatAverage(totals.total_nano_aiu, totals.request_count), "Copilot consumption per request", "var(--color-purple)")}
+                ${renderInsightCard("Projected period cost", getBurnProjection(summary), "Current spend pace through period end", "var(--color-orange)")}
+                ${renderInsightCard("Highest-cost model", mostExpensiveModel?.model || "—", mostExpensiveModel ? formatTokenUsageCosts(mostExpensiveModel.costs).join(" · ") : "No priced usage", "var(--color-red)")}
+              </div>
+              ${anomaly ? `<div class="insight-note"><strong>Usage anomaly:</strong> ${escapeHtml(anomaly)}</div>` : ""}
+              <div class="mt-5 grid grid-cols-1 gap-4">
+                ${renderModelEfficiency(summary)}
+              </div>
+            </div>`;
         }
 
         function getTokenUsageTrendMetrics() {
@@ -1154,8 +2176,8 @@
           }
 
           return (
-            day.byModel?.find((model) => model.model === selectedModel)
-            || EMPTY_TOKEN_USAGE_TOTALS
+            day.byModel?.find((model) => model.model === selectedModel) ||
+            EMPTY_TOKEN_USAGE_TOTALS
           );
         }
 
@@ -1171,7 +2193,7 @@
 
           const models = dailySummary?.byModel || [];
           const selectedModel = models.some(
-            (model) => model.model === state.tokenUsageTrendModel
+            (model) => model.model === state.tokenUsageTrendModel,
           )
             ? state.tokenUsageTrendModel
             : ALL_MODELS_VALUE;
@@ -1181,12 +2203,12 @@
               (model) =>
                 `<option value="${escapeHtml(model.model)}" ${
                   selectedModel === model.model ? "selected" : ""
-                }>${escapeHtml(model.model)}</option>`
+                }>${escapeHtml(model.model)}</option>`,
             ),
           ].join("");
 
           return `
-            <div class="mt-3 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_304px] gap-3">
+            <div class="mt-5 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
               <div class="panel">
                 <div class="panel-header">
                   <div>
@@ -1194,8 +2216,8 @@
                     <p class="panel-meta">${escapeHtml(
                       renderTokenUsageRangeText(
                         state.tokenUsagePeriod,
-                        dailySummary?.range || null
-                      )
+                        dailySummary?.range || null,
+                      ),
                     )}</p>
                   </div>
                 </div>
@@ -1203,7 +2225,7 @@
                   error
                     ? `<div class="p-4">${renderError(
                         error,
-                        "Token usage daily trend failed"
+                        "Token usage daily trend failed",
                       )}</div>`
                     : ""
                 }
@@ -1220,10 +2242,13 @@
                 <div class="p-4 space-y-4">
                   <div>
                     <label class="field-label">Model</label>
-                    <select
-                      data-token-usage-trend-model
-                      class="select-control input-focus text-sm"
-                    >${options}</select>
+                    <div class="select-shell">
+                      <select
+                        data-token-usage-trend-model
+                        class="select-control input-focus text-sm"
+                      >${options}</select>
+                      <i data-lucide="chevron-down" aria-hidden="true"></i>
+                    </div>
                   </div>
                   <div>
                     <div class="field-label">Metric</div>
@@ -1254,7 +2279,7 @@
                   type="button"
                   data-trend-metric="${metric.key}"
                   class="pill-button inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold"
-                  style="background-color: ${isActive ? "rgba(37, 99, 235, 0.1)" : "var(--color-bg)"}; border-color: ${isActive ? "rgba(37, 99, 235, 0.28)" : "var(--color-bg-light-2)"}; color: ${isActive ? "var(--color-blue)" : "var(--color-fg-medium)"};"
+                  style="background-color: ${isActive ? "var(--info-muted)" : "var(--color-bg)"}; border-color: ${isActive ? "var(--info-border)" : "var(--color-bg-light-2)"}; color: ${isActive ? "var(--color-blue)" : "var(--color-fg-medium)"};"
                 >
                   <span class="h-2 w-2 rounded-full" style="background-color: ${metric.color};"></span>
                   ${escapeHtml(metric.label)}
@@ -1271,24 +2296,17 @@
             state.tokenUsageTrendMetric === ALL_METRICS_VALUE
               ? metrics
               : metrics.filter(
-                  (metric) => metric.key === state.tokenUsageTrendMetric
+                  (metric) => metric.key === state.tokenUsageTrendMetric,
                 );
           const hasUsage = days.some(
-            (day) => getDailyTrendTotals(day, selectedModel).request_count > 0
+            (day) => getDailyTrendTotals(day, selectedModel).request_count > 0,
           );
-          const latestUsageIndex = days.reduce((latest, day, index) => {
-            return getDailyTrendTotals(day, selectedModel).request_count > 0
-              ? index
-              : latest;
-          }, -1);
           const activeIndex =
-            Number.isInteger(state.tokenUsageTrendDayIndex)
-              && state.tokenUsageTrendDayIndex >= 0
-              && state.tokenUsageTrendDayIndex < days.length
+            Number.isInteger(state.tokenUsageTrendDayIndex) &&
+            state.tokenUsageTrendDayIndex >= 0 &&
+            state.tokenUsageTrendDayIndex < days.length
               ? state.tokenUsageTrendDayIndex
-              : latestUsageIndex >= 0
-                ? latestUsageIndex
-                : Math.max(0, days.length - 1);
+              : -1;
           const activeDay = days[activeIndex];
           const activeTotals = activeDay
             ? getDailyTrendTotals(activeDay, selectedModel)
@@ -1300,7 +2318,7 @@
 
           if (!dailySummary || days.length === 0 || !hasUsage) {
             return renderEmptyState(
-              "No token usage recorded for the selected period."
+              "No token usage recorded for the selected period.",
             );
           }
 
@@ -1321,12 +2339,12 @@
           const hitWidth =
             days.length <= 1 ? plotWidth : plotWidth / (days.length - 1);
           const yForValue = (value) =>
-            padding.top
-            + plotHeight
-            - (Math.max(0, value) / maxValue) * plotHeight;
+            padding.top +
+            plotHeight -
+            (Math.max(0, value) / maxValue) * plotHeight;
           const labelEvery = Math.max(1, Math.ceil(days.length / 6));
           const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
-            Math.round(maxValue * ratio)
+            Math.round(maxValue * ratio),
           );
 
           const grid = yTicks
@@ -1339,7 +2357,7 @@
                 <text x="${padding.left - 8}" y="${
                   y + 4
                 }" text-anchor="end" font-size="11" fill="var(--color-gray-accent)">${formatNumber(
-                  tick
+                  tick,
                 )}</text>
               `;
             })
@@ -1352,7 +2370,7 @@
               return `<text x="${xForIndex(index)}" y="${
                 height - 10
               }" text-anchor="middle" font-size="11" fill="var(--color-gray-accent)">${escapeHtml(
-                formatChartDate(day.date)
+                formatChartDate(day.date),
               )}</text>`;
             })
             .join("");
@@ -1362,7 +2380,7 @@
                 .map((day, index) => {
                   const totals = getDailyTrendTotals(day, selectedModel);
                   return `${xForIndex(index)},${yForValue(
-                    totals[metric.key] || 0
+                    totals[metric.key] || 0,
                   )}`;
                 })
                 .join(" ");
@@ -1371,14 +2389,14 @@
                   const totals = getDailyTrendTotals(day, selectedModel);
                   const value = totals[metric.key] || 0;
                   return `<circle cx="${xForIndex(index)}" cy="${yForValue(
-                    value
+                    value,
                   )}" r="2.5" fill="${
                     metric.color
                   }" data-trend-day-index="${index}">
                     <title>${escapeHtml(
                       `${formatChartDate(day.date)} ${metric.label}: ${formatNumber(
-                        value
-                      )}`
+                        value,
+                      )}`,
                     )}</title>
                   </circle>`;
                 })
@@ -1393,7 +2411,7 @@
             .join("");
           const activeMarker = activeDay
             ? `<line x1="${xForIndex(activeIndex)}" x2="${xForIndex(
-                activeIndex
+                activeIndex,
               )}" y1="${padding.top}" y2="${
                 padding.top + plotHeight
               }" stroke="var(--color-bg-light-4)" stroke-dasharray="4 4" stroke-width="1" />`
@@ -1402,25 +2420,18 @@
             .map((day, index) => {
               const x = xForIndex(index);
               const hitStart = Math.max(padding.left, x - hitWidth / 2);
-              const hitEnd = Math.min(
-                width - padding.right,
-                x + hitWidth / 2
-              );
+              const hitEnd = Math.min(width - padding.right, x + hitWidth / 2);
               const totals = getDailyTrendTotals(day, selectedModel);
               const title = [
                 formatChartDate(day.date),
                 ...visibleMetrics.map(
                   (metric) =>
-                    `${metric.label}: ${formatNumber(
-                      totals[metric.key] || 0
-                    )}`
+                    `${metric.label}: ${formatNumber(totals[metric.key] || 0)}`,
                 ),
               ].join("\n");
               return `<rect x="${hitStart}" y="${padding.top}" width="${
                 hitEnd - hitStart
-              }" height="${plotHeight}" fill="transparent" style="cursor: pointer;" data-trend-day-index="${index}">
-                <title>${escapeHtml(title)}</title>
-              </rect>`;
+              }" height="${plotHeight}" fill="transparent" style="cursor: pointer;" data-trend-day-index="${index}" tabindex="0" role="button" aria-label="${escapeHtml(title.replaceAll("\n", ", "))}"></rect>`;
             })
             .join("");
           const legend = [
@@ -1432,21 +2443,25 @@
                   };"></span>
                   ${escapeHtml(metric.label)}
                 </span>
-              `
+              `,
             ),
           ].join("");
-          const activeValues = activeDay
+          const activeTooltip = activeDay
             ? `
-              <div class="mt-2 flex flex-wrap gap-3 px-3 py-2 text-xs" style="background-color: var(--color-bg-soft); color: var(--color-fg-dark);">
-                <span class="font-semibold" style="color: var(--color-fg-lightest);">${escapeHtml(
-                  formatChartDate(activeDay.date)
-                )}</span>
+              <div class="trend-tooltip" style="--tooltip-x: ${(
+                (xForIndex(activeIndex) / width) *
+                100
+              ).toFixed(2)}%;">
+                <div class="trend-tooltip-date">${escapeHtml(
+                  formatChartDate(activeDay.date),
+                )}</div>
                 ${visibleMetrics
                   .map(
                     (metric) =>
-                      `<span>${escapeHtml(metric.label)}: ${formatNumber(
-                        activeTotals[metric.key] || 0
-                      )}</span>`
+                      `<div class="trend-tooltip-row">
+                        <span class="inline-flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full" style="background: ${metric.color};"></span>${escapeHtml(metric.label)}</span>
+                        <strong>${formatNumber(activeTotals[metric.key] || 0)}</strong>
+                      </div>`,
                   )
                   .join("")}
               </div>
@@ -1455,17 +2470,19 @@
 
           return `
             <div class="p-4 ${state.isTokenUsageLoading ? "opacity-60" : ""}">
-              <svg class="w-full h-56" viewBox="0 0 ${width} ${height}" role="img">
-                ${grid}
-                ${xLabels}
-                ${activeMarker}
-                ${lines}
-                ${hitRects}
-              </svg>
+              <div class="trend-chart-wrap">
+                <svg class="w-full h-56" viewBox="0 0 ${width} ${height}" role="img">
+                  ${grid}
+                  ${xLabels}
+                  ${activeMarker}
+                  ${lines}
+                  ${hitRects}
+                </svg>
+                ${activeTooltip}
+              </div>
               <div class="mt-2 flex flex-wrap gap-5">
                 ${legend}
               </div>
-              ${activeValues}
             </div>
           `;
         }
@@ -1473,7 +2490,10 @@
         function renderTokenUsageValueLines(value) {
           const lines = Array.isArray(value) ? value : [value];
           return lines
-            .map((line) => `<span class="block whitespace-nowrap">${escapeHtml(line)}</span>`)
+            .map(
+              (line) =>
+                `<span class="block whitespace-nowrap">${escapeHtml(line)}</span>`,
+            )
             .join("");
         }
 
@@ -1485,7 +2505,7 @@
                 <span>${escapeHtml(label)}</span>
               </div>
               <div class="metric-value" style="color: var(--color-fg-lightest);">${renderTokenUsageValueLines(
-                typeof value === "number" ? formatNumber(value) : value
+                typeof value === "number" ? formatNumber(value) : value,
               )}</div>
               <div class="metric-note">Current period</div>
             </div>
@@ -1500,7 +2520,7 @@
                 <span>${escapeHtml(label)}</span>
               </div>
               <div class="metric-value" style="color: var(--color-fg-lightest);">${renderTokenUsageValueLines(
-                value
+                value,
               )}</div>
               <div class="metric-note">Estimated total</div>
             </div>
@@ -1510,7 +2530,7 @@
         function renderTokenUsageModelBreakdown(summary) {
           if (!summary || summary.byModel.length === 0) {
             return renderEmptyState(
-              "No token usage recorded for the selected period."
+              "No token usage recorded for the selected period.",
             );
           }
 
@@ -1519,29 +2539,29 @@
               return `
                 <tr class="border-b last:border-b-0" style="border-color: var(--color-bg-light-1);">
                   <td class="px-4 py-2 max-w-[280px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(
-                    model.model
+                    model.model,
                   )}">${escapeHtml(model.model)}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    model.request_count
+                    model.request_count,
                   )}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    model.input_tokens
+                    model.input_tokens,
                   )}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    model.output_tokens
+                    model.output_tokens,
                   )}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    model.cache_read_input_tokens
+                    model.cache_read_input_tokens,
                   )}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    model.cache_creation_input_tokens
+                    model.cache_creation_input_tokens,
                   )}</td>
                   <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
-                    model.total_tokens
+                    model.total_tokens,
                   )}</td>
                   <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">
                     <span class="inline-flex flex-col items-end leading-5">${renderTokenUsageValueLines(
-                      formatTokenUsageCosts(model.costs)
+                      formatTokenUsageCosts(model.costs),
                     )}</span>
                   </td>
                 </tr>
@@ -1572,56 +2592,79 @@
           `;
         }
 
-        function renderTokenUsageEventsTable(eventsPage) {
-          if (!eventsPage || eventsPage.items.length === 0) {
+        function getSessionUsageRows(events) {
+          const now = new Date();
+          const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+          const visibleEvents =
+            state.tokenUsagePeriod === "month"
+              ? events.filter(
+                  (event) => event.created_at_ms >= monthStart.getTime(),
+                )
+              : events;
+          const sessions = new Map();
+
+          visibleEvents.forEach((event, index) => {
+            const sessionId =
+              event.session_id?.trim() ||
+              event.trace_id?.trim() ||
+              `request-${event.id || index + 1}`;
+            const session = sessions.get(sessionId) || {
+              events: [],
+              last_at_ms: 0,
+              models: new Set(),
+              session_id: sessionId,
+              users: new Set(),
+            };
+            session.events.push({
+              ...event,
+              costs: event.cost ? [event.cost] : [],
+              request_count: 1,
+            });
+            session.last_at_ms = Math.max(
+              session.last_at_ms,
+              event.created_at_ms || 0,
+            );
+            if (event.model) session.models.add(event.model);
+            if (event.user_id) session.users.add(event.user_id);
+            sessions.set(sessionId, session);
+          });
+
+          return [...sessions.values()]
+            .map((session) => ({
+              ...aggregateTokenUsageRows(session.events),
+              last_at_ms: session.last_at_ms,
+              models: [...session.models],
+              session_id: session.session_id,
+              users: [...session.users],
+            }))
+            .sort((left, right) => right.last_at_ms - left.last_at_ms);
+        }
+
+        function renderTokenUsageSessionsTable(sessions) {
+          if (sessions.length === 0) {
             return renderEmptyState(
-              "No token usage detail rows for the selected period."
+              "No session usage data for the selected period.",
             );
           }
 
-          const rows = eventsPage.items
-            .map((event) => {
-              const userId = formatCellText(event.user_id);
-              const sessionId = formatCellText(event.session_id);
-              const traceId = formatCellText(event.trace_id);
-
+          const rows = sessions
+            .map((session) => {
+              const users = session.users.join(", ") || "—";
+              const models = session.models.join(", ") || "—";
               return `
                 <tr class="border-b last:border-b-0" style="border-color: var(--color-bg-light-1);">
-                  <td class="px-4 py-2 max-w-[170px] truncate whitespace-nowrap" style="color: var(--color-fg-dark);" title="${escapeHtml(
-                    event.created_at_utc
-                  )}">${escapeHtml(formatDateTime(event.created_at_ms))}</td>
-                  <td class="px-4 py-2 max-w-[100px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(
-                    userId
-                  )}">${escapeHtml(userId)}</td>
-
-                  <td class="px-4 py-2 max-w-[140px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(
-                    event.model
-                  )}">${escapeHtml(event.model)}</td>
-                  <td class="px-4 py-2 max-w-[180px] truncate font-mono" style="color: var(--color-fg-dark);" title="${escapeHtml(
-                    sessionId
-                  )}">${escapeHtml(sessionId)}</td>
-                  <td class="px-4 py-2 max-w-[200px] truncate font-mono" style="color: var(--color-fg-dark);" title="${escapeHtml(
-                    traceId
-                  )}">${escapeHtml(traceId)}</td>
-                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    event.input_tokens
-                  )}</td>
-                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    event.output_tokens
-                  )}</td>
-                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    event.cache_read_input_tokens
-                  )}</td>
-                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
-                    event.cache_creation_input_tokens
-                  )}</td>
-                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(
-                    event.total_tokens
-                  )}</td>
+                  <td class="px-4 py-2 whitespace-nowrap font-mono" style="color: var(--color-fg-lightest);">${escapeHtml(session.session_id)}</td>
+                  <td class="px-4 py-2 max-w-[170px] truncate whitespace-nowrap" style="color: var(--color-fg-dark);">${escapeHtml(formatDateTime(session.last_at_ms))}</td>
+                  <td class="px-4 py-2 max-w-[120px] truncate" style="color: var(--color-fg-dark);" title="${escapeHtml(users)}">${escapeHtml(users)}</td>
+                  <td class="px-4 py-2 max-w-[200px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(models)}">${escapeHtml(models)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(session.request_count)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(session.input_tokens)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(session.output_tokens)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(session.cache_read_input_tokens)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(session.cache_creation_input_tokens)}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(session.total_tokens)}</td>
                   <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">
-                    <span class="inline-flex flex-col items-end leading-5">${renderTokenUsageValueLines(
-                      formatTokenUsageCost(event.cost)
-                    )}</span>
+                    <span class="inline-flex flex-col items-end leading-5">${renderTokenUsageValueLines(formatTokenUsageCosts(session.costs))}</span>
                   </td>
                 </tr>
               `;
@@ -1630,15 +2673,14 @@
 
           return `
             <div class="overflow-auto ${state.isEventsLoading ? "opacity-60" : ""}">
-              <table class="data-table min-w-[1000px] text-left">
+              <table class="data-table min-w-[1100px] text-left">
                 <thead>
                   <tr>
-                    <th class="px-4 py-2 font-semibold">Time</th>
-                    <th class="px-4 py-2 font-semibold">User</th>
-
-                    <th class="px-4 py-2 font-semibold">Model</th>
                     <th class="px-4 py-2 font-semibold">Session</th>
-                    <th class="px-4 py-2 font-semibold">Trace</th>
+                    <th class="px-4 py-2 font-semibold">Last Active</th>
+                    <th class="px-4 py-2 font-semibold">User</th>
+                    <th class="px-4 py-2 font-semibold">Models</th>
+                    <th class="px-4 py-2 text-right font-semibold">Requests</th>
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
@@ -1647,9 +2689,7 @@
                     <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
                   </tr>
                 </thead>
-                <tbody>
-                  ${rows}
-                </tbody>
+                <tbody>${rows}</tbody>
               </table>
             </div>
           `;
@@ -1683,7 +2723,7 @@
         function renderSpinner() {
           return `
             <div class="flex justify-center items-center py-20">
-                <div class="animate-spin h-12 w-12 rounded-full border-4 border-transparent border-t-4" style="border-top-color: var(--color-blue); background-color: rgba(255, 255, 255, 0.65);"></div>
+                <div class="animate-spin h-12 w-12 rounded-full border-4 border-transparent border-t-4" style="border-top-color: var(--color-blue); background-color: var(--overlay);"></div>
             </div>`;
         }
 
@@ -1696,7 +2736,7 @@
           return `
             <div
               class="p-3 border rounded-lg"
-              style="background-color: rgba(220, 38, 38, 0.08); border-color: rgba(220, 38, 38, 0.22); color: var(--color-red);"
+              style="background-color: var(--destructive-muted); border-color: var(--destructive-border); color: var(--destructive);"
               role="alert"
             >
               <div class="flex items-start">
@@ -1773,43 +2813,35 @@
 
             if (summaryResult.status === "fulfilled") {
               state.tokenUsageSummary = summaryResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(summaryResult.reason)
-            ) {
+            } else if (isMissingTokenUsageEndpointError(summaryResult.reason)) {
               state.tokenUsageSummary = null;
               state.tokenUsageSummaryError = null;
             } else {
               state.tokenUsageSummary = null;
               state.tokenUsageSummaryError = getErrorMessage(
-                summaryResult.reason
+                summaryResult.reason,
               );
             }
 
             if (dailyResult.status === "fulfilled") {
               state.tokenUsageDailySummary = dailyResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(dailyResult.reason)
-            ) {
+            } else if (isMissingTokenUsageEndpointError(dailyResult.reason)) {
               state.tokenUsageDailySummary = null;
               state.tokenUsageDailyError = null;
             } else {
               state.tokenUsageDailySummary = null;
-              state.tokenUsageDailyError = getErrorMessage(
-                dailyResult.reason
-              );
+              state.tokenUsageDailyError = getErrorMessage(dailyResult.reason);
             }
 
             if (eventsResult.status === "fulfilled") {
               state.tokenUsageEventsPage = eventsResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(eventsResult.reason)
-            ) {
+            } else if (isMissingTokenUsageEndpointError(eventsResult.reason)) {
               state.tokenUsageEventsPage = null;
               state.tokenUsageEventsError = null;
             } else {
               state.tokenUsageEventsPage = null;
               state.tokenUsageEventsError = getErrorMessage(
-                eventsResult.reason
+                eventsResult.reason,
               );
             }
           } catch (error) {
@@ -1864,43 +2896,35 @@
 
             if (summaryResult.status === "fulfilled") {
               state.tokenUsageSummary = summaryResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(summaryResult.reason)
-            ) {
+            } else if (isMissingTokenUsageEndpointError(summaryResult.reason)) {
               state.tokenUsageSummary = null;
               state.tokenUsageSummaryError = null;
             } else {
               state.tokenUsageSummary = null;
               state.tokenUsageSummaryError = getErrorMessage(
-                summaryResult.reason
+                summaryResult.reason,
               );
             }
 
             if (dailyResult.status === "fulfilled") {
               state.tokenUsageDailySummary = dailyResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(dailyResult.reason)
-            ) {
+            } else if (isMissingTokenUsageEndpointError(dailyResult.reason)) {
               state.tokenUsageDailySummary = null;
               state.tokenUsageDailyError = null;
             } else {
               state.tokenUsageDailySummary = null;
-              state.tokenUsageDailyError = getErrorMessage(
-                dailyResult.reason
-              );
+              state.tokenUsageDailyError = getErrorMessage(dailyResult.reason);
             }
 
             if (eventsResult.status === "fulfilled") {
               state.tokenUsageEventsPage = eventsResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(eventsResult.reason)
-            ) {
+            } else if (isMissingTokenUsageEndpointError(eventsResult.reason)) {
               state.tokenUsageEventsPage = null;
               state.tokenUsageEventsError = null;
             } else {
               state.tokenUsageEventsPage = null;
               state.tokenUsageEventsError = getErrorMessage(
-                eventsResult.reason
+                eventsResult.reason,
               );
             }
           } catch (error) {
@@ -1933,7 +2957,7 @@
           try {
             const usageUrl = resolveUsageUrl(endpoint);
             state.tokenUsageEventsPage = await fetchJson(
-              buildTokenUsageEventsUrl(usageUrl, getSelectedPeriod(), page)
+              buildTokenUsageEventsUrl(usageUrl, getSelectedPeriod(), page),
             );
           } catch (error) {
             if (isMissingTokenUsageEndpointError(error)) {
@@ -1963,6 +2987,7 @@
         }
 
         function handlePeriodChange() {
+          state.tokenUsageTrendDayIndex = null;
           syncUrlState();
           void fetchTokenUsageSummaryAndEvents(1);
         }
@@ -1975,45 +3000,66 @@
           const trendMetric = event.target.closest("[data-trend-metric]");
           if (trendMetric) {
             state.tokenUsageTrendMetric =
-              trendMetric.getAttribute("data-trend-metric")
-              || ALL_METRICS_VALUE;
+              trendMetric.getAttribute("data-trend-metric") ||
+              ALL_METRICS_VALUE;
+            state.tokenUsageTrendDayIndex = null;
             render();
             return;
           }
 
-          const trendPoint = event.target.closest("[data-trend-day-index]");
-          if (trendPoint) {
-            const index = Number.parseInt(
-              trendPoint.getAttribute("data-trend-day-index") || "",
-              10
-            );
-            if (Number.isFinite(index) && index >= 0) {
-              state.tokenUsageTrendDayIndex = index;
-              render();
-            }
-            return;
-          }
-
           const actionButton = event.target.closest("[data-page-action]");
-          if (!actionButton || !state.tokenUsageEventsPage || state.isEventsLoading) {
+          if (
+            !actionButton ||
+            !state.tokenUsageEventsPage ||
+            state.isEventsLoading
+          ) {
             return;
           }
 
           const action = actionButton.getAttribute("data-page-action");
-          if (
-            action === "previous"
-            && state.tokenUsageEventsPage.page > 1
-          ) {
+          if (action === "previous" && state.tokenUsageEventsPage.page > 1) {
             void fetchTokenUsageEventsPage(state.tokenUsageEventsPage.page - 1);
           }
 
           if (
-            action === "next"
-            && state.tokenUsageEventsPage.page
-              < state.tokenUsageEventsPage.total_pages
+            action === "next" &&
+            state.tokenUsageEventsPage.page <
+              state.tokenUsageEventsPage.total_pages
           ) {
             void fetchTokenUsageEventsPage(state.tokenUsageEventsPage.page + 1);
           }
+        }
+
+        function handleContentAreaHover(event) {
+          if (!(event.target instanceof Element)) return;
+          const trendPoint = event.target.closest("[data-trend-day-index]");
+          if (!trendPoint) return;
+          const index = Number.parseInt(
+            trendPoint.getAttribute("data-trend-day-index") || "",
+            10,
+          );
+          if (
+            Number.isFinite(index) &&
+            index >= 0 &&
+            state.tokenUsageTrendDayIndex !== index
+          ) {
+            state.tokenUsageTrendDayIndex = index;
+            render();
+          }
+        }
+
+        function handleContentAreaHoverEnd(event) {
+          if (!(event.target instanceof Element)) return;
+          const chart = event.target.closest(".trend-chart-wrap");
+          if (!chart || state.tokenUsageTrendDayIndex === null) return;
+          if (
+            event.relatedTarget instanceof Node &&
+            chart.contains(event.relatedTarget)
+          ) {
+            return;
+          }
+          state.tokenUsageTrendDayIndex = null;
+          render();
         }
 
         function handleContentAreaChange(event) {
@@ -2025,8 +3071,8 @@
             return;
           }
 
-          state.tokenUsageTrendModel =
-            event.target.value || ALL_MODELS_VALUE;
+          state.tokenUsageTrendModel = event.target.value || ALL_MODELS_VALUE;
+          state.tokenUsageTrendDayIndex = null;
           render();
         }
 
@@ -2035,13 +3081,20 @@
          */
         function init() {
           endpointForm.addEventListener("submit", handleFormSubmit);
+          configToggle.addEventListener("click", handleConfigToggle);
+          themeToggle.addEventListener("click", handleThemeToggle);
           tokenUsagePeriodSelect.addEventListener("change", handlePeriodChange);
           apiKeyInput.addEventListener("input", () => {
             storeApiKey(apiKeyInput.value);
           });
           contentArea.addEventListener("click", handleContentAreaClick);
+          contentArea.addEventListener("mouseover", handleContentAreaHover);
+          contentArea.addEventListener("mouseout", handleContentAreaHoverEnd);
+          contentArea.addEventListener("focusin", handleContentAreaHover);
+          contentArea.addEventListener("focusout", handleContentAreaHoverEnd);
           contentArea.addEventListener("change", handleContentAreaChange);
 
+          applyTheme(getCurrentTheme(), false);
           apiKeyInput.value = loadStoredApiKey();
 
           const urlParams = new URLSearchParams(window.location.search);
@@ -2053,17 +3106,16 @@
 
           if (endpointFromUrl) {
             endpointUrlInput.value = endpointFromUrl;
-            void fetchData();
           } else {
             endpointUrlInput.value = DEFAULT_ENDPOINT;
-            render();
           }
+
+          void fetchData();
         }
 
         // Start the app
         init();
       });
     </script>
-
   </body>
 </html>
