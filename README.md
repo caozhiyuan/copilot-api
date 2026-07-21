@@ -448,21 +448,23 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 
 - **API Endpoint URL**: The dashboard is pre-configured to fetch data from your local server endpoint via a URL query parameter. You can manually switch this to any other compatible API endpoint.
 - **x-api-key Authentication**: If API Key authentication is enabled, you can provide the `x-api-key` request header. The key is persisted in the browser's local storage.
-- **Period Selector**: Choose from Day, Week, or Month time ranges. The URL query parameter updates automatically when you switch, making it easy to bookmark and share.
+- **Theme Selector**: Switch between dark and light themes. The selected theme is persisted in the browser's local storage.
+- **Period Selector**: Choose from Day, Week, or Month time ranges. Month displays usage from the first day of the current month through today. The URL query parameter updates automatically when you switch, making it easy to bookmark and share.
 - **Fetch Data**: Click the "Refresh" button to load or refresh the usage data. The dashboard also fetches data automatically on page load.
 - **Copilot Quotas**: View quota usage for services such as Chat and Completions via progress bars. Hover over a card to see used/remaining details.
 - **Token Usage Metric Cards**: See a summary of Total, Input, Output, Cache Read, Cache Write, Requests, and estimated cost for the current period.
-- **Trend Chart (Week / Month)**: An interactive line chart with model and metric filters. Click a data point to inspect the usage breakdown for a specific day.
-- **Model Breakdown Table**: A per-model summary of requests, input/output/cache tokens, and estimated cost for the selected period.
-- **Request Events (Paginated)**: A time-sorted list of request event records with pagination support, showing timestamps, models, request IDs, and token counts.
+- **Trend Chart (Week / Month)**: An interactive line chart with model and metric filters. Hover over or focus a date to inspect its usage breakdown.
+- **Agent Efficiency**: Compare cache reuse, tokens, cost, AIU, projected spend, anomalies, and per-model efficiency.
+- **Session Usage (Paginated)**: View request count, models, users, token usage, cache usage, cost, and last activity aggregated by session ID.
 - **Detailed Information**: See the full JSON response from the API for a detailed breakdown of all available usage statistics.
 - **URL-based Configuration**: You can also specify the API endpoint and period directly via `endpoint` and `period` query parameters. For example:
   `http://localhost:4141/usage-viewer?endpoint=http://your-api-server/usage&period=week`
 
-### Usage Viewer Screenshot
+### Usage Viewer Screenshots
 
 <p align="center">
-  <img src="./docs/screenshots/usage-viewer.png" alt="Copilot API usage viewer" width="900" />
+  <img src="./docs/screenshots/web-dashboard-dark-mode.png" alt="Copilot API usage dashboard in dark mode" width="49%" />
+  <img src="./docs/screenshots/web-dashboard-light-mode.png" alt="Copilot API usage dashboard in light mode" width="49%" />
 </p>
 
 ## Command Structure
