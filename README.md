@@ -463,8 +463,7 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 ### Usage Viewer Screenshots
 
 <p align="center">
-  <img src="./docs/screenshots/web-dashboard-dark-mode.png" alt="Copilot API usage dashboard in dark mode" width="49%" />
-  <img src="./docs/screenshots/web-dashboard-light-mode.png" alt="Copilot API usage dashboard in light mode" width="49%" />
+  <img src="./docs/screenshots/web-dashboard-light-mode.png" alt="Copilot API usage dashboard in light mode" width="900" />
 </p>
 
 ## Command Structure
