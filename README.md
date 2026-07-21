@@ -7,10 +7,8 @@ English | [简体中文](./README.zh-CN.md)
 > [!IMPORTANT]
 > **Before using, please be aware of the following:**
 >
-> 1. **Claude Code configuration:** When using with Claude Code, please configure the model ID as `claude-opus-4-8`. Example claude `settings.json` see [Manual Configuration with `settings.json`](#manual-configuration-with-settingsjson). 
->
+> 1. **Claude Code configuration:** When using with Claude Code, please configure the model ID as `claude-opus-4-8`. Example claude `settings.json` see [Manual Configuration with `settings.json`](#manual-configuration-with-settingsjson).
 > 2. **Built-in `copilot`, `codex` and third-party providers:** Run `npx @jeffreycao/copilot-api@latest auth` and choose `copilot`, `codex`, `deepseek`, `custom`, or other providers.
->
 > 3. **Note:** See [GitHub Copilot Security Notice](./NOTICE.md#github-copilot-security-notice) for the warning removed from the README header.
 
 ---
@@ -203,7 +201,7 @@ Here is an example `.claude/settings.json` file:
 }
 ```
 
-- Replace `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` according to your needs. After configuration, please install the claude code plugin [Plugin Integrations](#plugin-integrations).  
+- Replace `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` according to your needs. After configuration, please install the claude code plugin [Plugin Integrations](#plugin-integrations).
 - If you are using the codex provider, it is recommended **not** to configure the model name in the `codex/xxx` format (e.g. `codex/gpt-5.6-sol`). Claude Code treats the `codex/` prefix as a special pattern and applies degraded behavior — for example, it strips all previously returned thinking blocks on every request. Use the plain model name (e.g. `gpt-5.6-sol`) instead, and add a `modelMappings` entry in `config.json` to route it back to the codex provider:
   ```json
   "modelMappings": {
@@ -269,7 +267,7 @@ Example `~/.config/opencode/opencode.json`:
           "modalities": {
             "input": ["text", "image"],
             "output": ["text"]
-          },          
+          },
           "limit": {
             "context": 200000,
             "output": 32000
@@ -455,7 +453,7 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 - **Token Usage Metric Cards**: See a summary of Total, Input, Output, Cache Read, Cache Write, Requests, and estimated cost for the current period.
 - **Trend Chart (Week / Month)**: An interactive line chart with model and metric filters. Hover over or focus a date to inspect its usage breakdown.
 - **Agent Efficiency**: Compare cache reuse, tokens, cost, AIU, projected spend, anomalies, and per-model efficiency.
-- **Session Usage (Paginated)**: View request count, models, users, token usage, cache usage, cost, and last activity aggregated by session ID.
+- **Session and Request Usage (Paginated)**: Compare usage aggregated by session ID, then inspect every individual request directly below it.
 - **Detailed Information**: See the full JSON response from the API for a detailed breakdown of all available usage statistics.
 - **URL-based Configuration**: You can also specify the API endpoint and period directly via `endpoint` and `period` query parameters. For example:
   `http://localhost:4141/usage-viewer?endpoint=http://your-api-server/usage&period=week`
@@ -480,32 +478,32 @@ Copilot API now uses a subcommand structure with these main commands:
 
 The following options can be used with any subcommand. When passing them before the subcommand, use the `--key=value` form:
 
-| Option            | Description                                            | Default | Alias |
-| ----------------- | ------------------------------------------------------ | ------- | ----- |
-| --api-home        | Path to the API home directory (sets COPILOT_API_HOME) | none    | none  |
-| --oauth-app       | OAuth app identifier (sets COPILOT_API_OAUTH_APP)      | none    | none  |
-| --enterprise-url  | Enterprise URL for GitHub (sets COPILOT_API_ENTERPRISE_URL) | none | none |
+| Option           | Description                                                 | Default | Alias |
+| ---------------- | ----------------------------------------------------------- | ------- | ----- |
+| --api-home       | Path to the API home directory (sets COPILOT_API_HOME)      | none    | none  |
+| --oauth-app      | OAuth app identifier (sets COPILOT_API_OAUTH_APP)           | none    | none  |
+| --enterprise-url | Enterprise URL for GitHub (sets COPILOT_API_ENTERPRISE_URL) | none    | none  |
 
 ### Start Command Options
 
 The following command line options are available for the `start` command:
 
-| Option         | Description                                                                   | Default    | Alias |
-| -------------- | ----------------------------------------------------------------------------- | ---------- | ----- |
-| --port         | Port to listen on                                                             | 4141       | -p    |
-| --verbose      | Enable verbose logging                                                        | false      | -v    |
-| --github-token | Provide GitHub token directly (must be generated using the `auth` subcommand) | none       | -g    |
-| --claude-code  | Generate a command to launch Claude Code with Copilot API config              | false      | -c    |
-| --show-token   | Show GitHub and Copilot tokens on fetch and refresh                           | false      | none  |
-| --proxy-env    | Initialize proxy from environment variables                                   | false      | none  |
+| Option         | Description                                                                   | Default | Alias |
+| -------------- | ----------------------------------------------------------------------------- | ------- | ----- |
+| --port         | Port to listen on                                                             | 4141    | -p    |
+| --verbose      | Enable verbose logging                                                        | false   | -v    |
+| --github-token | Provide GitHub token directly (must be generated using the `auth` subcommand) | none    | -g    |
+| --claude-code  | Generate a command to launch Claude Code with Copilot API config              | false   | -c    |
+| --show-token   | Show GitHub and Copilot tokens on fetch and refresh                           | false   | none  |
+| --proxy-env    | Initialize proxy from environment variables                                   | false   | none  |
 
 ### Auth Command Options
 
-| Option       | Description               | Default | Alias |
-| ------------ | ------------------------- | ------- | ----- |
-| --provider   | Provider to log in with or configure (`copilot`, `codex`, `opencode-go`, `deepseek`, `dashscope`, `openrouter`, or `custom`) | prompt | none |
-| --verbose    | Enable verbose logging    | false   | -v    |
-| --show-token | Show GitHub token on auth | false   | none  |
+| Option       | Description                                                                                                                  | Default | Alias |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------- | ------- | ----- |
+| --provider   | Provider to log in with or configure (`copilot`, `codex`, `opencode-go`, `deepseek`, `dashscope`, `openrouter`, or `custom`) | prompt  | none  |
+| --verbose    | Enable verbose logging                                                                                                       | false   | -v    |
+| --show-token | Show GitHub token on auth                                                                                                    | false   | none  |
 
 Use `copilot-api auth login --provider copilot` only when you want to enable the GitHub Copilot provider. Copilot is not required for `codex` or third-party provider-only usage.
 
@@ -577,6 +575,7 @@ Use `copilot-api auth login --provider custom` to add or update another third-pa
     - `type` (optional): Per-model override of the provider protocol type. Supports `anthropic`, `openai-compatible`, and `openai-responses`. When set, the provider's `/v1/messages` route uses this model's type instead of the provider-level type for request routing, auth header resolution, and upstream endpoint selection. This is useful for providers like OpenCode Go whose upstream supports both OpenAI-compatible and Anthropic Messages APIs for different models. When the type is overridden, the auth header is resolved from the overridden type's default (Anthropic defaults to `x-api-key`; OpenAI-compatible/Responses default to `authorization`).
 
   Example DashScope model settings:
+
   ```json
   {
     "providers": {
@@ -628,7 +627,9 @@ Use `copilot-api auth login --provider custom` to add or update another third-pa
     }
   }
   ```
+
   Built-in token prices cover Codex GPT models in USD, DashScope `qwen3.7-max`, `qwen3.7-plus`, `glm-5.1`, `glm-5.2` in CNY, DeepSeek `deepseek-v4-flash`, `deepseek-v4-pro`, `deepseek-chat`, `deepseek-reasoner` in CNY, and OpenCode Go models (`glm-5.2`, `grok-4.5`, `deepseek-v4-flash`, `deepseek-v4-pro`, `kimi-k2.7-code`, `kimi-k3`, `mimo-v2.5`, `mimo-v2.5-pro`, `qwen3.7-plus`, `qwen3.7-max`, `minimax-m2.5`, `minimax-m3`) in USD. User `pricing` entries override built-ins. For DashScope, cached tokens are charged as explicit cache reads when the upstream usage includes `cache_creation_input_tokens`; otherwise `cachedInput` is used as the implicit cache read price. For DeepSeek, `prompt_cache_hit_tokens` map to cached input and `prompt_cache_miss_tokens` map to regular input.
+
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests); defaults to gpt-5-mini.
 - **contextManagement:** Controls whether the proxy adds Responses API `context_management` compaction instructions. `messages` applies when Anthropic-style `/v1/messages` requests are translated to Responses API, including `openai-responses` provider message routes, and defaults to `true`. `responses` applies to native `/v1/responses` traffic, including `provider/model` aliases and the built-in `codex` provider, and defaults to `false`. Enable `responses` only after checking that your client supports context management compaction. When enabled, the request includes `context_management` in the body and keeps only the latest compaction carrier on follow-up turns. **Note:** Context management is forcibly disabled for GPT-5.6 and above models (e.g. `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`) because enabling it breaks prompt cache hits on those models. This override takes precedence over the `contextManagement` and `modelResponsesApiCompactThresholds` settings.
 - **modelResponsesApiCompactThresholds:** Per-model Responses API `compact_threshold` overrides used when the proxy adds `context_management`. These values take precedence over the fallback threshold from `resolveResponsesCompactThreshold` (`max_prompt_tokens * ratio`, or the default fallback). Defaults set `gpt-5.4` and `gpt-5.5` to `217600` (`272000 * 0.8`), and `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` to `231200` (`272000 * 0.85`). Models not listed continue to use the normal fallback logic.
@@ -677,22 +678,22 @@ The server exposes several OpenAI- and Anthropic-compatible endpoints. Requests 
 
 These endpoints mimic the OpenAI API structure.
 
-| Endpoint                    | Method | Description                                                      |
-| --------------------------- | ------ | ---------------------------------------------------------------- |
-| `POST /v1/responses`        | `POST` | OpenAI Most advanced interface for generating model responses. Supports `provider/model` aliases for `openai-responses` providers. |
+| Endpoint                    | Method | Description                                                                                                                                                                                           |
+| --------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/responses`        | `POST` | OpenAI Most advanced interface for generating model responses. Supports `provider/model` aliases for `openai-responses` providers.                                                                    |
 | `POST /v1/chat/completions` | `POST` | Creates a model response for the given chat conversation. Supports `provider/model` aliases for `openai-compatible` providers and can be used without Copilot when the target provider is configured. |
-| `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) are forwarded to the Codex Models upstream. |
-| `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
+| `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) are forwarded to the Codex Models upstream.        |
+| `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.                                                                                                                                              |
 
 ### Codex Backend Proxy Endpoints
 
 These endpoints require an active Codex login. Each endpoint is available both without a version prefix and under `/v1`.
 
-| Endpoint | Method | Description |
-| --- | --- | --- |
-| `POST /alpha/search`<br>`POST /v1/alpha/search` | `POST` | Transparently forwards the JSON body and query parameters to the Codex Alpha Search upstream. |
-| `POST /images/generations`<br>`POST /v1/images/generations` | `POST` | Forwards a JSON image generation request to the Codex Images upstream. When the request omits `Content-Type`, the gateway defaults it to `application/json`. |
-| `POST /images/edits`<br>`POST /v1/images/edits` | `POST` | Forwards an image edit request to the Codex Images upstream. Send this request as `multipart/form-data` and let the HTTP client generate the `boundary`; the gateway preserves the incoming content type and streams the upload body. |
+| Endpoint                                                    | Method | Description                                                                                                                                                                                                                           |
+| ----------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /alpha/search`<br>`POST /v1/alpha/search`             | `POST` | Transparently forwards the JSON body and query parameters to the Codex Alpha Search upstream.                                                                                                                                         |
+| `POST /images/generations`<br>`POST /v1/images/generations` | `POST` | Forwards a JSON image generation request to the Codex Images upstream. When the request omits `Content-Type`, the gateway defaults it to `application/json`.                                                                          |
+| `POST /images/edits`<br>`POST /v1/images/edits`             | `POST` | Forwards an image edit request to the Codex Images upstream. Send this request as `multipart/form-data` and let the HTTP client generate the `boundary`; the gateway preserves the incoming content type and streams the upload body. |
 
 For every endpoint above, the gateway replaces client authorization and account headers with the active Codex login, preserves query parameters and compatible request headers, and returns the upstream status, headers, and body.
 
@@ -700,17 +701,17 @@ For every endpoint above, the gateway replaces client authorization and account 
 
 These endpoints are designed to be compatible with the Anthropic Messages API. Provider-scoped models, Responses, alpha-search, and images routes accept both unversioned and `/v1` paths; Messages routes remain under `/v1`.
 
-| Endpoint                         | Method | Description                                                  |
-| -------------------------------- | ------ | ------------------------------------------------------------ |
-| `POST /v1/messages`              | `POST` | Creates a model response for a given conversation. Supports `provider/model` aliases for configured providers, including translation through `openai-compatible` providers. |
-| `POST /v1/messages/count_tokens` | `POST` | Calculates the number of tokens for a given set of messages. Supports `provider/model` aliases for configured providers. |
-| `POST /:provider/v1/messages`       | `POST` | Proxies Anthropic Messages requests to the configured Anthropic provider, translates them through an OpenAI-compatible provider, or translates them through an OpenAI Responses provider. |
-| `GET /:provider/models`<br>`GET /:provider/v1/models` | `GET` | Proxies model listing requests to the configured provider. For `codex`, returns the built-in catalog by default; Codex clients (`User-Agent` starting with `codex`) are forwarded to the Codex Models upstream. |
-| `POST /:provider/v1/messages/count_tokens` | `POST` | Calculates tokens locally for provider route requests. |
-| `POST /:provider/responses`<br>`POST /:provider/v1/responses` | `POST` | Proxies OpenAI Responses requests to a configured `openai-responses` provider (including `codex`). |
-| `POST /:provider/alpha/search`<br>`POST /:provider/v1/alpha/search` | `POST` | Proxies alpha-search requests. For `codex`, forwards to the Codex Alpha Search upstream; for other providers, forwards to `{baseUrl}/v1/alpha/search`. |
-| `POST /:provider/images/generations`<br>`POST /:provider/v1/images/generations` | `POST` | Proxies image generation. For `codex`, uses the Codex Images upstream; for other providers, forwards to `{baseUrl}/v1/images/generations` (15-minute timeout). |
-| `POST /:provider/images/edits`<br>`POST /:provider/v1/images/edits` | `POST` | Proxies image edits. For `codex`, uses the Codex Images upstream; for other providers, forwards multipart/streamed bodies to `{baseUrl}/v1/images/edits` (15-minute timeout). |
+| Endpoint                                                                        | Method | Description                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/messages`                                                             | `POST` | Creates a model response for a given conversation. Supports `provider/model` aliases for configured providers, including translation through `openai-compatible` providers.                                     |
+| `POST /v1/messages/count_tokens`                                                | `POST` | Calculates the number of tokens for a given set of messages. Supports `provider/model` aliases for configured providers.                                                                                        |
+| `POST /:provider/v1/messages`                                                   | `POST` | Proxies Anthropic Messages requests to the configured Anthropic provider, translates them through an OpenAI-compatible provider, or translates them through an OpenAI Responses provider.                       |
+| `GET /:provider/models`<br>`GET /:provider/v1/models`                           | `GET`  | Proxies model listing requests to the configured provider. For `codex`, returns the built-in catalog by default; Codex clients (`User-Agent` starting with `codex`) are forwarded to the Codex Models upstream. |
+| `POST /:provider/v1/messages/count_tokens`                                      | `POST` | Calculates tokens locally for provider route requests.                                                                                                                                                          |
+| `POST /:provider/responses`<br>`POST /:provider/v1/responses`                   | `POST` | Proxies OpenAI Responses requests to a configured `openai-responses` provider (including `codex`).                                                                                                              |
+| `POST /:provider/alpha/search`<br>`POST /:provider/v1/alpha/search`             | `POST` | Proxies alpha-search requests. For `codex`, forwards to the Codex Alpha Search upstream; for other providers, forwards to `{baseUrl}/v1/alpha/search`.                                                          |
+| `POST /:provider/images/generations`<br>`POST /:provider/v1/images/generations` | `POST` | Proxies image generation. For `codex`, uses the Codex Images upstream; for other providers, forwards to `{baseUrl}/v1/images/generations` (15-minute timeout).                                                  |
+| `POST /:provider/images/edits`<br>`POST /:provider/v1/images/edits`             | `POST` | Proxies image edits. For `codex`, uses the Codex Images upstream; for other providers, forwards multipart/streamed bodies to `{baseUrl}/v1/images/edits` (15-minute timeout).                                   |
 
 ### Usage Monitoring Endpoints
 
@@ -725,10 +726,10 @@ New endpoints for monitoring your Copilot usage and quotas.
 
 These endpoints are reserved for local administrative actions and only accept `auth.adminApiKey`.
 
-| Endpoint                              | Method | Description                                                                 |
-| ------------------------------------- | ------ | --------------------------------------------------------------------------- |
-| `GET /admin/config/model-mappings`    | `GET`  | Returns the current `config.json` path and the active `modelMappings` map.  |
-| `POST /admin/config/model-mappings`   | `POST` | Updates only the `modelMappings` field in `config.json` and returns it back. |
+| Endpoint                            | Method | Description                                                                  |
+| ----------------------------------- | ------ | ---------------------------------------------------------------------------- |
+| `GET /admin/config/model-mappings`  | `GET`  | Returns the current `config.json` path and the active `modelMappings` map.   |
+| `POST /admin/config/model-mappings` | `POST` | Updates only the `modelMappings` field in `config.json` and returns it back. |
 
 ## Example Usage
 

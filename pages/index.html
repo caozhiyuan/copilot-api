@@ -1846,18 +1846,26 @@
                 }
               : state.tokenUsageSummary;
           const eventsPage = state.tokenUsageEventsPage;
-          const sessionRows = getSessionUsageRows(eventsPage?.items || []);
+          const visibleEvents = getVisibleTokenUsageEvents(
+            eventsPage?.items || [],
+          );
+          const sessionRows = getSessionUsageRows(visibleEvents);
           const totals = summary?.totals || EMPTY_TOKEN_USAGE_TOTALS;
           const activeRange =
             summary?.range || dailySummary?.range || eventsPage?.range || null;
           const totalPages = eventsPage
             ? Math.max(eventsPage.total_pages, 1)
             : 1;
-          const eventsMeta = eventsPage
+          const sessionMeta = eventsPage
             ? `${formatNumber(sessionRows.length)} sessions from ${formatNumber(
-                eventsPage.items.length,
+                visibleEvents.length,
               )} events · Page ${eventsPage.page} / ${totalPages}`
             : "No session data loaded yet.";
+          const requestEventsMeta = eventsPage
+            ? `${formatNumber(visibleEvents.length)} events · Page ${
+                eventsPage.page
+              } / ${totalPages} · ${formatNumber(eventsPage.total)} total`
+            : "No request events loaded yet.";
 
           return `
             <section id="token-usage" class="dashboard-section">
@@ -1952,7 +1960,16 @@
                   <div class="panel-header flex-col items-start sm:flex-row sm:items-center">
                     <div>
                       <p class="panel-title">Session Usage</p>
-                      <p class="panel-meta">${escapeHtml(eventsMeta)}</p>
+                      <p class="panel-meta">${escapeHtml(sessionMeta)}</p>
+                    </div>
+                  </div>
+                  ${renderTokenUsageSessionsTable(sessionRows)}
+                </div>
+                <div class="panel">
+                  <div class="panel-header flex-col items-start sm:flex-row sm:items-center">
+                    <div>
+                      <p class="panel-title">Request Events</p>
+                      <p class="panel-meta">${escapeHtml(requestEventsMeta)}</p>
                     </div>
                     <div class="flex items-center gap-2">
                       ${renderPaginationButton(
@@ -1975,11 +1992,11 @@
                     state.tokenUsageEventsError
                       ? `<div class="p-4">${renderError(
                           state.tokenUsageEventsError,
-                          "Session usage failed",
+                          "Request events failed",
                         )}</div>`
                       : ""
                   }
-                  ${renderTokenUsageSessionsTable(sessionRows)}
+                  ${renderTokenUsageEventsTable(visibleEvents)}
                 </div>
               </div>
             </section>
@@ -2592,18 +2609,20 @@
           `;
         }
 
-        function getSessionUsageRows(events) {
+        function getVisibleTokenUsageEvents(events) {
           const now = new Date();
           const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-          const visibleEvents =
-            state.tokenUsagePeriod === "month"
-              ? events.filter(
-                  (event) => event.created_at_ms >= monthStart.getTime(),
-                )
-              : events;
+          return state.tokenUsagePeriod === "month"
+            ? events.filter(
+                (event) => event.created_at_ms >= monthStart.getTime(),
+              )
+            : events;
+        }
+
+        function getSessionUsageRows(events) {
           const sessions = new Map();
 
-          visibleEvents.forEach((event, index) => {
+          events.forEach((event, index) => {
             const sessionId =
               event.session_id?.trim() ||
               event.trace_id?.trim() ||
@@ -2681,6 +2700,60 @@
                     <th class="px-4 py-2 font-semibold">User</th>
                     <th class="px-4 py-2 font-semibold">Models</th>
                     <th class="px-4 py-2 text-right font-semibold">Requests</th>
+                    <th class="px-4 py-2 text-right font-semibold">Input</th>
+                    <th class="px-4 py-2 text-right font-semibold">Output</th>
+                    <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
+                    <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Tokens</th>
+                    <th class="px-4 py-2 text-right font-semibold">Total Cost</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          `;
+        }
+
+        function renderTokenUsageEventsTable(events) {
+          if (events.length === 0) {
+            return renderEmptyState(
+              "No request events for the selected period.",
+            );
+          }
+
+          const rows = events
+            .map((event) => {
+              const userId = formatCellText(event.user_id);
+              const sessionId = formatCellText(event.session_id);
+              const traceId = formatCellText(event.trace_id);
+              return `
+                <tr class="border-b last:border-b-0" style="border-color: var(--color-bg-light-1);">
+                  <td class="px-4 py-2 whitespace-nowrap" style="color: var(--color-fg-dark);" title="${escapeHtml(event.created_at_utc)}">${escapeHtml(formatDateTime(event.created_at_ms))}</td>
+                  <td class="px-4 py-2 max-w-[120px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(userId)}">${escapeHtml(userId)}</td>
+                  <td class="px-4 py-2 max-w-[180px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(event.model)}">${escapeHtml(event.model)}</td>
+                  <td class="px-4 py-2 whitespace-nowrap font-mono" style="color: var(--color-fg-dark);">${escapeHtml(sessionId)}</td>
+                  <td class="px-4 py-2 max-w-[220px] truncate font-mono" style="color: var(--color-fg-dark);" title="${escapeHtml(traceId)}">${escapeHtml(traceId)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(event.input_tokens)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(event.output_tokens)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(event.cache_read_input_tokens)}</td>
+                  <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(event.cache_creation_input_tokens)}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${formatNumber(event.total_tokens)}</td>
+                  <td class="px-4 py-2 text-right font-semibold" style="color: var(--color-yellow-accent);">${escapeHtml(formatTokenUsageCost(event.cost))}</td>
+                </tr>
+              `;
+            })
+            .join("");
+
+          return `
+            <div class="overflow-auto ${state.isEventsLoading ? "opacity-60" : ""}">
+              <table class="data-table min-w-[1120px] text-left">
+                <thead>
+                  <tr>
+                    <th class="px-4 py-2 font-semibold">Time</th>
+                    <th class="px-4 py-2 font-semibold">User</th>
+                    <th class="px-4 py-2 font-semibold">Model</th>
+                    <th class="px-4 py-2 font-semibold">Session</th>
+                    <th class="px-4 py-2 font-semibold">Trace</th>
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
