@@ -285,6 +285,46 @@ describe("token usage storage", () => {
     ])
   })
 
+  test("calculates current OpenCode Go MiniMax prices", async () => {
+    recordTokenUsageEvent({
+      cache_read_input_tokens: 2_000,
+      endpoint: "chat_completions",
+      input_tokens: 1_000,
+      model: "minimax-m3",
+      output_tokens: 3_000,
+      providerName: "opencode-go",
+      source: "provider",
+    })
+    recordTokenUsageEvent({
+      cache_creation_input_tokens: 4_000,
+      cache_read_input_tokens: 2_000,
+      endpoint: "chat_completions",
+      input_tokens: 1_000,
+      model: "minimax-m2.7",
+      output_tokens: 3_000,
+      providerName: "opencode-go",
+      source: "provider",
+    })
+
+    const page = await fetchEventsPage(10)
+    const costsByModel = new Map(
+      page.items.map((item) => [item.model, item.cost]),
+    )
+
+    expect(costsByModel.get("minimax-m3")).toEqual({
+      amount: 0.00804,
+      currency: "USD",
+      source: "builtin",
+      total_cost_nanos: 8_040_000,
+    })
+    expect(costsByModel.get("minimax-m2.7")).toEqual({
+      amount: 0.00552,
+      currency: "USD",
+      source: "builtin",
+      total_cost_nanos: 5_520_000,
+    })
+  })
+
   test("only falls back to interaction id when no real session id exists", async () => {
     const recordWithFallback = createCopilotTokenUsageRecorder({
       endpoint: "responses",

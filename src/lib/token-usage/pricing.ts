@@ -290,26 +290,16 @@ const BUILTIN_PROVIDER_PRICING: Record<
       input: 2.5,
       output: 7.5,
     },
-    "minimax-m2.5": {
-      cachedInput: 0.03,
+    "minimax-m2.7": {
+      cacheCreationInput: 0.375,
+      cachedInput: 0.06,
       input: 0.3,
       output: 1.2,
     },
     "minimax-m3": {
-      tiers: [
-        {
-          cachedInput: 0.02,
-          input: 0.1,
-          maxInputTokens: 200_000,
-          output: 0.4,
-        },
-        {
-          cachedInput: 0.04,
-          input: 0.2,
-          maxInputTokens: 512_000,
-          output: 0.8,
-        },
-      ],
+      cachedInput: 0.12,
+      input: 0.6,
+      output: 2.4,
     },
   },
 }
