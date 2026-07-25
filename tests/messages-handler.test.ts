@@ -695,4 +695,44 @@ describe("messages handler orchestration", () => {
     })
     expect(options.anthropicBetaHeader).toBe("warmup-beta")
   })
+
+  test("keeps the classifier model for Claude Code Auto Mode requests", async () => {
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const classifierSystems: Array<AnthropicMessagesPayload["system"]> = [
+      "<classifier_system_prompt>Classify this action.</classifier_system_prompt>",
+      [
+        {
+          type: "text",
+          text: "<classifier_system_prompt>Classify this action.</classifier_system_prompt>",
+        },
+      ],
+    ]
+    const app = createApp()
+
+    for (const system of classifierSystems) {
+      findEndpointModel.mockClear()
+
+      const response = await app.request("/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "anthropic-beta": "classifier-beta",
+        },
+        body: JSON.stringify(
+          createPayload({
+            model: "classifier-model",
+            system,
+          }),
+        ),
+      })
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe("messages")
+      expect(findEndpointModel).toHaveBeenCalledWith("classifier-model")
+    }
+  })
 })

@@ -40,6 +40,21 @@ import { tryHandleWebSearch } from "./web-search/fulfill"
 import consola from "consola"
 
 const logger = createHandlerLogger("messages-handler")
+const CLASSIFIER_SYSTEM_PROMPT_MARKER = "<classifier_system_prompt>"
+
+const isAutoModeClassifierRequest = (
+  system: AnthropicMessagesPayload["system"],
+): boolean => {
+  if (typeof system === "string") {
+    return system.includes(CLASSIFIER_SYSTEM_PROMPT_MARKER)
+  }
+
+  return (
+    system?.some((block) =>
+      block.text.includes(CLASSIFIER_SYSTEM_PROMPT_MARKER),
+    ) ?? false
+  )
+}
 
 export const messagesFlowHandlers = {
   handleWithChatCompletions,
@@ -92,10 +107,16 @@ export async function handleCompletion(c: Context) {
 
   // fix claude code 2.0.28+ warmup request consume premium request, forcing small model if no tools are used
   // set "CLAUDE_CODE_SUBAGENT_MODEL": "you small model" also can avoid this
+  // Auto Mode's classifier has the same request shape, but must retain its requested model.
   const anthropicBeta = c.req.header("anthropic-beta")
   logger.debug("Anthropic Beta header:", anthropicBeta)
   const noTools = !anthropicPayload.tools || anthropicPayload.tools.length === 0
-  if (anthropicBeta && noTools && compactType === 0) {
+  if (
+    anthropicBeta
+    && noTools
+    && !isAutoModeClassifierRequest(anthropicPayload.system)
+    && compactType === 0
+  ) {
     anthropicPayload.model = getSmallModel()
   }
 
