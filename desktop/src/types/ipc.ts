@@ -171,6 +171,7 @@ export interface DesktopSettings {
   enterpriseUrl: string
   lastPort: number
   launchAtLogin: boolean
+  autoStartServer: boolean
   minimizeToTray: boolean
   accountType: 'individual' | 'business' | 'enterprise'
   verbose: boolean

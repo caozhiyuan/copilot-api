@@ -143,6 +143,8 @@ export interface Locale {
     sectionGeneral: string
     launchAtLogin: string
     launchAtLoginDesc: string
+    autoStartServer: string
+    autoStartServerDesc: string
     minimizeToTray: string
     minimizeToTrayDesc: string
     sectionNetwork: string

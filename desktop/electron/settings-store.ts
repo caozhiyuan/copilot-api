@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   enterpriseUrl: '',
   lastPort: 4141,
   launchAtLogin: false,
+  autoStartServer: false,
   minimizeToTray: false,
   accountType: 'individual',
   verbose: false,
@@ -92,6 +93,10 @@ export function normalizeSettings(
       typeof settings?.launchAtLogin === 'boolean' ?
         settings.launchAtLogin
       : launchAtLoginFallback,
+    autoStartServer:
+      typeof settings?.autoStartServer === 'boolean' ?
+        settings.autoStartServer
+      : DEFAULT_SETTINGS.autoStartServer,
     minimizeToTray:
       typeof settings?.minimizeToTray === 'boolean' ?
         settings.minimizeToTray

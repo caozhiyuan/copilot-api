@@ -207,6 +207,7 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
     enterpriseUrl: '',
     lastPort: 4141,
     launchAtLogin: false,
+    autoStartServer: false,
     minimizeToTray: false,
     accountType: 'individual',
     verbose: false,
@@ -443,6 +444,18 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                     />
                   </SettingRow>
                 )}
+
+                <SettingRow
+                  label={t('settings.autoStartServer')}
+                  description={t('settings.autoStartServerDesc')}
+                >
+                  <Toggle
+                    checked={settings.autoStartServer}
+                    onChange={(v) =>
+                      setSettings((s) => ({ ...s, autoStartServer: v }))
+                    }
+                  />
+                </SettingRow>
 
                 <SettingRow
                   label={t('settings.minimizeToTray')}

@@ -150,6 +150,9 @@ const en: Locale = {
     launchAtLogin: 'Launch at login',
     launchAtLoginDesc:
       'Launch Copilot API when you sign in; starts hidden when Minimize to tray is enabled',
+    autoStartServer: 'Start server on launch',
+    autoStartServerDesc:
+      'Automatically start the API server on the last used port after authorization loads',
     minimizeToTray: 'Minimize to tray',
     minimizeToTrayDesc: "Hide to system tray when closing, don't quit",
     sectionNetwork: 'Network',

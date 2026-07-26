@@ -145,6 +145,8 @@ const zh: Locale = {
     launchAtLogin: '登录时启动',
     launchAtLoginDesc:
       '登录操作系统时启动 Copilot API；启用“最小化到托盘”后将静默启动',
+    autoStartServer: '启动应用时启动服务',
+    autoStartServerDesc: '授权信息加载完成后，使用上次的端口自动启动 API 服务',
     minimizeToTray: '最小化到托盘',
     minimizeToTrayDesc: '关闭窗口时隐藏到系统托盘，不退出程序',
     sectionNetwork: '网络',

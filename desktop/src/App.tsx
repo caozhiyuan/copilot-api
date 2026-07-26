@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import AuthPage from './pages/AuthPage'
 import DashboardPage from './pages/DashboardPage'
 import { useLanguage } from './contexts/LanguageContext'
-import type { AuthResult, DesktopAuthMode } from './types/ipc'
+import { autoStartServer } from './lib/auto-start-server'
+import type { AuthResult, DesktopAuthMode, ServerStatus } from './types/ipc'
 
 export type Page = 'auth' | 'dashboard'
 
@@ -30,6 +31,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState<DesktopAuthMode>('none')
   const [canReturnFromAuth, setCanReturnFromAuth] = useState(false)
   const [port, setPort] = useState<number>(4141)
+  const [initialServerStatus, setInitialServerStatus] = useState<ServerStatus>()
   const { setLangPref, t } = useLanguage()
 
   useEffect(() => {
@@ -48,7 +50,15 @@ export default function App() {
         setLangPref(settings.language ?? 'auto')
 
         if (authResult.success && authResult.mode !== 'none') {
+          const serverStatus = await autoStartServer(
+            settings,
+            authResult,
+            window.electronAPI.startServer,
+          )
+          if (!active) return
+
           setAuthMode(authResult.mode)
+          setInitialServerStatus(serverStatus)
           setCanReturnFromAuth(false)
           setPage('dashboard')
           return
@@ -73,11 +83,13 @@ export default function App() {
 
   const handleAuthSuccess = (result: AuthResult) => {
     setAuthMode(result.mode ?? 'provider')
+    setInitialServerStatus(undefined)
     setCanReturnFromAuth(false)
     setPage('dashboard')
   }
 
   const handleChangeAuth = () => {
+    setInitialServerStatus(undefined)
     setCanReturnFromAuth(true)
     setPage('auth')
   }
@@ -104,6 +116,7 @@ export default function App() {
     <DashboardPage
       authMode={authMode}
       defaultPort={port}
+      initialServerStatus={initialServerStatus}
       onChangeAuth={handleChangeAuth}
     />
   )

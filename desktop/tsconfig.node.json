@@ -4,6 +4,7 @@
     "electron.vite.config.*",
     "electron/**/*",
     "tests/**/*",
+    "src/lib/auto-start-server.ts",
     "src/locales/**/*",
     "src/types/**/*",
     "../src/lib/api-config.ts",

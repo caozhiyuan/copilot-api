@@ -19,6 +19,7 @@ import ModelMappingsPage from './ModelMappingsPage'
 import type {
   DesktopAuthMode,
   ServerAuthInfo,
+  ServerStatus,
   TokenUsageDailySummary,
   TokenUsageEventRecord,
   TokenUsageEventsPage,
@@ -31,6 +32,7 @@ import type {
 interface DashboardPageProps {
   authMode: DesktopAuthMode
   defaultPort: number
+  initialServerStatus?: ServerStatus
   onChangeAuth: () => void
 }
 
@@ -247,13 +249,20 @@ function formatCellText(value: string | null | undefined): string {
 export default function DashboardPage({
   authMode,
   defaultPort,
+  initialServerStatus,
   onChangeAuth,
 }: DashboardPageProps) {
   const { t } = useLanguage()
-  const [started, setStarted] = useState(false)
-  const [port, setPort] = useState<string>(String(defaultPort))
+  const [started, setStarted] = useState(initialServerStatus?.running ?? false)
+  const [port, setPort] = useState<string>(
+    String(initialServerStatus?.port ?? defaultPort),
+  )
   const [starting, setStarting] = useState(false)
-  const [startError, setStartError] = useState('')
+  const [startError, setStartError] = useState(
+    initialServerStatus && !initialServerStatus.running ?
+      (initialServerStatus.error ?? t('dashboard.serverUnexpectedStop'))
+    : '',
+  )
   const [stopping, setStopping] = useState(false)
   const [restarting, setRestarting] = useState(false)
 
