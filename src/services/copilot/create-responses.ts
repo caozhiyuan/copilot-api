@@ -575,6 +575,10 @@ export type ResponsesStream = ReturnType<typeof events>
 export type CreateResponsesReturn = ResponsesResult | ResponsesStream
 export type ResponsesTransport = "http" | "websocket"
 
+const INVALID_RESPONSE_STATUS = 400
+const INVALID_RESPONSE_CODE = "invalid_request_body"
+const OPAQUE_STATE_ERROR_FRAGMENT = "encrypted content"
+
 type ResponsesStreamChunk = {
   data?: string
   event?: string
@@ -642,13 +646,13 @@ const createHttpResponses = async (
   payload: ResponsesPayload,
   headers: Record<string, string>,
 ): Promise<CreateResponsesReturn> => {
-  const response = await fetch(`${copilotBaseUrl(state)}/responses`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  })
+  let response = await postHttpResponses(payload, headers)
+  const retryPayload = await createOpaqueStateRetryPayload(payload, response)
 
-  logCopilotRateLimits(response.headers)
+  if (retryPayload) {
+    consola.warn("Retrying responses request without rejected opaque state")
+    response = await postHttpResponses(retryPayload, headers)
+  }
 
   if (!response.ok) {
     consola.error("Failed to create responses", response)
@@ -660,6 +664,77 @@ const createHttpResponses = async (
   }
 
   return (await response.json()) as ResponsesResult
+}
+
+const postHttpResponses = async (
+  payload: ResponsesPayload,
+  headers: Record<string, string>,
+): Promise<Response> => {
+  const response = await fetch(`${copilotBaseUrl(state)}/responses`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  })
+
+  logCopilotRateLimits(response.headers)
+
+  return response
+}
+
+const createOpaqueStateRetryPayload = async (
+  payload: ResponsesPayload,
+  response: Response,
+): Promise<ResponsesPayload | undefined> => {
+  if (!(await isOpaqueStateRejection(response))) return undefined
+  return removeOpaqueState(payload)
+}
+
+const removeOpaqueState = (
+  payload: ResponsesPayload,
+): ResponsesPayload | undefined => {
+  const retryPayload = { ...payload }
+  let changed = false
+
+  if (Array.isArray(payload.input)) {
+    retryPayload.input = payload.input.filter(
+      (item) => !isOpaqueStateItem(item),
+    )
+    changed = retryPayload.input.length !== payload.input.length
+  }
+
+  if (typeof payload.previous_response_id === "string") {
+    delete retryPayload.previous_response_id
+    changed = true
+  }
+
+  return changed ? retryPayload : undefined
+}
+
+const isOpaqueStateItem = (item: unknown): boolean => {
+  if (typeof item !== "object" || item === null || !("type" in item)) {
+    return false
+  }
+  if (item.type !== "reasoning" && item.type !== "compaction") return false
+  return (
+    "encrypted_content" in item && typeof item.encrypted_content === "string"
+  )
+}
+
+const isOpaqueStateRejection = async (response: Response): Promise<boolean> => {
+  if (response.status !== INVALID_RESPONSE_STATUS) return false
+
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { code?: unknown; message?: unknown }
+    }
+    return (
+      body.error?.code === INVALID_RESPONSE_CODE
+      && typeof body.error.message === "string"
+      && body.error.message.toLowerCase().includes(OPAQUE_STATE_ERROR_FRAGMENT)
+    )
+  } catch {
+    return false
+  }
 }
 
 type ResponsesWebSocketPayload = ResponsesPayload & {

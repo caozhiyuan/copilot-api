@@ -63,6 +63,57 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
   ),
 )
 
+const createInvalidResponse = (message: string): Response =>
+  new Response(
+    JSON.stringify({
+      error: {
+        code: "invalid_request_body",
+        message,
+      },
+    }),
+    { status: 400 },
+  )
+
+const createOpaqueStateRejectionResponse = (): Response =>
+  createInvalidResponse("Encrypted content could not be verified")
+
+const createRecoverablePayload = (
+  overrides: Partial<ResponsesPayload> = {},
+): ResponsesPayload => ({
+  input: [
+    {
+      encrypted_content: "opaque-reasoning",
+      id: "reasoning-1",
+      summary: [],
+      type: "reasoning",
+    },
+    { content: "Continue", role: "user", type: "message" },
+  ],
+  model: "gpt-test",
+  ...overrides,
+})
+
+const createTestResponse = (payload: ResponsesPayload) =>
+  createResponses(payload, {
+    initiator: "user",
+    requestId: "request-1",
+    vision: false,
+  })
+
+const queueFetchResponse = (response: Response): void => {
+  fetchMock.mockImplementationOnce(() => Promise.resolve(response))
+}
+
+const captureResponseError = async (
+  payload: ResponsesPayload,
+): Promise<unknown> => {
+  try {
+    await createTestResponse(payload)
+  } catch (error) {
+    return error
+  }
+}
+
 beforeEach(() => {
   delete process.env.COPILOT_API_OAUTH_APP
   state.accountType = "individual"
@@ -94,6 +145,106 @@ afterEach(() => {
 })
 
 describe("createResponses", () => {
+  test("retries rejected opaque state while preserving conversation records", async () => {
+    queueFetchResponse(createOpaqueStateRejectionResponse())
+    const preservedInput: NonNullable<ResponsesPayload["input"]> = [
+      { content: "Earlier answer", role: "assistant", type: "message" },
+      {
+        arguments: "{}",
+        call_id: "call-1",
+        name: "lookup",
+        type: "function_call",
+      },
+      {
+        call_id: "call-1",
+        output: "Tool result",
+        type: "function_call_output",
+      },
+      { content: "Continue", role: "user", type: "message" },
+    ]
+    const payload: ResponsesPayload = {
+      input: [
+        preservedInput[0],
+        {
+          encrypted_content: "opaque-reasoning",
+          id: "reasoning-1",
+          summary: [],
+          type: "reasoning",
+        },
+        preservedInput[1],
+        preservedInput[2],
+        {
+          encrypted_content: "opaque-compaction",
+          id: "compaction-1",
+          type: "compaction",
+        },
+        preservedInput[3],
+      ],
+      model: "gpt-test",
+      previous_response_id: "response-1",
+    }
+
+    const result = await createTestResponse(payload)
+
+    expect(result).toEqual(createResponsesResult("gpt-test"))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const retryInit = fetchMock.mock.calls[1][1] as RequestInit
+    const retryBody = JSON.parse(retryInit.body as string) as ResponsesPayload
+    expect(retryBody.input).toEqual(preservedInput)
+    expect(retryBody.previous_response_id).toBeUndefined()
+  })
+
+  test("returns the recovered HTTP response stream", async () => {
+    queueFetchResponse(createOpaqueStateRejectionResponse())
+    queueFetchResponse(
+      new Response(
+        [
+          "event: response.completed",
+          'data: {"type":"response.completed"}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    )
+
+    const response = await createTestResponse(
+      createRecoverablePayload({ stream: true }),
+    )
+    const chunks = []
+    for await (const chunk of response as AsyncIterable<{
+      data?: string
+      event?: string
+    }>) {
+      chunks.push(chunk)
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(chunks).toContainEqual({
+      data: '{"type":"response.completed"}',
+      event: "response.completed",
+    })
+  })
+
+  test("retries rejected opaque state only once", async () => {
+    queueFetchResponse(createOpaqueStateRejectionResponse())
+    queueFetchResponse(createOpaqueStateRejectionResponse())
+
+    const thrown = await captureResponseError(createRecoverablePayload())
+    expect(thrown).toBeInstanceOf(Error)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  test("does not retry unrelated invalid responses", async () => {
+    queueFetchResponse(createInvalidResponse("Unsupported request field"))
+
+    const thrown = await captureResponseError(createRecoverablePayload())
+    expect(thrown).toBeInstanceOf(Error)
+    expect((thrown as Error).message).toBe("Failed to create responses")
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   test("keeps HTTP responses requests using x-initiator header", async () => {
     const payload: ResponsesPayload = {
       input: "hello",
