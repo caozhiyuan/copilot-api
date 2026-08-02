@@ -25,6 +25,7 @@ const state = {
 let messagesApiEnabled = true
 let responsesApiWebSocketEnabled = true
 let modelMappings: Record<string, string> = {}
+let autoModeModel: string | undefined
 type SelectedModel = {
   id: string
   supported_endpoints?: Array<string>
@@ -69,6 +70,7 @@ await mock.module("~/lib/state", () => ({
 }))
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
+  getAutoModeModel: () => autoModeModel,
   getSmallModel: () => "small-model",
   isMessagesApiEnabled: () => messagesApiEnabled,
   isResponsesApiWebSocketEnabled: () => responsesApiWebSocketEnabled,
@@ -105,9 +107,11 @@ const createPayload = (
 
 beforeEach(() => {
   state.verbose = false
+  state.tokenBasedBilling = false
   messagesApiEnabled = true
   responsesApiWebSocketEnabled = true
   modelMappings = {}
+  autoModeModel = undefined
   selectedModel = undefined
 
   responsesUtilsDependencies.isResponsesApiWebSocketEnabled = () =>
@@ -694,5 +698,97 @@ describe("messages handler orchestration", () => {
       agent_type: "Explore",
     })
     expect(options.anthropicBetaHeader).toBe("warmup-beta")
+  })
+
+  test("leaves model untouched when AUTO_MODE_MODEL is unset and tokenBasedBilling is true", async () => {
+    autoModeModel = undefined
+    state.tokenBasedBilling = true
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const payload = createPayload()
+    const app = createApp()
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenCalledWith("original-model")
+  })
+
+  test("applies smallModel when AUTO_MODE_MODEL is unset and tokenBasedBilling is false", async () => {
+    autoModeModel = undefined
+    state.tokenBasedBilling = false
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const payload = createPayload()
+    const app = createApp()
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenCalledWith("small-model")
+  })
+
+  test("applies AUTO_MODE_MODEL when set and tokenBasedBilling is true", async () => {
+    autoModeModel = "auto-mode-model"
+    state.tokenBasedBilling = true
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const payload = createPayload()
+    const app = createApp()
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenCalledWith("auto-mode-model")
+  })
+
+  test("applies AUTO_MODE_MODEL when set, overriding smallModel, when tokenBasedBilling is false", async () => {
+    autoModeModel = "auto-mode-model"
+    state.tokenBasedBilling = false
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const payload = createPayload()
+    const app = createApp()
+    const response = await app.request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenCalledWith("auto-mode-model")
   })
 })

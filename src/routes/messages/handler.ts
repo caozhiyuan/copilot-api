@@ -4,6 +4,7 @@ import type { Model } from "~/services/copilot/get-models"
 
 import { COMPACT_REQUEST } from "~/lib/compact"
 import {
+  getAutoModeModel,
   getSmallModel,
   isMessagesApiEnabled,
   resolveMappedModel,
@@ -92,13 +93,23 @@ export async function handleCompletion(c: Context) {
 
   // fix claude code 2.0.28+ warmup request consume premium request, forcing small model if no tools are used
   // set "CLAUDE_CODE_SUBAGENT_MODEL": "you small model" also can avoid this
+  //
+  // AUTO_MODE_MODEL (env var, opt-in): Claude Code's Auto Mode background classifier
+  // requests are indistinguishable from generic warmup/probe pings (both are tool-less
+  // + anthropic-beta header + non-compact) -- verified empirically, no reliable content
+  // signal exists to tell them apart. When set, AUTO_MODE_MODEL redirects this whole
+  // request shape to a specific model instead of smallModel, independent of token-based
+  // billing, so an operator can pick a model capable enough for Auto Mode's classifier
+  // without being tied to smallModel's default or losing the feature on token-based
+  // billing accounts.
   const anthropicBeta = c.req.header("anthropic-beta")
   logger.debug("Anthropic Beta header:", anthropicBeta)
-  if (!state.tokenBasedBilling) {
+  const autoModeModel = getAutoModeModel()
+  if (autoModeModel !== undefined || !state.tokenBasedBilling) {
     const tools = anthropicPayload.tools
     const noTools = !tools || tools.length === 0
     if (anthropicBeta && noTools && compactType === 0) {
-      anthropicPayload.model = getSmallModel()
+      anthropicPayload.model = autoModeModel ?? getSmallModel()
     }
   }
 

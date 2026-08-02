@@ -509,6 +509,11 @@ export function getSmallModel(): string {
   return config.smallModel ?? "gpt-5-mini"
 }
 
+export function getAutoModeModel(): string | undefined {
+  const trimmed = process.env.AUTO_MODE_MODEL?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : undefined
+}
+
 export function isContextManagementEnabledForMessages(): boolean {
   const config = getConfig()
   return config.contextManagement?.messages ?? defaultContextManagement.messages
