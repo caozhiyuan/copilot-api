@@ -330,6 +330,18 @@ enabled = false
 > This configuration is specific to Codex and the GitHub Copilot provider. `name` must be set to `"OpenAI"`. It can help mitigate Codex local compact cache miss issues.
 > If you are using the codex provider, it is recommended to set `base_url` to `"http://localhost:4141/codex"`.
 
+When Codex uses the top-level GitHub Copilot route with `approvals_reviewer = "auto_review"`, map its internal review model to a Responses-capable Copilot model in the gateway's `config.json`:
+
+```json
+{
+  "modelMappings": {
+    "codex-auto-review": "gpt-5.6-luna"
+  }
+}
+```
+
+This mapping only applies to the top-level GitHub Copilot route. Provider-scoped routes do not use `modelMappings`, so the built-in `/codex` provider continues to handle `codex-auto-review` natively.
+
 ## GPT Tool Search
 
 For GPT Responses models such as `gpt-5.4+`, this AI gateway can expose Responses `tool_search` through a small MCP bridge. The same bridge can be used by Claude Code and opencode, as long as the client loads MCP servers and sends Anthropic Messages traffic through this gateway.

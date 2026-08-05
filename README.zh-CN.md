@@ -332,6 +332,18 @@ enabled = false
 > 此配置仅限于 Codex 与 GitHub Copilot provider。`name` 一定要配置为 `"OpenAI"`。它可以缓解 Codex local compact 不命中缓存的问题。
 > 如果使用 codex provider，建议将 `base_url` 配置为 `"http://localhost:4141/codex"`。
 
+当 Codex 通过顶层 GitHub Copilot 路由并设置 `approvals_reviewer = "auto_review"` 时，可在网关的 `config.json` 中将内部审核模型映射到一个支持 Responses API 的 Copilot 模型：
+
+```json
+{
+  "modelMappings": {
+    "codex-auto-review": "gpt-5.6-luna"
+  }
+}
+```
+
+该映射只作用于顶层 GitHub Copilot 路由。provider-scoped 路由不会使用 `modelMappings`，因此内置 `/codex` provider 仍会原生处理 `codex-auto-review`。
+
 ## GPT Tool Search
 
 对于 `gpt-5.4+` 这类 GPT Responses 模型，这个 AI gateway 可以通过一个很小的 MCP bridge 暴露 Responses `tool_search`。Claude Code 和 opencode 都可以使用同一个 bridge，前提是客户端会加载 MCP server，并且 Anthropic Messages 流量会经过这个 AI gateway。
