@@ -567,6 +567,7 @@ Copilot API 现在使用子命令结构，主要命令包括：
     "useMessagesApi": true,
     "useResponsesApiWebSocket": true,
     "useResponsesApiWebSearch": true,
+    "alphaSearchResponsesFallback": false,
     "messageApiWebSearchModel": "gpt-5-mini"
   }
   ```
@@ -654,6 +655,15 @@ Copilot API 现在使用子命令结构，主要命令包括：
 - **useMessagesApi：** 当为 `true` 时，支持 Copilot 原生 `/v1/messages` 的 Claude 系模型会走 Messages API；否则回退到 `/chat/completions`。设为 `false` 可禁用 Messages API 路由，始终使用 `/chat/completions`。默认值为 `true`。
 - **useResponsesApiWebSocket：** 当为 `true` 时，Responses API 请求会优先对声明了 `ws:/responses` 的模型使用 Copilot websocket transport；仅声明 `/responses` 的模型仍走 HTTP。设为 `false` 可禁用 websocket 路由，并在模型支持 `/responses` 时使用 HTTP `/responses`。默认值为 `true`。如果遇到 Responses API WebSocket closed，一般是自己的网络问题。如果使用了 VPN，建议切换节点。
 - **useResponsesApiWebSearch：** 当为 `true` 时，服务端会保留 Responses API 中 `type: "web_search"` 的工具并透传到上游。设为 `false` 则会从 `/responses` payload 中移除这些工具。默认值为 `true`。
+- **alphaSearchResponsesFallback：** 当设为 `true` 且 `useResponsesApiWebSearch` 保持启用时，如果没有可用的已认证 Codex provider，顶层 `POST /alpha/search` 和 `POST /v1/alpha/search` 会改用 GitHub Copilot Responses web search。已认证的 Codex provider 始终优先，provider-scoped alpha-search 路由不受影响。该 fallback 会识别当前所有 Codex search command；不受支持的 `image_query` 和 `screenshot` 会返回成功且明确要求不要重试的 tool output。默认值为 `false`。Codex 侧需配置：
+
+  ```toml
+  web_search = "live"
+
+  [model_providers.copilot_api]
+  supports_standalone_web_search = true
+  ```
+
 - **messageApiWebSearchModel：** 顶层 Copilot `/v1/messages` 请求只包含服务端 `web_search` 工具时使用的全局模型，默认值为 `gpt-5-mini`。如果该值是 `provider/model` 别名，请求会进入对应 provider 的 Messages API 路径，并在转发前移除 provider 前缀。对于 Copilot GPT 模型，web search 会通过 `/responses` 执行。混合 `web_search` 与自定义工具的场景暂不支持，服务端会移除 server-side `web_search`。
 - **claudeAutoModel：** 用于 Claude Code 后台 security-monitor 请求的模型，作用于 `/v1/messages` 和 provider Messages 路由。当请求不带任何工具、`stop_sequences` 为 `["</block>"]`，且 system 文本块以 `You are a security monitor for autonomous AI coding agents.` 开头时，会被识别为 security-monitor 请求，其模型会被替换为该配置值。对于顶层请求，`provider/model` 别名会转发到对应 provider 的 Messages API；对于 provider 路由，则保持当前 provider，直接使用该配置值。默认为空（禁用）。
 - **claudeTokenMultiplier：** 用于 Claude `/v1/messages/count_tokens` 请求在本地走 GPT tokenizer 估算时的乘数。默认值为 `1.15`。如果你的客户端仍然过晚触发上下文压缩，可以适当调大。这个配置只会在代理本地估算 Claude token 时生效；如果已经配置 `anthropicApiKey` 且 Anthropic token counting 调用成功，则会直接返回 Anthropic 的精确计数，不会使用这个乘数。

@@ -6,13 +6,14 @@ import type {
 export interface WebSearchSource {
   url: string
   title: string
+  snippet?: string
   page_age?: string | null
 }
 
 export interface WebSearchExtract {
   /** The grounded answer text produced by the GPT backend (with inline cites). */
   answerText: string
-  /** Deduped sources extracted from url_citation annotations. */
+  /** Deduped citation and included action sources. */
   sources: Array<WebSearchSource>
   /** Search queries the backend actually ran. */
   queries: Array<string>
@@ -22,15 +23,18 @@ export interface WebSearchToolConfig {
   allowedDomains?: Array<string>
   blockedDomains?: Array<string>
   userLocation?: Record<string, unknown>
+  searchContextSize?: "low" | "medium" | "high"
 }
 
 interface UrlCitationAnnotation {
   type: "url_citation"
   url: string
   title?: string
+  start_index?: number
+  end_index?: number
 }
 
-/** Builds the Responses API web_search tool object from the Anthropic config. */
+/** Builds the Responses API web_search tool object from normalized config. */
 export const buildResponsesWebSearchTool = (
   config: WebSearchToolConfig,
 ): Record<string, unknown> => {
@@ -44,6 +48,9 @@ export const buildResponsesWebSearchTool = (
   }
   if (Object.keys(filters).length > 0) tool.filters = filters
   if (config.userLocation) tool.user_location = config.userLocation
+  if (config.searchContextSize) {
+    tool.search_context_size = config.searchContextSize
+  }
   return tool
 }
 
@@ -76,7 +83,16 @@ const collectTextParts = (
       if (!isValidUrlCitation(annotation, seenUrls)) continue
       const ann = annotation
       seenUrls.add(ann.url)
-      sources.push({ url: ann.url, title: ann.title ?? ann.url })
+      const start = Math.max(0, (ann.start_index ?? 0) - 120)
+      const end = Math.min(
+        block.text?.length ?? 0,
+        (ann.end_index ?? block.text?.length ?? 0) + 120,
+      )
+      sources.push({
+        url: ann.url,
+        title: ann.title ?? ann.url,
+        snippet: block.text?.slice(start, end).trim(),
+      })
     }
   }
   return { textParts, sources }
@@ -110,13 +126,26 @@ export const extractWebSearchResult = (
       const collected = collectTextParts(item.content, seenUrls)
       textParts.push(...collected.textParts)
       sources.push(...collected.sources)
-      continue
     }
+  }
+
+  for (const item of result.output) {
     if ((item as { type?: string }).type === "web_search_call") {
-      collectQuery(
-        item as { action?: { query?: string; queries?: Array<string> } },
-        queries,
-      )
+      const action = (
+        item as {
+          action?: {
+            query?: string
+            queries?: Array<string>
+            sources?: Array<{ url?: string }>
+          }
+        }
+      ).action
+      collectQuery({ action }, queries)
+      for (const source of action?.sources ?? []) {
+        if (!source.url || seenUrls.has(source.url)) continue
+        seenUrls.add(source.url)
+        sources.push({ url: source.url, title: source.url })
+      }
     }
   }
 

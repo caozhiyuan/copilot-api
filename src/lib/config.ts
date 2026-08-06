@@ -23,6 +23,7 @@ export interface AppConfig {
   useResponsesApiWebSocket?: boolean
   anthropicApiKey?: string
   useResponsesApiWebSearch?: boolean
+  alphaSearchResponsesFallback?: boolean
   // Copilot rejects Anthropic's web_search server tool on /v1/messages, so a
   // Claude request that only asks for web search is switched to this model.
   // A `provider/model` alias is passed straight through to that provider's
@@ -191,6 +192,7 @@ const defaultConfig: AppConfig = {
   useMessagesApi: true,
   useResponsesApiWebSocket: true,
   useResponsesApiWebSearch: true,
+  alphaSearchResponsesFallback: false,
   messageApiWebSearchModel: "gpt-5-mini",
 }
 
@@ -769,6 +771,11 @@ export function getAnthropicApiKey(): string | undefined {
 export function isResponsesApiWebSearchEnabled(): boolean {
   const config = getConfig()
   return config.useResponsesApiWebSearch ?? true
+}
+
+export function isAlphaSearchResponsesFallbackEnabled(): boolean {
+  const config = getConfig()
+  return config.alphaSearchResponsesFallback ?? false
 }
 
 export function getMessageApiWebSearchModel(): string | undefined {

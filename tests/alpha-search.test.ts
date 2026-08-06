@@ -2,12 +2,19 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "../src/lib/config"
+import type {
+  ResponsesPayload,
+  ResponsesResult,
+} from "../src/services/copilot/create-responses"
 
 const actualConfigModule = await import("../src/lib/config")
 const actualTokenModule = await import("../src/lib/token")
 
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
+let alphaSearchResponsesFallbackEnabled = false
+let responsesApiWebSearchEnabled = true
+let modelMappings: Record<string, string> = {}
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
@@ -21,6 +28,10 @@ await mock.module("~/lib/config", () => ({
     if (provider === "openrouter") return openrouterProviderConfig
     return null
   },
+  isAlphaSearchResponsesFallbackEnabled: () =>
+    alphaSearchResponsesFallbackEnabled,
+  isResponsesApiWebSearchEnabled: () => responsesApiWebSearchEnabled,
+  resolveMappedModel: (model: string) => modelMappings[model] ?? model,
 }))
 
 await mock.module("~/lib/token", () => ({
@@ -29,6 +40,7 @@ await mock.module("~/lib/token", () => ({
 }))
 
 const { state } = await import("../src/lib/state")
+const { HTTPError } = await import("../src/lib/error")
 const { forwardCodexAlphaSearch, resolveCodexAlphaSearchUrl } = await import(
   "../src/services/codex/alpha-search"
 )
@@ -36,11 +48,17 @@ const { forwardCodexModels, getModels, resolveCodexModelsUrl } = await import(
   "../src/services/codex/get-models"
 )
 const { alphaSearchRoutes } = await import("../src/routes/alpha-search/route")
+const { alphaSearchFallbackDependencies, resetAlphaSearchFallbackState } =
+  await import("../src/routes/alpha-search/copilot-fallback")
 const { providerAlphaSearchRoutes } = await import(
   "../src/routes/provider/alpha-search/route"
 )
 
 const originalFetch = globalThis.fetch
+const originalFallbackDependencies = { ...alphaSearchFallbackDependencies }
+const originalModels = state.models
+const originalCopilotToken = state.copilotToken
+const originalMacMachineId = state.macMachineId
 const alphaSearchPayload = {
   id: "search-request-id",
   model: "gpt-5.6-sol",
@@ -83,6 +101,100 @@ const alphaSearchPayload = {
   },
   max_output_tokens: 10_000,
 }
+
+function createFallbackPayload(
+  commands: Record<string, unknown>,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: "fallback-session",
+    model: "gpt-5.6-sol",
+    input: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Use the search commands." }],
+      },
+    ],
+    commands,
+    settings: {
+      external_web_access: "live",
+    },
+    max_output_tokens: 4096,
+    ...overrides,
+  }
+}
+
+function createResponsesResult(
+  options: {
+    answer?: string
+    citations?: boolean
+    query?: string
+    sources?: Array<{ title?: string; url: string }>
+  } = {},
+): ResponsesResult {
+  const answer = options.answer ?? "Grounded search answer."
+  const sources = options.sources ?? [
+    { title: "Example", url: "https://example.com/result" },
+  ]
+  return {
+    id: "resp-alpha-search",
+    object: "response",
+    created_at: 0,
+    model: "gpt-5.6-sol",
+    output: [
+      {
+        type: "web_search_call",
+        id: "search-call",
+        status: "completed",
+        action: {
+          type: "search",
+          query: options.query ?? "search query",
+          sources: sources.map(({ url }) => ({ type: "url", url })),
+        },
+      },
+      {
+        id: "message-alpha-search",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [
+          {
+            type: "output_text",
+            text: answer,
+            annotations:
+              options.citations === false ?
+                []
+              : sources.map((source) => ({
+                  type: "url_citation",
+                  title: source.title,
+                  url: source.url,
+                  start_index: 0,
+                  end_index: answer.length,
+                })),
+          },
+        ],
+      },
+    ],
+    output_text: answer,
+    status: "completed",
+    usage: { input_tokens: 100, output_tokens: 50, total_tokens: 150 },
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    metadata: null,
+    parallel_tool_calls: true,
+    temperature: null,
+    tool_choice: "required",
+    tools: [],
+    top_p: null,
+  }
+}
+
+const createResponsesMock = mock(
+  (_payload: ResponsesPayload, _options: unknown): Promise<ResponsesResult> =>
+    Promise.resolve(createResponsesResult()),
+)
 const fetchMock = mock(
   (_url: string | URL | Request, _init?: RequestInit): Promise<Response> =>
     Promise.resolve(
@@ -104,7 +216,25 @@ function createApp() {
   return app
 }
 
+function requestFallback(
+  body: unknown,
+  path = "/alpha/search",
+): Promise<Response> {
+  codexProviderConfig = null
+  alphaSearchResponsesFallbackEnabled = true
+  return Promise.resolve(
+    createApp().request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
 beforeEach(() => {
+  alphaSearchResponsesFallbackEnabled = false
+  responsesApiWebSearchEnabled = true
+  modelMappings = {}
   codexProviderConfig = {
     apiKey: "unused-provider-key",
     authType: "oauth2",
@@ -121,8 +251,36 @@ beforeEach(() => {
   }
   state.codexAccessToken = "codex-access-token"
   state.codexAccountId = "account-123"
+  state.copilotToken = "copilot-token"
+  state.macMachineId = "machine-id"
+  state.models = {
+    object: "list",
+    data: [
+      {
+        capabilities: { limits: {} },
+        id: "gpt-5.6-sol",
+        supported_endpoints: ["/responses"],
+      },
+      {
+        capabilities: { limits: {} },
+        id: "gpt-search-mapped",
+        supported_endpoints: ["/responses"],
+      },
+    ],
+  } as typeof state.models
   state.verbose = false
   fetchMock.mockClear()
+  createResponsesMock.mockClear()
+  alphaSearchFallbackDependencies.createResponses = createResponsesMock as never
+  alphaSearchFallbackDependencies.findEndpointModel = (model) =>
+    state.models?.data.find((candidate) => candidate.id === model)
+  alphaSearchFallbackDependencies.createUsageRecorder = (() =>
+    () => {}) as never
+  alphaSearchFallbackDependencies.now = () =>
+    Date.parse("2026-08-03T12:00:00.000Z")
+  alphaSearchFallbackDependencies.resolveMappedModel = (model) =>
+    modelMappings[model] ?? model
+  resetAlphaSearchFallbackState()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
     fetchMock as unknown as typeof fetch
 })
@@ -131,8 +289,13 @@ afterEach(() => {
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   state.codexAccessToken = undefined
   state.codexAccountId = undefined
+  state.copilotToken = originalCopilotToken
+  state.macMachineId = originalMacMachineId
+  state.models = originalModels
   state.verbose = false
   openrouterProviderConfig = null
+  Object.assign(alphaSearchFallbackDependencies, originalFallbackDependencies)
+  resetAlphaSearchFallbackState()
 })
 
 describe("Codex alpha search URL", () => {
@@ -342,5 +505,619 @@ describe("Codex alpha search forwarding", () => {
       },
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("Copilot alpha search fallback", () => {
+  test("requires both flags and never overrides an available Codex provider", async () => {
+    alphaSearchResponsesFallbackEnabled = true
+    responsesApiWebSearchEnabled = false
+    codexProviderConfig = null
+
+    const disabledResponse = await createApp().request("/alpha/search", {
+      method: "POST",
+      body: JSON.stringify(
+        createFallbackPayload({ search_query: [{ q: "disabled" }] }),
+      ),
+    })
+
+    expect(disabledResponse.status).toBe(404)
+    expect(createResponsesMock).not.toHaveBeenCalled()
+
+    responsesApiWebSearchEnabled = true
+    codexProviderConfig = {
+      apiKey: "codex-key",
+      authType: "oauth2",
+      baseUrl: "https://chatgpt.com/backend-api",
+      name: "codex",
+      type: "openai-responses",
+    }
+    const codexResponse = await createApp().request("/alpha/search", {
+      method: "POST",
+      body: JSON.stringify(
+        createFallbackPayload({ search_query: [{ q: "codex wins" }] }),
+      ),
+    })
+
+    expect(codexResponse.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(createResponsesMock).not.toHaveBeenCalled()
+  })
+
+  test("supports the v1 alias and translates the complete live request", async () => {
+    modelMappings = { "gpt-5.6-sol": "gpt-search-mapped" }
+    const response = await requestFallback(
+      createFallbackPayload(
+        {
+          search_query: [
+            {
+              q: "OpenAI news",
+              recency: 7,
+              domains: ["openai.com"],
+              future_query_field: "kept",
+            },
+          ],
+          finance: [{ ticker: "MSFT", type: "equity", market: "USA" }],
+          weather: [
+            {
+              location: "US, CA, San Francisco",
+              start: "2026-08-03",
+              duration: 3,
+            },
+          ],
+          sports: [
+            {
+              tool: "sports",
+              fn: "schedule",
+              league: "nba",
+              team: "GSW",
+              date_from: "2026-08-03",
+              date_to: "2026-08-10",
+              num_games: 2,
+              locale: "en-US",
+            },
+          ],
+          response_length: "long",
+        },
+        {
+          reasoning: { effort: "high", summary: "concise" },
+          input: [
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "Recent text" }],
+              future_input_field: "kept",
+            },
+          ],
+          settings: {
+            external_web_access: "live",
+            search_context_size: "high",
+            filters: {
+              allowed_domains: ["openai.com"],
+              blocked_domains: ["example.net"],
+            },
+            user_location: {
+              type: "approximate",
+              country: "US",
+              city: "San Francisco",
+            },
+          },
+          max_output_tokens: 2048,
+          future_request_field: "kept",
+        },
+      ),
+      "/v1/alpha/search",
+    )
+
+    expect(response.status).toBe(200)
+    expect(createResponsesMock).toHaveBeenCalledTimes(1)
+    const [payload, options] = createResponsesMock.mock.calls[0] ?? []
+    expect(payload?.model).toBe("gpt-search-mapped")
+    expect(payload?.tool_choice).toBe("required")
+    expect(payload?.store).toBe(false)
+    expect(payload?.stream).toBe(false)
+    expect(payload?.include).toEqual(["web_search_call.action.sources"])
+    expect(payload?.reasoning).toEqual({ effort: "high", summary: "concise" })
+    expect(payload?.max_output_tokens).toBe(2048)
+    expect(payload?.tools).toEqual([
+      {
+        type: "web_search",
+        filters: {
+          allowed_domains: ["openai.com"],
+          blocked_domains: ["example.net"],
+        },
+        user_location: {
+          type: "approximate",
+          country: "US",
+          city: "San Francisco",
+        },
+        search_context_size: "high",
+      },
+    ])
+    expect(options).toMatchObject({
+      initiator: "agent",
+      transport: "http",
+      vision: false,
+    })
+
+    const instruction = payload?.input as string
+    expect(instruction).not.toContain("Recent text")
+    expect(instruction).toContain('"recency": 7')
+    expect(instruction).toContain('"market": "USA"')
+    expect(instruction).toContain('"team": "GSW"')
+    expect(instruction).toContain("Requested response length: long")
+
+    const body = (await response.json()) as {
+      encrypted_output: string | null
+      output: string
+      results: Array<Record<string, string>>
+    }
+    expect(body.encrypted_output).toBeNull()
+    expect(body.output).toContain("Grounded search answer.")
+    expect(body.results).toHaveLength(1)
+    expect(body.results[0]).toEqual({
+      domain: "example.com",
+      ref_id: "turn0search0",
+      snippet: "Grounded search answer.",
+      title: "Example",
+      type: "text_result",
+      url: "https://example.com/result",
+    })
+  })
+
+  test("prefers cited sources and falls back to included action sources", async () => {
+    const resultWithUncitedSource = createResponsesResult({
+      sources: [
+        { title: "Cited", url: "https://example.com/cited" },
+        { title: "Uncited", url: "https://example.com/uncited" },
+      ],
+    })
+    const message = resultWithUncitedSource.output[1] as {
+      content: Array<{ annotations?: Array<unknown> }>
+    }
+    message.content[0].annotations = message.content[0].annotations?.slice(0, 1)
+    createResponsesMock.mockImplementationOnce(() =>
+      Promise.resolve(resultWithUncitedSource),
+    )
+    const citedResponse = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "cited source" }] }),
+    )
+    const citedBody = (await citedResponse.json()) as {
+      results: Array<Record<string, string>>
+    }
+    expect(citedBody.results.map(({ url }) => url)).toEqual([
+      "https://example.com/cited",
+    ])
+
+    createResponsesMock.mockImplementationOnce(() =>
+      Promise.resolve(
+        createResponsesResult({
+          citations: false,
+          sources: [{ url: "https://example.com/action-source" }],
+        }),
+      ),
+    )
+    const fallbackResponse = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "action source" }] }),
+    )
+    const fallbackBody = (await fallbackResponse.json()) as {
+      results: Array<Record<string, string>>
+    }
+
+    expect(fallbackBody.results).toEqual([
+      {
+        type: "text_result",
+        domain: "example.com",
+        ref_id: "turn1search0",
+        snippet: "https://example.com/action-source",
+        title: "https://example.com/action-source",
+        url: "https://example.com/action-source",
+      },
+    ])
+  })
+
+  test("rejects malformed fallback payloads without parsing native Codex traffic", async () => {
+    codexProviderConfig = null
+    alphaSearchResponsesFallbackEnabled = true
+    const invalidJson = await createApp().request("/alpha/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    })
+    expect(invalidJson.status).toBe(400)
+
+    const missingFields = await requestFallback({ commands: {} })
+    expect(missingFields.status).toBe(400)
+    const missingFieldsBody = (await missingFields.json()) as {
+      error: { message: string }
+    }
+    expect(missingFieldsBody.error.message).toContain(
+      "Invalid alpha search request",
+    )
+
+    const invalidOffset = await requestFallback(
+      createFallbackPayload({ time: [{ utc_offset: "UTC+3" }] }),
+    )
+    expect(invalidOffset.status).toBe(400)
+    expect(createResponsesMock).not.toHaveBeenCalled()
+  })
+
+  test("returns one no-retry warning per unsupported command type", async () => {
+    const mixedResponse = await requestFallback(
+      createFallbackPayload(
+        {
+          search_query: [{ q: "supported" }],
+          image_query: [{ q: "one" }, { q: "two" }],
+          screenshot: [
+            { ref_id: "https://example.com/a.pdf", pageno: 0 },
+            { ref_id: "https://example.com/a.pdf", pageno: 1 },
+          ],
+          future_visual_search: [{ q: "future" }],
+        },
+        {
+          input: "Run search_query, image_query, and screenshot.",
+        },
+      ),
+    )
+    const mixedBody = (await mixedResponse.json()) as { output: string }
+
+    expect(mixedResponse.status).toBe(200)
+    expect(createResponsesMock).toHaveBeenCalledTimes(1)
+    expect(mixedBody.output.match(/image_query/gu)).toHaveLength(1)
+    expect(mixedBody.output.match(/screenshot/gu)).toHaveLength(1)
+    expect(mixedBody.output.match(/future_visual_search/gu)).toHaveLength(1)
+    expect(mixedBody.output).toContain("Do not retry")
+    const instruction = createResponsesMock.mock.calls[0]?.[0].input as string
+    expect(instruction).toContain("complete and exclusive")
+    expect(instruction).toContain('"type": "search_query"')
+    expect(instruction).not.toContain('"type": "image_query"')
+    expect(instruction).not.toContain('"type": "screenshot"')
+
+    const unsupportedOnly = await requestFallback(
+      createFallbackPayload(
+        {
+          image_query: [{ q: "images" }],
+          screenshot: [{ ref_id: "turn0view0", pageno: 0 }],
+        },
+        { id: "unsupported-only" },
+      ),
+    )
+    expect(unsupportedOnly.status).toBe(200)
+    expect(createResponsesMock).toHaveBeenCalledTimes(1)
+  })
+
+  test("never turns explicit non-live modes into live retrieval", async () => {
+    for (const [index, mode] of [false, "cached", "indexed"].entries()) {
+      const response = await requestFallback(
+        createFallbackPayload(
+          { search_query: [{ q: "must not run" }] },
+          {
+            id: `non-live-${index}`,
+            settings: { external_web_access: mode },
+          },
+        ),
+      )
+      const body = (await response.json()) as { output: string }
+      expect(response.status).toBe(200)
+      expect(body.output).toContain("supports live retrieval only")
+      expect(body.output).toContain("Do not retry")
+    }
+    expect(createResponsesMock).not.toHaveBeenCalled()
+  })
+
+  test("computes time locally with the injected clock", async () => {
+    const response = await requestFallback(
+      createFallbackPayload({
+        time: [{ utc_offset: "+03:00" }, { utc_offset: "-04:30" }],
+      }),
+    )
+    const body = (await response.json()) as { output: string }
+
+    expect(response.status).toBe(200)
+    expect(body.output).toContain("Time at UTC+03:00: 2026-08-03 15:00:00")
+    expect(body.output).toContain("Time at UTC-04:30: 2026-08-03 07:30:00")
+    expect(createResponsesMock).not.toHaveBeenCalled()
+  })
+
+  test("requires a Responses-capable mapped Copilot model", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: { limits: {} },
+          id: "gpt-5.6-sol",
+          supported_endpoints: ["/chat/completions"],
+        },
+      ],
+    } as typeof state.models
+
+    const response = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "unsupported endpoint" }] }),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: { message: string } }
+    expect(body.error.message).toContain(
+      "does not support the Copilot Responses endpoint",
+    )
+    expect(createResponsesMock).not.toHaveBeenCalled()
+  })
+
+  test("keeps stable deduplicated search references across turns", async () => {
+    createResponsesMock.mockImplementation(() =>
+      Promise.resolve(
+        createResponsesResult({
+          sources: [
+            { title: "First title", url: "https://example.com/same" },
+            { title: "Duplicate", url: "https://example.com/same" },
+          ],
+        }),
+      ),
+    )
+
+    const first = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "first" }] }),
+    )
+    const second = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "second" }] }),
+    )
+    const firstBody = (await first.json()) as {
+      results: Array<{ ref_id: string }>
+    }
+    const secondBody = (await second.json()) as {
+      results: Array<{ ref_id: string }>
+    }
+
+    expect(firstBody.results).toHaveLength(1)
+    expect(firstBody.results[0]?.ref_id).toBe("turn0search0")
+    expect(secondBody.results[0]?.ref_id).toBe("turn0search0")
+  })
+
+  test("opens, line-windows, finds, and clicks through bounded cached views", async () => {
+    const results = [
+      createResponsesResult({
+        answer: "Search answer",
+        sources: [{ title: "Page A", url: "https://example.com/a" }],
+      }),
+      createResponsesResult({
+        answer:
+          "zero\nneedle line\ntwo\n[Page B](https://example.com/b)\n([Page A](https://example.com/a))",
+        sources: [{ title: "Page A", url: "https://example.com/a" }],
+      }),
+      createResponsesResult({
+        answer: "Clicked page text",
+        sources: [{ title: "Page C", url: "https://example.com/c" }],
+      }),
+    ]
+    let responseIndex = 0
+    createResponsesMock.mockImplementation(() =>
+      Promise.resolve(results[responseIndex++] ?? results.at(-1)!),
+    )
+
+    const search = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "page a" }] }),
+    )
+    const searchBody = (await search.json()) as {
+      results: Array<{ ref_id: string }>
+    }
+    expect(searchBody.results[0]?.ref_id).toBe("turn0search0")
+
+    const opened = await requestFallback(
+      createFallbackPayload({ open: [{ ref_id: "turn0search0" }] }),
+    )
+    const openedBody = (await opened.json()) as { output: string }
+    expect(openedBody.output).toContain("Open turn1view0")
+    expect(openedBody.output).toContain("L1: needle line")
+    expect(openedBody.output).toContain(
+      "[0] Page B — https://example.com/b (turn1search0)",
+    )
+    expect(openedBody.output).not.toContain("Page A — https://example.com/a)")
+
+    const windowed = await requestFallback(
+      createFallbackPayload({ open: [{ ref_id: "turn1view0", lineno: 1 }] }),
+    )
+    expect(((await windowed.json()) as { output: string }).output).toContain(
+      "L1: needle line",
+    )
+
+    const found = await requestFallback(
+      createFallbackPayload({
+        find: [{ ref_id: "turn1view0", pattern: "needle" }],
+      }),
+    )
+    expect(((await found.json()) as { output: string }).output).toContain(
+      'Find results for "needle" in turn1view0',
+    )
+
+    const clicked = await requestFallback(
+      createFallbackPayload({ click: [{ ref_id: "turn1view0", id: 0 }] }),
+    )
+    expect(((await clicked.json()) as { output: string }).output).toContain(
+      "Clicked page text",
+    )
+    expect(createResponsesMock).toHaveBeenCalledTimes(3)
+
+    const cachedClick = await requestFallback(
+      createFallbackPayload({ click: [{ ref_id: "turn1view0", id: 0 }] }),
+    )
+    expect(((await cachedClick.json()) as { output: string }).output).toContain(
+      "Clicked page text",
+    )
+    expect(createResponsesMock).toHaveBeenCalledTimes(3)
+  })
+
+  test("uses Copilot find only when opened text cannot satisfy it locally", async () => {
+    const results = [
+      createResponsesResult({
+        answer: "Search answer",
+        sources: [{ title: "Find page", url: "https://example.com/find" }],
+      }),
+      createResponsesResult({
+        answer: "Remote matching context",
+        sources: [{ title: "Find page", url: "https://example.com/find" }],
+      }),
+    ]
+    let responseIndex = 0
+    createResponsesMock.mockImplementation(() =>
+      Promise.resolve(results[responseIndex++] ?? results.at(-1)!),
+    )
+
+    await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "find page" }] }),
+    )
+    const found = await requestFallback(
+      createFallbackPayload({
+        find: [{ ref_id: "turn0search0", pattern: "remote" }],
+      }),
+    )
+    expect(((await found.json()) as { output: string }).output).toContain(
+      "Remote matching context",
+    )
+    const payload = createResponsesMock.mock.calls[1]?.[0]
+    const instruction = payload?.input as string
+    expect(instruction).toContain('"type": "find"')
+
+    const cached = await requestFallback(
+      createFallbackPayload({ open: [{ ref_id: "turn0search0" }] }),
+    )
+    expect(((await cached.json()) as { output: string }).output).toContain(
+      "Remote matching context",
+    )
+    expect(createResponsesMock).toHaveBeenCalledTimes(2)
+  })
+
+  test("isolates, expires, and evicts session references", async () => {
+    const search = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "session reference" }] }),
+    )
+    expect(search.status).toBe(200)
+
+    const crossSession = await requestFallback(
+      createFallbackPayload(
+        { open: [{ ref_id: "turn0search0" }] },
+        { id: "different-session" },
+      ),
+    )
+    expect(
+      ((await crossSession.json()) as { output: string }).output,
+    ).toContain("unavailable or expired")
+    expect(createResponsesMock).toHaveBeenCalledTimes(1)
+
+    alphaSearchFallbackDependencies.now = () =>
+      Date.parse("2026-08-03T13:00:00.000Z")
+    const expired = await requestFallback(
+      createFallbackPayload({ open: [{ ref_id: "turn0search0" }] }),
+    )
+    expect(((await expired.json()) as { output: string }).output).toContain(
+      "unavailable or expired",
+    )
+
+    alphaSearchFallbackDependencies.now = () =>
+      Date.parse("2026-08-03T14:00:00.000Z")
+    await requestFallback(
+      createFallbackPayload(
+        { search_query: [{ q: "oldest" }] },
+        { id: "oldest-session" },
+      ),
+    )
+    for (let index = 0; index < 128; index += 1) {
+      await requestFallback(
+        createFallbackPayload(
+          { time: [{ utc_offset: "+00:00" }] },
+          { id: `new-session-${index}` },
+        ),
+      )
+    }
+    const evicted = await requestFallback(
+      createFallbackPayload(
+        { open: [{ ref_id: "turn0search0" }] },
+        { id: "oldest-session" },
+      ),
+    )
+    expect(((await evicted.json()) as { output: string }).output).toContain(
+      "unavailable or expired",
+    )
+  })
+
+  test("enforces URL-reference and opened-snapshot ceilings", async () => {
+    const manySources = Array.from({ length: 257 }, (_, index) => ({
+      title: `Source ${index}`,
+      url: `https://example.com/source-${index}`,
+    }))
+    createResponsesMock.mockImplementation(() =>
+      Promise.resolve(createResponsesResult({ sources: manySources })),
+    )
+    const manySourceResponse = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "many sources" }] }),
+    )
+    expect(
+      ((await manySourceResponse.json()) as { results: Array<unknown> })
+        .results,
+    ).toHaveLength(256)
+    const evictedReference = await requestFallback(
+      createFallbackPayload({ open: [{ ref_id: "turn0search0" }] }),
+    )
+    expect(
+      ((await evictedReference.json()) as { output: string }).output,
+    ).toContain("unavailable or expired")
+
+    resetAlphaSearchFallbackState()
+    createResponsesMock.mockImplementation(() =>
+      Promise.resolve(
+        createResponsesResult({
+          answer: "Opened text",
+          sources: [],
+        }),
+      ),
+    )
+    for (let index = 0; index < 17; index += 1) {
+      await requestFallback(
+        createFallbackPayload({
+          open: [{ ref_id: `https://example.com/page-${index}` }],
+        }),
+      )
+    }
+    const evictedSnapshot = await requestFallback(
+      createFallbackPayload({ open: [{ ref_id: "turn0view0" }] }),
+    )
+    expect(
+      ((await evictedSnapshot.json()) as { output: string }).output,
+    ).toContain("unavailable or expired")
+  })
+
+  test("surfaces missing Copilot auth and upstream rate-limit headers", async () => {
+    createResponsesMock.mockImplementationOnce(() =>
+      Promise.reject(new Error("Copilot token not found")),
+    )
+    const missingAuth = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "auth" }] }),
+    )
+    expect(missingAuth.status).toBe(500)
+    const missingAuthBody = (await missingAuth.json()) as {
+      error: { message: string }
+    }
+    expect(missingAuthBody.error.message).toContain("Copilot token not found")
+
+    alphaSearchFallbackDependencies.createResponses = (() =>
+      Promise.reject(
+        new HTTPError(
+          "rate limited",
+          new Response('{"error":"rate limited"}', {
+            status: 429,
+            headers: {
+              "retry-after": "12",
+              "x-ratelimit-remaining": "0",
+            },
+          }),
+        ),
+      )) as never
+    const rateLimited = await requestFallback(
+      createFallbackPayload(
+        { search_query: [{ q: "rate limit" }] },
+        { id: "rate-limited-session" },
+      ),
+    )
+    expect(rateLimited.status).toBe(429)
+    expect(rateLimited.headers.get("retry-after")).toBe("12")
+    expect(rateLimited.headers.get("x-ratelimit-remaining")).toBe("0")
   })
 })

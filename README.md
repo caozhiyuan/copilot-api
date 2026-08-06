@@ -561,6 +561,7 @@ Use `copilot-api auth login --provider custom` to add or update another third-pa
     "useMessagesApi": true,
     "useResponsesApiWebSocket": true,
     "useResponsesApiWebSearch": true,
+    "alphaSearchResponsesFallback": false,
     "messageApiWebSearchModel": "gpt-5-mini"
   }
   ```
@@ -648,6 +649,15 @@ Use `copilot-api auth login --provider custom` to add or update another third-pa
 - **useMessagesApi:** When `true`, Claude-family models that support Copilot's native `/v1/messages` endpoint will use the Messages API; otherwise they fall back to `/chat/completions`. Set to `false` to disable Messages API routing and always use `/chat/completions`. Defaults to `true`.
 - **useResponsesApiWebSocket:** When `true`, Responses API requests use Copilot's websocket transport for models that advertise `ws:/responses`; models that only advertise `/responses` continue to use HTTP. Set to `false` to disable websocket routing and use HTTP `/responses` whenever the selected model supports it. Defaults to `true`. If the Responses API WebSocket gets closed, it is usually caused by your own network. If you are using a VPN, try switching to a different node.
 - **useResponsesApiWebSearch:** When `true`, the server keeps Responses API tools with `type: "web_search"` and forwards them upstream. Set to `false` to strip those tools from `/responses` payloads. Defaults to `true`.
+- **alphaSearchResponsesFallback:** When `true` and `useResponsesApiWebSearch` remains enabled, top-level `POST /alpha/search` and `POST /v1/alpha/search` requests use GitHub Copilot Responses web search when no authenticated Codex provider is available. An authenticated Codex provider still takes precedence, and provider-scoped alpha-search routes are unchanged. The fallback recognizes every current Codex search command; unsupported `image_query` and `screenshot` operations return successful no-retry tool output. Defaults to `false`. Configure Codex to call the endpoint with:
+
+  ```toml
+  web_search = "live"
+
+  [model_providers.copilot_api]
+  supports_standalone_web_search = true
+  ```
+
 - **messageApiWebSearchModel:** Global fallback model used when a top-level Copilot `/v1/messages` request contains only the server-side `web_search` tool. Defaults to `gpt-5-mini`. If the value is a `provider/model` alias, the request is routed into that provider's Messages API path with the provider prefix stripped. For Copilot GPT models, web search runs through `/responses`. Mixed `web_search` plus custom tools are not supported and the server-side `web_search` tool is stripped.
 - **claudeAutoModel:** Model used for Claude Code background security-monitor requests on `/v1/messages` and provider message routes. A request is treated as a security-monitor request when it carries no tools, sets `stop_sequences` to `["</block>"]`, and contains a system text block starting with `You are a security monitor for autonomous AI coding agents.`; its model is then replaced with this value. For top-level requests, a `provider/model` alias is forwarded into that provider's Messages API; provider routes keep their current provider and use this configured value directly. Defaults to empty (disabled).
 - **claudeTokenMultiplier:** Multiplier applied to the fallback GPT-tokenizer estimate for Claude `/v1/messages/count_tokens` requests. Defaults to `1.15`. Increase it if your client is still compacting too late. This setting is only used when the proxy is estimating Claude tokens locally; if `anthropicApiKey` is configured and Anthropic token counting succeeds, the exact Anthropic count is returned instead.

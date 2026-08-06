@@ -1,6 +1,10 @@
 import { Hono, type Context } from "hono"
 
-import type { ResolvedProviderConfig } from "~/lib/config"
+import {
+  isAlphaSearchResponsesFallbackEnabled,
+  isResponsesApiWebSearchEnabled,
+  type ResolvedProviderConfig,
+} from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
@@ -8,6 +12,7 @@ import type {
   AlphaSearchRequest,
   AlphaSearchResponse,
 } from "~/routes/alpha-search/alpha-search-types"
+import { handleCopilotAlphaSearch } from "~/routes/alpha-search/copilot-fallback"
 import { forwardCodexAlphaSearch } from "~/services/codex/alpha-search"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 
@@ -34,6 +39,12 @@ export async function handleCodexAlphaSearch(
   const codexProviderConfig =
     resolvedProviderConfig ?? (await resolveProviderConfig("codex"))
   if (!codexProviderConfig) {
+    if (
+      isAlphaSearchResponsesFallbackEnabled()
+      && isResponsesApiWebSearchEnabled()
+    ) {
+      return await handleCopilotAlphaSearch(c)
+    }
     return c.json(
       {
         error: {

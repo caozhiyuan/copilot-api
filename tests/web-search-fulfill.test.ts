@@ -19,6 +19,10 @@ import {
   stripWebSearchServerTool,
   webSearchFlowDependencies,
 } from "~/routes/messages/web-search/fulfill"
+import {
+  buildResponsesWebSearchTool,
+  extractWebSearchResult,
+} from "~/routes/messages/web-search/backend"
 
 const webSearchTool = {
   type: "web_search_20250305",
@@ -389,6 +393,51 @@ describe("resolveWebSearchRoute", () => {
         responsesWebSearchEnabled: false,
       }).kind,
     ).toBe("strip")
+  })
+})
+
+describe("Responses web search backend", () => {
+  it("passes supported search settings to the hosted tool", () => {
+    expect(
+      buildResponsesWebSearchTool({
+        allowedDomains: ["openai.com"],
+        blockedDomains: ["example.com"],
+        searchContextSize: "high",
+        userLocation: { type: "approximate", country: "US" },
+      }),
+    ).toEqual({
+      type: "web_search",
+      filters: {
+        allowed_domains: ["openai.com"],
+        blocked_domains: ["example.com"],
+      },
+      search_context_size: "high",
+      user_location: { type: "approximate", country: "US" },
+    })
+  })
+
+  it("keeps citation snippets and uncited included sources", () => {
+    const result = makeResponsesResult()
+    ;(
+      result.output[0] as unknown as {
+        action: { query: string; sources: Array<{ url: string }> }
+      }
+    ).action.sources = [
+      { url: "https://nodejs.org" },
+      { url: "https://example.com/included" },
+    ]
+
+    expect(extractWebSearchResult(result).sources).toEqual([
+      {
+        url: "https://nodejs.org",
+        title: "Node.js",
+        snippet: "Node.js 24 is the latest LTS.",
+      },
+      {
+        url: "https://example.com/included",
+        title: "https://example.com/included",
+      },
+    ])
   })
 })
 

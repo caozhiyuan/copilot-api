@@ -1,74 +1,173 @@
-export interface AlphaSearchRequest {
-  id: string
-  model: string
-  input: Array<AlphaSearchInputMessage>
-  commands: AlphaSearchCommands
-  settings: AlphaSearchSettings
-  max_output_tokens: number
-}
+import { z } from "zod"
 
-export interface AlphaSearchInputMessage {
-  type: "message"
-  role: AlphaSearchInputRole
-  content: Array<AlphaSearchInputContent>
-  phase?: AlphaSearchMessagePhase
-  internal_chat_message_metadata_passthrough?: AlphaSearchMetadataPassthrough
-}
+const unsignedInteger = z.number().int().nonnegative()
+const passthroughRecord = z.record(z.string(), z.unknown())
 
-export type AlphaSearchInputRole = "user" | "assistant" | "system" | "developer"
+const searchQuerySchema = z
+  .object({
+    q: z.string(),
+    recency: unsignedInteger.optional(),
+    domains: z.array(z.string()).optional(),
+  })
+  .passthrough()
 
-export type AlphaSearchInputContent =
-  | AlphaSearchInputTextContent
-  | AlphaSearchOutputTextContent
+const openOperationSchema = z
+  .object({
+    ref_id: z.string(),
+    lineno: unsignedInteger.optional(),
+  })
+  .passthrough()
 
-export interface AlphaSearchInputTextContent {
-  type: "input_text"
-  text: string
-}
+const clickOperationSchema = z
+  .object({
+    ref_id: z.string(),
+    id: unsignedInteger,
+  })
+  .passthrough()
 
-export interface AlphaSearchOutputTextContent {
-  type: "output_text"
-  text: string
-}
+const findOperationSchema = z
+  .object({
+    ref_id: z.string(),
+    pattern: z.string(),
+  })
+  .passthrough()
 
-export type AlphaSearchMessagePhase = "commentary" | "final_answer"
+const screenshotOperationSchema = z
+  .object({
+    ref_id: z.string(),
+    pageno: unsignedInteger,
+  })
+  .passthrough()
 
-export interface AlphaSearchMetadataPassthrough {
-  turn_id: string
-}
+const financeOperationSchema = z
+  .object({
+    ticker: z.string(),
+    type: z.enum(["equity", "fund", "crypto", "index"]),
+    market: z.string().optional(),
+  })
+  .passthrough()
 
-export interface AlphaSearchSettings {
-  allowed_callers: Array<AlphaSearchAllowedCaller>
-  external_web_access: boolean
-}
+const weatherOperationSchema = z
+  .object({
+    location: z.string(),
+    start: z.string().optional(),
+    duration: unsignedInteger.optional(),
+  })
+  .passthrough()
 
-export type AlphaSearchAllowedCaller = "direct" | (string & {})
+const sportsOperationSchema = z
+  .object({
+    tool: z.literal("sports").optional(),
+    fn: z.enum(["schedule", "standings"]),
+    league: z.enum([
+      "nba",
+      "wnba",
+      "nfl",
+      "nhl",
+      "mlb",
+      "epl",
+      "ncaamb",
+      "ncaawb",
+      "ipl",
+    ]),
+    team: z.string().optional(),
+    opponent: z.string().optional(),
+    date_from: z.string().optional(),
+    date_to: z.string().optional(),
+    num_games: unsignedInteger.optional(),
+    locale: z.string().optional(),
+  })
+  .passthrough()
 
-export interface AlphaSearchCommands {
-  search_query?: Array<AlphaSearchSearchQuery>
-  open?: Array<AlphaSearchOpenCommand>
-  find?: Array<AlphaSearchFindCommand>
-  response_length: AlphaSearchResponseLength
-}
+const timeOperationSchema = z
+  .object({
+    utc_offset: z.string().regex(/^[+-](?:[01]\d|2[0-3]):[0-5]\d$/u),
+  })
+  .passthrough()
 
-export interface AlphaSearchSearchQuery {
-  q: string
-}
+export const alphaSearchCommandsSchema = z
+  .object({
+    search_query: z.array(searchQuerySchema).optional(),
+    image_query: z.array(searchQuerySchema).optional(),
+    open: z.array(openOperationSchema).optional(),
+    click: z.array(clickOperationSchema).optional(),
+    find: z.array(findOperationSchema).optional(),
+    screenshot: z.array(screenshotOperationSchema).optional(),
+    finance: z.array(financeOperationSchema).optional(),
+    weather: z.array(weatherOperationSchema).optional(),
+    sports: z.array(sportsOperationSchema).optional(),
+    time: z.array(timeOperationSchema).optional(),
+    response_length: z.enum(["short", "medium", "long"]).optional(),
+  })
+  .passthrough()
 
-export interface AlphaSearchOpenCommand {
-  ref_id: string
-  lineno?: number
-}
+const reasoningSchema = z
+  .object({
+    effort: z.string().min(1).nullable().optional(),
+    summary: z
+      .enum(["auto", "concise", "detailed", "none"])
+      .nullable()
+      .optional(),
+    context: z
+      .enum(["auto", "current_turn", "all_turns"])
+      .nullable()
+      .optional(),
+  })
+  .passthrough()
 
-export interface AlphaSearchFindCommand {
-  ref_id: string
-  pattern: string
-}
+const settingsSchema = z
+  .object({
+    user_location: z
+      .object({
+        type: z.literal("approximate"),
+        country: z.string().optional(),
+        region: z.string().optional(),
+        city: z.string().optional(),
+        timezone: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+    search_context_size: z.enum(["low", "medium", "high"]).optional(),
+    filters: z
+      .object({
+        allowed_domains: z.array(z.string()).optional(),
+        blocked_domains: z.array(z.string()).optional(),
+      })
+      .passthrough()
+      .optional(),
+    image_settings: z
+      .object({
+        max_results: unsignedInteger.optional(),
+        caption: z.boolean().optional(),
+      })
+      .passthrough()
+      .optional(),
+    allowed_callers: z
+      .array(z.enum(["direct", "shell", "code_interpreter"]))
+      .optional(),
+    external_web_access: z
+      .union([z.boolean(), z.enum(["cached", "indexed", "live"])])
+      .optional(),
+  })
+  .passthrough()
 
-export type AlphaSearchResponseLength = "short" | "medium" | "long"
+export const alphaSearchRequestSchema = z
+  .object({
+    id: z.string(),
+    model: z.string(),
+    reasoning: reasoningSchema.optional(),
+    input: z.union([z.string(), z.array(passthroughRecord)]).optional(),
+    commands: alphaSearchCommandsSchema.optional(),
+    settings: settingsSchema.optional(),
+    max_output_tokens: unsignedInteger.optional(),
+  })
+  .passthrough()
+
+export type AlphaSearchRequest = z.infer<typeof alphaSearchRequestSchema>
+export type AlphaSearchCommands = z.infer<typeof alphaSearchCommandsSchema>
 
 export interface AlphaSearchResponse {
-  encrypted_output: string
+  encrypted_output: string | null
   output: string
   results: Array<AlphaSearchResult>
 }
