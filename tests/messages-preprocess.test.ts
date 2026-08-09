@@ -1137,6 +1137,56 @@ describe("prepareMessagesApiPayload", () => {
     expect(payload.output_config).toEqual({ effort: "xhigh" })
   })
 
+  test("keeps signature-only thinking blocks", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-5",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "thinking",
+              thinking: "",
+              signature: "sig-only",
+            },
+            {
+              type: "text",
+              text: "Visible text",
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: "hello",
+        },
+      ],
+    }
+
+    prepareMessagesApiPayload(payload, {
+      capabilities: {
+        supports: {
+          adaptive_thinking: true,
+        },
+      },
+    } as never)
+
+    expect(payload.messages[0]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          thinking: "",
+          signature: "sig-only",
+        },
+        {
+          type: "text",
+          text: "Visible text",
+        },
+      ],
+    })
+  })
+
   test("sets summarized display for Claude versions at least 4.7", () => {
     const models = [
       "claude-opus-4.7",
