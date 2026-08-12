@@ -39,6 +39,7 @@
     "../src/services/copilot/get-models.ts",
     "../src/services/get-vscode-version.ts",
     "../src/services/github/**/*.ts",
+    "../src/services/responses-http.ts",
     "../src/services/responses-websocket-helpers.ts",
     "../src/services/responses-websocket.ts",
     "../src/lib/electron-fetch.ts"

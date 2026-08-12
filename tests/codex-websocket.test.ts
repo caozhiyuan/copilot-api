@@ -342,6 +342,66 @@ test("forwardCodexResponses returns HTTP event streams when stream=true", async 
   expect(chunks[0]?.data).toContain('"type":"response.completed"')
 })
 
+test("forwardCodexResponses cancels and unlocks an HTTP body after a terminal event", async () => {
+  let cancelledBodies = 0
+  const upstreamBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          [
+            "event: response.completed",
+            `data: ${JSON.stringify({
+              response: createResponsesResult("gpt-5.4", "resp-http-terminal"),
+              sequence_number: 1,
+              type: "response.completed",
+            })}`,
+            "",
+            "",
+          ].join("\n"),
+        ),
+      )
+    },
+    cancel() {
+      cancelledBodies += 1
+    },
+  })
+  fetchMock.mockImplementation(() =>
+    Promise.resolve(
+      new Response(upstreamBody, {
+        headers: {
+          "content-type": "text/event-stream; charset=utf-8",
+        },
+        status: 200,
+      }),
+    ),
+  )
+
+  const response = await forwardCodexResponses(
+    {
+      input: "hello",
+      model: "gpt-5.4",
+      stream: true,
+    },
+    new Headers({ accept: "text/event-stream" }),
+    undefined,
+    { transport: "http" },
+  )
+
+  const chunks: Array<{ data?: string; event?: string }> = []
+  for await (const chunk of response as AsyncIterable<{
+    data?: string
+    event?: string
+  }>) {
+    chunks.push(chunk)
+    break
+  }
+
+  expect(chunks).toHaveLength(1)
+  expect(chunks[0]?.event).toBe("response.completed")
+  expect(cancelledBodies).toBe(1)
+  expect(upstreamBody.locked).toBe(false)
+})
+
 test("forwardCodexResponses preserves response.completed while using websocket", async () => {
   const response = await forwardCodexResponses(
     {

@@ -281,12 +281,52 @@ export async function forwardCodexResponses(
   }
 
   if (normalizedPayload.stream) {
-    return createResponsesSafeStream(events(response), {
-      signal: options.signal,
-    })
+    return createCodexResponsesHttpStream(response, options.signal)
   }
 
   return (await response.json()) as ResponsesResult
+}
+
+const createCodexResponsesHttpStream = async function* (
+  response: Response,
+  signal?: AbortSignal,
+): ResponsesStream {
+  const responseBody = response.body
+  if (!responseBody) {
+    return
+  }
+
+  const reader =
+    responseBody.getReader() as ReadableStreamDefaultReader<Uint8Array>
+  const readerBackedBody = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const result = await reader.read()
+      if (result.done) {
+        controller.close()
+        return
+      }
+
+      controller.enqueue(result.value)
+    },
+    async cancel(reason) {
+      await reader.cancel(reason)
+    },
+  })
+
+  try {
+    yield* createResponsesSafeStream(
+      events(new Response(readerBackedBody), signal),
+      { signal },
+    )
+  } finally {
+    try {
+      await reader.cancel()
+    } catch {
+      // The reader may already have failed or been cancelled downstream.
+    } finally {
+      reader.releaseLock()
+    }
+  }
 }
 
 const normalizeCodexResponsesPayload = (

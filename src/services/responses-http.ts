@@ -128,11 +128,18 @@ const createManagedResponseBody = (
 ): ReadableStream<Uint8Array> => {
   const reader = body.getReader()
   let finished = false
+  let readerReleased = false
 
   const finish = () => {
     if (finished) return
     finished = true
     lifecycle.finish()
+  }
+
+  const releaseReader = () => {
+    if (readerReleased) return
+    readerReleased = true
+    reader.releaseLock()
   }
 
   return new ReadableStream<Uint8Array>({
@@ -141,6 +148,7 @@ const createManagedResponseBody = (
         const result = await readWithLifecycle(reader, lifecycle, options)
         if (result.done) {
           finish()
+          releaseReader()
           controller.close()
           return
         }
@@ -150,6 +158,7 @@ const createManagedResponseBody = (
         const reason = lifecycle.finishWithError(error)
         finish()
         await reader.cancel(reason).catch(() => {})
+        releaseReader()
         controller.error(reason)
       }
     },
@@ -158,6 +167,7 @@ const createManagedResponseBody = (
       lifecycle.abort(error)
       finish()
       await reader.cancel(error).catch(() => {})
+      releaseReader()
     },
   })
 }
