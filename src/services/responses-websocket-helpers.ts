@@ -55,10 +55,16 @@ export const isTerminalResponsesStreamChunk = (chunk: {
 
 export const createResponsesSafeStream = async function* <
   TChunk extends ResponsesStreamErrorChunk,
->(source: AsyncIterable<TChunk>): AsyncGenerator<TChunk, void, unknown> {
+>(
+  source: AsyncIterable<TChunk>,
+  options: { signal?: AbortSignal } = {},
+): AsyncGenerator<TChunk, void, unknown> {
   try {
     yield* source
   } catch (error) {
+    if (options.signal?.aborted || isAbortError(error)) {
+      return
+    }
     // The cast relies on TChunk staying shape-compatible with the error chunk
     // ({ data, event } only, no required extra fields). Keep new call sites
     // within that constraint.
@@ -67,3 +73,6 @@ export const createResponsesSafeStream = async function* <
     ) as TChunk
   }
 }
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === "AbortError"

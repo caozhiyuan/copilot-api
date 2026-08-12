@@ -387,6 +387,7 @@ export const handleWebSearchViaResponses = async (
       subagentMarker: options.subagentMarker,
       requestId: options.requestId,
       sessionId: options.sessionId,
+      signal: c.req?.raw?.signal,
       compactType: options.compactType,
     },
   )

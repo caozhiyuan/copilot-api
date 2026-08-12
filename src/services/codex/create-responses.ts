@@ -13,7 +13,10 @@ import type {
   ResponsesTransport,
 } from "~/lib/types/responses"
 
-import { isResponsesApiWebSocketEnabled as isConfiguredResponsesApiWebSocketEnabled } from "~/lib/config"
+import {
+  getResponsesTransportConfig,
+  isResponsesApiWebSocketEnabled as isConfiguredResponsesApiWebSocketEnabled,
+} from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
 import {
@@ -26,6 +29,7 @@ import {
   encodePoolKeyPart,
   isTerminalResponsesStreamChunk,
 } from "~/services/responses-websocket-helpers"
+import { fetchResponsesWithLifecycle } from "~/services/responses-http"
 import { requestContext } from "~/lib/request-context"
 import consola from "consola"
 
@@ -220,6 +224,7 @@ export function prepareCodexResponsesWebSocketRequest(
   payload: ResponsesPayload,
   requestHeaders: Headers,
   baseUrl: string = CODEX_API_BASE_URL,
+  signal?: AbortSignal,
 ): CodexResponsesWebSocketRequest {
   const headers = buildCodexResponsesWebSocketHeaders(requestHeaders)
 
@@ -227,6 +232,7 @@ export function prepareCodexResponsesWebSocketRequest(
     headers,
     payload: buildCodexResponsesWebSocketPayload(payload),
     poolKey: buildCodexResponsesWebSocketPoolKey(payload, headers, baseUrl),
+    signal,
     url: buildCodexResponsesWebSocketUrl(baseUrl),
   }
 }
@@ -236,31 +242,48 @@ export async function forwardCodexResponses(
   requestHeaders: Headers,
   baseUrl: string = CODEX_API_BASE_URL,
   options: {
+    signal?: AbortSignal
     transport?: ResponsesTransport
   } = {},
 ): Promise<CreateResponsesReturn> {
   consola.log(`<-- model: ${payload.model}`)
   const transport = resolveCodexResponsesTransport(options.transport)
   if (payload.stream && transport === "websocket") {
-    return forwardCodexResponsesOverWebSocket(payload, requestHeaders, baseUrl)
+    return forwardCodexResponsesOverWebSocket(
+      payload,
+      requestHeaders,
+      baseUrl,
+      options.signal,
+    )
   }
 
   const normalizedPayload = normalizeCodexResponsesPayload(payload)
 
-  const response = await fetch(resolveCodexResponsesUrl(baseUrl), {
-    method: "POST",
-    headers: buildCodexResponsesHeaders(requestHeaders, {
-      stream: normalizedPayload.stream,
-    }),
-    body: JSON.stringify(normalizedPayload),
-  })
+  const transportConfig = getResponsesTransportConfig()
+  const response = await fetchResponsesWithLifecycle(
+    resolveCodexResponsesUrl(baseUrl),
+    {
+      method: "POST",
+      headers: buildCodexResponsesHeaders(requestHeaders, {
+        stream: normalizedPayload.stream,
+      }),
+      body: JSON.stringify(normalizedPayload),
+    },
+    {
+      headersTimeoutMs: transportConfig.headersTimeoutMs,
+      signal: options.signal,
+      streamInactivityTimeoutMs: transportConfig.streamInactivityTimeoutMs,
+    },
+  )
 
   if (!response.ok) {
     throw new HTTPError("Failed to create codex responses", response)
   }
 
   if (normalizedPayload.stream) {
-    return events(response)
+    return createResponsesSafeStream(events(response), {
+      signal: options.signal,
+    })
   }
 
   return (await response.json()) as ResponsesResult
@@ -433,11 +456,13 @@ const forwardCodexResponsesOverWebSocket = (
   payload: ResponsesPayload,
   requestHeaders: Headers,
   baseUrl: string,
+  signal?: AbortSignal,
 ): ResponsesStream => {
   const websocketRequest = prepareCodexResponsesWebSocketRequest(
     payload,
     requestHeaders,
     baseUrl,
+    signal,
   )
 
   return createCodexResponsesWebSocketStream(websocketRequest)
@@ -445,17 +470,25 @@ const forwardCodexResponsesOverWebSocket = (
 
 const createCodexResponsesWebSocketStream = (
   request: CodexResponsesWebSocketRequest,
-): ResponsesStream =>
-  createResponsesSafeStream(
+): ResponsesStream => {
+  const transportConfig = getResponsesTransportConfig()
+  return createResponsesSafeStream(
     createPooledWebSocketStream(request, {
       createChunk: createCodexResponsesWebSocketStreamChunk,
+      maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
+      maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
       isTerminalChunk: isTerminalResponsesStreamChunk,
       openErrorMessage: "Failed to create codex responses websocket",
+      openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
+      poolIdleTimeoutMs: transportConfig.websocketPoolIdleTimeoutMs,
+      streamInactivityTimeoutMs: transportConfig.streamInactivityTimeoutMs,
       streamErrorMessage: "Codex responses websocket stream error",
       terminalChunkMissingMessage:
         "Codex responses websocket ended without a terminal response",
     }),
+    { signal: request.signal },
   )
+}
 
 const createCodexResponsesWebSocketStreamChunk = (
   data: string,

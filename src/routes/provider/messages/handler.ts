@@ -273,6 +273,7 @@ const handleOpenAIResponsesProviderWebSearchMessages = async (
       responsesPayload,
       c.req.raw.headers,
       providerConfig.baseUrl,
+      { signal: c.req.raw.signal },
     )
 
     if (isResponsesStream(upstreamResponse)) {
@@ -307,6 +308,7 @@ const handleOpenAIResponsesProviderWebSearchMessages = async (
     providerConfig,
     responsesPayload,
     c.req.raw.headers,
+    { signal: c.req.raw.signal },
   )
 
   if (!upstreamResponse.ok) {
@@ -394,6 +396,7 @@ const handleOpenAIResponsesProviderMessages = async (
       responsesPayload,
       c.req.raw.headers,
       providerConfig.baseUrl,
+      { signal: c.req.raw.signal },
     )
 
     if (isResponsesStream(upstreamResponse)) {
@@ -443,6 +446,7 @@ const handleOpenAIResponsesProviderMessages = async (
     providerConfig,
     responsesPayload,
     c.req.raw.headers,
+    { signal: c.req.raw.signal },
   )
 
   if (!upstreamResponse.ok) {

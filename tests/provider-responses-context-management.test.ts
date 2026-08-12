@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
+import { state } from "~/lib/state"
 import type { ResponsesResult } from "~/lib/types/responses"
 
 const actualConfigModule = await import("~/lib/config")
@@ -320,6 +321,112 @@ describe("provider Responses context management", () => {
       model: string
     }
     expect(body.model).toBe("gpt-test")
+    expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal)
+  })
+
+  test("propagates provider-scoped client cancellation upstream without a 500", async () => {
+    let upstreamSignal: AbortSignal | undefined
+    fetchMock.mockImplementation((_url, init) => {
+      const signal = init?.signal
+      if (!(signal instanceof AbortSignal)) {
+        throw new Error("Expected upstream abort signal")
+      }
+      upstreamSignal = signal
+      return new Promise<Response>((_resolve, reject) => {
+        if (signal.aborted) {
+          reject(
+            signal.reason instanceof Error ?
+              signal.reason
+            : new Error("Provider request aborted"),
+          )
+          return
+        }
+        signal.addEventListener(
+          "abort",
+          () =>
+            reject(
+              signal.reason instanceof Error ?
+                signal.reason
+              : new Error("Provider request aborted"),
+            ),
+          { once: true },
+        )
+      })
+    })
+    const controller = new AbortController()
+    const responsePromise = createApp().fetch(
+      new Request("http://localhost/openai/v1/responses", {
+        body: JSON.stringify({ input: "hello", model: "gpt-test" }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        signal: controller.signal,
+      }),
+    )
+    await waitFor(() => upstreamSignal !== undefined)
+
+    controller.abort()
+
+    const response = await responsePromise
+    expect(upstreamSignal?.aborted).toBe(true)
+    expect(response.status).toBe(499)
+  })
+
+  test("propagates provider-prefixed Codex cancellation upstream", async () => {
+    const originalCodexAccessToken = state.codexAccessToken
+    const originalCodexAccountId = state.codexAccountId
+    let upstreamSignal: AbortSignal | undefined
+    providerConfig = {
+      apiKey: "",
+      authType: "oauth2",
+      baseUrl: "https://chatgpt.example/backend-api",
+      models: { "gpt-test": {} },
+      name: "codex",
+      type: "openai-responses",
+    }
+    state.codexAccessToken = "synthetic-codex-token"
+    state.codexAccountId = "synthetic-account"
+    fetchMock.mockImplementation((url, init) => {
+      expect(url).toBe("https://chatgpt.example/backend-api/codex/responses")
+      const signal = init?.signal
+      if (!(signal instanceof AbortSignal)) {
+        throw new Error("Expected upstream abort signal")
+      }
+      upstreamSignal = signal
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () =>
+            reject(
+              signal.reason instanceof Error ?
+                signal.reason
+              : new Error("Codex request aborted"),
+            ),
+          { once: true },
+        )
+      })
+    })
+
+    try {
+      const controller = new AbortController()
+      const responsePromise = createApp().fetch(
+        new Request("http://localhost/codex/v1/responses", {
+          body: JSON.stringify({ input: "hello", model: "gpt-test" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+          signal: controller.signal,
+        }),
+      )
+      await waitFor(() => upstreamSignal !== undefined)
+
+      controller.abort()
+
+      const response = await responsePromise
+      expect(upstreamSignal?.aborted).toBe(true)
+      expect(response.status).toBe(499)
+    } finally {
+      state.codexAccessToken = originalCodexAccessToken
+      state.codexAccountId = originalCodexAccountId
+    }
   })
 
   test("adapts Responses Lite through Messages to Chat Completions", async () => {
@@ -512,3 +619,11 @@ describe("provider Responses context management", () => {
     })
   })
 })
+
+const waitFor = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  }
+  throw new Error("Timed out waiting for condition")
+}

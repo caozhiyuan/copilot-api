@@ -39,6 +39,7 @@ import {
   getResponsesTransportForModel,
   getResponsesRequestOptions,
   sanitizeOversizedInputImages,
+  sanitizeUnsupportedInputFields,
 } from "./utils"
 import consola from "consola"
 
@@ -130,6 +131,13 @@ export const handleResponses = async (c: Context) => {
     model: payload.model,
   })
 
+  const sanitizedUnsupportedFieldCount = sanitizeUnsupportedInputFields(payload)
+  if (sanitizedUnsupportedFieldCount > 0) {
+    logger.debug(
+      `Removed ${sanitizedUnsupportedFieldCount} unsupported input field(s) before forwarding to Copilot Responses`,
+    )
+  }
+
   removeUnsupportedTools(payload)
   fillEmptyNamespaceToolDescriptions(payload)
 
@@ -173,6 +181,7 @@ export const handleResponses = async (c: Context) => {
     subagentMarker,
     requestId,
     sessionId: fallbackSessionId,
+    signal: c.req.raw.signal,
     transport: responsesTransport,
   })
 
@@ -181,37 +190,43 @@ export const handleResponses = async (c: Context) => {
     return streamSSE(c, async (stream) => {
       const idTracker = createStreamIdTracker()
       let usage: UsageTokens = {}
+      const iterator = response[Symbol.asyncIterator]()
 
-      for await (const chunk of response) {
-        debugJson(logger, "Responses stream chunk:", chunk)
-        const parsedEvent = parseResponsesStreamEvent(chunk)
-        if (
-          parsedEvent?.type === "response.completed"
-          || parsedEvent?.type === "response.failed"
-          || parsedEvent?.type === "response.incomplete"
-        ) {
-          usage = {
-            ...normalizeResponsesUsage(parsedEvent.response.usage),
-            total_nano_aiu: normalizeOptionalToken(
-              parsedEvent.copilot_usage?.total_nano_aiu,
-            ),
+      try {
+        for await (const chunk of {
+          [Symbol.asyncIterator]: () => iterator,
+        }) {
+          debugJson(logger, "Responses stream chunk:", chunk)
+          const parsedEvent = parseResponsesStreamEvent(chunk)
+          if (
+            parsedEvent?.type === "response.completed"
+            || parsedEvent?.type === "response.failed"
+            || parsedEvent?.type === "response.incomplete"
+          ) {
+            usage = {
+              ...normalizeResponsesUsage(parsedEvent.response.usage),
+              total_nano_aiu: normalizeOptionalToken(
+                parsedEvent.copilot_usage?.total_nano_aiu,
+              ),
+            }
           }
+
+          const processedData = fixStreamIds(
+            (chunk as { data?: string }).data ?? "",
+            (chunk as { event?: string }).event,
+            idTracker,
+          )
+
+          await stream.writeSSE({
+            id: (chunk as { id?: string }).id,
+            event: (chunk as { event?: string }).event,
+            data: processedData,
+          })
         }
-
-        const processedData = fixStreamIds(
-          (chunk as { data?: string }).data ?? "",
-          (chunk as { event?: string }).event,
-          idTracker,
-        )
-
-        await stream.writeSSE({
-          id: (chunk as { id?: string }).id,
-          event: (chunk as { event?: string }).event,
-          data: processedData,
-        })
+      } finally {
+        await iterator.return?.()
+        recordUsage(usage)
       }
-
-      recordUsage(usage)
     })
   }
 

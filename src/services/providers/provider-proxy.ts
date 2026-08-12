@@ -9,6 +9,8 @@ import { createTimeoutDispatcher } from "~/lib/timeout-dispatcher"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { ChatCompletionsPayload } from "~/lib/types/chat-completions"
 import type { ResponsesPayload } from "~/lib/types/responses"
+import { getResponsesTransportConfig } from "~/lib/config"
+import { fetchResponsesWithLifecycle } from "~/services/responses-http"
 
 const SHARED_FORWARDABLE_HEADERS = ["accept", "user-agent"] as const
 
@@ -115,13 +117,23 @@ export async function forwardProviderResponses(
   providerConfig: ResolvedProviderConfig,
   payload: ResponsesPayload,
   requestHeaders: Headers,
+  options: { signal?: AbortSignal } = {},
 ): Promise<Response> {
   consola.log(`<-- model: ${payload.model}`)
-  return await fetch(`${providerConfig.baseUrl}/v1/responses`, {
-    method: "POST",
-    headers: buildProviderUpstreamHeaders(providerConfig, requestHeaders),
-    body: JSON.stringify(payload),
-  })
+  const transportConfig = getResponsesTransportConfig()
+  return await fetchResponsesWithLifecycle(
+    `${providerConfig.baseUrl}/v1/responses`,
+    {
+      method: "POST",
+      headers: buildProviderUpstreamHeaders(providerConfig, requestHeaders),
+      body: JSON.stringify(payload),
+    },
+    {
+      headersTimeoutMs: transportConfig.headersTimeoutMs,
+      signal: options.signal,
+      streamInactivityTimeoutMs: transportConfig.streamInactivityTimeoutMs,
+    },
+  )
 }
 
 const PROVIDER_MODELS_TIMEOUT_MS = 15_000

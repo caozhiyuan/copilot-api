@@ -246,6 +246,7 @@ export const handleWithResponsesApi = async (
     {
       vision,
       initiator,
+      signal: c.req?.raw?.signal,
       transport,
       ...requestOptions,
     },

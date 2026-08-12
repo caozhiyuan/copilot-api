@@ -29,6 +29,7 @@ import type {
 } from "~/lib/types/responses"
 import { forwardCodexResponses } from "~/services/codex/create-responses"
 import { getModels as getCodexModels } from "~/services/codex/get-models"
+import { createResponsesSafeStream } from "~/services/responses-websocket-helpers"
 import {
   createProviderProxyResponse,
   forwardProviderResponses,
@@ -119,6 +120,7 @@ export async function handleProviderResponsesForProvider(
       payload,
       c.req.raw.headers,
       providerConfig.baseUrl,
+      { signal: c.req.raw.signal },
     )
     const recordUsage = createProviderResponsesUsageRecorder(
       payload,
@@ -144,6 +146,7 @@ export async function handleProviderResponsesForProvider(
     providerConfig,
     payload,
     c.req.raw.headers,
+    { signal: c.req.raw.signal },
   )
 
   if (!upstreamResponse.ok) {
@@ -161,11 +164,15 @@ export async function handleProviderResponsesForProvider(
   )
 
   if (payload.stream) {
-    return streamProviderResponses(c, getResponsesEvents(upstreamResponse), {
-      normalizeCodex: false,
-      provider,
-      recordUsage,
-    })
+    return streamProviderResponses(
+      c,
+      getResponsesEvents(upstreamResponse, c.req.raw.signal),
+      {
+        normalizeCodex: false,
+        provider,
+        recordUsage,
+      },
+    )
   }
 
   const responseBody = (await upstreamResponse
@@ -207,6 +214,7 @@ const streamProviderResponses = async (
   const iterator = upstreamResponse[Symbol.asyncIterator]()
   const firstResult = await iterator.next()
   if (firstResult.done) {
+    await iterator.return?.()
     throw new HTTPError(
       `Empty stream from ${options.provider} responses`,
       new Response("", { status: 502 }),
@@ -222,6 +230,7 @@ const streamProviderResponses = async (
     if (event?.type === "error") {
       const errorEvent = event
       const statusCode = errorEvent.status_code ?? 500
+      await iterator.return?.()
       return c.json(
         {
           error: {
@@ -279,6 +288,7 @@ const streamProviderResponses = async (
         await writeChunk(chunk)
       }
     } finally {
+      await iterator.return?.()
       options.recordUsage(usage)
     }
   })
@@ -321,5 +331,7 @@ const getResponsesStreamEventUsage = (
   return null
 }
 
-const getResponsesEvents = (response: Response): ResponsesStream =>
-  events(response)
+const getResponsesEvents = (
+  response: Response,
+  signal?: AbortSignal,
+): ResponsesStream => createResponsesSafeStream(events(response), { signal })

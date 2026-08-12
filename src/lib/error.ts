@@ -16,6 +16,13 @@ export async function forwardError(
   c: Context,
   error: unknown,
 ): Promise<Response> {
+  if (c.req.raw.signal.aborted || isAbortError(error)) {
+    return new Response(null, {
+      status: 499,
+      statusText: "Client Closed Request",
+    })
+  }
+
   consola.error("Error occurred:", error)
 
   if (error instanceof HTTPError) {
@@ -57,3 +64,6 @@ export async function forwardError(
     500,
   )
 }
+
+const isAbortError = (error: unknown): boolean =>
+  error instanceof Error && error.name === "AbortError"

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import type { ResponsesPayload } from "~/services/copilot/create-responses"
+import type { ResponsesPayload } from "~/lib/types/responses"
 
 import { sanitizeUnsupportedInputFields } from "~/routes/responses/utils"
 

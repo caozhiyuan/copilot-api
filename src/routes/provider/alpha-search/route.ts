@@ -13,11 +13,19 @@ const logger = createHandlerLogger("provider-alpha-search-handler")
 
 export const providerAlphaSearchRoutes = new Hono()
 
+export const providerAlphaSearchRouteDependencies = {
+  createProviderProxyResponse,
+  forwardProviderAlphaSearch,
+  handleAlphaSearchRequest,
+  resolveProviderConfig,
+}
+
 providerAlphaSearchRoutes.post("/", async (c) => {
   const provider = c.req.param("provider") ?? ""
 
   try {
-    const providerConfig = await resolveProviderConfig(provider)
+    const providerConfig =
+      await providerAlphaSearchRouteDependencies.resolveProviderConfig(provider)
     if (!providerConfig) {
       return c.json(
         {
@@ -31,7 +39,10 @@ providerAlphaSearchRoutes.post("/", async (c) => {
     }
 
     if (providerConfig.name === "codex") {
-      return await handleAlphaSearchRequest(c, providerConfig)
+      return await providerAlphaSearchRouteDependencies.handleAlphaSearchRequest(
+        c,
+        providerConfig,
+      )
     }
 
     await debugJsonAsync(logger, "provider.alpha_search.request", async () => ({
@@ -39,10 +50,11 @@ providerAlphaSearchRoutes.post("/", async (c) => {
       provider,
     }))
 
-    const upstreamResponse = await forwardProviderAlphaSearch(
-      providerConfig,
-      c.req.raw,
-    )
+    const upstreamResponse =
+      await providerAlphaSearchRouteDependencies.forwardProviderAlphaSearch(
+        providerConfig,
+        c.req.raw,
+      )
 
     await debugJsonAsync(
       logger,
@@ -54,7 +66,9 @@ providerAlphaSearchRoutes.post("/", async (c) => {
       }),
     )
 
-    return createProviderProxyResponse(upstreamResponse)
+    return providerAlphaSearchRouteDependencies.createProviderProxyResponse(
+      upstreamResponse,
+    )
   } catch (error) {
     logger.error("provider.alpha_search.error", { provider, error })
     return await forwardError(c, error)

@@ -224,5 +224,32 @@ describe("codex api helpers", () => {
         (model) => !model.supported_endpoints?.includes("/v1/embeddings"),
       ),
     ).toBe(true)
+
+    const gpt56Models = models.data.filter((model) =>
+      model.id.startsWith("gpt-5.6-"),
+    )
+    expect(gpt56Models).toHaveLength(3)
+    for (const model of gpt56Models) {
+      expect(model.capabilities.supports.reasoning_effort).toEqual([
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ])
+      expect(model.capabilities.supports.reasoning_effort).not.toContain(
+        "ultra",
+      )
+      expect(model.capabilities.limits.max_context_window_tokens).toBe(
+        1_050_000,
+      )
+      expect(model.capabilities.limits.max_output_tokens).toBe(128_000)
+    }
+
+    expect(
+      models.data.find((model) => model.id === "gpt-5.5")?.capabilities.supports
+        .reasoning_effort,
+    ).not.toContain("max")
   })
 })

@@ -613,10 +613,12 @@ describe("model routes", () => {
       description: "Sol catalog description",
       base_instructions: "Sol catalog instructions",
       context_window: 372_000,
+      default_reasoning_level: "max",
       priority: 11,
       supported_reasoning_levels: [
         { effort: "high", description: "High reasoning" },
         { effort: "xhigh", description: "Extra high reasoning" },
+        { effort: "max", description: "Maximum reasoning" },
       ],
       use_responses_lite: false,
       custom_catalog_field: { source: "sol" },

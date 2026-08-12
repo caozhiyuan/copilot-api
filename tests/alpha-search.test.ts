@@ -4,34 +4,10 @@ import { Hono } from "hono"
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 
-const actualConfigModule = await import("~/lib/config")
-const actualTokenModule = await import("~/lib/token")
-
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
 let alphaSearchCodexPriorityEnabled = true
 let modelMappings: Record<string, string> = {}
-
-await mock.module("~/lib/config", () => ({
-  ...actualConfigModule,
-  getProviderConfig: (provider: string) => {
-    if (provider === "codex") return codexProviderConfig
-    if (provider === "openrouter") return openrouterProviderConfig
-    return null
-  },
-  getRawProviderConfig: (provider: string) => {
-    if (provider === "codex") return codexProviderConfig
-    if (provider === "openrouter") return openrouterProviderConfig
-    return null
-  },
-  isAlphaSearchCodexPriorityEnabled: () => alphaSearchCodexPriorityEnabled,
-  resolveMappedModel: (model: string) => modelMappings[model] ?? model,
-}))
-
-await mock.module("~/lib/token", () => ({
-  ...actualTokenModule,
-  setupCodexToken: async () => {},
-}))
 
 const { state } = await import("~/lib/state")
 const { HTTPError } = await import("~/lib/error")
@@ -42,17 +18,22 @@ const { forwardCodexAlphaSearch, resolveCodexAlphaSearchUrl } = await import(
 const { forwardCodexModels, getModels, resolveCodexModelsUrl } = await import(
   "~/services/codex/get-models"
 )
-const { alphaSearchRoutes } = await import("~/routes/alpha-search/route")
+const { alphaSearchRouteDependencies, alphaSearchRoutes } = await import(
+  "~/routes/alpha-search/route"
+)
 const { alphaSearchResponsesDependencies, resetAlphaSearchState } =
   await import("~/routes/alpha-search/alpha-search-responses")
-const { providerAlphaSearchRoutes } = await import(
-  "~/routes/provider/alpha-search/route"
-)
+const { providerAlphaSearchRouteDependencies, providerAlphaSearchRoutes } =
+  await import("~/routes/provider/alpha-search/route")
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 
 const originalFetch = globalThis.fetch
 const originalResponsesDependencies = { ...alphaSearchResponsesDependencies }
+const originalRouteDependencies = { ...alphaSearchRouteDependencies }
+const originalProviderRouteDependencies = {
+  ...providerAlphaSearchRouteDependencies,
+}
 const originalModels = state.models
 const originalCopilotToken = state.copilotToken
 const originalMacMachineId = state.macMachineId
@@ -227,6 +208,20 @@ function requestFallback(
   )
 }
 
+const resolveTestProviderConfig = (
+  provider: string,
+): Promise<ResolvedProviderConfig | null> => {
+  if (provider === "codex") return Promise.resolve(codexProviderConfig)
+  if (provider === "openrouter")
+    return Promise.resolve(openrouterProviderConfig)
+  return Promise.resolve(null)
+}
+
+const resolveTestProviderType = (
+  providerConfig: ResolvedProviderConfig,
+  model: string,
+) => providerConfig.models?.[model]?.type ?? providerConfig.type
+
 beforeEach(async () => {
   process.env[DB_PATH_ENV] = ":memory:"
   await closeUsageStore()
@@ -279,6 +274,22 @@ beforeEach(async () => {
     Date.parse("2026-08-03T12:00:00.000Z")
   alphaSearchResponsesDependencies.resolveMappedModel = (model) =>
     modelMappings[model] ?? model
+  alphaSearchResponsesDependencies.resolveEffectiveProviderType =
+    resolveTestProviderType
+  alphaSearchResponsesDependencies.resolveProviderConfig =
+    resolveTestProviderConfig
+  alphaSearchRouteDependencies.findEndpointModel = (model) =>
+    state.models?.data.find((candidate) => candidate.id === model)
+  alphaSearchRouteDependencies.getAlphaSearchModel = () => "gpt-5-mini"
+  alphaSearchRouteDependencies.isAlphaSearchCodexPriorityEnabled = () =>
+    alphaSearchCodexPriorityEnabled
+  alphaSearchRouteDependencies.resolveEffectiveProviderType =
+    resolveTestProviderType
+  alphaSearchRouteDependencies.resolveMappedModel = (model) =>
+    modelMappings[model] ?? model
+  alphaSearchRouteDependencies.resolveProviderConfig = resolveTestProviderConfig
+  providerAlphaSearchRouteDependencies.resolveProviderConfig =
+    resolveTestProviderConfig
   resetAlphaSearchState()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
     fetchMock as unknown as typeof fetch
@@ -296,6 +307,11 @@ afterEach(async () => {
   state.verbose = false
   openrouterProviderConfig = null
   Object.assign(alphaSearchResponsesDependencies, originalResponsesDependencies)
+  Object.assign(alphaSearchRouteDependencies, originalRouteDependencies)
+  Object.assign(
+    providerAlphaSearchRouteDependencies,
+    originalProviderRouteDependencies,
+  )
   resetAlphaSearchState()
 })
 

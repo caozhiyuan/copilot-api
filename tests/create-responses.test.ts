@@ -168,6 +168,45 @@ describe("createResponses", () => {
     expect(response).toEqual(createResponsesResult("gpt-test"))
   })
 
+  test("keeps cache-relevant HTTP payloads deterministic", async () => {
+    const payload: ResponsesPayload = {
+      input: [
+        { role: "user", content: "hello" },
+        {
+          encrypted_content: "encrypted-reasoning",
+          id: "reasoning-1",
+          summary: [],
+          type: "reasoning",
+        },
+      ],
+      instructions: "stable instructions",
+      model: "gpt-test",
+      prompt_cache_key: "stable-cache-key",
+      stream: false,
+    }
+
+    await createResponses(structuredClone(payload), {
+      initiator: "user",
+      requestId: "request-1",
+      vision: false,
+    })
+    await createResponses(structuredClone(payload), {
+      initiator: "user",
+      requestId: "request-1",
+      vision: false,
+    })
+
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      fetchMock.mock.calls[1]?.[1]?.body,
+    )
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toContain(
+      '"prompt_cache_key":"stable-cache-key"',
+    )
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toContain(
+      '"encrypted_content":"encrypted-reasoning"',
+    )
+  })
+
   test("builds the first websocket frame as response.create", () => {
     const payload = {
       background: true,

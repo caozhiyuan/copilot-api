@@ -23,6 +23,7 @@ export interface AppConfig {
   >
   useMessagesApi?: boolean
   useResponsesApiWebSocket?: boolean
+  responsesTransport?: ResponsesTransportConfig
   anthropicApiKey?: string
   useResponsesApiWebSearch?: boolean
   alphaSearchCodexPriority?: boolean
@@ -49,6 +50,24 @@ export interface ContextManagementConfig {
   messages?: boolean
   responses?: boolean
 }
+
+export interface ResponsesTransportConfig {
+  headersTimeoutMs?: number
+  streamInactivityTimeoutMs?: number
+  websocketMaxBufferedBytes?: number
+  websocketMaxBufferedMessages?: number
+  websocketOpenTimeoutMs?: number
+  websocketPoolIdleTimeoutMs?: number
+}
+
+export const defaultResponsesTransportConfig = {
+  headersTimeoutMs: 30_000,
+  streamInactivityTimeoutMs: 5 * 60 * 1000,
+  websocketMaxBufferedBytes: 8 * 1024 * 1024,
+  websocketMaxBufferedMessages: 1024,
+  websocketOpenTimeoutMs: 30_000,
+  websocketPoolIdleTimeoutMs: 60_000,
+} satisfies Required<ResponsesTransportConfig>
 
 export interface ModelConfig {
   temperature?: number
@@ -130,6 +149,7 @@ export const defaultConfig: AppConfig = {
   },
   useMessagesApi: true,
   useResponsesApiWebSocket: true,
+  responsesTransport: defaultResponsesTransportConfig,
   useResponsesApiWebSearch: true,
   alphaSearchCodexPriority: true,
   alphaSearchModel: "gpt-5-mini",
@@ -246,6 +266,9 @@ function mergeDefaultConfig(config: AppConfig): {
   const contextManagement = normalizeContextManagementConfig(
     config.contextManagement,
   )
+  const responsesTransport = normalizeResponsesTransportConfig(
+    config.responsesTransport,
+  )
   const defaultContextManagementConfig = defaultConfig.contextManagement ?? {}
 
   const missingExtraPromptModels = Object.keys(defaultExtraPrompts).filter(
@@ -267,12 +290,18 @@ function mergeDefaultConfig(config: AppConfig): {
   const hasResponsesApiCompactThresholdChanges =
     missingResponsesApiCompactThresholdModels.length > 0
   const hasContextManagementChanges = missingContextManagementKeys.length > 0
+  const hasResponsesTransportChanges = Object.entries(responsesTransport).some(
+    ([key, value]) =>
+      config.responsesTransport?.[key as keyof ResponsesTransportConfig]
+      !== value,
+  )
 
   if (
     !hasExtraPromptChanges
     && !hasReasoningEffortChanges
     && !hasResponsesApiCompactThresholdChanges
     && !hasContextManagementChanges
+    && !hasResponsesTransportChanges
   ) {
     return { mergedConfig: config, changed: false }
   }
@@ -296,6 +325,7 @@ function mergeDefaultConfig(config: AppConfig): {
         ...defaultModelReasoningEfforts,
         ...modelReasoningEfforts,
       },
+      responsesTransport,
     },
     changed: true,
   }
@@ -398,6 +428,44 @@ export function isResponsesApiWebSocketEnabled(): boolean {
   const config = getConfig()
   return config.useResponsesApiWebSocket ?? true
 }
+
+export function getResponsesTransportConfig(): Required<ResponsesTransportConfig> {
+  return normalizeResponsesTransportConfig(getConfig().responsesTransport)
+}
+
+export const normalizeResponsesTransportConfig = (
+  configured: ResponsesTransportConfig | undefined,
+): Required<ResponsesTransportConfig> => ({
+  headersTimeoutMs: positiveIntegerOrDefault(
+    configured?.headersTimeoutMs,
+    defaultResponsesTransportConfig.headersTimeoutMs,
+  ),
+  streamInactivityTimeoutMs: positiveIntegerOrDefault(
+    configured?.streamInactivityTimeoutMs,
+    defaultResponsesTransportConfig.streamInactivityTimeoutMs,
+  ),
+  websocketMaxBufferedBytes: positiveIntegerOrDefault(
+    configured?.websocketMaxBufferedBytes,
+    defaultResponsesTransportConfig.websocketMaxBufferedBytes,
+  ),
+  websocketMaxBufferedMessages: positiveIntegerOrDefault(
+    configured?.websocketMaxBufferedMessages,
+    defaultResponsesTransportConfig.websocketMaxBufferedMessages,
+  ),
+  websocketOpenTimeoutMs: positiveIntegerOrDefault(
+    configured?.websocketOpenTimeoutMs,
+    defaultResponsesTransportConfig.websocketOpenTimeoutMs,
+  ),
+  websocketPoolIdleTimeoutMs: positiveIntegerOrDefault(
+    configured?.websocketPoolIdleTimeoutMs,
+    defaultResponsesTransportConfig.websocketPoolIdleTimeoutMs,
+  ),
+})
+
+const positiveIntegerOrDefault = (value: unknown, fallback: number): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ?
+    Math.floor(value)
+  : fallback
 
 export function getAnthropicApiKey(): string | undefined {
   const config = getConfig()

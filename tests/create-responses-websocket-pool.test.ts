@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, mock, test } from "bun:test"
 import type { ResponsesResult } from "~/lib/types/responses"
 
 type ListenerEvent = {
-  data?: string
+  data?: unknown
   error?: unknown
   message?: string
 }
@@ -47,6 +47,8 @@ class MockWebSocket {
   static closeAfterComplete = false
   static failOpen = false
   static failOpenEvent: ListenerEvent | null = null
+  static neverOpen = false
+  static openDelayMs = 0
   static instances: Array<MockWebSocket> = []
 
   readonly sent: Array<string> = []
@@ -61,6 +63,7 @@ class MockWebSocket {
     this.url = url
     MockWebSocket.instances.push(this)
     originalSetTimeout(() => {
+      if (MockWebSocket.neverOpen) return
       if (MockWebSocket.failOpen) {
         this.readyState = MockWebSocket.CLOSED
         this.emit("error", MockWebSocket.failOpenEvent ?? {})
@@ -69,7 +72,7 @@ class MockWebSocket {
 
       this.readyState = MockWebSocket.OPEN
       this.emit("open", {})
-    }, 0)
+    }, MockWebSocket.openDelayMs)
   }
 
   addEventListener(event: string, listener: Listener): void {
@@ -103,6 +106,14 @@ class MockWebSocket {
 
   emitError(payload: ListenerEvent): void {
     this.emit("error", payload)
+  }
+
+  emitMessage(data: unknown): void {
+    this.emit("message", { data })
+  }
+
+  listenerCount(event: string): number {
+    return this.listeners.get(event)?.size ?? 0
   }
 
   completeLatestResponse(): void {
@@ -167,6 +178,15 @@ await mock.module("undici", () => ({
 
 const { state } = await import("~/lib/state")
 const { createResponses } = await import("~/services/copilot/create-responses")
+const {
+  createPooledWebSocketStream,
+  ResponsesWebSocketInactivityTimeoutError,
+  ResponsesWebSocketOpenTimeoutError,
+  WebSocketMessageBuffer,
+} = await import("~/services/responses-websocket")
+const { createResponsesSafeStream } = await import(
+  "~/services/responses-websocket-helpers"
+)
 
 const originalState = {
   accountType: state.accountType,
@@ -204,6 +224,8 @@ beforeEach(() => {
   MockWebSocket.closeAfterComplete = false
   MockWebSocket.failOpen = false
   MockWebSocket.failOpenEvent = null
+  MockWebSocket.neverOpen = false
+  MockWebSocket.openDelayMs = 0
   MockWebSocket.instances = []
   state.accountType = "individual"
   state.copilotApiUrl = "https://api.githubcopilot.com"
@@ -217,6 +239,8 @@ afterEach(() => {
   MockWebSocket.closeAfterComplete = false
   MockWebSocket.failOpen = false
   MockWebSocket.failOpenEvent = null
+  MockWebSocket.neverOpen = false
+  MockWebSocket.openDelayMs = 0
   for (const websocket of MockWebSocket.instances) {
     websocket.close()
   }
@@ -605,6 +629,238 @@ test("Responses websocket honors NO_PROXY when resolving Bun websocket proxy", a
     restoreProxyEnv(proxyEnv)
   }
 })
+
+test("Responses websocket opening has a real deadline", async () => {
+  MockWebSocket.neverOpen = true
+  const stream = createTestPooledStream("never-opens", {
+    openTimeoutMs: 5,
+  })
+
+  expect(await getRejectedError(collectStreamChunks(stream))).toBeInstanceOf(
+    ResponsesWebSocketOpenTimeoutError,
+  )
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+})
+
+test("Responses websocket can open just before its deadline", async () => {
+  MockWebSocket.openDelayMs = 5
+  const stream = createTestPooledStream("opens-in-time", {
+    openTimeoutMs: 25,
+  })
+
+  const chunksPromise = collectStreamChunks(stream)
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+  MockWebSocket.instances[0]?.completeLatestResponse()
+
+  const chunks = await chunksPromise
+  expect(chunks).toHaveLength(1)
+})
+
+test("Responses websocket active streams time out independently", async () => {
+  MockWebSocket.autoComplete = false
+  const stalled = createTestPooledStream("stalled", {
+    streamInactivityTimeoutMs: 5,
+  })
+  const healthy = createTestPooledStream("healthy", {
+    streamInactivityTimeoutMs: 100,
+  })
+  const stalledResult = collectStreamChunks(stalled)
+  const healthyResult = collectStreamChunks(healthy)
+
+  await waitFor(
+    () =>
+      MockWebSocket.instances.length === 2
+      && MockWebSocket.instances.every(
+        (websocket) => websocket.sent.length > 0,
+      ),
+  )
+  MockWebSocket.instances[1]?.completeLatestResponse()
+
+  expect(await getRejectedError(stalledResult)).toBeInstanceOf(
+    ResponsesWebSocketInactivityTimeoutError,
+  )
+  expect(await healthyResult).toHaveLength(1)
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+  expect(MockWebSocket.instances[1]?.readyState).toBe(MockWebSocket.OPEN)
+})
+
+test("Responses websocket messages reset the active-stream deadline", async () => {
+  MockWebSocket.autoComplete = false
+  const chunksPromise = collectStreamChunks(
+    createTestPooledStream("periodic", { streamInactivityTimeoutMs: 15 }),
+  )
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+
+  MockWebSocket.instances[0]?.emitMessage(
+    '{"type":"response.output_text.delta"}',
+  )
+  await delay(8)
+  MockWebSocket.instances[0]?.emitMessage(
+    '{"type":"response.output_text.delta"}',
+  )
+  await delay(8)
+  MockWebSocket.instances[0]?.completeLatestResponse()
+
+  expect(await chunksPromise).toHaveLength(3)
+})
+
+test("Responses websocket terminal events clear active timers", async () => {
+  MockWebSocket.autoComplete = false
+  const chunksPromise = collectStreamChunks(
+    createTestPooledStream("terminal-clears", {
+      streamInactivityTimeoutMs: 5,
+    }),
+  )
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+  MockWebSocket.instances[0]?.completeLatestResponse()
+
+  expect(await chunksPromise).toHaveLength(1)
+  await delay(10)
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.OPEN)
+})
+
+test("Responses websocket late idle events invalidate pooled connections", async () => {
+  await collectStreamChunks(createTestPooledStream("late-event"))
+  expect(MockWebSocket.instances).toHaveLength(1)
+  expect(MockWebSocket.instances[0]?.listenerCount("message")).toBe(1)
+
+  MockWebSocket.instances[0]?.emitMessage(
+    '{"type":"response.output_text.delta"}',
+  )
+  await Promise.resolve()
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+
+  await collectStreamChunks(createTestPooledStream("late-event"))
+  expect(MockWebSocket.instances).toHaveLength(2)
+})
+
+test("Responses websocket cancellation is quiet when wrapped as a Responses stream", async () => {
+  MockWebSocket.autoComplete = false
+  const controller = new AbortController()
+  const source = createTestPooledStream("cancelled", {
+    signal: controller.signal,
+  })
+  const chunksPromise = collectStreamChunks(
+    createResponsesSafeStream(source, { signal: controller.signal }),
+  )
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+
+  controller.abort()
+
+  expect(await chunksPromise).toEqual([])
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+})
+
+test("Responses websocket cancellation while connecting closes the socket", async () => {
+  MockWebSocket.neverOpen = true
+  const controller = new AbortController()
+  const chunksPromise = collectStreamChunks(
+    createResponsesSafeStream(
+      createTestPooledStream("cancel-connect", {
+        signal: controller.signal,
+      }),
+      { signal: controller.signal },
+    ),
+  )
+  await waitFor(() => MockWebSocket.instances.length === 1)
+
+  controller.abort()
+
+  expect(await chunksPromise).toEqual([])
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+})
+
+test("Responses websocket buffer tracks bytes, binary data, and dequeue order", async () => {
+  const buffer = new WebSocketMessageBuffer(32, 4)
+  const binary = new TextEncoder().encode("bc")
+
+  expect(buffer.enqueue("a")).toBe(true)
+  expect(buffer.enqueue(binary)).toBe(true)
+  expect(buffer.bufferedBytes).toBe(3)
+  expect(buffer.bufferedMessages).toBe(2)
+  expect(await buffer.dequeue()).toBe("a")
+  expect(buffer.bufferedBytes).toBe(2)
+  expect(await buffer.dequeue()).toBe("bc")
+  expect(buffer.bufferedBytes).toBe(0)
+  expect(buffer.bufferedMessages).toBe(0)
+})
+
+test("Responses websocket buffer overflow emits one error and invalidates the socket", async () => {
+  MockWebSocket.autoComplete = false
+  const source = createTestPooledStream("overflow", {
+    maxBufferedBytes: 8,
+    maxBufferedMessages: 2,
+  })
+  const chunksPromise = collectStreamChunks(createResponsesSafeStream(source))
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+
+  MockWebSocket.instances[0]?.emitMessage("1234")
+  MockWebSocket.instances[0]?.emitMessage("5678")
+  MockWebSocket.instances[0]?.emitMessage("overflow")
+
+  const chunks = await chunksPromise
+  expect(chunks).toHaveLength(1)
+  expect(chunks[0]?.event).toBe("error")
+  expect(chunks[0]?.data).toContain("websocket buffer exceeded")
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+
+  const nextChunksPromise = collectStreamChunks(
+    createTestPooledStream("overflow"),
+  )
+  await waitFor(() => MockWebSocket.instances[1]?.sent.length === 1)
+  MockWebSocket.instances[1]?.completeLatestResponse()
+  await nextChunksPromise
+  expect(MockWebSocket.instances).toHaveLength(2)
+})
+
+const createTestPooledStream = (
+  poolKey: string,
+  overrides: {
+    maxBufferedBytes?: number
+    maxBufferedMessages?: number
+    openTimeoutMs?: number
+    signal?: AbortSignal
+    streamInactivityTimeoutMs?: number
+  } = {},
+): AsyncIterable<{ data?: string; event?: string }> =>
+  createPooledWebSocketStream(
+    {
+      headers: {},
+      payload: { model: "gpt-test" },
+      poolKey: `test-${poolKey}`,
+      signal: overrides.signal,
+      url: "wss://api.githubcopilot.com/responses",
+    },
+    {
+      createChunk: (data) => {
+        const parsed = JSON.parse(data) as { type?: string }
+        return { data, event: parsed.type }
+      },
+      isTerminalChunk: (chunk) => chunk.event === "response.completed",
+      maxBufferedBytes: overrides.maxBufferedBytes ?? 1024,
+      maxBufferedMessages: overrides.maxBufferedMessages ?? 32,
+      openErrorMessage: "open failed",
+      openTimeoutMs: overrides.openTimeoutMs ?? 100,
+      poolIdleTimeoutMs: 1000,
+      streamErrorMessage: "stream failed",
+      streamInactivityTimeoutMs: overrides.streamInactivityTimeoutMs ?? 100,
+      terminalChunkMissingMessage: "terminal missing",
+    },
+  )
+
+const delay = async (milliseconds: number): Promise<void> =>
+  await new Promise<void>((resolve) => {
+    originalSetTimeout(resolve, milliseconds)
+  })
+
+const getRejectedError = async (promise: Promise<unknown>): Promise<Error> => {
+  try {
+    await promise
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error))
+  }
+  throw new Error("Expected promise to reject")
+}
 
 const collectResponsesStream = async (requestId: string): Promise<void> => {
   const response = await createResponses(
