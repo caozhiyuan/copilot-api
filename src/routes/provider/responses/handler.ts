@@ -38,6 +38,10 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 const logger = createHandlerLogger("provider-responses-handler")
 
+export const providerResponsesHandlerDependencies = {
+  resolveProviderConfig,
+}
+
 export async function handleProviderResponsesForProvider(
   c: Context,
   options: {
@@ -53,7 +57,8 @@ export async function handleProviderResponsesForProvider(
     provider,
   })
 
-  const providerConfig = await resolveProviderConfig(provider)
+  const providerConfig =
+    await providerResponsesHandlerDependencies.resolveProviderConfig(provider)
   if (!providerConfig) {
     return c.json(
       {

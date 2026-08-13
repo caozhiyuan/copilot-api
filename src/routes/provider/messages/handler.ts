@@ -96,6 +96,10 @@ import consola from "consola"
 
 const logger = createHandlerLogger("provider-messages-handler")
 
+export const providerMessagesHandlerDependencies = {
+  resolveProviderConfig,
+}
+
 export async function handleProviderMessages(
   c: Context<Env, "/:provider">,
 ): Promise<Response> {
@@ -125,7 +129,8 @@ export async function handleProviderMessagesForProvider(
   },
 ): Promise<Response> {
   const { payload, provider, usageEndpoint } = options
-  const providerConfig = await resolveProviderConfig(provider)
+  const providerConfig =
+    await providerMessagesHandlerDependencies.resolveProviderConfig(provider)
   if (!providerConfig) {
     return c.json(
       {

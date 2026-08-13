@@ -5,30 +5,30 @@ import type { ResolvedProviderConfig } from "~/lib/config"
 import { state } from "~/lib/state"
 import type { ResponsesResult } from "~/lib/types/responses"
 
-const actualConfigModule = await import("~/lib/config")
-const actualTokenUsageModule = await import("~/lib/token-usage")
-
 let providerConfig: ResolvedProviderConfig | null = null
-
-const noopTokenUsageRecorder = () => {}
-
-await mock.module("~/lib/config", () => ({
-  ...actualConfigModule,
-  getProviderConfig: () => providerConfig,
-  resolveMappedModel: (model: string) => model,
-}))
-
-await mock.module("~/lib/token-usage", () => ({
-  ...actualTokenUsageModule,
-  createProviderTokenUsageRecorder: () => noopTokenUsageRecorder,
-}))
 
 const { responsesRoutes } = await import("~/routes/responses/route")
 const { providerResponsesRoutes } = await import(
   "~/routes/provider/responses/route"
 )
+const { providerMessagesHandlerDependencies } = await import(
+  "~/routes/provider/messages/handler"
+)
+const { providerResponsesHandlerDependencies } = await import(
+  "~/routes/provider/responses/handler"
+)
+const { responsesHandlerDependencies } = await import(
+  "~/routes/responses/handler"
+)
 const { responsesUtilsDependencies } = await import("~/routes/responses/utils")
 
+const defaultProviderMessagesHandlerDependencies = {
+  ...providerMessagesHandlerDependencies,
+}
+const defaultProviderResponsesHandlerDependencies = {
+  ...providerResponsesHandlerDependencies,
+}
+const defaultResponsesHandlerDependencies = { ...responsesHandlerDependencies }
 const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
 const originalFetch = globalThis.fetch
 
@@ -95,6 +95,12 @@ beforeEach(() => {
     type: "openai-responses",
   }
 
+  const resolveProviderConfig = () => Promise.resolve(providerConfig)
+  providerMessagesHandlerDependencies.resolveProviderConfig =
+    resolveProviderConfig
+  providerResponsesHandlerDependencies.resolveProviderConfig =
+    resolveProviderConfig
+  responsesHandlerDependencies.resolveMappedModel = (model) => model
   responsesUtilsDependencies.getModelResponsesApiCompactThreshold = () =>
     undefined
   responsesUtilsDependencies.isContextManagementEnabledForMessages = () => true
@@ -109,6 +115,18 @@ beforeEach(() => {
 afterEach(() => {
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   providerConfig = null
+  Object.assign(
+    providerMessagesHandlerDependencies,
+    defaultProviderMessagesHandlerDependencies,
+  )
+  Object.assign(
+    providerResponsesHandlerDependencies,
+    defaultProviderResponsesHandlerDependencies,
+  )
+  Object.assign(
+    responsesHandlerDependencies,
+    defaultResponsesHandlerDependencies,
+  )
   Object.assign(responsesUtilsDependencies, defaultResponsesUtilsDependencies)
 })
 
