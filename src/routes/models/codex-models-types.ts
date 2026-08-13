@@ -151,6 +151,7 @@ export interface SyntheticCodexModelCandidate {
   displayName: string
   description: string
   contextWindow: number
+  maxPromptTokens?: number
   maxOutputTokens: number
   inputModalities: Array<CodexInputModality>
   reasoningEfforts: Array<CodexReasoningEffort>

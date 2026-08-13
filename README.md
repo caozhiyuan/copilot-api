@@ -386,8 +386,6 @@ Add the following `[model_providers.copilot_api]` section to your Codex `~/.code
 ```toml
 model_provider = "copilot_api"
 model_reasoning_summary = "auto"
-model_context_window = 272000
-model_auto_compact_token_limit = 244800
 web_search = "live"
 
 [model_providers.copilot_api]
@@ -409,6 +407,11 @@ apps = false
 [analytics]
 enabled = false
 ```
+
+Context and auto-compaction limits are discovered from the gateway's model
+catalog. Avoid setting `model_context_window` or
+`model_auto_compact_token_limit` globally, because those overrides apply the
+same fixed limit to every selected model.
 
 > [!NOTE]
 > `name` must be set to `"OpenAI"`.

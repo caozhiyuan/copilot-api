@@ -711,6 +711,65 @@ describe("model routes", () => {
     )
   })
 
+  test("uses Copilot limits for matching unprefixed Codex catalog models", async () => {
+    codexCatalogModels = [
+      {
+        slug: "gpt-5.6-sol",
+        display_name: "GPT-5.6 Sol",
+        context_window: 372_000,
+        max_context_window: 372_000,
+        max_output_tokens: 128_000,
+        auto_compact_token_limit: 334_800,
+        priority: 11,
+      },
+    ]
+    const copilotModels = createCopilotModels(["gpt-5.6-sol"])
+    copilotModels.data[0].capabilities.limits = {
+      max_context_window_tokens: 1_050_000,
+      max_output_tokens: 128_000,
+      max_prompt_tokens: 922_000,
+    }
+    copilotModels.data[0].capabilities.supports.tool_calls = true
+    copilotModels.data[0].supported_endpoints = ["/responses"]
+    state.models = copilotModels
+    state.codexAccessToken = "codex-access-token"
+    state.codexAccountId = "account-123"
+    enabledProviders = ["codex"]
+    providerConfigs = {
+      codex: {
+        apiKey: "codex-token",
+        authType: "oauth2",
+        baseUrl: "https://chatgpt.com/backend-api",
+        name: "codex",
+        type: "openai-responses",
+      },
+    }
+
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "codex-cli/1.0.0" },
+    })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      models: Array<Record<string, unknown> & { slug: string }>
+    }
+    expect(
+      body.models.find((model) => model.slug === "gpt-5.6-sol"),
+    ).toMatchObject({
+      context_window: 1_050_000,
+      max_context_window: 1_050_000,
+      max_output_tokens: 128_000,
+      auto_compact_token_limit: 922_000,
+    })
+    expect(
+      body.models.find((model) => model.slug === "codex/gpt-5.6-sol"),
+    ).toMatchObject({
+      context_window: 372_000,
+      max_context_window: 372_000,
+      auto_compact_token_limit: 334_800,
+    })
+  })
+
   test("orders merged Codex models as catalog, codex, copilot, opencode-go, then providers", async () => {
     const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
     copilotModels.data[0].supported_endpoints = ["/v1/messages"]

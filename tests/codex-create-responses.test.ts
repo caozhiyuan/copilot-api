@@ -248,6 +248,15 @@ describe("codex api helpers", () => {
     }
 
     expect(
+      models.data.find((model) => model.id === "gpt-5.4")?.capabilities.limits
+        .max_context_window_tokens,
+    ).toBe(400_000)
+    expect(
+      models.data.find((model) => model.id === "gpt-5.5")?.capabilities.limits
+        .max_context_window_tokens,
+    ).toBe(272_000)
+
+    expect(
       models.data.find((model) => model.id === "gpt-5.5")?.capabilities.supports
         .reasoning_effort,
     ).not.toContain("max")

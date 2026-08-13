@@ -303,6 +303,9 @@ function createCopilotCodexCandidate(
       model.capabilities.limits.max_context_window_tokens,
       256_000,
     ),
+    maxPromptTokens: optionalPositiveNumber(
+      model.capabilities.limits.max_prompt_tokens,
+    ),
     maxOutputTokens: positiveNumber(
       model.capabilities.limits.max_output_tokens,
       32_000,
@@ -516,6 +519,12 @@ function positiveNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ?
       Math.floor(value)
     : fallback
+}
+
+function optionalPositiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ?
+      Math.floor(value)
+    : undefined
 }
 
 function getFirstPositiveNumber(

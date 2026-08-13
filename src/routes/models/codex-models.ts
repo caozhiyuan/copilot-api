@@ -344,6 +344,15 @@ export async function handleMergedCodexModels(
   const catalogModelsBySlug = new Map(
     upstreamModels.map((model) => [model.slug, model]),
   )
+  const candidatesBySlug = new Map(
+    candidates.map((candidate) => [candidate.slug, candidate]),
+  )
+  // A matching unprefixed model routes through Copilot, while the codex/
+  // alias below routes through ChatGPT Codex. Keep each route's own limits.
+  const routedUpstreamModels = upstreamModels.map((model) => {
+    const candidate = candidatesBySlug.get(model.slug)
+    return candidate ? applyCandidateLimits(model, candidate) : model
+  })
   const seenSlugs = new Set(upstreamModels.map((model) => model.slug))
   const codexProviderAliases =
     options.includeCodexProviderAliases ?
@@ -387,7 +396,7 @@ export async function handleMergedCodexModels(
     })
 
   const models = [
-    ...upstreamModels,
+    ...routedUpstreamModels,
     ...codexProviderAliases,
     ...syntheticModels,
   ].sort((a, b) => getModelPriority(a) - getModelPriority(b))
@@ -403,6 +412,29 @@ export async function handleMergedCodexModels(
     models: response,
   })
   return c.json(response)
+}
+
+function applyCandidateLimits(
+  model: CodexModel,
+  candidate: SyntheticCodexModelCandidate,
+): CodexModel {
+  return {
+    ...model,
+    context_window: candidate.contextWindow,
+    max_context_window: candidate.contextWindow,
+    max_output_tokens: candidate.maxOutputTokens,
+    auto_compact_token_limit: getCandidateAutoCompactTokenLimit(candidate),
+  }
+}
+
+function getCandidateAutoCompactTokenLimit(
+  candidate: SyntheticCodexModelCandidate,
+): number | null {
+  if (candidate.maxPromptTokens === undefined) return null
+  return Math.min(
+    candidate.maxPromptTokens,
+    Math.floor(candidate.contextWindow * 0.9),
+  )
 }
 
 function createCatalogAlias(
@@ -468,7 +500,7 @@ export function createSyntheticCodexModel(
     context_window: candidate.contextWindow,
     max_context_window: candidate.contextWindow,
     max_output_tokens: candidate.maxOutputTokens,
-    auto_compact_token_limit: null,
+    auto_compact_token_limit: getCandidateAutoCompactTokenLimit(candidate),
     comp_hash: null,
     effective_context_window_percent: 95,
     default_reasoning_level: defaultReasoningEffort,

@@ -414,8 +414,6 @@ npx @jeffreycao/copilot-api@latest start
 ```toml
 model_provider = "copilot_api"
 model_reasoning_summary = "auto"
-model_context_window = 272000
-model_auto_compact_token_limit = 244800
 web_search = "live"
 
 [model_providers.copilot_api]
@@ -437,6 +435,9 @@ apps = false
 [analytics]
 enabled = false
 ```
+
+上下文与自动压缩限制会从 gateway 的模型目录中自动获取。请避免全局设置
+`model_context_window` 或 `model_auto_compact_token_limit`，因为这些覆盖项会对每个所选模型应用相同的固定限制。
 
 > [!NOTE]
 > `name` 一定要配置为 `"OpenAI"`。
