@@ -326,12 +326,14 @@ describe("provider Responses context management", () => {
 
   test("propagates provider-scoped client cancellation upstream without a 500", async () => {
     let upstreamSignal: AbortSignal | undefined
+    const upstreamStarted = createDeferred()
     fetchMock.mockImplementation((_url, init) => {
       const signal = init?.signal
       if (!(signal instanceof AbortSignal)) {
         throw new Error("Expected upstream abort signal")
       }
       upstreamSignal = signal
+      upstreamStarted.resolve()
       return new Promise<Response>((_resolve, reject) => {
         if (signal.aborted) {
           reject(
@@ -362,7 +364,7 @@ describe("provider Responses context management", () => {
         signal: controller.signal,
       }),
     )
-    await waitFor(() => upstreamSignal !== undefined)
+    await upstreamStarted.promise
 
     controller.abort()
 
@@ -375,6 +377,7 @@ describe("provider Responses context management", () => {
     const originalCodexAccessToken = state.codexAccessToken
     const originalCodexAccountId = state.codexAccountId
     let upstreamSignal: AbortSignal | undefined
+    const upstreamStarted = createDeferred()
     providerConfig = {
       apiKey: "",
       authType: "oauth2",
@@ -392,6 +395,7 @@ describe("provider Responses context management", () => {
         throw new Error("Expected upstream abort signal")
       }
       upstreamSignal = signal
+      upstreamStarted.resolve()
       return new Promise<Response>((_resolve, reject) => {
         signal.addEventListener(
           "abort",
@@ -416,7 +420,7 @@ describe("provider Responses context management", () => {
           signal: controller.signal,
         }),
       )
-      await waitFor(() => upstreamSignal !== undefined)
+      await upstreamStarted.promise
 
       controller.abort()
 
@@ -620,10 +624,13 @@ describe("provider Responses context management", () => {
   })
 })
 
-const waitFor = async (predicate: () => boolean): Promise<void> => {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    if (predicate()) return
-    await new Promise<void>((resolve) => setTimeout(resolve, 0))
-  }
-  throw new Error("Timed out waiting for condition")
+const createDeferred = (): {
+  promise: Promise<void>
+  resolve: () => void
+} => {
+  let resolve!: () => void
+  const promise = new Promise<void>((deferredResolve) => {
+    resolve = deferredResolve
+  })
+  return { promise, resolve }
 }
