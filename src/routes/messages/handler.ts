@@ -20,7 +20,10 @@ import {
   getRootSessionId,
   getUUID,
 } from "~/lib/utils"
-import { handleProviderMessagesForProvider } from "~/routes/provider/messages/handler"
+import {
+  handleProviderMessagesForProvider,
+  providerMessagesHandlerDependencies,
+} from "~/routes/provider/messages/handler"
 import { getResponsesTransportForModel } from "~/routes/responses/utils"
 
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
@@ -107,12 +110,23 @@ export async function handleCompletionPayload(
 
   const providerModelAlias = parseProviderModelAlias(anthropicPayload.model)
   if (providerModelAlias) {
-    anthropicPayload.model = providerModelAlias.model
-    return await handleProviderMessagesForProvider(c, {
-      payload: anthropicPayload,
-      provider: providerModelAlias.provider,
-      usageEndpoint: dispatchOptions.usageEndpoint,
-    })
+    // Only treat the "/" prefix as a custom provider alias when that provider
+    // is actually configured. GitHub Copilot enterprise models can ship with
+    // namespaced ids such as "org/family/model" that must fall through to the
+    // default model lookup instead of being misrouted to a non-existent
+    // provider and surfaced as a 400.
+    const providerConfig =
+      await providerMessagesHandlerDependencies.resolveProviderConfig(
+        providerModelAlias.provider,
+      )
+    if (providerConfig) {
+      anthropicPayload.model = providerModelAlias.model
+      return await handleProviderMessagesForProvider(c, {
+        payload: anthropicPayload,
+        provider: providerModelAlias.provider,
+        usageEndpoint: dispatchOptions.usageEndpoint,
+      })
+    }
   }
 
   debugJson(logger, "Anthropic request payload:", anthropicPayload)

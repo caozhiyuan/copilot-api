@@ -28,7 +28,10 @@ const noopTokenUsageRecorder = () => {}
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
-  getProviderConfig: () => providerConfig,
+  getProviderConfig: (name: string) =>
+    providerConfig && name === providerConfig.name ? providerConfig : null,
+  getRawProviderConfig: (name: string) =>
+    providerConfig && name === providerConfig.name ? providerConfig : null,
   resolveMappedModel: (model: string) => modelMappings[model] ?? model,
 }))
 
@@ -275,5 +278,36 @@ describe("provider/model aliases on top-level messages routes", () => {
         type: "error",
       },
     })
+  })
+})
+
+describe("namespaced model ids fall through to the default lookup", () => {
+  test("does not route a namespaced id with an unconfigured prefix to the provider path", async () => {
+    // Models such as "org/family/model" must not be misrouted to a
+    // non-existent provider and surfaced as a 400. They should fall through to
+    // the default model lookup just like a plain model id.
+    const app = createApp()
+    const response = await app.request("/v1/messages", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "org/family/model",
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    // The request must not be misrouted to the configured "dash" provider:
+    // either no fetch happens, or fetch is called against a non-provider URL,
+    // and the error wording is never the provider 400 from
+    // handleProviderMessagesForProvider.
+    if (fetchMock.mock.calls.length > 0) {
+      const [url] = fetchMock.mock.calls[0] as [string]
+      expect(url).not.toContain("dashscope.example")
+    }
+    const body = (await response.json()) as { error?: { message?: string } }
+    expect(body.error?.message).not.toContain("does not support")
   })
 })
