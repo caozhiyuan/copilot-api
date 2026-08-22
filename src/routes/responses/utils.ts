@@ -437,7 +437,9 @@ const isContextManagementEnabledForSource = (
   return responsesUtilsDependencies.isContextManagementEnabledForResponses()
 }
 
-const hasTerminalCompactionTrigger = (payload: ResponsesPayload): boolean => {
+export const hasTerminalCompactionTrigger = (
+  payload: ResponsesPayload,
+): boolean => {
   const { input } = payload
   if (!Array.isArray(input) || input.length === 0) {
     return false

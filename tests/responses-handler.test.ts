@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono, type Context } from "hono"
 
+import { COMPACT_REQUEST } from "~/lib/compact"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { CompletionPayloadOptions } from "~/routes/messages/handler"
 import { MESSAGES_TOOL_CALL_TIPS } from "~/routes/responses/messages-translation"
@@ -1137,6 +1138,40 @@ describe("responses handler token usage", () => {
       latestInput,
       compactionTrigger,
     ])
+  })
+
+  test("marks native Responses compaction triggers as compact HTTP requests", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: { limits: { max_prompt_tokens: 272000 } },
+          id: "gpt-5.6-sol",
+          supported_endpoints: ["/responses", "ws:/responses"],
+        },
+      ],
+    } as typeof state.models
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({
+        input: [
+          { content: "history", role: "user" },
+          { type: "compaction_trigger" },
+        ],
+        model: "gpt-5.6-sol",
+        stream: true,
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(1)
+    expect(createResponses.mock.calls[0][1]?.compactType).toBe(COMPACT_REQUEST)
+    expect(createResponses.mock.calls[0][1]?.transport).toBe("http")
   })
 
   test("does not compact input ending with compaction trigger when context management is disabled", async () => {
