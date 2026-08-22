@@ -222,10 +222,21 @@ export async function handleAlphaSearchRequest(
     messagesBackedModel ? payload.model : requestedModel
 
   if (providerModelAlias) {
-    return await alphaSearchRouteDependencies.handleAlphaSearchResponses(c, {
-      provider: providerModelAlias.provider,
-      request: payload,
-    })
+    // Only treat the "/" prefix as a custom provider alias when that provider
+    // is actually configured. Namespaced model ids such as "org/family/model"
+    // must fall through to the default alpha search path instead of being
+    // passed to handleAlphaSearchResponses with an unconfigured provider and
+    // surfaced as a 404.
+    const providerConfig =
+      await alphaSearchRouteDependencies.resolveProviderConfig(
+        providerModelAlias.provider,
+      )
+    if (providerConfig) {
+      return await alphaSearchRouteDependencies.handleAlphaSearchResponses(c, {
+        provider: providerModelAlias.provider,
+        request: payload,
+      })
+    }
   }
 
   return await alphaSearchRouteDependencies.handleAlphaSearchResponses(c, {

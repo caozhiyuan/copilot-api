@@ -42,6 +42,12 @@ export async function handleCompletion(c: Context) {
     // namespaced ids such as "org/family/model" that must fall through to the
     // default model lookup instead of being misrouted to a non-existent
     // provider and surfaced as a 400.
+    //
+    // Unlike the messages/responses routes, chat-completions has no route-level
+    // DI seam for resolveProviderConfig: the existing tests mock
+    // getProviderConfig (which resolveProviderConfig falls through to for
+    // non-codex providers), so a direct import is sufficient and consistent
+    // with resolveMappedModel/findEndpointModel above.
     const providerConfig = await resolveProviderConfig(
       providerModelAlias.provider,
     )

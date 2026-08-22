@@ -11,6 +11,7 @@ import {
   createFallbackModel,
   parseProviderModelAlias,
 } from "~/lib/provider-model"
+import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { getTokenCount } from "~/lib/tokenizer"
 import { handleProviderCountTokensForProvider } from "~/routes/provider/messages/count-tokens-handler"
 import { type Model } from "~/lib/types/models"
@@ -97,11 +98,20 @@ export async function handleCountTokens(c: Context) {
 
   const providerModelAlias = parseProviderModelAlias(anthropicPayload.model)
   if (providerModelAlias) {
-    anthropicPayload.model = providerModelAlias.model
-    return await handleProviderCountTokensForProvider(c, {
-      payload: anthropicPayload,
-      provider: providerModelAlias.provider,
-    })
+    // Only treat the "/" prefix as a custom provider alias when that provider
+    // is actually configured. Namespaced model ids such as "org/family/model"
+    // must fall through to the Anthropic/tokenizer-estimation path instead of
+    // being misrouted to a non-existent provider and surfaced as a 404.
+    const providerConfig = await resolveProviderConfig(
+      providerModelAlias.provider,
+    )
+    if (providerConfig) {
+      anthropicPayload.model = providerModelAlias.model
+      return await handleProviderCountTokensForProvider(c, {
+        payload: anthropicPayload,
+        provider: providerModelAlias.provider,
+      })
+    }
   }
 
   // Try Anthropic's real endpoint first (Claude models only)

@@ -282,10 +282,10 @@ describe("provider/model aliases on top-level messages routes", () => {
 })
 
 describe("namespaced model ids fall through to the default lookup", () => {
-  test("does not route a namespaced id with an unconfigured prefix to the provider path", async () => {
+  test("does not route a namespaced /v1/messages id to the provider path", async () => {
     // Models such as "org/family/model" must not be misrouted to a
-    // non-existent provider and surfaced as a 400. They should fall through to
-    // the default model lookup just like a plain model id.
+    // non-existent provider and surfaced as a 400. They should fall through
+    // to the default model lookup just like a plain model id.
     const app = createApp()
     const response = await app.request("/v1/messages", {
       body: JSON.stringify({
@@ -299,15 +299,58 @@ describe("namespaced model ids fall through to the default lookup", () => {
       method: "POST",
     })
 
-    // The request must not be misrouted to the configured "dash" provider:
-    // either no fetch happens, or fetch is called against a non-provider URL,
-    // and the error wording is never the provider 400 from
-    // handleProviderMessagesForProvider.
-    if (fetchMock.mock.calls.length > 0) {
-      const [url] = fetchMock.mock.calls[0] as [string]
-      expect(url).not.toContain("dashscope.example")
-    }
+    // Negative: the request was never sent to the configured "dash" provider
+    // and the provider 400 wording is absent (it reached the default flow,
+    // which errors out upstream without a Copilot token, not at the provider).
+    expect(fetchMock).not.toHaveBeenCalled()
     const body = (await response.json()) as { error?: { message?: string } }
     expect(body.error?.message).not.toContain("does not support")
+  })
+
+  test("does not route a namespaced /v1/messages/count_tokens id to the provider path and reaches the estimation fallback", async () => {
+    // count_tokens is called as a preflight by clients like Claude Code; it
+    // must not 404 on a namespaced id while the main /v1/messages flow works.
+    const app = createApp()
+    const response = await app.request("/v1/messages/count_tokens", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "org/family/model",
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(getTokenCount).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ input_tokens: 42 })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test("still routes a configured provider alias on /v1/messages/count_tokens to the provider path", async () => {
+    // Regression guard for the happy path: a real provider alias must still
+    // be routed to the provider token counter (not fall through).
+    const app = createApp()
+    const response = await app.request("/v1/messages/count_tokens", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "dash/qwen-plus",
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(getTokenCount).toHaveBeenCalledTimes(1)
+    const [, selectedModel] = getTokenCount.mock.calls[0] as [
+      TokenCountPayload,
+      TokenCountModel,
+    ]
+    expect(selectedModel.id).toBe("qwen-plus")
   })
 })
