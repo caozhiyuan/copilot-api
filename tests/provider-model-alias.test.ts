@@ -282,16 +282,23 @@ describe("provider/model aliases on top-level messages routes", () => {
 })
 
 describe("namespaced model ids fall through to the default lookup", () => {
+  // Regression guard for namespaced model ids returned by the GitHub Copilot
+  // gateway for enterprise accounts. The gateway lists enterprise-configured
+  // models with the account handle as a prefix, e.g. "contoso/glm-5.2" or a
+  // deeper org-scoped "contoso/family/glm-5.2". parseProviderModelAlias
+  // previously treated the first segment ("contoso") as a custom provider
+  // alias prefix, but no "contoso" entry exists in config.providers, so the
+  // request was misrouted to the provider path and surfaced as a 400/404.
+  // These ids must fall through to the default model lookup (Copilot
+  // upstream) and be sent as-is, exactly like a plain model id.
   test("does not route a namespaced /v1/messages id to the provider path", async () => {
-    // Models such as "org/family/model" must not be misrouted to a
-    // non-existent provider and surfaced as a 400. They should fall through
-    // to the default model lookup just like a plain model id.
+    // Single-segment namespacing: "contoso/glm-5.2".
     const app = createApp()
     const response = await app.request("/v1/messages", {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "org/family/model",
+        model: "contoso/glm-5.2",
       }),
       headers: {
         "content-type": "application/json",
@@ -308,14 +315,15 @@ describe("namespaced model ids fall through to the default lookup", () => {
   })
 
   test("does not route a namespaced /v1/messages/count_tokens id to the provider path and reaches the estimation fallback", async () => {
-    // count_tokens is called as a preflight by clients like Claude Code; it
-    // must not 404 on a namespaced id while the main /v1/messages flow works.
+    // Multi-segment namespacing: "contoso/family/glm-5.2". count_tokens is
+    // called as a preflight by clients like Claude Code; it must not 404 on
+    // a namespaced id while the main /v1/messages flow works.
     const app = createApp()
     const response = await app.request("/v1/messages/count_tokens", {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "org/family/model",
+        model: "contoso/family/glm-5.2",
       }),
       headers: {
         "content-type": "application/json",
