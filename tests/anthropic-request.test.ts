@@ -432,7 +432,7 @@ describe("Anthropic to OpenAI translation logic", () => {
 })
 
 describe("tool content support translation", () => {
-  test("keeps Copilot chat translation compatible with array and image tool results", () => {
+  test("moves Copilot tool result images into a following user message", () => {
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "gpt-4o",
       messages: [
@@ -465,11 +465,21 @@ describe("tool content support translation", () => {
 
     const openAIPayload = translateToOpenAI(anthropicPayload)
 
+    // The Copilot /chat/completions upstream drops image parts inside a
+    // `role: "tool"` message, so the image has to ride along on a user message.
     expect(openAIPayload.messages).toEqual([
       {
         role: "tool",
         tool_call_id: "tool_image",
+        content: "screenshot",
+      },
+      {
+        role: "user",
         content: [
+          {
+            type: "text",
+            text: "Tool result for tool_image:",
+          },
           {
             type: "text",
             text: "screenshot",
@@ -485,7 +495,84 @@ describe("tool content support translation", () => {
     ])
   })
 
-  test("keeps Copilot image tool content while downgrading unsupported PDFs", () => {
+  test("keeps the tool call protocol intact when relocating a tool result image", () => {
+    // Regression: a Read/screenshot tool returning an image is how images
+    // usually reach the model from Claude Code. The image must leave the tool
+    // message, but `tool_use -> tool_result -> user` ordering must survive.
+    const anthropicPayload: AnthropicMessagesPayload = {
+      model: "gemini-3.7-flash",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "read /tmp/shot.png" }],
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool_shot",
+              name: "Read",
+              input: { path: "/tmp/shot.png" },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool_shot",
+              content: [
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: "image/png",
+                    data: "image-data",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      max_tokens: 100,
+    }
+
+    const openAIPayload = translateToOpenAI(anthropicPayload)
+
+    expect(openAIPayload.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "tool",
+      "user",
+    ])
+
+    const toolMessage = openAIPayload.messages[2]
+    expect(toolMessage.tool_call_id).toBe("tool_shot")
+    // No image left behind in the tool message -- the upstream would drop it.
+    expect(JSON.stringify(toolMessage)).not.toContain("image_url")
+    expect(toolMessage.content).toBe(RICH_TOOL_RESULT_MOVED_TEXT)
+
+    expect(openAIPayload.messages[3]).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Tool result for tool_shot:",
+        },
+        {
+          type: "image_url",
+          image_url: {
+            url: "data:image/png;base64,image-data",
+          },
+        },
+      ],
+    })
+  })
+
+  test("moves Copilot tool result images to a user message while downgrading unsupported PDFs", () => {
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "gpt-4o",
       messages: [
@@ -536,6 +623,18 @@ describe("tool content support translation", () => {
         role: "tool",
         tool_call_id: "tool_pdf",
         content: [
+          "screenshot",
+          "PDF file read: report.pdf",
+          "PDF/document content is not supported by this Chat Completions upstream. Use the available text extracted from the document.",
+        ].join("\n"),
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Tool result for tool_pdf:",
+          },
           {
             type: "text",
             text: "screenshot",

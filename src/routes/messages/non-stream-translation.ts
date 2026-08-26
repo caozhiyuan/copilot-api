@@ -36,9 +36,19 @@ import { parseUserIdMetadata } from "~/lib/utils"
 export const THINKING_TEXT = "Thinking..."
 export const RICH_TOOL_RESULT_MOVED_TEXT =
   "Rich tool result content was moved to a user message because this upstream does not support it in tool messages."
+// Copilot's /chat/completions upstream accepts an array-shaped tool content, but
+// silently discards any image parts inside a `role: "tool"` message: the image is
+// neither billed as prompt tokens nor visible to the model. Verified against
+// gemini-3.7-flash, gpt-5.4 and kimi-k3 -- all three answer as if no image were
+// present (gpt-5.4 replies "NO_IMAGE" outright) and prompt_tokens stays at the
+// text-only count. Omitting "image" here routes tool result images through
+// createToolResultUserMessage, which re-attaches them to a following user
+// message where the upstream does read them.
+// Models that also expose /responses (gpt-5.4, ...) are unaffected in practice
+// because handleWithResponsesApi wins the dispatch in handler.ts; models limited
+// to /chat/completions (the whole gemini family) only ever take this path.
 const COPILOT_TOOL_CONTENT_SUPPORT_TYPE: Array<ToolContentSupportType> = [
   "array",
-  "image",
 ]
 
 interface TranslationCapabilities {
