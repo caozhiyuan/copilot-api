@@ -838,6 +838,111 @@ describe("responses handler token usage", () => {
     })
   })
 
+  test("routes priority requests before clamping reasoning and selecting transport", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: {
+            limits: { max_prompt_tokens: 128000 },
+            supports: {
+              reasoning_effort: ["low", "high", "xhigh", "max"],
+            },
+          },
+          id: "gpt-5.6-sol",
+          supported_endpoints: ["/responses"],
+        },
+        {
+          capabilities: {
+            limits: { max_prompt_tokens: 128000 },
+            supports: {
+              reasoning_effort: ["low", "high", "xhigh"],
+            },
+          },
+          id: "gpt-5.6-sol-fast",
+          supported_endpoints: ["/responses", "ws:/responses"],
+        },
+      ],
+    } as typeof state.models
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({
+        input: "hello",
+        model: "gpt-5.6-sol",
+        reasoning: { effort: "ultra" },
+        service_tier: "priority",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses.mock.calls[0][0]).toMatchObject({
+      model: "gpt-5.6-sol-fast",
+      reasoning: { effort: "xhigh" },
+    })
+    expect(createResponses.mock.calls[0][1]?.transport).toBe("websocket")
+  })
+
+  test("keeps priority requests on models without a fast variant", async () => {
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({
+        input: "hello",
+        model: "gpt-test",
+        service_tier: "priority",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses.mock.calls[0][0].model).toBe("gpt-test")
+  })
+
+  test("ignores fast variants that cannot handle Responses requests", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: { limits: { max_prompt_tokens: 128000 } },
+          id: "gpt-base",
+          supported_endpoints: ["/responses"],
+        },
+        {
+          capabilities: { limits: { max_prompt_tokens: 128000 } },
+          id: "gpt-base-fast",
+          supported_endpoints: ["/v1/messages"],
+        },
+      ],
+    } as typeof state.models
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({
+        input: "hello",
+        model: "gpt-base",
+        service_tier: "priority",
+      }),
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "codex-cli/1.0.0",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses.mock.calls[0][0].model).toBe("gpt-base")
+  })
+
   test("preserves max reasoning effort when capabilities are unknown", async () => {
     createResponses.mockImplementation((payload) =>
       Promise.resolve(createResponsesResult(payload.model)),

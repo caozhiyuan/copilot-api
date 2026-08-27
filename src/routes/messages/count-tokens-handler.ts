@@ -90,6 +90,7 @@ async function countTokensViaAnthropic(
  */
 export async function handleCountTokens(c: Context) {
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
+  delete anthropicPayload.speed
   anthropicPayload.model = resolveMappedModel(anthropicPayload.model)
   normalizeSystemMessages(anthropicPayload)
 

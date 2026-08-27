@@ -31,7 +31,9 @@ const { providerMessageRoutes } = await import(
 )
 
 const originalFetch = globalThis.fetch
-const fetchMock = mock(() => Promise.resolve(upstreamResponseFactory()))
+const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
+  Promise.resolve(upstreamResponseFactory()),
+)
 
 const createApp = () => {
   const app = new Hono()
@@ -193,6 +195,20 @@ afterEach(() => {
 })
 
 describe("provider Messages Anthropic forwarding", () => {
+  test("strips Claude Code fast mode before forwarding", async () => {
+    const response = await createApp().request("/openrouter/v1/messages", {
+      body: JSON.stringify(createMessagesPayload({ speed: "fast" })),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    const body = JSON.parse(
+      fetchMock.mock.calls[0]?.[1]?.body as string,
+    ) as Record<string, unknown>
+    expect(body.speed).toBeUndefined()
+  })
+
   test("adds an empty thinking signature for OpenRouter JSON responses", async () => {
     const response = await createApp().request("/openrouter/v1/messages", {
       body: JSON.stringify(createMessagesPayload()),

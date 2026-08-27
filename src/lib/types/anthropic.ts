@@ -20,6 +20,7 @@ export interface AnthropicMessagesPayload {
     budget_tokens?: number
     display?: string
   }
+  speed?: "fast" | "standard"
   service_tier?: "auto" | "standard_only"
   output_config?: {
     effort?: "low" | "medium" | "high" | "xhigh" | "max"

@@ -133,6 +133,7 @@ export async function handleProviderMessagesForProvider(
   },
 ): Promise<Response> {
   const { payload, provider, usageEndpoint } = options
+  delete payload.speed
   const providerConfig =
     await providerMessagesHandlerDependencies.resolveProviderConfig(provider)
   if (!providerConfig) {

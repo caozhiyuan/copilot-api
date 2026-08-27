@@ -924,6 +924,54 @@ describe("model routes", () => {
     })
   })
 
+  test("advertises fast tiers only when Copilot exposes a fast model", async () => {
+    const copilotModels = createCopilotModels([
+      "gpt-5.6-sol",
+      "gpt-5.6-sol-fast",
+      "gpt-5.6-luna",
+      "gpt-incompatible",
+      "gpt-incompatible-fast",
+    ])
+    for (const model of copilotModels.data) {
+      model.supported_endpoints = ["/responses"]
+    }
+    copilotModels.data.at(-1)!.supported_endpoints = ["/v1/messages"]
+    state.models = copilotModels
+
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "codex-cli/1.0.0" },
+    })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      models: Array<Record<string, unknown> & { slug: string }>
+    }
+    expect(
+      body.models.find((model) => model.slug === "gpt-5.6-sol"),
+    ).toMatchObject({
+      additional_speed_tiers: ["fast"],
+      service_tiers: [
+        {
+          id: "priority",
+          name: "Fast",
+          description: "Faster inference",
+        },
+      ],
+    })
+    expect(
+      body.models.find((model) => model.slug === "gpt-5.6-luna"),
+    ).toMatchObject({
+      additional_speed_tiers: [],
+      service_tiers: [],
+    })
+    expect(
+      body.models.find((model) => model.slug === "gpt-incompatible"),
+    ).toMatchObject({
+      additional_speed_tiers: [],
+      service_tiers: [],
+    })
+  })
+
   test("merges Anthropic and OpenAI-compatible provider models for Codex", async () => {
     enabledProviders = ["anthropic", "chat"]
     providerConfigs = {

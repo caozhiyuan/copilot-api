@@ -44,6 +44,9 @@ const DEFAULT_REASONING_EFFORTS: Array<CodexReasoningEffort> = [
   "max",
   "ultra",
 ]
+const FAST_SERVICE_TIERS: CodexModel["service_tiers"] = [
+  { id: "priority", name: "Fast", description: "Faster inference" },
+]
 
 const addUltraReasoningEffort = (
   efforts: Array<CodexReasoningEffort>,
@@ -505,8 +508,8 @@ export function createSyntheticCodexModel(
     model_messages: template.model_messages,
     auto_review_model_override: null,
     default_service_tier: null,
-    service_tiers: [],
-    additional_speed_tiers: [],
+    service_tiers: candidate.supportsFastMode ? FAST_SERVICE_TIERS : [],
+    additional_speed_tiers: candidate.supportsFastMode ? ["fast"] : [],
     include_skills_usage_instructions: false,
     truncation_policy: { mode: "tokens", limit: 10_000 },
     base_instructions:

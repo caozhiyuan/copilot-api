@@ -50,6 +50,7 @@ const { resolveCountTokensModel } = await import(
 )
 
 const originalFetch = globalThis.fetch
+const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY
 
 const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
   Promise.resolve(
@@ -115,6 +116,11 @@ beforeEach(() => {
 
 afterEach(() => {
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
+  if (originalAnthropicApiKey === undefined) {
+    delete process.env.ANTHROPIC_API_KEY
+  } else {
+    process.env.ANTHROPIC_API_KEY = originalAnthropicApiKey
+  }
   providerConfig = null
 })
 
@@ -209,6 +215,34 @@ describe("provider/model aliases on top-level messages routes", () => {
     expect(openAIPayload.model).toBe("qwen-plus")
     expect(selectedModel.id).toBe("qwen-plus")
     expect(selectedModel.capabilities.tokenizer).toBe("o200k_base")
+  })
+
+  test("strips fast mode from Anthropic token counting requests", async () => {
+    providerConfig = null
+    process.env.ANTHROPIC_API_KEY = "anthropic-key"
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ input_tokens: 12 }), { status: 200 }),
+      ),
+    )
+
+    const response = await createApp().request("/v1/messages/count_tokens", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "claude-opus-4.8-fast",
+        speed: "fast",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    const body = JSON.parse(
+      fetchMock.mock.calls[0]?.[1]?.body as string,
+    ) as Record<string, unknown>
+    expect(body.model).toBe("claude-opus-4-8-fast")
+    expect(body.speed).toBeUndefined()
   })
 
   test("routes mapped /v1/messages/count_tokens models to provider token counting", async () => {

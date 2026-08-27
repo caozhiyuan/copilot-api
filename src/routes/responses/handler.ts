@@ -80,6 +80,24 @@ export const handleResponses = async (c: Context) => {
     })
   }
 
+  let selectedModel = responsesHandlerDependencies.findEndpointModel(
+    payload.model,
+  )
+  const fastModel =
+    payload.service_tier === "priority" && selectedModel ?
+      responsesHandlerDependencies.findEndpointModel(`${selectedModel.id}-fast`)
+    : undefined
+  if (fastModel) {
+    const fastTransport = getResponsesTransportForModel(fastModel)
+    if (
+      fastTransport
+      || shouldFallbackToMessages(c, fastModel.id, fastModel, fastTransport)
+    ) {
+      selectedModel = fastModel
+    }
+  }
+  payload.model = selectedModel?.id ?? payload.model
+
   debugJson(logger, "Responses request payload:", payload)
 
   const subagentMarker = getCodexResponsesSubagentMarker(c)
@@ -97,10 +115,6 @@ export const handleResponses = async (c: Context) => {
 
   const fallbackSessionId = sessionId ?? getUUID(requestId)
   logger.debug("Extracted session ID:", fallbackSessionId)
-  const selectedModel = responsesHandlerDependencies.findEndpointModel(
-    payload.model,
-  )
-  payload.model = selectedModel?.id ?? payload.model
   const normalizedReasoningEffort = normalizeResponsesReasoningEffort(
     payload,
     selectedModel?.capabilities?.supports?.reasoning_effort,
@@ -211,47 +225,61 @@ export const handleResponses = async (c: Context) => {
 
   if (isStreamingRequested(payload) && isAsyncIterable(response)) {
     logger.debug("Forwarding native Responses stream")
-    return streamSSE(c, async (stream) => {
-      const idTracker = createStreamIdTracker()
-      let usage: UsageTokens = {}
-      const iterator = response[Symbol.asyncIterator]()
+    return streamSSE(
+      c,
+      async (stream) => {
+        const idTracker = createStreamIdTracker()
+        let usage: UsageTokens = {}
+        const iterator = response[Symbol.asyncIterator]()
 
-      try {
-        for await (const chunk of {
-          [Symbol.asyncIterator]: () => iterator,
-        }) {
-          debugJson(logger, "Responses stream chunk:", chunk)
-          const parsedEvent = parseResponsesStreamEvent(chunk)
-          if (
-            parsedEvent?.type === "response.completed"
-            || parsedEvent?.type === "response.failed"
-            || parsedEvent?.type === "response.incomplete"
-          ) {
-            usage = {
-              ...normalizeResponsesUsage(parsedEvent.response.usage),
-              total_nano_aiu: normalizeOptionalToken(
-                parsedEvent.copilot_usage?.total_nano_aiu,
-              ),
+        try {
+          for await (const chunk of {
+            [Symbol.asyncIterator]: () => iterator,
+          }) {
+            debugJson(logger, "Responses stream chunk:", chunk)
+            const parsedEvent = parseResponsesStreamEvent(chunk)
+            if (
+              parsedEvent?.type === "response.completed"
+              || parsedEvent?.type === "response.failed"
+              || parsedEvent?.type === "response.incomplete"
+            ) {
+              usage = {
+                ...normalizeResponsesUsage(parsedEvent.response.usage),
+                total_nano_aiu: normalizeOptionalToken(
+                  parsedEvent.copilot_usage?.total_nano_aiu,
+                ),
+              }
             }
+
+            const processedData = fixStreamIds(
+              (chunk as { data?: string }).data ?? "",
+              (chunk as { event?: string }).event,
+              idTracker,
+            )
+
+            await stream.writeSSE({
+              id: (chunk as { id?: string }).id,
+              event: (chunk as { event?: string }).event,
+              data: processedData,
+            })
           }
-
-          const processedData = fixStreamIds(
-            (chunk as { data?: string }).data ?? "",
-            (chunk as { event?: string }).event,
-            idTracker,
-          )
-
-          await stream.writeSSE({
-            id: (chunk as { id?: string }).id,
-            event: (chunk as { event?: string }).event,
-            data: processedData,
-          })
+        } finally {
+          await iterator.return?.()
+          recordUsage(usage)
         }
-      } finally {
-        await iterator.return?.()
-        recordUsage(usage)
-      }
-    })
+      },
+      async (error, stream) => {
+        // ponytail: upstream (websocket/network) drop mid-stream, surface it instead
+        // of a silent disconnect. Retry/backoff would be the real fix if this recurs.
+        logger.error("Responses stream error:", error)
+        await stream.writeSSE({
+          event: "error",
+          data: JSON.stringify({
+            error: { message: error.message, type: "stream_error" },
+          }),
+        })
+      },
+    )
   }
 
   debugJsonTail(logger, "Forwarding native Responses result:", {

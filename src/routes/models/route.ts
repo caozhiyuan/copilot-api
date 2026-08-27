@@ -17,6 +17,7 @@ import { state } from "~/lib/state"
 import type { Model } from "~/lib/types/models"
 import { getModels as getCodexModels } from "~/services/codex/get-models"
 import { forwardProviderModels } from "~/services/providers/provider-proxy"
+import { getResponsesTransportForModel } from "~/routes/responses/utils"
 
 import { handleMergedCodexModels, isCodexUserAgent } from "./codex-models"
 import type { SyntheticCodexModelCandidate } from "./codex-models-types"
@@ -323,6 +324,15 @@ function createCopilotCodexCandidate(
       model.capabilities.supports.vision ? ["text", "image"] : ["text"],
     reasoningEfforts,
     defaultReasoningEffort: selectDefaultReasoningEffort(reasoningEfforts),
+    supportsFastMode: state.models?.data.some(
+      (candidate) =>
+        candidate.id === `${model.id}-fast`
+        && isCopilotCodexCandidate(candidate)
+        && (!(
+          candidate.id.startsWith("gpt") || candidate.id.startsWith("codex")
+        )
+          || getResponsesTransportForModel(candidate)),
+    ),
   }
 }
 

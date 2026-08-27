@@ -445,6 +445,60 @@ describe("messages handler orchestration", () => {
     expect(forwardedPayload.model).toBe("messages-model")
   })
 
+  test("routes Claude Code fast mode to an advertised fast model", async () => {
+    findEndpointModel.mockImplementationOnce(() => ({
+      id: "claude-opus-4.8",
+      supported_endpoints: ["/v1/messages"],
+    }))
+    findEndpointModel.mockImplementationOnce(() => ({
+      id: "claude-opus-4.8-fast",
+      supported_endpoints: ["/v1/messages"],
+    }))
+
+    const response = await createApp().request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(
+        createPayload({
+          model: "claude-opus-4-8",
+          speed: "fast",
+        }),
+      ),
+    })
+
+    expect(response.status).toBe(200)
+    expect(findEndpointModel).toHaveBeenNthCalledWith(1, "claude-opus-4-8")
+    expect(findEndpointModel).toHaveBeenNthCalledWith(2, "claude-opus-4.8-fast")
+    const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
+    expect(forwardedPayload.model).toBe("claude-opus-4.8-fast")
+    expect(forwardedPayload.speed).toBeUndefined()
+  })
+
+  test("keeps Claude Code fast requests on models without a fast variant", async () => {
+    findEndpointModel.mockImplementationOnce(() => ({
+      id: "claude-sonnet-4.6",
+      supported_endpoints: ["/v1/messages"],
+    }))
+    findEndpointModel.mockImplementationOnce(() => undefined)
+
+    const response = await createApp().request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        createPayload({
+          model: "claude-sonnet-4-6",
+          speed: "fast",
+        }),
+      ),
+    })
+
+    expect(response.status).toBe(200)
+    const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
+    expect(forwardedPayload.model).toBe("claude-sonnet-4.6")
+  })
+
   test("stabilizes Claude Code billing header before forwarding to the Messages API flow", async () => {
     selectedModel = {
       id: "messages-model",

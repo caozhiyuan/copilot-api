@@ -76,6 +76,8 @@ export async function handleCompletionPayload(
   anthropicPayload: AnthropicMessagesPayload,
   dispatchOptions: CompletionPayloadOptions = {},
 ) {
+  const wantsFastModel = anthropicPayload.speed === "fast"
+  delete anthropicPayload.speed
   const requestedModel = anthropicPayload.model
   if (!dispatchOptions.skipModelMapping) {
     anthropicPayload.model = resolveMappedModel(anthropicPayload.model)
@@ -186,7 +188,11 @@ export async function handleCompletionPayload(
   }
   logger.debug("Extracted session ID:", sessionId)
 
-  const selectedModel = findEndpointModel(anthropicPayload.model)
+  let selectedModel = findEndpointModel(anthropicPayload.model)
+  if (wantsFastModel && selectedModel) {
+    selectedModel =
+      findEndpointModel(`${selectedModel.id}-fast`) ?? selectedModel
+  }
   anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
 
   if (shouldUseMessagesApi(selectedModel)) {

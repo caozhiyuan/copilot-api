@@ -281,54 +281,67 @@ const streamProviderResponses = async (
     }
   }
 
-  return streamSSE(c, async (stream) => {
-    let usage: UsageTokens = {}
+  return streamSSE(
+    c,
+    async (stream) => {
+      let usage: UsageTokens = {}
 
-    const writeChunk = async (chunk: typeof firstChunk) => {
-      debugJson(logger, "Responses stream chunk:", chunk)
-      let responseChunk = chunk
-      let event: ResponseStreamEvent | null = null
+      const writeChunk = async (chunk: typeof firstChunk) => {
+        debugJson(logger, "Responses stream chunk:", chunk)
+        let responseChunk = chunk
+        let event: ResponseStreamEvent | null = null
 
-      if (chunk.data && chunk.data !== "[DONE]") {
-        event = parseProviderResponsesStreamEvent(chunk.data, {
-          normalizeCodex: options.normalizeCodex,
-          provider: options.provider,
-        })
-        if (event && options.normalizeCodex) {
-          responseChunk = {
-            ...chunk,
-            data: JSON.stringify(event),
-            event: event.type,
+        if (chunk.data && chunk.data !== "[DONE]") {
+          event = parseProviderResponsesStreamEvent(chunk.data, {
+            normalizeCodex: options.normalizeCodex,
+            provider: options.provider,
+          })
+          if (event && options.normalizeCodex) {
+            responseChunk = {
+              ...chunk,
+              data: JSON.stringify(event),
+              event: event.type,
+            }
           }
         }
-      }
 
-      if (event) {
-        const nextUsage = getResponsesStreamEventUsage(event)
-        if (nextUsage) {
-          usage = nextUsage
+        if (event) {
+          const nextUsage = getResponsesStreamEventUsage(event)
+          if (nextUsage) {
+            usage = nextUsage
+          }
         }
+
+        await stream.writeSSE({
+          data: responseChunk.data ?? "",
+          event: responseChunk.event,
+        })
       }
 
+      try {
+        await writeChunk(firstChunk)
+
+        for await (const chunk of {
+          [Symbol.asyncIterator]: () => iterator,
+        }) {
+          await writeChunk(chunk)
+        }
+      } finally {
+        await iterator.return?.()
+        options.recordUsage(usage)
+      }
+    },
+    async (error, stream) => {
+      // ponytail: upstream drop mid-stream, surface it instead of a silent disconnect.
+      logger.error("provider.responses.stream_error", { error })
       await stream.writeSSE({
-        data: responseChunk.data ?? "",
-        event: responseChunk.event,
+        event: "error",
+        data: JSON.stringify({
+          error: { message: error.message, type: "stream_error" },
+        }),
       })
-    }
-
-    try {
-      await writeChunk(firstChunk)
-
-      for await (const chunk of {
-        [Symbol.asyncIterator]: () => iterator,
-      }) {
-        await writeChunk(chunk)
-      }
-    } finally {
-      await iterator.return?.()
-      options.recordUsage(usage)
-    }
-  })
+    },
+  )
 }
 
 const parseProviderResponsesStreamEvent = (
