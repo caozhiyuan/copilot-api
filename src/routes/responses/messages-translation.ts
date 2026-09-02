@@ -34,6 +34,13 @@ import type {
 } from "~/lib/types/responses"
 
 export const MESSAGES_COMPACTION_PREFIX = "copilot-api:messages-compaction:v1:"
+const MESSAGES_REASONING_ID_SUFFIX = "__a1"
+
+export const markMessagesReasoningId = (id: string): string =>
+  `${id}${MESSAGES_REASONING_ID_SUFFIX}`
+
+export const isMessagesReasoningId = (id: unknown): boolean =>
+  typeof id === "string" && id.endsWith(MESSAGES_REASONING_ID_SUFFIX)
 
 export const MESSAGES_COMPACTION_PROMPT = [
   "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.",
@@ -940,7 +947,9 @@ function translateAssistantOutput(
   for (const [index, block] of response.content.entries()) {
     if (block.type === "thinking") {
       output.push({
-        id: `rs_${createStableHash(`${response.id}:${index}:reasoning`)}`,
+        id: markMessagesReasoningId(
+          `rs_${createStableHash(`${response.id}:${index}:reasoning`)}`,
+        ),
         type: "reasoning",
         status: "completed",
         ...(block.thinking && block.thinking !== "Thinking..." ?

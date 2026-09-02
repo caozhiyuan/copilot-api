@@ -35,6 +35,7 @@ import type {
 import { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
 
 import { handleResponsesViaMessages } from "./messages-handler"
+import { isMessagesReasoningId } from "./messages-translation"
 import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
 import {
   applyResponsesApiContextManagement,
@@ -119,6 +120,7 @@ export const handleResponses = async (c: Context) => {
     responsesTransport,
   )
   if (useMessagesFallback) {
+    filterReasoningForTransport(payload, true)
     return await handleResponsesViaMessages(c, {
       payload,
       publicModel: requestedModel,
@@ -141,6 +143,8 @@ export const handleResponses = async (c: Context) => {
       400,
     )
   }
+
+  filterReasoningForTransport(payload, false)
 
   const recordUsage = createCopilotTokenUsageRecorder({
     endpoint: "responses",
@@ -270,6 +274,18 @@ export const handleResponses = async (c: Context) => {
 
 const isStreamingRequested = (payload: ResponsesPayload): boolean =>
   Boolean(payload.stream)
+
+const filterReasoningForTransport = (
+  payload: ResponsesPayload,
+  useMessagesFallback: boolean,
+): void => {
+  if (!Array.isArray(payload.input)) return
+
+  payload.input = payload.input.filter((item) => {
+    if (item.type !== "reasoning") return true
+    return isMessagesReasoningId(item.id) === useMessagesFallback
+  })
+}
 
 const shouldFallbackToMessages = (
   c: Context,

@@ -17,6 +17,7 @@ import { CustomToolInputStreamDecoder } from "./custom-tool-input-stream-decoder
 import {
   createMessagesBackedResponsesResult,
   encodeMessagesCompaction,
+  markMessagesReasoningId,
   resolveToolDescriptor,
   ResponsesMessagesTranslationError,
   toResponseId,
@@ -440,7 +441,9 @@ function* startContentBlock(
 
   if (block.type === "thinking") {
     const item: ResponseOutputReasoning = {
-      id: `rs_${state.responseId.slice(-18)}_${event.index}`,
+      id: markMessagesReasoningId(
+        `rs_${state.responseId.slice(-18)}_${event.index}`,
+      ),
       type: "reasoning",
       status: "in_progress",
       summary: [],
