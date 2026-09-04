@@ -1,14 +1,18 @@
 import { Hono, type Context } from "hono"
 
-import type { ResolvedProviderConfig } from "~/lib/config"
+import { getImageModel, type ResolvedProviderConfig } from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger, debugJson, debugJsonAsync } from "~/lib/logger"
+import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import {
   forwardCodexImages,
   type CodexImagesOperation,
 } from "~/services/codex/images"
-import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
+import {
+  createProviderProxyResponse,
+  forwardProviderImages,
+} from "~/services/providers/provider-proxy"
 
 const logger = createHandlerLogger("images-handler")
 
@@ -74,5 +78,71 @@ export async function handleCodexImages(
   }
 }
 
-imageRoutes.post("/generations", (c) => handleCodexImages(c, "generations"))
-imageRoutes.post("/edits", (c) => handleCodexImages(c, "edits"))
+async function createImageRequest(
+  request: Request,
+  operation: CodexImagesOperation,
+  model: string,
+): Promise<Request> {
+  const headers = new Headers(request.headers)
+  headers.delete("content-length")
+  let body: unknown
+
+  if (operation === "generations") {
+    const payload = (await request.json()) as Record<string, unknown>
+    headers.set("content-type", "application/json")
+    body = JSON.stringify({ ...payload, model })
+  } else {
+    const formData = await request.formData()
+    formData.set("model", model)
+    headers.delete("content-type")
+    body = formData
+  }
+
+  return new Request(request.url, {
+    body: body as never,
+    headers,
+    method: request.method,
+  })
+}
+
+async function handleImages(
+  c: Context,
+  operation: CodexImagesOperation,
+): Promise<Response> {
+  const configuredImageModel = getImageModel()
+  if (!configuredImageModel) {
+    return await handleCodexImages(c, operation)
+  }
+
+  try {
+    const providerModelAlias = parseProviderModelAlias(configuredImageModel)
+    if (!providerModelAlias) {
+      throw new Error("imageModel must use the provider/model format")
+    }
+
+    const providerConfig = await resolveProviderConfig(
+      providerModelAlias.provider,
+    )
+    if (!providerConfig || providerConfig.name === "codex") {
+      throw new Error(
+        `Image provider '${providerModelAlias.provider}' not found, disabled, or unsupported`,
+      )
+    }
+
+    const upstreamResponse = await forwardProviderImages(
+      providerConfig,
+      await createImageRequest(c.req.raw, operation, providerModelAlias.model),
+      operation,
+    )
+    return createProviderProxyResponse(upstreamResponse)
+  } catch (error) {
+    logger.error(`images.${operation}.provider.error`, {
+      error,
+      imageModel: configuredImageModel,
+    })
+    return await forwardError(c, error)
+  }
+}
+
+imageRoutes.post("/generations", (c) => handleImages(c, "generations"))
+imageRoutes.post("/edits", (c) => handleImages(c, "edits"))

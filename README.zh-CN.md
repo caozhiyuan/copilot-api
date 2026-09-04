@@ -747,6 +747,7 @@ Copilot API 现在使用子命令结构，主要命令包括：
 - **auth.apiKeys：** 用于普通非 admin 路由的 API key。支持多个 key 轮换使用。请求可通过 `x-api-key: <key>` 或 `Authorization: Bearer <key>` 进行认证。若为空或省略，则普通路由的认证会被禁用。
 - **auth.adminApiKey：** 仅用于 `/admin/*` 路由的单个 admin key。若未配置，服务会在启动时自动生成一个随机 key，并回写到 `config.json`。它同样使用 `x-api-key` 或 `Authorization: Bearer` 这两种头，但普通 `auth.apiKeys` 不能访问 `/admin/*`。
 - **modelMappings：** 用于顶层 `POST /v1/messages`、`POST /v1/messages/count_tokens`、`POST /v1/responses` 和 `POST /v1/chat/completions` 请求的精确 `sourceModel -> targetModel` 重写映射，这几类接口共用同一份规则。省略该字段或保留为 `{}` 时，不会做模型重写。`source` 和 `target` 都必须是非空字符串。`target` 可以是普通模型 ID，也可以是 `provider/model` 形式的别名，例如 `dashscope/qwen3.6-plus`；重写发生在 provider alias 解析之前。这些映射不再按接口区分。`GET/POST /admin/config/model-mappings` 管理接口读写的也只有这个字段。
+- **imageModel：** 顶层 `POST /v1/images/generations` 和 `POST /v1/images/edits` 请求可选的 `provider/model` 目标。配置后，网关会通过该 provider 转发两个端点，并将请求模型替换为配置的 provider 模型或部署名称。省略时，顶层图片请求仍使用 Codex 后端。带 provider 前缀的图片路由不受影响。
 - **extraPrompts：** `model -> prompt` 的映射。把 Anthropic 风格请求翻译为 Responses API 时，会将其附加到第一条 system prompt 后面。你可以借此为不同模型注入护栏或指引。缺失的默认项会自动补齐，但不会覆盖你自定义的 prompt。对于 GPT-5.3+ 模型（如 `gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5`），未显式配置时会自动使用内置的 commentary prompt。内置 prompt 会启用带阶段感知的 commentary，让模型在工具调用或更深层推理前先发出简短的用户可见进度说明。
 - **providers：** 全局上游 provider 映射。每个 provider key（例如 `dashscope`）都会变成一个路由前缀（`/dashscope/v1/messages`）。支持 `type: "anthropic"`、`type: "openai-compatible"` 和 `type: "openai-responses"`。顶层客户端也可以在 `/v1/messages`、`/v1/messages/count_tokens`、`/v1/responses` 和 `/v1/chat/completions` 中使用 `model: "dashscope/model-id"`；AI gateway 会在转发上游前移除 `dashscope/` 前缀。`anthropic` 和 `openai-compatible` provider 的 `/v1/responses` 会通过 Responses Lite → Messages 适配；其中 `openai-compatible` provider 再复用 Messages → Chat 翻译。Codex 客户端（`User-Agent` 以 `codex` 开头）在 `openai-responses` provider 上请求非 `gpt-*` 模型时同样走该适配路径。`GET /v1/models` 会聚合已启用 provider 的模型，并以 `provider/model-id` 形式返回；Codex UA 的顶层模型列表还会把这些可适配模型合并为 `use_responses_lite` 模型（DeepSeek 模型除外，它们使用 `use_responses_lite: false` 和 `tool_mode: null`）。单个 provider 的原始模型列表仍可使用 `GET /dashscope/v1/models`。
   - `enabled`：可选，若省略则默认为 `true`。
@@ -770,6 +771,25 @@ Copilot API 现在使用子命令结构，主要命令包括：
     - `reasoningEfforts`：可选，Codex 支持的推理档位。配置和上游元数据均未提供时，会先使用非 GPT 模型的内置目录，再回退到 `["high", "xhigh", "max", "ultra"]`。已知模型能力时，Provider Responses 请求中的不支持档位会被归一化为支持的档位。
     - `defaultReasoningEffort`：可选，Codex 默认推理档位；内置模型元数据可以提供已知默认值，否则可用档位包含 `max` 时默认取 `max`，再回退到配置的第一个档位。合成 Codex 模型始终启用并行工具调用。
     - `reasoningField`：可选，OpenAI-compatible `/v1/messages` 转发 assistant 思考文本时使用的字段，支持 `reasoning` 与 `reasoning_content`，默认 `reasoning_content`；OpenRouter 风格模型设为 `reasoning`，内置目录已为 OpenCode Go `hy3`、`hy4-preview` 配置该值。
+
+如需将 Codex 兼容的图片请求路由到 Microsoft Foundry 部署，请将其配置为 OpenAI-compatible provider，并用 `imageModel` 选择对应部署：
+
+```json
+{
+  "imageModel": "foundry/my-gpt-image-2-deployment",
+  "providers": {
+    "foundry": {
+      "type": "openai-compatible",
+      "baseUrl": "https://<resource-name>.openai.azure.com/openai",
+      "apiKey": "<azure-openai-api-key>",
+      "authType": "authorization"
+    }
+  }
+}
+```
+
+provider 的 base URL 不包含 `/v1`；网关会追加 `/v1/images/generations` 或 `/v1/images/edits`。`imageModel` 中的模型部分必须填写 Foundry 部署名称。
+
 - **smallModel：** 无工具预热消息的回退模型（例如 Claude Code 的探测请求）；默认是 `gpt-5-mini`。网关会对无工具的预热或探测请求强制使用该小模型，以避免消耗 premium 请求。该行为仅在 GitHub Copilot 账户为非 token-based 计费时生效（`token_based_billing` 为 false）；对于 token-based 计费账户，预热小模型回退会被跳过，因为不存在需要节省的 premium 请求配额。
 - **contextManagement：** 控制代理是否为 Responses API 附加 `context_management` 压缩指令。`messages` 作用于被翻译成 Responses API 的 Anthropic 风格 `/v1/messages` 请求，包括 `openai-responses` provider 的 Messages 路由，默认值为 `true`。`responses` 作用于 native `/v1/responses` 流量，包括 `provider/model` 别名和内置 `codex` provider，默认值为 `false`。只有在确认客户端支持 context management compaction 后，才建议在 Responses API 下启用 `responses`。启用后，请求体会带上 `context_management`，并在后续轮次中仅保留最新的压缩承载内容。代理仅为 `gpt-*` 模型添加 context management 并压缩历史；这两个配置开关对 Grok 等非 GPT 模型不生效。**注意：** 对于 GPT-5.6 及以上模型（如 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`），context management 功能同样会被强制禁用，因为开启后会破坏这些模型的 prompt 缓存命中。这些强制覆盖优先于 `contextManagement` 和 `modelResponsesApiCompactThresholds` 配置。
  - **modelResponsesApiCompactThresholds：** 按模型覆盖 Responses API 的 `compact_threshold`，仅在代理自动附加 `context_management` 时使用。它的优先级高于 `resolveResponsesCompactThreshold` 基于 `max_prompt_tokens * ratio` 的兜底阈值。默认将 `gpt-5.4` 和 `gpt-5.5` 设为 `217600`（`272000 * 0.8`）。未列出的模型继续使用原有兜底逻辑。
@@ -835,13 +855,13 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 ### Codex 后端端点
 
-这些端点实现 Codex 后端 API。顶层图片请求要求已有可用的 Codex 登录态；alpha-search 则可以使用 Codex 后端或 Responses web-search 适配器。
+这些端点实现 Codex 兼容的后端 API。顶层图片请求默认使用 Codex 后端，也可以使用 `imageModel` 选择的 provider；alpha-search 则可以使用 Codex 后端或 Responses web-search 适配器。
 
 | 端点                                                       | 方法 | 说明                                                                                                 |
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
 | `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
-| `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求转发到 Codex Images 上游。请求未携带 `Content-Type` 时，网关默认补充 `application/json`。 |
-| `POST /v1/images/edits` | `POST` | 将图片编辑请求转发到 Codex Images 上游。请使用 `multipart/form-data`，并让 HTTP 客户端自动生成 `boundary`；网关会保留传入的 content type，并以流式方式转发上传请求体。 |
+| `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求转发到 Codex Images 上游，或转发到 `imageModel` 配置的 provider。请求未携带 `Content-Type` 时，Codex 路径默认补充 `application/json`。 |
+| `POST /v1/images/edits` | `POST` | 将图片编辑请求转发到 Codex Images 上游，或转发到 `imageModel` 配置的 provider。请使用 `multipart/form-data`，并让 HTTP 客户端自动生成 `boundary`。 |
 
 对于路由到 Codex 后端的请求，网关会使用当前 Codex 登录态覆盖客户端的 authorization 和 account header，并保留兼容的请求元数据。基于 Responses 的 alpha-search 则遵循所选 Copilot 或 provider 的路由。
 

@@ -8,9 +8,11 @@ const actualTokenModule = await import("~/lib/token")
 
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
+let imageModel: string | undefined
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
+  getImageModel: () => imageModel,
   getProviderConfig: (provider: string) => {
     if (provider === "codex") return codexProviderConfig
     if (provider === "openrouter") return openrouterProviderConfig
@@ -96,6 +98,7 @@ beforeEach(() => {
     name: "openrouter",
     type: "openai-compatible",
   }
+  imageModel = undefined
   state.codexAccessToken = "codex-access-token"
   state.codexAccountId = "account-123"
   state.verbose = false
@@ -187,7 +190,8 @@ describe("Codex images forwarding", () => {
     expect(await new Response(init?.body).json()).toEqual(payload)
   })
 
-  test("preserves multipart fields and file bytes for image edits", async () => {
+  test("routes configured image edits to a provider and rewrites the model", async () => {
+    imageModel = "openrouter/foundry-image-deployment"
     state.verbose = true
     const formData = new FormData()
     formData.set("model", "gpt-image-2")
@@ -205,7 +209,7 @@ describe("Codex images forwarding", () => {
 
     expect(response.status).toBe(200)
     const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
+    expect(url).toBe("https://openrouter.example/v1/images/edits")
 
     const headers = new Headers(init?.headers)
     expect(headers.get("content-type")).toStartWith(
@@ -215,7 +219,7 @@ describe("Codex images forwarding", () => {
       headers,
     })
     const forwardedFormData = await forwardedResponse.formData()
-    expect(forwardedFormData.get("model")).toBe("gpt-image-2")
+    expect(forwardedFormData.get("model")).toBe("foundry-image-deployment")
     expect(forwardedFormData.get("prompt")).toBe(
       "Make the background transparent",
     )
@@ -325,11 +329,16 @@ describe("Codex images forwarding", () => {
     )
   })
 
-  test("proxies non-codex providers on the provider-scoped images route", async () => {
-    const payload = { prompt: "generic provider image" }
+  test("routes configured image generations to a provider and rewrites the model", async () => {
+    imageModel = "openrouter/foundry-image-deployment"
+    codexProviderConfig = null
+    const payload = {
+      model: "gpt-image-2",
+      prompt: "generic provider image",
+    }
 
     const response = await createApp().request(
-      "/openrouter/v1/images/generations?output=base64",
+      "/v1/images/generations?output=base64",
       {
         method: "POST",
         headers: {
@@ -352,7 +361,10 @@ describe("Codex images forwarding", () => {
     const headers = new Headers(init?.headers)
     expect(headers.get("authorization")).toBe("Bearer openrouter-key")
     expect(headers.get("content-type")).toBe("application/json")
-    expect(await new Response(init?.body).json()).toEqual(payload)
+    expect(await new Response(init?.body).json()).toEqual({
+      ...payload,
+      model: "foundry-image-deployment",
+    })
   })
 
   test("preserves multipart content-type for non-codex provider image edits", async () => {

@@ -14,6 +14,7 @@ export interface AppConfig {
   }
   providers?: Record<string, ProviderConfig>
   modelMappings?: Record<string, string>
+  imageModel?: string
   extraPrompts?: Record<string, string>
   smallModel?: string
   contextManagement?: ContextManagementConfig
@@ -512,6 +513,10 @@ export function isAlphaSearchCodexPriorityEnabled(): boolean {
 export function getAlphaSearchModel(): string | undefined {
   const model = getConfig().alphaSearchModel ?? "gpt-5-mini"
   return model.trim() || undefined
+}
+
+export function getImageModel(): string | undefined {
+  return getConfig().imageModel?.trim() || undefined
 }
 
 export function getMessageApiWebSearchModel(): string | undefined {

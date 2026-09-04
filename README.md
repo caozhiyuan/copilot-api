@@ -703,6 +703,7 @@ Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `c
 - **auth.apiKeys:** API keys used for request authentication on non-admin routes. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication for non-admin routes is disabled.
 - **auth.adminApiKey:** Single admin key used only for `/admin/*` routes. If missing, the server generates a random key at startup and writes it back to `config.json`. Requests use the same `x-api-key` or `Authorization: Bearer` headers, but regular `auth.apiKeys` never grant access to `/admin/*`.
 - **modelMappings:** Exact `sourceModel -> targetModel` rewrites shared by top-level `POST /v1/messages`, `POST /v1/messages/count_tokens`, `POST /v1/responses`, and `POST /v1/chat/completions` requests. Omit it or leave it as `{}` to disable rewrites. Both the source and target must be non-empty strings. Targets can be regular model IDs or `provider/model` aliases such as `dashscope/qwen3.6-plus`, and the rewrite happens before provider alias parsing. These mappings are not split per interface. The admin endpoints `GET/POST /admin/config/model-mappings` read and update only this field.
+- **imageModel:** Optional `provider/model` target for top-level `POST /v1/images/generations` and `POST /v1/images/edits` requests. When configured, the gateway routes both endpoints through that provider and replaces the request model with the configured provider model or deployment name. When omitted, top-level image requests continue to use the Codex backend. Provider-scoped image routes are unaffected.
 - **extraPrompts:** Map of `model -> prompt` appended to the first system prompt when translating Anthropic-style requests to Responses API. Use this to inject guardrails or guidance per model. Missing default entries are auto-added without overwriting your custom prompts. For GPT-5.3+ models (e.g. `gpt-5.3-codex`, `gpt-5.4`, `gpt-5.5`), a built-in commentary prompt is used as fallback when not explicitly configured. The built-in prompts enable phase-aware commentary, which lets the model emit a short user-facing progress update before tools or deeper reasoning.
 - **providers:** Global upstream provider map. Each provider key (for example `dashscope`) becomes a route prefix (`/dashscope/v1/messages`). Supports `type: "anthropic"`, `type: "openai-compatible"`, and `type: "openai-responses"`. Top-level clients can also use `model: "dashscope/model-id"` with `/v1/messages`, `/v1/messages/count_tokens`, `/v1/responses`, and `/v1/chat/completions`; the gateway strips the `dashscope/` prefix before forwarding upstream. The `/v1/responses` route for `anthropic` and `openai-compatible` providers uses the Responses Lite → Messages adapter; `openai-compatible` providers then reuse the Messages → Chat translation. Codex clients (`User-Agent` starting with `codex`) also use the adapter for non-`gpt-*` models on `openai-responses` providers. `GET /v1/models` aggregates enabled provider models with `provider/model-id` IDs, while the top-level Codex-UA catalog also merges these adaptable models as `use_responses_lite` entries (except DeepSeek models, which use `use_responses_lite: false` and `tool_mode: null`). Use `GET /dashscope/v1/models` for a single provider's raw model list.
   - `enabled` defaults to `true` if omitted.
@@ -726,6 +727,25 @@ Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `c
     - `reasoningEfforts` (optional): Reasoning levels advertised for Codex. Missing configured and upstream values use the built-in non-GPT model catalog before falling back to `["high", "xhigh", "max", "ultra"]`. Provider Responses requests with an unsupported effort are normalized to a supported level when these capabilities are known.
     - `defaultReasoningEffort` (optional): Default Codex reasoning level. Built-in model metadata may provide a known default; otherwise it defaults to `max` when available, then the first configured level. Synthetic Codex models always enable parallel tool calls.
     - `reasoningField` (optional): Assistant thinking field sent upstream on OpenAI-compatible `/v1/messages` requests. Supports `reasoning` and `reasoning_content`; defaults to `reasoning_content`. Use `reasoning` for OpenRouter-style models; the built-in catalog already does this for OpenCode Go `hy3` and `hy4-preview`.
+
+To route Codex-compatible image requests to a Microsoft Foundry deployment, configure it as an OpenAI-compatible provider and select its deployment with `imageModel`:
+
+```json
+{
+  "imageModel": "foundry/my-gpt-image-2-deployment",
+  "providers": {
+    "foundry": {
+      "type": "openai-compatible",
+      "baseUrl": "https://<resource-name>.openai.azure.com/openai",
+      "apiKey": "<azure-openai-api-key>",
+      "authType": "authorization"
+    }
+  }
+}
+```
+
+The provider base URL omits `/v1`; the gateway appends `/v1/images/generations` or `/v1/images/edits`. The model portion of `imageModel` must be the Foundry deployment name.
+
 - **smallModel:** Fallback model used for tool-less warmup messages (e.g., Claude Code probe requests); defaults to gpt-5-mini. The gateway forces this small model on no-tool warmup or probe requests to avoid consuming premium requests. This behavior only applies to non-token-based-billing GitHub Copilot accounts (`token_based_billing` is false); for token-based-billing accounts the warmup small-model fallback is skipped since there is no premium-request quota to preserve.
 - **contextManagement:** Controls whether the proxy adds Responses API `context_management` compaction instructions. `messages` applies when Anthropic-style `/v1/messages` requests are translated to Responses API, including `openai-responses` provider message routes, and defaults to `true`. `responses` applies to native `/v1/responses` traffic, including `provider/model` aliases and the built-in `codex` provider, and defaults to `false`. Enable `responses` only after checking that your client supports context management compaction. When enabled, the request includes `context_management` in the body and keeps only the latest compaction carrier on follow-up turns. The proxy only adds context management and compacts history for `gpt-*` models; both configuration switches have no effect on non-GPT models such as Grok. **Note:** Context management is also forcibly disabled for GPT-5.6 and above models (e.g. `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`) because enabling it breaks prompt cache hits on those models. These overrides take precedence over the `contextManagement` and `modelResponsesApiCompactThresholds` settings.
  - **modelResponsesApiCompactThresholds:** Per-model Responses API `compact_threshold` overrides used when the proxy adds `context_management`. These values take precedence over the fallback threshold from `resolveResponsesCompactThreshold` (`max_prompt_tokens * ratio`, or the default fallback). Defaults set `gpt-5.4` and `gpt-5.5` to `217600` (`272000 * 0.8`). Models not listed continue to use the normal fallback logic.
@@ -787,13 +807,13 @@ These endpoints mimic the OpenAI API structure.
 
 ### Codex Backend Endpoints
 
-These endpoints implement Codex backend APIs. Top-level image requests require an active Codex login; alpha search can use either the Codex backend or a Responses web-search adapter.
+These endpoints implement Codex-compatible backend APIs. Top-level image requests use the Codex backend by default, or the provider selected by `imageModel`; alpha search can use either the Codex backend or a Responses web-search adapter.
 
 | Endpoint                                                       | Method | Description                                                     |
 | -------------------------------------------------------------- | ------ | --------------------------------------------------------------- |
 | `POST /v1/alpha/search`                | `POST` | Routes Codex alpha-search requests to the Codex backend, or handles supported commands locally and through Responses web search. |
-| `POST /v1/images/generations` | `POST` | Forwards a JSON image generation request to the Codex Images upstream. When the request omits `Content-Type`, the gateway defaults it to `application/json`. |
-| `POST /v1/images/edits` | `POST` | Forwards an image edit request to the Codex Images upstream. Send this request as `multipart/form-data` and let the HTTP client generate the `boundary`; the gateway preserves the incoming content type and streams the upload body. |
+| `POST /v1/images/generations` | `POST` | Forwards a JSON image generation request to the Codex Images upstream, or to the provider configured by `imageModel`. When the request omits `Content-Type`, the Codex path defaults it to `application/json`. |
+| `POST /v1/images/edits` | `POST` | Forwards an image edit request to the Codex Images upstream, or to the provider configured by `imageModel`. Send this request as `multipart/form-data` and let the HTTP client generate the `boundary`. |
 
 For requests routed to the Codex backend, the gateway replaces client authorization and account headers with the active Codex login and preserves compatible request metadata. Responses-backed alpha search instead follows the selected Copilot or provider route.
 
