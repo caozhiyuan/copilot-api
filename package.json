@@ -50,6 +50,7 @@
     "rolldown": "1.0.0-rc.18"
   },
   "dependencies": {
+    "@azure/identity": "^4.13.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "citty": "^0.1.6",
     "clipboardy": "^5.0.0",

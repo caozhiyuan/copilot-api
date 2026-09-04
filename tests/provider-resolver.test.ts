@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import type { ResolvedProviderConfig } from "~/lib/config"
+import type { ProviderConfig, ResolvedProviderConfig } from "~/lib/config"
 import {
   ensureConfiguredProviderModelAlias,
   resolveConfiguredProviderModelAlias,
@@ -18,14 +18,7 @@ interface CodexCredentialsShape {
 }
 
 interface ConfigFileShape {
-  providers?: {
-    codex?: {
-      type?: string
-      enabled?: boolean
-      baseUrl?: string
-      authType?: string
-    }
-  }
+  providers?: Record<string, ProviderConfig>
 }
 
 const cwd = fileURLToPath(new URL("../", import.meta.url))
@@ -195,6 +188,32 @@ describe("provider resolver", () => {
       enabled: false,
       authType: "oauth2",
       baseUrl: "https://chatgpt.com/backend-api",
+    })
+  })
+
+  test("resolves azure-entra providers with an Azure access token", () => {
+    const tempDir = createTempDir()
+    writeConfigFile(tempDir, {
+      providers: {
+        foundry: {
+          type: "openai-compatible",
+          authType: "azure-entra",
+          baseUrl: "https://example.openai.azure.com/openai",
+        },
+      },
+    })
+
+    const output = runScript(
+      tempDir,
+      'const { resolveProviderConfig } = await import("./src/lib/provider-resolver"); console.log(JSON.stringify(await resolveProviderConfig("foundry", async () => "entra-access-token")));',
+    )
+
+    expect(JSON.parse(output)).toMatchObject({
+      apiKey: "entra-access-token",
+      authType: "azure-entra",
+      baseUrl: "https://example.openai.azure.com/openai",
+      name: "foundry",
+      type: "openai-compatible",
     })
   })
 })

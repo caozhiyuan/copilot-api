@@ -102,7 +102,11 @@ export type CodexReasoningEffort =
   | "max"
   | "ultra"
 
-export type ProviderAuthType = "authorization" | "oauth2" | "x-api-key"
+export type ProviderAuthType =
+  | "authorization"
+  | "azure-entra"
+  | "oauth2"
+  | "x-api-key"
 export const SUPPORTED_PROVIDER_TYPES = [
   "anthropic",
   "openai-compatible",

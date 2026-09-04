@@ -64,7 +64,7 @@ export function resolveProviderAuthType(
     return defaultAuthType
   }
 
-  if (authType === "authorization") {
+  if (authType === "authorization" || authType === "azure-entra") {
     return authType
   }
 
@@ -78,7 +78,10 @@ function isProviderApiKeyRequired(
   providerName: string,
   authType: ProviderAuthType,
 ): boolean {
-  return !(providerName === "codex" && authType === "oauth2")
+  return (
+    authType !== "azure-entra"
+    && !(providerName === "codex" && authType === "oauth2")
+  )
 }
 
 export function getRawProviderConfig(name: string): ProviderConfig | null {

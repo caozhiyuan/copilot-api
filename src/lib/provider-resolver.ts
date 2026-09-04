@@ -1,3 +1,5 @@
+import { DefaultAzureCredential, getBearerTokenProvider } from "@azure/identity"
+
 import {
   getRawProviderConfig,
   getProviderConfig,
@@ -10,6 +12,11 @@ import {
 import { state } from "~/lib/state"
 import { setupCodexToken } from "~/lib/token"
 
+const getAzureOpenAIAccessToken = getBearerTokenProvider(
+  new DefaultAzureCredential(),
+  "https://cognitiveservices.azure.com/.default",
+)
+
 function isMissingCodexCredentialsError(error: unknown): boolean {
   return (
     error instanceof Error
@@ -20,6 +27,7 @@ function isMissingCodexCredentialsError(error: unknown): boolean {
 
 export async function resolveProviderConfig(
   providerName: string,
+  getAzureAccessToken: () => Promise<string> = getAzureOpenAIAccessToken,
 ): Promise<ResolvedProviderConfig | null> {
   const normalizedProviderName = providerName.trim()
   if (!normalizedProviderName) {
@@ -52,7 +60,10 @@ export async function resolveProviderConfig(
     }
   }
 
-  return getProviderConfig(normalizedProviderName)
+  const providerConfig = getProviderConfig(normalizedProviderName)
+  return providerConfig?.authType === "azure-entra" ?
+      { ...providerConfig, apiKey: await getAzureAccessToken() }
+    : providerConfig
 }
 
 export type ProviderConfigResolver = typeof resolveProviderConfig
