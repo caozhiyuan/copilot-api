@@ -3,6 +3,7 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 
 import {
+  getImageModel,
   isResponsesApiWebSearchEnabled as isConfiguredResponsesApiWebSearchEnabled,
   resolveMappedModel,
 } from "~/lib/config"
@@ -166,6 +167,8 @@ export const handleResponses = async (c: Context) => {
     )
   }
 
+  const bridgedImageGeneration =
+    Boolean(getImageModel()) && bridgeImageGenerationNamespace(payload)
   removeUnsupportedTools(payload)
   fillEmptyNamespaceToolDescriptions(payload)
 
@@ -239,11 +242,15 @@ export const handleResponses = async (c: Context) => {
             }
           }
 
-          const processedData = fixStreamIds(
+          let processedData = fixStreamIds(
             (chunk as { data?: string }).data ?? "",
             (chunk as { event?: string }).event,
             idTracker,
           )
+          if (bridgedImageGeneration) {
+            processedData =
+              restoreImageGenerationNamespaceInStream(processedData)
+          }
 
           await stream.writeSSE({
             id: (chunk as { id?: string }).id,
@@ -269,6 +276,9 @@ export const handleResponses = async (c: Context) => {
       result.copilot_usage?.total_nano_aiu,
     ),
   })
+  if (bridgedImageGeneration) {
+    restoreImageGenerationNamespace(result)
+  }
   return c.json(result)
 }
 
@@ -319,8 +329,67 @@ const removeWebSearchTool = (payload: ResponsesPayload): void => {
   })
 }
 
+const CODEX_IMAGE_GENERATION_NAMESPACE = "image_gen"
+const COPILOT_IMAGE_GENERATION_NAMESPACE = "copilot_api_image_gen"
 const COPILOT_UNSUPPORTED_TOOL_TYPES = new Set(["image_generation"])
-const COPILOT_UNSUPPORTED_TOOL_NAMESPACES = new Set(["image_gen"])
+const COPILOT_UNSUPPORTED_TOOL_NAMESPACES = new Set([
+  CODEX_IMAGE_GENERATION_NAMESPACE,
+])
+
+export const bridgeImageGenerationNamespace = (
+  payload: ResponsesPayload,
+): boolean =>
+  replaceImageGenerationNamespace(
+    payload,
+    CODEX_IMAGE_GENERATION_NAMESPACE,
+    COPILOT_IMAGE_GENERATION_NAMESPACE,
+  )
+
+export const restoreImageGenerationNamespace = (value: unknown): void => {
+  replaceImageGenerationNamespace(
+    value,
+    COPILOT_IMAGE_GENERATION_NAMESPACE,
+    CODEX_IMAGE_GENERATION_NAMESPACE,
+  )
+}
+
+const replaceImageGenerationNamespace = (
+  value: unknown,
+  from: string,
+  to: string,
+): boolean => {
+  if (Array.isArray(value)) {
+    let changed = false
+    for (const item of value) {
+      if (replaceImageGenerationNamespace(item, from, to)) changed = true
+    }
+    return changed
+  }
+  if (!value || typeof value !== "object") return false
+
+  const record = value as Record<string, unknown>
+  let changed = false
+  if (record.type === "namespace" && record.name === from) {
+    record.name = to
+    changed = true
+  }
+  if (record.type === "function_call" && record.namespace === from) {
+    record.namespace = to
+    changed = true
+  }
+  for (const key of ["tools", "input", "output", "item", "response"] as const) {
+    if (replaceImageGenerationNamespace(record[key], from, to)) changed = true
+  }
+  return changed
+}
+
+const restoreImageGenerationNamespaceInStream = (data: string): string => {
+  if (!data.includes(COPILOT_IMAGE_GENERATION_NAMESPACE)) return data
+
+  const event = JSON.parse(data) as ResponseStreamEvent
+  restoreImageGenerationNamespace(event)
+  return JSON.stringify(event)
+}
 
 export const removeUnsupportedTools = (payload: ResponsesPayload): void => {
   if (!Array.isArray(payload.tools) || payload.tools.length === 0) return

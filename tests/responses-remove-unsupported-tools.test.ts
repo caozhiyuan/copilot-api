@@ -3,8 +3,10 @@ import { describe, expect, it } from "bun:test"
 import type { ResponsesPayload } from "~/lib/types/responses"
 
 import {
+  bridgeImageGenerationNamespace,
   fillEmptyNamespaceToolDescriptions,
   removeUnsupportedTools,
+  restoreImageGenerationNamespace,
 } from "~/routes/responses/handler"
 
 const makePayload = (tools: ResponsesPayload["tools"]): ResponsesPayload =>
@@ -37,6 +39,49 @@ describe("removeUnsupportedTools", () => {
 
     expect(payload.tools).toHaveLength(1)
     expect((payload.tools as Array<{ name: string }>)[0].name).toBe("foo")
+  })
+
+  it("bridges configured image_gen namespace calls through Copilot", () => {
+    const payload = makePayload([
+      {
+        type: "namespace",
+        name: "image_gen",
+        tools: [{ type: "function", name: "imagegen" }],
+      },
+    ] as ResponsesPayload["tools"])
+    payload.input = [
+      {
+        type: "function_call",
+        call_id: "call_image",
+        name: "imagegen",
+        namespace: "image_gen",
+        arguments: "{}",
+      },
+    ]
+
+    expect(bridgeImageGenerationNamespace(payload)).toBe(true)
+    removeUnsupportedTools(payload)
+
+    const namespace = (payload.tools?.[0] as { name: string }).name
+    expect(namespace).not.toBe("image_gen")
+    expect((payload.input[0] as { namespace: string }).namespace).toBe(
+      namespace,
+    )
+
+    const response = {
+      output: [
+        {
+          type: "function_call",
+          call_id: "call_image",
+          name: "imagegen",
+          namespace,
+          arguments: "{}",
+        },
+      ],
+    }
+    restoreImageGenerationNamespace(response)
+
+    expect(response.output[0].namespace).toBe("image_gen")
   })
 
   it("leaves payload unchanged when no unsupported tools present", () => {
