@@ -9,7 +9,14 @@ import {
 
 export const tokenUsageRoute = new Hono()
 
-const periods = new Set<TokenUsagePeriod>(["day", "week", "month"])
+const periods = new Set<TokenUsagePeriod>([
+  "day",
+  "weekToDate",
+  "week",
+  "monthToDate",
+  "month",
+  "lifetime",
+])
 const DEFAULT_EVENTS_PAGE_SIZE = 20
 
 function parsePeriod(value: string | undefined): TokenUsagePeriod {

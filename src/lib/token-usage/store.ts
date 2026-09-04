@@ -18,7 +18,13 @@ export type TokenUsageEndpoint =
   | "provider_messages"
   | "responses"
 
-export type TokenUsagePeriod = "day" | "week" | "month"
+export type TokenUsagePeriod =
+  | "day"
+  | "weekToDate"
+  | "week"
+  | "monthToDate"
+  | "month"
+  | "lifetime"
 
 export interface UsageTokens {
   cache_creation_input_tokens?: number | null
@@ -349,6 +355,14 @@ async function flushTokenUsageEvents(): Promise<void> {
 }
 
 function getPeriodRange(period: TokenUsagePeriod, now = new Date()) {
+  if (period === "lifetime") {
+    const nowMs = now.getTime()
+    return {
+      endMs: nowMs,
+      startMs: nowMs,
+    }
+  }
+
   const start = new Date(now)
   start.setHours(0, 0, 0, 0)
 
@@ -356,8 +370,17 @@ function getPeriodRange(period: TokenUsagePeriod, now = new Date()) {
     case "day": {
       break
     }
+    case "weekToDate": {
+      const daysSinceMonday = (start.getDay() + 6) % 7
+      start.setDate(start.getDate() - daysSinceMonday)
+      break
+    }
     case "week": {
       start.setDate(start.getDate() - 6)
+      break
+    }
+    case "monthToDate": {
+      start.setDate(1)
       break
     }
     case "month": {
@@ -373,6 +396,11 @@ function getPeriodRange(period: TokenUsagePeriod, now = new Date()) {
   switch (period) {
     case "day": {
       end.setDate(end.getDate() + 1)
+      break
+    }
+    case "weekToDate":
+    case "monthToDate": {
+      end.setTime(now.getTime() + 1)
       break
     }
     case "week": {
@@ -394,6 +422,36 @@ function getPeriodRange(period: TokenUsagePeriod, now = new Date()) {
   }
 }
 
+function getPeriodRangeFromDb(
+  db: SqliteDatabase,
+  period: TokenUsagePeriod,
+  now = new Date(),
+) {
+  if (period !== "lifetime") {
+    return getPeriodRange(period, now)
+  }
+
+  const nowMs = now.getTime()
+  const row = db
+    .prepare(
+      `
+    SELECT MIN(created_at_ms) AS start_ms
+    FROM token_usage_events
+    WHERE created_at_ms <= ?
+  `,
+    )
+    .get(nowMs) as Record<string, unknown> | undefined
+  const earliestEventMs = row?.start_ms
+  const hasEarliestEvent =
+    typeof earliestEventMs === "number" && Number.isFinite(earliestEventMs)
+  const startMs = hasEarliestEvent ? earliestEventMs : nowMs + 1
+
+  return {
+    endMs: nowMs + 1,
+    startMs,
+  }
+}
+
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")
@@ -408,18 +466,21 @@ function createDailyIntervals(range: { endMs: number; startMs: number }) {
     startMs: number
   }> = []
   const cursor = new Date(range.startMs)
+  cursor.setHours(0, 0, 0, 0)
 
   while (cursor.getTime() < range.endMs) {
-    const startMs = cursor.getTime()
+    const startMs = Math.max(cursor.getTime(), range.startMs)
     const next = new Date(cursor)
     next.setDate(next.getDate() + 1)
     const endMs = Math.min(next.getTime(), range.endMs)
-    intervals.push({
-      date: formatLocalDate(cursor),
-      endMs,
-      startMs,
-    })
-    cursor.setTime(endMs)
+    if (startMs < endMs) {
+      intervals.push({
+        date: formatLocalDate(cursor),
+        endMs,
+        startMs,
+      })
+    }
+    cursor.setTime(next.getTime())
   }
 
   return intervals
@@ -826,8 +887,8 @@ export async function getTokenUsageSummary(
   }
 
   await flushTokenUsageEvents()
-  const range = getPeriodRange(period)
   const db = await getDb()
+  const range = getPeriodRangeFromDb(db, period)
   const totalsRow = getTotalsRow(db, range)
 
   return {
@@ -846,8 +907,8 @@ export async function getTokenUsageDailySummary(
   }
 
   await flushTokenUsageEvents()
-  const range = getPeriodRange(period)
   const db = await getDb()
+  const range = getPeriodRangeFromDb(db, period)
   const intervals = createDailyIntervals(range)
 
   return {
@@ -871,11 +932,11 @@ export async function getTokenUsageEventsPage(input: {
   }
 
   await flushTokenUsageEvents()
-  const range = getPeriodRange(input.period)
   const page = Math.max(1, Math.floor(input.page))
   const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize)))
   const offset = (page - 1) * pageSize
   const db = await getDb()
+  const range = getPeriodRangeFromDb(db, input.period)
 
   const totalRow = db
     .prepare(

@@ -424,8 +424,11 @@
                 class="select-control input-focus"
               >
                 <option value="day">Day</option>
+                <option value="weekToDate">Week to date</option>
                 <option value="week">Week</option>
+                <option value="monthToDate">Month to date</option>
                 <option value="month">Month</option>
+                <option value="lifetime">Lifetime</option>
               </select>
             </div>
             <button id="fetch-button" type="submit" class="primary-action">
@@ -469,7 +472,14 @@
         const ALL_MODELS_VALUE = "__all__";
         const LEGACY_API_KEY_STORAGE_KEY = "copilot-api.usage-viewer.x-api-key";
         const CREDENTIAL_STORAGE_PREFIX = "copilot-api.usage-viewer.credential.";
-        const VALID_PERIODS = new Set(["day", "week", "month"]);
+        const VALID_PERIODS = new Set([
+          "day",
+          "weekToDate",
+          "week",
+          "monthToDate",
+          "month",
+          "lifetime",
+        ]);
         const EMPTY_TOKEN_USAGE_TOTALS = {
           cache_creation_input_tokens: 0,
           cache_read_input_tokens: 0,
@@ -898,8 +908,11 @@
         function renderTokenUsageRangeText(period, range) {
           const labels = {
             day: "Day window",
+            weekToDate: "Week to date",
             week: "Last 7 days",
+            monthToDate: "Month to date",
             month: "Last 30 days",
+            lifetime: "Lifetime",
           };
 
           if (!range) {
