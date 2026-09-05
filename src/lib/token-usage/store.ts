@@ -861,6 +861,87 @@ function getModelSummaries(
   })
 }
 
+function getDailyModelSummaries(
+  db: SqliteDatabase,
+  range: { endMs: number; startMs: number },
+): Map<string, Array<TokenUsageModelSummary>> {
+  const usageDate =
+    "strftime('%Y-%m-%d', created_at_ms / 1000.0, 'unixepoch', 'localtime')"
+  const rows = db
+    .prepare(
+      `
+    SELECT
+      ${usageDate} AS usage_date,
+      model,
+      COUNT(*) AS request_count,
+      COALESCE(SUM(input_tokens), 0) AS input_tokens,
+      COALESCE(SUM(output_tokens), 0) AS output_tokens,
+      COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+      COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+      SUM(total_nano_aiu) AS total_nano_aiu,
+      COALESCE(SUM(total_tokens), 0) AS total_tokens
+    FROM token_usage_events
+    WHERE created_at_ms >= ? AND created_at_ms < ?
+    GROUP BY usage_date, model
+    ORDER BY usage_date ASC, total_tokens DESC, model ASC
+  `,
+    )
+    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+  const costRows = db
+    .prepare(
+      `
+    SELECT
+      ${usageDate} AS usage_date,
+      model,
+      cost_currency,
+      COALESCE(SUM(total_cost_nanos), 0) AS total_cost_nanos
+    FROM token_usage_events
+    WHERE created_at_ms >= ?
+      AND created_at_ms < ?
+      AND cost_currency IS NOT NULL
+      AND total_cost_nanos IS NOT NULL
+    GROUP BY usage_date, model, cost_currency
+    ORDER BY usage_date ASC, model ASC, cost_currency ASC
+  `,
+    )
+    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+  const costsByDateAndModel = new Map<string, Array<TokenUsageCost>>()
+  for (const row of costRows) {
+    const date = stringFromRow(row, "usage_date")
+    const model = stringFromRow(row, "model") || "unknown"
+    const cost = costFromRow(row)
+    if (!date || !cost) {
+      continue
+    }
+
+    const key = `${date}\u0000${model}`
+    costsByDateAndModel.set(key, [
+      ...(costsByDateAndModel.get(key) ?? []),
+      cost,
+    ])
+  }
+
+  const summariesByDate = new Map<string, Array<TokenUsageModelSummary>>()
+  for (const row of rows) {
+    const date = stringFromRow(row, "usage_date")
+    if (!date) {
+      continue
+    }
+
+    const model = stringFromRow(row, "model") || "unknown"
+    const summaries = summariesByDate.get(date) ?? []
+    summaries.push(
+      modelSummaryFromRow(
+        row,
+        costsByDateAndModel.get(`${date}\u0000${model}`) ?? [],
+      ),
+    )
+    summariesByDate.set(date, summaries)
+  }
+
+  return summariesByDate
+}
+
 function createDailyBucket(
   interval: { date: string; endMs: number; startMs: number },
   byModel: Array<TokenUsageModelSummary>,
@@ -910,11 +991,12 @@ export async function getTokenUsageDailySummary(
   const db = await getDb()
   const range = getPeriodRangeFromDb(db, period)
   const intervals = createDailyIntervals(range)
+  const dailySummaries = getDailyModelSummaries(db, range)
 
   return {
     byModel: getModelSummaries(db, range),
     days: intervals.map((interval) =>
-      createDailyBucket(interval, getModelSummaries(db, interval)),
+      createDailyBucket(interval, dailySummaries.get(interval.date) ?? []),
     ),
     period,
     range: rangePayload(range),

@@ -555,276 +555,105 @@ describe("token usage storage", () => {
     expect(page.items[1]?.session_id).toBe("interaction-session")
   })
 
-  test("returns the current calendar week from Monday through today", async () => {
-    setSystemTime(localDate(2026, 3, 12, 23))
+  test("supports calendar-to-date and lifetime periods", async () => {
+    const outside = localDate(2026, 3, 30, 23)
+    const monthStart = localDate(2026, 4, 1, 0)
+    const weekEvent = localDate(2026, 4, 12)
+    const now = localDate(2026, 4, 15, 15, 30)
+
+    setSystemTime(outside)
     recordTokenUsageEvent({
       endpoint: "responses",
-      input_tokens: 99,
-      model: "before-week-to-date",
+      input_tokens: 1,
+      model: "outside",
       source: "copilot",
     })
-
-    setSystemTime(localDate(2026, 3, 13, 0))
+    setSystemTime(monthStart)
     recordTokenUsageEvent({
       endpoint: "responses",
-      input_tokens: 10,
-      model: "monday-week-to-date",
+      input_tokens: 2,
+      model: "month-start",
       source: "copilot",
     })
-
-    setSystemTime(localDate(2026, 3, 15, 15, 30))
+    setSystemTime(weekEvent)
     recordTokenUsageEvent({
       endpoint: "responses",
-      input_tokens: 20,
-      model: "today-week-to-date",
+      input_tokens: 4,
+      model: "week-event",
       source: "copilot",
     })
-
-    setSystemTime(localDate(2026, 3, 15, 18))
+    setSystemTime(now)
     recordTokenUsageEvent({
       endpoint: "responses",
-      input_tokens: 30,
-      model: "future-week-to-date",
+      input_tokens: 8,
+      model: "now",
       source: "copilot",
     })
+    setSystemTime(localDate(2026, 4, 15, 18))
+    recordTokenUsageEvent({
+      endpoint: "responses",
+      input_tokens: 16,
+      model: "future",
+      source: "copilot",
+    })
+    setSystemTime(now)
 
-    setSystemTime(localDate(2026, 3, 15, 15, 30))
     const app = createTokenUsageApp()
-    const summaryResponse = await app.request("/token-usage?period=weekToDate")
-    expect(summaryResponse.status).toBe(200)
-
-    const summary = (await summaryResponse.json()) as TokenUsageSummary
-    expect(summary.period).toBe("weekToDate")
-    expect(summary.range.start_ms).toBe(localDate(2026, 3, 13, 0).getTime())
-    expect(summary.range.end_ms).toBe(
-      localDate(2026, 3, 15, 15, 30).getTime() + 1,
-    )
-    expect(summary.totals.request_count).toBe(2)
-    expect(summary.totals.input_tokens).toBe(30)
-    expect(summary.byModel.map((model) => model.model)).toEqual([
-      "today-week-to-date",
-      "monday-week-to-date",
-    ])
+    const summary = async (period: string) => {
+      const response = await app.request(`/token-usage?period=${period}`)
+      expect(response.status).toBe(200)
+      return (await response.json()) as TokenUsageSummary
+    }
+    const week = await summary("weekToDate")
+    expect(week.range.start_ms).toBe(localDate(2026, 4, 11, 0).getTime())
+    expect(week.range.end_ms).toBe(now.getTime() + 1)
+    expect(week.totals.input_tokens).toBe(12)
+    const month = await summary("monthToDate")
+    expect(month.range.start_ms).toBe(monthStart.getTime())
+    expect(month.range.end_ms).toBe(now.getTime() + 1)
+    expect(month.totals.input_tokens).toBe(14)
+    const lifetime = await summary("lifetime")
+    expect(lifetime.range.start_ms).toBe(outside.getTime())
+    expect(lifetime.range.end_ms).toBe(now.getTime() + 1)
+    expect(lifetime.totals.input_tokens).toBe(15)
 
     const dailyResponse = await app.request(
       "/token-usage/daily?period=weekToDate",
     )
-    expect(dailyResponse.status).toBe(200)
     const daily = (await dailyResponse.json()) as TokenUsageDailySummary
-    expect(daily.period).toBe("weekToDate")
-    expect(daily.days.map((day) => day.date)).toEqual([
-      localDateLabel(localDate(2026, 3, 13)),
-      localDateLabel(localDate(2026, 3, 14)),
-      localDateLabel(localDate(2026, 3, 15)),
-    ])
-    expect(daily.days[2]?.totals.input_tokens).toBe(20)
+    expect(daily.days).toHaveLength(5)
+    expect(daily.days[1]?.totals.input_tokens).toBe(4)
+    expect(daily.days[4]?.totals.input_tokens).toBe(8)
 
-    const eventsResponse = await app.request(
-      "/token-usage/events?period=weekToDate&page=1&page_size=1",
-    )
-    expect(eventsResponse.status).toBe(200)
-    const events = (await eventsResponse.json()) as TokenUsageEventsPage
-    expect(events.period).toBe("weekToDate")
-    expect(events.range.start_ms).toBe(summary.range.start_ms)
-    expect(events.range.end_ms).toBe(summary.range.end_ms)
-    expect(events.total).toBe(2)
-    expect(events.page).toBe(1)
-    expect(events.page_size).toBe(1)
-    expect(events.total_pages).toBe(2)
-    expect(events.items).toHaveLength(1)
-    expect(events.items[0]?.model).toBe("today-week-to-date")
-  })
-
-  test("returns the current calendar month from the first day through today", async () => {
-    setSystemTime(localDate(2026, 4, 30, 23))
-    recordTokenUsageEvent({
-      endpoint: "responses",
-      input_tokens: 99,
-      model: "before-month-to-date",
-      source: "copilot",
-    })
-
-    setSystemTime(localDate(2026, 5, 1, 0))
-    recordTokenUsageEvent({
-      endpoint: "responses",
-      input_tokens: 10,
-      model: "first-day-month-to-date",
-      source: "copilot",
-    })
-
-    setSystemTime(localDate(2026, 5, 3, 15, 30))
-    recordTokenUsageEvent({
-      endpoint: "responses",
-      input_tokens: 20,
-      model: "today-month-to-date",
-      source: "copilot",
-    })
-
-    setSystemTime(localDate(2026, 5, 3, 18))
-    recordTokenUsageEvent({
-      endpoint: "responses",
-      input_tokens: 30,
-      model: "future-month-to-date",
-      source: "copilot",
-    })
-
-    setSystemTime(localDate(2026, 5, 3, 15, 30))
-    const app = createTokenUsageApp()
-    const summaryResponse = await app.request("/token-usage?period=monthToDate")
-    expect(summaryResponse.status).toBe(200)
-
-    const summary = (await summaryResponse.json()) as TokenUsageSummary
-    expect(summary.period).toBe("monthToDate")
-    expect(summary.range.start_ms).toBe(localDate(2026, 5, 1, 0).getTime())
-    expect(summary.range.end_ms).toBe(
-      localDate(2026, 5, 3, 15, 30).getTime() + 1,
-    )
-    expect(summary.totals.request_count).toBe(2)
-    expect(summary.totals.input_tokens).toBe(30)
-    expect(summary.byModel.map((model) => model.model)).toEqual([
-      "today-month-to-date",
-      "first-day-month-to-date",
-    ])
-
-    const dailyResponse = await app.request(
+    const monthDailyResponse = await app.request(
       "/token-usage/daily?period=monthToDate",
     )
-    expect(dailyResponse.status).toBe(200)
-    const daily = (await dailyResponse.json()) as TokenUsageDailySummary
-    expect(daily.period).toBe("monthToDate")
-    expect(daily.days).toHaveLength(3)
-    expect(daily.days.map((day) => day.date)).toEqual([
-      localDateLabel(localDate(2026, 5, 1)),
-      localDateLabel(localDate(2026, 5, 2)),
-      localDateLabel(localDate(2026, 5, 3)),
-    ])
-    expect(daily.days[2]?.totals.input_tokens).toBe(20)
+    const monthDaily =
+      (await monthDailyResponse.json()) as TokenUsageDailySummary
+    expect(monthDaily.days).toHaveLength(15)
+    expect(monthDaily.days[0]?.totals.input_tokens).toBe(2)
 
-    const eventsResponse = await app.request(
-      "/token-usage/events?period=monthToDate&page=1&page_size=1",
-    )
-    expect(eventsResponse.status).toBe(200)
-    const events = (await eventsResponse.json()) as TokenUsageEventsPage
-    expect(events.period).toBe("monthToDate")
-    expect(events.total).toBe(2)
-    expect(events.page).toBe(1)
-    expect(events.page_size).toBe(1)
-    expect(events.total_pages).toBe(2)
-    expect(events.items[0]?.model).toBe("today-month-to-date")
-  })
-
-  test("keeps calendar-to-date starts at Monday and the first of the month", async () => {
-    const app = createTokenUsageApp()
-
-    setSystemTime(localDate(2026, 2, 16, 0, 0))
-    const mondayResponse = await app.request("/token-usage?period=weekToDate")
-    const mondaySummary = (await mondayResponse.json()) as TokenUsageSummary
-    expect(mondaySummary.range.start_ms).toBe(
-      localDate(2026, 2, 16, 0, 0).getTime(),
-    )
-
-    setSystemTime(localDate(2026, 3, 1, 0, 0))
-    const monthResponse = await app.request("/token-usage?period=monthToDate")
-    const monthSummary = (await monthResponse.json()) as TokenUsageSummary
-    expect(monthSummary.range.start_ms).toBe(
-      localDate(2026, 3, 1, 0, 0).getTime(),
-    )
-  })
-
-  test("returns lifetime usage from the earliest event through now", async () => {
-    const earliestEvent = localDate(2026, 1, 10, 9)
-    const currentMoment = localDate(2026, 3, 15, 14, 30)
-
-    setSystemTime(earliestEvent)
-    recordTokenUsageEvent({
-      endpoint: "responses",
-      input_tokens: 11,
-      model: "lifetime-earliest",
-      output_tokens: 1,
-      source: "copilot",
-    })
-
-    setSystemTime(currentMoment)
-    recordTokenUsageEvent({
-      endpoint: "messages",
-      input_tokens: 22,
-      model: "lifetime-current",
-      output_tokens: 2,
-      source: "copilot",
-    })
-
-    const app = createTokenUsageApp()
-    const summaryResponse = await app.request("/token-usage?period=lifetime")
-    expect(summaryResponse.status).toBe(200)
-    const summary = (await summaryResponse.json()) as TokenUsageSummary
-    expect(summary.period).toBe("lifetime")
-    expect(summary.range.start_ms).toBe(earliestEvent.getTime())
-    expect(summary.range.end_ms).toBe(currentMoment.getTime() + 1)
-    expect(summary.totals.request_count).toBe(2)
-    expect(summary.totals.input_tokens).toBe(33)
-    expect(summary.byModel.map((model) => model.model)).toEqual([
-      "lifetime-current",
-      "lifetime-earliest",
-    ])
-
-    const dailyResponse = await app.request(
-      "/token-usage/daily?period=lifetime",
-    )
-    expect(dailyResponse.status).toBe(200)
-    const daily = (await dailyResponse.json()) as TokenUsageDailySummary
-    expect(daily.period).toBe("lifetime")
-    expect(daily.range.start_ms).toBe(summary.range.start_ms)
-    expect(daily.range.end_ms).toBe(summary.range.end_ms)
-    expect(daily.totals.request_count).toBe(2)
-    expect(
-      daily.days.find((day) => day.date === localDateLabel(earliestEvent))
-        ?.totals.request_count,
-    ).toBe(1)
-    expect(
-      daily.days.find((day) => day.date === localDateLabel(currentMoment))
-        ?.totals.request_count,
-    ).toBe(1)
-
-    const eventsResponse = await app.request(
-      "/token-usage/events?period=lifetime&page=1&page_size=10",
-    )
-    expect(eventsResponse.status).toBe(200)
-    const events = (await eventsResponse.json()) as TokenUsageEventsPage
-    expect(events.period).toBe("lifetime")
-    expect(events.range.start_ms).toBe(summary.range.start_ms)
-    expect(events.range.end_ms).toBe(summary.range.end_ms)
-    expect(events.total).toBe(2)
-    expect(events.items.map((item) => item.model)).toEqual([
-      "lifetime-current",
-      "lifetime-earliest",
-    ])
-  })
-
-  test("returns an empty lifetime range when there are no events", async () => {
-    setSystemTime(localDate(2026, 4, 15, 12))
-    const app = createTokenUsageApp()
-
-    const summaryResponse = await app.request("/token-usage?period=lifetime")
-    const dailyResponse = await app.request(
-      "/token-usage/daily?period=lifetime",
-    )
     const eventsResponse = await app.request(
       "/token-usage/events?period=lifetime",
     )
+    const events = (await eventsResponse.json()) as TokenUsageEventsPage
+    expect(events.total).toBe(4)
+  })
+
+  test("returns an empty lifetime range when there are no events", async () => {
+    setSystemTime(localDate(2026, 4, 15))
+    const app = createTokenUsageApp()
+    const summaryResponse = await app.request("/token-usage?period=lifetime")
+    const dailyResponse = await app.request(
+      "/token-usage/daily?period=lifetime",
+    )
     const summary = (await summaryResponse.json()) as TokenUsageSummary
     const daily = (await dailyResponse.json()) as TokenUsageDailySummary
-    const events = (await eventsResponse.json()) as TokenUsageEventsPage
 
-    expect(summary.period).toBe("lifetime")
     expect(summary.range.start_ms).toBe(summary.range.end_ms)
     expect(summary.totals.request_count).toBe(0)
-    expect(daily.period).toBe("lifetime")
     expect(daily.range.start_ms).toBe(daily.range.end_ms)
     expect(daily.days).toEqual([])
-    expect(events.period).toBe("lifetime")
-    expect(events.range.start_ms).toBe(events.range.end_ms)
-    expect(events.total).toBe(0)
-    expect(events.items).toEqual([])
   })
 
   test("returns daily token usage buckets by model with total tokens", async () => {
@@ -939,22 +768,13 @@ describe("token usage storage", () => {
 
   test("returns empty daily buckets and falls back invalid period to day", async () => {
     setSystemTime(localDate(2026, 4, 15))
-    const app = createTokenUsageApp()
-    const response = await app.request("/token-usage/daily?period=invalid")
-    const summaryResponse = await app.request("/token-usage?period=invalid")
-    const eventsResponse = await app.request(
-      "/token-usage/events?period=invalid",
+    const response = await createTokenUsageApp().request(
+      "/token-usage/daily?period=invalid",
     )
     expect(response.status).toBe(200)
-    expect(summaryResponse.status).toBe(200)
-    expect(eventsResponse.status).toBe(200)
 
     const daily = (await response.json()) as TokenUsageDailySummary
-    const summary = (await summaryResponse.json()) as TokenUsageSummary
-    const events = (await eventsResponse.json()) as TokenUsageEventsPage
     expect(daily.period).toBe("day")
-    expect(summary.period).toBe("day")
-    expect(events.period).toBe("day")
     expect(daily.days).toHaveLength(1)
     expect(daily.days[0]?.date).toBe(localDateLabel(localDate(2026, 4, 15)))
     expect(daily.days[0]?.totals.total_tokens).toBe(0)

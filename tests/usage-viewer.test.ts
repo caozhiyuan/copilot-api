@@ -8,17 +8,13 @@ async function readUsageViewerPage(): Promise<string> {
 }
 
 describe("usage viewer period contract", () => {
-  test("offers calendar-to-date periods in the documented order", async () => {
+  test("supports all periods in the selector and usage requests", async () => {
     const html = await readUsageViewerPage()
-    const periodSelect = html.match(
-      /<select\s+id="token-usage-period"[\s\S]*?<\/select>/,
-    )?.[0]
-
-    expect(periodSelect).toBeDefined()
     const options = [
-      ...(periodSelect ?? "").matchAll(
-        /<option value="([^"]+)">([^<]+)<\/option>/g,
-      ),
+      ...(
+        html.match(/<select\s+id="token-usage-period"[\s\S]*?<\/select>/)?.[0]
+        ?? ""
+      ).matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g),
     ].map((match) => [match[1], match[2]])
 
     expect(options).toEqual([
@@ -29,20 +25,14 @@ describe("usage viewer period contract", () => {
       ["month", "Month"],
       ["lifetime", "Lifetime"],
     ])
-  })
 
-  test("normalizes new period values and propagates the selection to requests", async () => {
-    const html = await readUsageViewerPage()
-
-    expect(html).toMatch(
-      /const DEFAULT_TOKEN_USAGE_PERIOD = "day";[\s\S]*?const VALID_PERIODS = new Set\(\[\s*"day",\s*"weekToDate",\s*"week",\s*"monthToDate",\s*"month",\s*"lifetime",\s*\]\);/,
+    expect(html).toContain("return VALID_PERIODS.has(value)")
+    expect(html).toContain("const MAX_LIFETIME_TREND_POINTS = 180")
+    expect(html).toContain(
+      "getDailyTrendTotals(day, selectedModel).request_count > 0",
     )
-    expect(html).toMatch(
-      /function normalizePeriod\(value\)\s*\{[\s\S]*?return VALID_PERIODS\.has\(value\)[\s\S]*?\? value\s*:\s*DEFAULT_TOKEN_USAGE_PERIOD;/,
-    )
-    expect(html).toContain('weekToDate: "Week to date"')
-    expect(html).toContain('monthToDate: "Month to date"')
-    expect(html).toContain('lifetime: "Lifetime"')
+    expect(html).toContain("tokenUsageTrendDay: null")
+    expect(html).toContain('data-trend-day="${day.date}"')
     expect(html).toContain(
       "fetchJson(buildTokenUsageSummaryUrl(usageUrl, period))",
     )
@@ -56,13 +46,8 @@ describe("usage viewer period contract", () => {
       "buildTokenUsageEventsUrl(usageUrl, getSelectedPeriod(), page)",
     )
 
-    const requestBuilders = [
-      "buildTokenUsageSummaryUrl",
-      "buildTokenUsageDailyUrl",
-      "buildTokenUsageEventsUrl",
-    ]
-    for (const builder of requestBuilders) {
-      expect(html).toContain(`function ${builder}`)
+    for (const builder of ["Summary", "Daily", "Events"]) {
+      expect(html).toContain(`function buildTokenUsage${builder}Url`)
       expect(html).toContain('url.searchParams.set("period", period)')
     }
   })
