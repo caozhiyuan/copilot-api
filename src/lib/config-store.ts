@@ -199,17 +199,17 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 
 function ensureConfigFile(): void {
   try {
-    fs.accessSync(PATHS.CONFIG_PATH, fs.constants.R_OK | fs.constants.W_OK)
-  } catch {
+    fs.accessSync(PATHS.CONFIG_PATH, fs.constants.F_OK)
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== "ENOENT") {
+      throw error
+    }
+
     writeFileAtomically(
       PATHS.CONFIG_PATH,
       `${JSON.stringify(defaultConfig, null, 2)}\n`,
     )
-    try {
-      fs.chmodSync(PATHS.CONFIG_PATH, 0o600)
-    } catch {
-      return
-    }
+    fs.chmodSync(PATHS.CONFIG_PATH, 0o600)
   }
 }
 

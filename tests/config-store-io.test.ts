@@ -3,7 +3,11 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { setConfiguredApiKeys, writeConfigToDisk } from "~/lib/config-store"
+import {
+  reloadConfig,
+  setConfiguredApiKeys,
+  writeConfigToDisk,
+} from "~/lib/config-store"
 import { PATHS } from "~/lib/paths"
 
 interface StoredConfig {
@@ -63,6 +67,40 @@ test("writeConfigToDisk atomically replaces the editable config", () => {
     },
   })
   expect(fs.readdirSync(path.dirname(configPath))).toEqual(["config.json"])
+})
+
+test("reloadConfig creates a default config when it is missing", () => {
+  const configPath = useTempConfigPath()
+
+  const config = reloadConfig()
+
+  expect(config.auth?.apiKeys).toEqual([])
+  expect(fs.statSync(configPath).mode & 0o777).toBe(0o600)
+})
+
+test("reloadConfig preserves an unreadable config file", () => {
+  const configPath = useTempConfigPath()
+  const sentinelConfig = '{"auth":{"apiKeys":["preserve-me"]}}\n'
+  fs.writeFileSync(configPath, sentinelConfig, "utf8")
+  fs.chmodSync(configPath, 0o200)
+
+  try {
+    expect(() => reloadConfig()).toThrow("EACCES")
+  } finally {
+    fs.chmodSync(configPath, 0o600)
+  }
+
+  expect(fs.readFileSync(configPath, "utf8")).toBe(sentinelConfig)
+})
+
+test("reloadConfig propagates nonmissing filesystem errors", () => {
+  const configPath = useTempConfigPath()
+  const blockingPath = path.join(path.dirname(configPath), "not-a-directory")
+  fs.writeFileSync(blockingPath, "sentinel", "utf8")
+  PATHS.CONFIG_PATH = path.join(blockingPath, "config.json")
+
+  expect(() => reloadConfig()).toThrow("ENOTDIR")
+  expect(fs.readFileSync(blockingPath, "utf8")).toBe("sentinel")
 })
 
 test("setConfiguredApiKeys normalizes keys and preserves other config fields", () => {

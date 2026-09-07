@@ -58,7 +58,14 @@ function runConfigScript(tempDir: string, script: string): ConfigScriptResult {
 
 afterEach(() => {
   while (tempDirs.length > 0) {
-    fs.rmSync(tempDirs.pop()!, { recursive: true, force: true })
+    const tempDir = tempDirs.pop()!
+    const configPath = path.join(tempDir, "config.json")
+    try {
+      fs.chmodSync(configPath, 0o600)
+    } catch {
+      // The config file may not exist for tests that only exercise creation.
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true })
   }
 })
 
@@ -90,6 +97,24 @@ describe("corrupt config file", () => {
     expect(result.exitCode).not.toBe(0)
     expect(result.stderr).toContain("Config file is not valid JSON")
     expect(fs.readFileSync(configPath, "utf8")).toBe(corruptConfigContent)
+  })
+
+  test("does not overwrite an unreadable config file", () => {
+    const tempDir = createTempConfigDir()
+    const configPath = path.join(tempDir, "config.json")
+    const sentinelConfig = '{"auth":{"apiKeys":["preserve-me"]}}\n'
+    fs.writeFileSync(configPath, sentinelConfig, "utf8")
+    fs.chmodSync(configPath, 0o200)
+
+    const result = runConfigScript(
+      tempDir,
+      'const { getConfig } = await import("./src/lib/config"); getConfig();',
+    )
+
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr).toContain("EACCES")
+    fs.chmodSync(configPath, 0o600)
+    expect(fs.readFileSync(configPath, "utf8")).toBe(sentinelConfig)
   })
 
   test("still generates a fresh config when the file is missing", () => {
