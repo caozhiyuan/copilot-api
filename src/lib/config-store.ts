@@ -209,7 +209,6 @@ function ensureConfigFile(): void {
       PATHS.CONFIG_PATH,
       `${JSON.stringify(defaultConfig, null, 2)}\n`,
     )
-    fs.chmodSync(PATHS.CONFIG_PATH, 0o600)
   }
 }
 

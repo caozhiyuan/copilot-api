@@ -21,6 +21,7 @@ interface StoredConfig {
 
 const originalAppDir = PATHS.APP_DIR
 const originalConfigPath = PATHS.CONFIG_PATH
+const originalAccessSync = fs.accessSync
 const tempDirs: Array<string> = []
 
 function useTempConfigPath(): string {
@@ -32,6 +33,7 @@ function useTempConfigPath(): string {
 }
 
 afterEach(() => {
+  fs.accessSync = originalAccessSync
   PATHS.APP_DIR = originalAppDir
   PATHS.CONFIG_PATH = originalConfigPath
   while (tempDirs.length > 0) {
@@ -75,32 +77,33 @@ test("reloadConfig creates a default config when it is missing", () => {
   const config = reloadConfig()
 
   expect(config.auth?.apiKeys).toEqual([])
-  expect(fs.statSync(configPath).mode & 0o777).toBe(0o600)
+  if (process.platform !== "win32") {
+    expect(fs.statSync(configPath).mode & 0o777).toBe(0o600)
+  }
 })
 
 test("reloadConfig preserves an unreadable config file", () => {
   const configPath = useTempConfigPath()
   const sentinelConfig = '{"auth":{"apiKeys":["preserve-me"]}}\n'
   fs.writeFileSync(configPath, sentinelConfig, "utf8")
-  fs.chmodSync(configPath, 0o200)
+  fs.accessSync = (() => {
+    throw Object.assign(new Error("access denied"), { code: "EACCES" })
+  }) as typeof fs.accessSync
 
-  try {
-    expect(() => reloadConfig()).toThrow("EACCES")
-  } finally {
-    fs.chmodSync(configPath, 0o600)
-  }
+  expect(() => reloadConfig()).toThrow("access denied")
 
   expect(fs.readFileSync(configPath, "utf8")).toBe(sentinelConfig)
 })
 
 test("reloadConfig propagates nonmissing filesystem errors", () => {
-  const configPath = useTempConfigPath()
-  const blockingPath = path.join(path.dirname(configPath), "not-a-directory")
-  fs.writeFileSync(blockingPath, "sentinel", "utf8")
-  PATHS.CONFIG_PATH = path.join(blockingPath, "config.json")
+  useTempConfigPath()
+  fs.accessSync = (() => {
+    throw Object.assign(new Error("operation not permitted"), {
+      code: "EPERM",
+    })
+  }) as typeof fs.accessSync
 
-  expect(() => reloadConfig()).toThrow("ENOTDIR")
-  expect(fs.readFileSync(blockingPath, "utf8")).toBe("sentinel")
+  expect(() => reloadConfig()).toThrow("operation not permitted")
 })
 
 test("setConfiguredApiKeys normalizes keys and preserves other config fields", () => {

@@ -99,23 +99,26 @@ describe("corrupt config file", () => {
     expect(fs.readFileSync(configPath, "utf8")).toBe(corruptConfigContent)
   })
 
-  test("does not overwrite an unreadable config file", () => {
-    const tempDir = createTempConfigDir()
-    const configPath = path.join(tempDir, "config.json")
-    const sentinelConfig = '{"auth":{"apiKeys":["preserve-me"]}}\n'
-    fs.writeFileSync(configPath, sentinelConfig, "utf8")
-    fs.chmodSync(configPath, 0o200)
+  test.skipIf(process.platform === "win32")(
+    "does not overwrite an unreadable config file",
+    () => {
+      const tempDir = createTempConfigDir()
+      const configPath = path.join(tempDir, "config.json")
+      const sentinelConfig = '{"auth":{"apiKeys":["preserve-me"]}}\n'
+      fs.writeFileSync(configPath, sentinelConfig, "utf8")
+      fs.chmodSync(configPath, 0o200)
 
-    const result = runConfigScript(
-      tempDir,
-      'const { getConfig } = await import("./src/lib/config"); getConfig();',
-    )
+      const result = runConfigScript(
+        tempDir,
+        'const { getConfig } = await import("./src/lib/config"); getConfig();',
+      )
 
-    expect(result.exitCode).not.toBe(0)
-    expect(result.stderr).toContain("EACCES")
-    fs.chmodSync(configPath, 0o600)
-    expect(fs.readFileSync(configPath, "utf8")).toBe(sentinelConfig)
-  })
+      expect(result.exitCode).not.toBe(0)
+      expect(result.stderr).toContain("EACCES")
+      fs.chmodSync(configPath, 0o600)
+      expect(fs.readFileSync(configPath, "utf8")).toBe(sentinelConfig)
+    },
+  )
 
   test("still generates a fresh config when the file is missing", () => {
     const tempDir = createTempConfigDir()
