@@ -457,30 +457,21 @@ npx @jeffreycao/copilot-api@latest start
 
 ## 配合 Docker 使用
 
-构建镜像：
+镜像以非 root 用户运行，将状态保存在 /data，启动前必须先配置网关 API Key。在仓库根目录执行：
 
 ```sh
-docker build -t copilot-api .
+cp .env.example .env
+docker compose build
+docker compose run --rm copilot-api auth keys --add YOUR_GATEWAY_API_KEY
+docker compose run --rm copilot-api auth login
+docker compose up -d --no-build
 ```
 
-通过 bind mount 运行容器，让认证数据在重启后保留：
+也可以在未跟踪的 .env 文件中设置 COPILOT_API_GITHUB_TOKEN，旧变量 GH_TOKEN 仍可回退使用。GitHub Token 通过环境变量传递，不进入进程参数；它不能代替网关 API Key。
 
-```sh
-mkdir -p ./copilot-data
-docker run --rm -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api --auth keys --add your-gateway-api-key
-docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api
-```
+Compose 默认使用持久化命名卷，宿主机只向 127.0.0.1 发布端口。已有 bind mount 的用户必须通过显式 bind mount 覆盖配置保留原数据源，不能直接切换到新的空命名卷。旧 /root/.local/share/copilot-api 挂载需要迁移到 /data，并准备非 root 用户所需权限。
 
-这会把宿主机上的 `./copilot-data` 映射到容器内的 `/root/.local/share/copilot-api`，用于持久化 GitHub 认证数据、provider 配置和其他 gateway 状态。
-镜像会显式监听 `0.0.0.0` 以支持 Docker 端口映射，并在未配置网关 API Key 时拒绝启动。非回环监听还会将 CORS 限制为请求自身的同源地址。
-
-也可以直接通过环境变量传入 GitHub token：
-
-```sh
-docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api -e GH_TOKEN=your_github_token_here copilot-api
-```
-
-entrypoint 会把 `GH_TOKEN` 导出为 `COPILOT_API_GITHUB_TOKEN`，因此 token 是通过环境变量交给服务的，不会出现在进程参数里。
+完整的首次初始化、备份与回滚、目录权限、代理、端口及 bind mount 部署方式见 [Docker 部署与迁移](docs/docker.zh-CN.md)。除非明确要删除持久化数据，否则不要执行 docker compose down -v。
 
 <a id="electron-desktop-app"></a>
 

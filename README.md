@@ -427,30 +427,21 @@ npx @jeffreycao/copilot-api@latest start
 
 ## Using with Docker
 
-Build the image:
+The image runs as non-root, stores state in /data, and requires a gateway API key before startup. From the repository root:
 
 ```sh
-docker build -t copilot-api .
+cp .env.example .env
+docker compose build
+docker compose run --rm copilot-api auth keys --add YOUR_GATEWAY_API_KEY
+docker compose run --rm copilot-api auth login
+docker compose up -d --no-build
 ```
 
-Run the container with a bind mount so auth data survives restarts:
+Alternatively, set COPILOT_API_GITHUB_TOKEN in your untracked .env file; GH_TOKEN remains a fallback. GitHub tokens are passed through the environment, not process arguments. A GitHub token does not replace the gateway API key.
 
-```sh
-mkdir -p ./copilot-data
-docker run --rm -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api --auth keys --add your-gateway-api-key
-docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api copilot-api
-```
+Compose uses a persistent named volume and binds the host port to 127.0.0.1 by default. Existing bind-mount users must keep their data source with the explicit bind-mount override rather than switching to an empty named volume. Old /root/.local/share/copilot-api mounts require migration to /data and ownership preparation.
 
-This stores GitHub auth data, provider config, and other gateway state in `./copilot-data` on the host, mapped to `/root/.local/share/copilot-api` in the container.
-The image explicitly listens on `0.0.0.0` so Docker port publishing works and refuses to start until at least one gateway API key is configured. Non-loopback listeners also restrict CORS to the request's own origin.
-
-Or pass a GitHub token directly:
-
-```sh
-docker run -p 4141:4141 -v $(pwd)/copilot-data:/root/.local/share/copilot-api -e GH_TOKEN=your_github_token_here copilot-api
-```
-
-The entrypoint exports `GH_TOKEN` as `COPILOT_API_GITHUB_TOKEN`, so the token is handed to the server through the environment instead of the process arguments.
+See [Docker deployment and migration](docs/docker.md) for first-run setup, backup and rollback, non-root permissions, proxy configuration, custom ports, and the bind-mount override. Do not use docker compose down -v unless intentionally deleting persistent data.
 
 ## Electron Desktop App
 

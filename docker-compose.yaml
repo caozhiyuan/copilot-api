@@ -1,0 +1,32 @@
+services:
+  copilot-api:
+    image: ${COPILOT_API_IMAGE:-copilot-api:local}
+    build: .
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+    ports:
+      - "${COPILOT_API_BIND:-127.0.0.1}:${COPILOT_API_PORT:-4141}:4141"
+    environment:
+      PORT: 4141
+      COPILOT_API_HOME: /data
+      COPILOT_API_GITHUB_TOKEN: ${COPILOT_API_GITHUB_TOKEN:-${GH_TOKEN:-}}
+      HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+      ALL_PROXY: ${ALL_PROXY:-${all_proxy:-}}
+      NO_PROXY: ${NO_PROXY:-${no_proxy:-127.0.0.1,localhost,::1}}
+    volumes:
+      - copilot-api-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  copilot-api-data:

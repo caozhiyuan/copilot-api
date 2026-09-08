@@ -21,6 +21,7 @@ import {
   getConfiguredApiKeys,
   getMissingApiKeysMessage,
 } from "./lib/request-auth"
+import { publishServerHealth } from "./lib/server-health"
 import {
   DEFAULT_SERVER_HOST,
   formatServerUrl,
@@ -239,7 +240,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   const { createServer } = await import("./server")
   const server = createServer({ networkExposed: binding.networkExposed })
 
-  serve({
+  const listener = serve({
     fetch: server.fetch as ServerHandler,
     hostname: binding.hostname,
     port: options.port,
@@ -247,6 +248,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
       idleTimeout: 0,
     },
   })
+  await publishServerHealth(listener)
 }
 
 export const start = defineCommand({
@@ -263,7 +265,7 @@ export const start = defineCommand({
     port: {
       alias: "p",
       type: "string",
-      default: "4141",
+      default: process.env.PORT?.trim() || "4141",
       description: "Port to listen on",
     },
     verbose: {

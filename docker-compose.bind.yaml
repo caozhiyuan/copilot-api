@@ -1,0 +1,8 @@
+services:
+  copilot-api:
+    volumes:
+      - type: bind
+        source: ${COPILOT_API_DATA_DIR:-./copilot-data}
+        target: /data
+        bind:
+          create_host_path: false

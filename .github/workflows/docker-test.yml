@@ -1,0 +1,79 @@
+name: Docker tests
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "src/**"
+      - "pages/**"
+      - "tests/**"
+      - "package.json"
+      - "bun.lock"
+      - "tsconfig.json"
+      - "tsdown.config.ts"
+      - "Dockerfile"
+      - "entrypoint.sh"
+      - "healthcheck.sh"
+      - "docker-compose*.yaml"
+      - ".env*.example"
+      - ".dockerignore"
+      - ".gitattributes"
+      - ".github/workflows/docker-test.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "pages/**"
+      - "tests/**"
+      - "package.json"
+      - "bun.lock"
+      - "tsconfig.json"
+      - "tsdown.config.ts"
+      - "Dockerfile"
+      - "entrypoint.sh"
+      - "healthcheck.sh"
+      - "docker-compose*.yaml"
+      - ".env*.example"
+      - ".dockerignore"
+      - ".gitattributes"
+      - ".github/workflows/docker-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-test-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: desktop
+      - name: Lint container-related TypeScript
+        run: bun run lint src/lib/config-store.ts src/lib/server-health.ts src/start.ts tests/config-corrupt.test.ts tests/config-store-io.test.ts tests/docker-entrypoint.test.ts tests/docker-healthcheck.test.ts tests/docker-smoke.test.ts tests/server-health.test.ts tests/server-startup-health.test.ts
+      - run: bun run typecheck
+      - run: bun test
+      - name: Validate Compose variants
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yaml -f docker-compose.bind.yaml config --quiet
+      - name: Build native image
+        run: docker build --tag copilot-api:test .
+      - name: Test container lifecycle
+        run: bun test tests/docker-smoke.test.ts
+        env:
+          COPILOT_API_DOCKER_TEST_IMAGE: copilot-api:test
