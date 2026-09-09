@@ -19,7 +19,7 @@ docker compose ps
 
 默认镜像 `copilot-api:local` 从当前源码构建。使用支持本部署约定的已发布镜像时，将 `COPILOT_API_IMAGE` 设置为版本标签或摘要，再执行 `docker compose pull` 和 `docker compose up -d --no-build`。不要假定旧镜像支持 `/data` 或新版入口脚本。本改动不调整仓库的镜像发布及标签策略。
 
-项目级命名卷 `copilot-api-data` 在容器重建和 `docker compose down` 后仍保留。**除非明确要删除数据，不要执行 `docker compose down -v`。** 升级时保持 Compose 项目名一致。Compose 使用只读根文件系统、可写临时文件系统、移除 capabilities、禁止提权和日志轮转；认证命令与服务使用相同的数据卷和限制。
+项目级命名卷 `copilot-api-data` 在容器重建和 `docker compose down` 后仍保留。**除非明确要删除数据，不要执行 `docker compose down -v`。** 升级时保持 Compose 项目名一致。Compose 使用只读根文件系统、可写临时文件系统、移除 capabilities、禁止提权和日志轮转；认证命令与服务使用相同的数据卷和限制。`XDG_CACHE_HOME` 指向 `/data/cache`，使 VSCode 设备 ID 保存在可写数据卷上；否则只读根文件系统会导致每次重建容器都生成临时设备 ID。
 
 ## 已有 bind mount 部署
 

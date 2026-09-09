@@ -172,6 +172,15 @@ describe.skipIf(!image)("Docker lifecycle (opt-in)", () => {
     ).toBe("http://127.0.0.1:8088/")
     expect(
       command([
+        "exec",
+        replacement,
+        "sh",
+        "-c",
+        "test -w /data && mkdir -p /data/cache && test -w /data/cache",
+      ]).code,
+    ).toBe(0)
+    expect(
+      command([
         "run",
         "--rm",
         ...hardening,

@@ -19,7 +19,7 @@ Choose a strong gateway key. The CLI key argument can appear in shell history an
 
 The default `copilot-api:local` image is built from this checkout. To use a published image that supports this deployment contract, set `COPILOT_API_IMAGE` to its version tag or digest, then run `docker compose pull` and `docker compose up -d --no-build`. Do not assume older images support `/data` or this entrypoint. This change does not alter the repository's image publishing or tag policy.
 
-The project-scoped `copilot-api-data` named volume survives container recreation and `docker compose down`. **Do not use `docker compose down -v` unless intentionally deleting your data.** Keep the same Compose project name when upgrading. Compose uses a read-only root filesystem, a writable temporary filesystem, dropped capabilities, no-new-privileges, and bounded logs. Authentication commands use the same volume and restrictions as the server.
+The project-scoped `copilot-api-data` named volume survives container recreation and `docker compose down`. **Do not use `docker compose down -v` unless intentionally deleting your data.** Keep the same Compose project name when upgrading. Compose uses a read-only root filesystem, a writable temporary filesystem, dropped capabilities, no-new-privileges, and bounded logs. Authentication commands use the same volume and restrictions as the server. `XDG_CACHE_HOME` points at `/data/cache` so the VSCode device ID persists on the writable volume; without it, the read-only root filesystem forces an ephemeral device ID on every container recreation.
 
 ## Existing bind mounts
 
