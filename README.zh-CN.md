@@ -380,7 +380,7 @@ AI gateway 会从同一个本地端点暴露 OpenAI / Anthropic 兼容 API，让
 ## 前置要求
 
 - Bun（>= 1.2.x）
-- 如果要通过 `npx` 运行已发布 CLI，需要 Node.js
+- 如果要通过 `npx` 运行已发布 CLI，需要 Node.js >= 22.13.0
 - 只有在使用 GitHub Copilot provider 时，才需要已订阅 Copilot 的 GitHub 账号
 - 如果不使用 GitHub Copilot，需要至少一个已配置 provider 的 API key 或 OAuth 登录
 
@@ -421,7 +421,7 @@ bun run start start
 你可以直接用 npx 运行本项目：
 
 > [!IMPORTANT]
-> 通过 `npx` 运行时，token usage 存储会使用 Node 内置的 `node:sqlite` 模块。该能力会在 Node.js >= 22.13.0 时启用；Node.js < 22.13.0 时 CLI 仍可启动，但会禁用 token usage 存储。
+> 通过 `npx` 运行时，token usage 存储会使用 Node 内置的 `node:sqlite` 模块。该能力会在 Node.js >= 22.13.0 时启用；Node.js < 22.13.0 不在 `engines` 声明的支持范围内，CLI 仍可启动，但会禁用 token usage 存储。
 >
 > 如果不升级 Node.js 但仍需要 token usage 存储，可以改用 Bun 运行已发布 CLI：`bunx --bun @jeffreycao/copilot-api@latest start`。
 
@@ -633,7 +633,7 @@ cp plugin/opencode/subagent-marker.js ~/.config/opencode/plugins/
 
 看板提供了更易读的 Copilot 用量视图：
 
-> token usage 历史记录需要 Bun 或 Node.js >= 22.13.0。Node.js < 22.13.0 时服务会正常运行，但 token usage 存储会被禁用。
+> token usage 历史记录需要 Bun 或 Node.js >= 22.13.0。Node.js < 22.13.0 不在 `engines` 声明的支持范围内，服务会正常运行，但 token usage 存储会被禁用。
 
 - **API Endpoint URL**：通过 URL 查询参数指定 API endpoints，默认指向本地服务。支持手动切换为其他兼容 endpoints。
 - **API Key 认证**：如果启用了 API Key 认证，可填入原始 API key（默认通过 `x-api-key` 请求头发送）或 `Authorization: Bearer <key>`。凭据会按 endpoint origin 保存在浏览器本地存储中；切换到不同 endpoint origin 时，不会自动携带其他 origin 的凭据。

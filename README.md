@@ -358,7 +358,7 @@ On the GitHub Copilot path, the gateway prefers Copilot's native Anthropic-style
 ## Prerequisites
 
 - Bun (>= 1.2.x)
-- Node.js if you plan to run the published CLI with `npx`
+- Node.js >= 22.13.0 if you plan to run the published CLI with `npx`
 - GitHub account with Copilot subscription only if you want to use the GitHub Copilot provider
 - An API key or OAuth login for at least one configured provider if you want to run without GitHub Copilot
 
@@ -393,7 +393,7 @@ bun run start start
 You can run the project directly using npx:
 
 > [!IMPORTANT]
-> Token usage storage uses Node's built-in `node:sqlite` module when running with `npx`. It is enabled on Node.js >= 22.13.0. On Node.js < 22.13.0, the CLI still starts, but token usage storage is disabled.
+> Token usage storage uses Node's built-in `node:sqlite` module when running with `npx`. It is enabled on Node.js >= 22.13.0. Node.js < 22.13.0 is outside the range declared in `engines`: the CLI still starts, but token usage storage is disabled.
 >
 > If you want token usage storage without upgrading Node.js, run the published CLI with Bun instead: `bunx --bun @jeffreycao/copilot-api@latest start`.
 
@@ -595,7 +595,7 @@ After starting the server, a URL to the Copilot Usage Dashboard will be displaye
 
 The dashboard provides a user-friendly interface to view your Copilot usage data:
 
-> Token usage history requires Bun or Node.js >= 22.13.0. On Node.js < 22.13.0, the server runs normally but token usage storage is disabled.
+> Token usage history requires Bun or Node.js >= 22.13.0. Node.js < 22.13.0 is outside the range declared in `engines`: the server runs normally but token usage storage is disabled.
 
 - **API Endpoint URL**: The dashboard is pre-configured to fetch data from your local server endpoint via a URL query parameter. You can manually switch this to any other compatible API endpoint.
 - **API Key Authentication**: If API Key authentication is enabled, enter a raw API key (sent as the `x-api-key` header) or `Authorization: Bearer <key>`. Credentials are remembered in the browser's local storage per endpoint origin, and switching to a different endpoint origin does not automatically send the previous credential.

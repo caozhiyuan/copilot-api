@@ -50,8 +50,7 @@
     "desktop/**/*": "eslint --config desktop/eslint.config.mjs --cache --fix"
   },
   "overrides": {
-    "@hono/node-server": "^1.19.15",
-    "rolldown": "1.0.0-rc.18"
+    "@hono/node-server": "^1.19.15"
   },
   "dependencies": {
     "@azure/identity": "^4.13.2",
@@ -89,11 +88,11 @@
     "prettier": "^3.6.2",
     "prettier-plugin-packagejson": "^2.5.19",
     "simple-git-hooks": "^2.13.1",
-    "tsdown": "^0.15.6",
+    "tsdown": "^0.23.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.41.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   }
 }
