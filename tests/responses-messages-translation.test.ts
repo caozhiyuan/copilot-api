@@ -45,6 +45,12 @@ describe("Responses Lite to Messages translation", () => {
     )
   })
 
+  test("includes aborted exec retry guidance in tool call tips", () => {
+    expect(MESSAGES_TOOL_CALL_TIPS).toContain(
+      "- If `functions__exec` returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that `functions__exec` is unavailable.",
+    )
+  })
+
   test("prefers request session affinity for metadata user id", () => {
     const result = requestContext.run(
       {
