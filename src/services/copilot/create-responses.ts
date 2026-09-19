@@ -27,6 +27,12 @@ import {
 } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import { findEndpointModel } from "~/lib/models"
+import { requestContext } from "~/lib/request-context"
+import {
+  buildResponsesRecoveryKey,
+  canUseResponsesHttpFallback,
+} from "~/services/responses-transport-recovery"
 import {
   createPooledWebSocketStream,
   createWebSocketUrl,
@@ -35,6 +41,8 @@ import {
   createResponsesSafeStream,
   encodePoolKeyPart,
   isTerminalResponsesStreamChunk,
+  isSuccessfulResponsesStreamChunk,
+  isFailedResponsesStreamChunk,
 } from "~/services/responses-websocket-helpers"
 import {
   createResponsesHttpEventStream,
@@ -94,7 +102,35 @@ export const createResponses = async (
         subagentMarker,
       },
     )
-    const stream = createPooledResponsesWebSocketStream(websocketRequest)
+    const canFallback =
+      findEndpointModel(payload.model)?.supported_endpoints?.includes(
+        "/responses",
+      ) && canUseResponsesHttpFallback(payload)
+    const recovery =
+      canFallback ?
+        {
+          key: buildResponsesRecoveryKey([
+            websocketRequest.url,
+            state.copilotToken,
+            payload.model,
+            sessionId
+              || requestContext.getStore()?.sessionAffinity
+              || requestId,
+            subagentMarker?.session_id ?? "",
+            subagentMarker?.agent_id ?? "",
+          ]),
+          httpFallback: async () =>
+            (await createHttpResponses(
+              payload,
+              headers,
+              signal,
+            )) as ResponsesStream,
+        }
+      : undefined
+    const stream = createPooledResponsesWebSocketStream(
+      websocketRequest,
+      recovery,
+    )
     return stream
   }
 
@@ -203,6 +239,7 @@ export const getResponsesWebSocketInitiator = (
 
 const createPooledResponsesWebSocketStream = (
   request: ResponsesWebSocketRequest,
+  recovery?: { key: string; httpFallback: () => Promise<ResponsesStream> },
 ): ResponsesStream => {
   const transportConfig = getResponsesTransportConfig()
   return createResponsesSafeStream(
@@ -211,6 +248,9 @@ const createPooledResponsesWebSocketStream = (
       maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
       maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
       isTerminalChunk: isTerminalResponsesStreamChunk,
+      isReusableChunk: isSuccessfulResponsesStreamChunk,
+      isFailureChunk: isFailedResponsesStreamChunk,
+      recovery,
       openErrorMessage: "Failed to create responses websocket",
       openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
       poolIdleTimeoutMs: transportConfig.websocketPoolIdleTimeoutMs,

@@ -434,7 +434,7 @@ test("forwardCodexResponses emits an error event when the websocket closes witho
       model: "gpt-5.4",
       stream: true,
     },
-    new Headers(),
+    new Headers({ "session-id": "missing-terminal" }),
     undefined,
     {
       transport: "websocket",
@@ -474,6 +474,49 @@ test("forwardCodexResponses propagates cancellation to an active websocket", asy
 
   expect(await chunksPromise).toEqual([])
   expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+})
+
+test("Codex recovers on a new message in the same session using HTTP", async () => {
+  MockWebSocket.autoComplete = false
+  const createRequest = async (sessionId: string, message: string) =>
+    (await forwardCodexResponses(
+      { input: message, model: "gpt-5.4", stream: true },
+      new Headers({ "session-id": sessionId, "x-request-id": message }),
+      undefined,
+      { transport: "websocket" },
+    )) as AsyncIterable<unknown>
+
+  const first = collectStreamChunks(
+    await createRequest("codex-recovery", "first"),
+  )
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+  MockWebSocket.instances[0]?.close()
+  expect((await first).at(-1)?.event).toBe("error")
+  expect(fetchMock).not.toHaveBeenCalled()
+  fetchMock.mockImplementation(() =>
+    Promise.resolve(
+      new Response(
+        `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: createResponsesResult("gpt-5.4", "recovered") })}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    ),
+  )
+
+  const second = await collectStreamChunks(
+    await createRequest("codex-recovery", "second"),
+  )
+  expect(second.at(-1)?.event).toBe("response.completed")
+  expect(second.at(-1)?.data).toContain("recovered")
+  expect(MockWebSocket.instances).toHaveLength(1)
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(fetchMock.mock.calls[0]?.[1]?.body).toContain("second")
+
+  MockWebSocket.autoComplete = true
+  await collectStreamChunks(
+    await createRequest("different-codex-session", "other"),
+  )
+  expect(MockWebSocket.instances).toHaveLength(2)
+  expect(fetchMock).toHaveBeenCalledTimes(1)
 })
 
 const collectStreamChunks = async (

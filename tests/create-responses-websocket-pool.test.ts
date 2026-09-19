@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
 
-import type { ResponsesResult } from "~/lib/types/responses"
+import type { ResponsesResult, ResponsesStream } from "~/lib/types/responses"
 
 type ListenerEvent = {
   data?: unknown
@@ -16,6 +16,7 @@ type MockWebSocketInit = {
 }
 
 const originalClearTimeout = globalThis.clearTimeout
+const originalFetch = globalThis.fetch
 const originalSetTimeout = globalThis.setTimeout
 const proxyEnvKeys = [
   "http_proxy",
@@ -189,6 +190,7 @@ const { createResponsesSafeStream } = await import(
 )
 
 const originalState = {
+  models: state.models,
   accountType: state.accountType,
   copilotApiUrl: state.copilotApiUrl,
   copilotToken: state.copilotToken,
@@ -235,6 +237,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  state.models = originalState.models
+  globalThis.fetch = originalFetch
   MockWebSocket.autoComplete = true
   MockWebSocket.closeAfterComplete = false
   MockWebSocket.failOpen = false
@@ -844,6 +848,189 @@ test("Responses websocket buffer overflow emits one error and invalidates the so
   MockWebSocket.instances[1]?.completeLatestResponse()
   await nextChunksPromise
   expect(MockWebSocket.instances).toHaveLength(2)
+})
+
+const enableRecoveryModel = (
+  endpoints = ["/responses", "ws:/responses"],
+): void => {
+  state.models = {
+    object: "list",
+    data: [
+      {
+        id: "gpt-test",
+        name: "test",
+        object: "model",
+        vendor: "test",
+        version: "1",
+        preview: false,
+        model_picker_enabled: true,
+        supported_endpoints: endpoints,
+        capabilities: {
+          family: "test",
+          object: "model_capabilities",
+          type: "chat",
+          tokenizer: "test",
+          limits: {},
+          supports: { streaming: true },
+        },
+      },
+    ],
+  }
+}
+
+const recoveryRequest = async (
+  sessionId: string,
+  requestId: string,
+  signal?: AbortSignal,
+): Promise<ResponsesStream> =>
+  (await createResponses(
+    { model: "gpt-test", stream: true, input: `message-${requestId}` },
+    {
+      sessionId,
+      requestId,
+      signal,
+      initiator: "user",
+      vision: false,
+      transport: "websocket",
+    },
+  )) as ResponsesStream
+
+const mockRecoveryHttp = () => {
+  const fetchMock = mock((_input: unknown, _init?: RequestInit) =>
+    Promise.resolve(
+      new Response(
+        `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: createResponsesResult("gpt-test", "http-recovered") })}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    ),
+  )
+  globalThis.fetch = fetchMock as unknown as typeof fetch
+  return fetchMock
+}
+
+test("a dropped stream recovers on the next message in the same session without replaying partial output", async () => {
+  enableRecoveryModel()
+  MockWebSocket.autoComplete = false
+  const http = mockRecoveryHttp()
+  const first = (await recoveryRequest("recover-drop", "first"))[
+    Symbol.asyncIterator
+  ]()
+  const firstItem = first.next()
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+  MockWebSocket.instances[0]?.emitMessage(
+    JSON.stringify({ type: "response.output_text.delta", delta: "partial" }),
+  )
+  expect((await firstItem).value?.data).toContain("partial")
+  const failedItem = first.next()
+  MockWebSocket.instances[0]?.emitError({
+    error: new Error("connection reset"),
+  })
+  expect((await failedItem).value?.event).toBe("error")
+  await first.next()
+  expect(http).not.toHaveBeenCalled()
+  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+
+  const chunks = await collectStreamChunks(
+    await recoveryRequest("recover-drop", "new-message"),
+  )
+  expect(chunks.at(-1)?.event).toBe("response.completed")
+  expect(chunks.at(-1)?.data).toContain("http-recovered")
+  expect(http).toHaveBeenCalledTimes(1)
+  expect(http.mock.calls[0]?.[1]?.body).toContain("message-new-message")
+  expect(MockWebSocket.instances).toHaveLength(1)
+
+  MockWebSocket.autoComplete = true
+  await collectStreamChunks(await recoveryRequest("unrelated-session", "other"))
+  expect(MockWebSocket.instances).toHaveLength(2)
+  expect(http).toHaveBeenCalledTimes(1)
+})
+
+test.each(["error", "response.failed"])(
+  "upstream %s invalidates the socket before the next same-session request",
+  async (type) => {
+    enableRecoveryModel()
+    MockWebSocket.autoComplete = false
+    const http = mockRecoveryHttp()
+    const sessionId = `recover-${type}`
+    const first = (await recoveryRequest(sessionId, "first"))[
+      Symbol.asyncIterator
+    ]()
+    const failedItem = first.next()
+    await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+    MockWebSocket.instances[0]?.emitMessage(
+      JSON.stringify({
+        type,
+        error: { code: "internal_error", message: "upstream failed" },
+      }),
+    )
+    expect((await failedItem).value?.event).toBe(type)
+    expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.CLOSED)
+    // Deliberately leave the previous consumer suspended at its terminal event.
+    const chunks = await collectStreamChunks(
+      await recoveryRequest(sessionId, "second"),
+    )
+    expect(chunks.at(-1)?.event).toBe("response.completed")
+    expect(http).toHaveBeenCalledTimes(1)
+    await first.return?.()
+  },
+)
+
+test("a model without HTTP Responses reconnects with a fresh websocket", async () => {
+  enableRecoveryModel(["ws:/responses"])
+  MockWebSocket.autoComplete = false
+  const http = mockRecoveryHttp()
+  const first = collectStreamChunks(await recoveryRequest("ws-only", "same"))
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+  MockWebSocket.instances[0]?.close()
+  expect((await first).at(-1)?.event).toBe("error")
+  MockWebSocket.autoComplete = true
+  const chunks = await collectStreamChunks(
+    await recoveryRequest("ws-only", "same"),
+  )
+  expect(chunks.at(-1)?.event).toBe("response.completed")
+  expect(MockWebSocket.instances).toHaveLength(2)
+  expect(http).not.toHaveBeenCalled()
+})
+
+test("user cancellation does not switch subsequent messages to HTTP", async () => {
+  enableRecoveryModel()
+  MockWebSocket.autoComplete = false
+  const http = mockRecoveryHttp()
+  const controller = new AbortController()
+  const first = collectStreamChunks(
+    await recoveryRequest("cancel-recovery", "same", controller.signal),
+  )
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+  controller.abort()
+  expect(await first).toHaveLength(0)
+  MockWebSocket.autoComplete = true
+  await collectStreamChunks(await recoveryRequest("cancel-recovery", "same"))
+  expect(MockWebSocket.instances).toHaveLength(2)
+  expect(http).not.toHaveBeenCalled()
+})
+
+test("a failed HTTP recovery does not poison the following message", async () => {
+  enableRecoveryModel()
+  MockWebSocket.autoComplete = false
+  const http = mockRecoveryHttp()
+  const first = collectStreamChunks(
+    await recoveryRequest("http-retry", "first"),
+  )
+  await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
+  MockWebSocket.instances[0]?.close()
+  await first
+  http.mockImplementationOnce(() =>
+    Promise.resolve(new Response("unavailable", { status: 503 })),
+  )
+  const second = await collectStreamChunks(
+    await recoveryRequest("http-retry", "second"),
+  )
+  expect(second.at(-1)?.event).toBe("error")
+  const third = await collectStreamChunks(
+    await recoveryRequest("http-retry", "third"),
+  )
+  expect(third.at(-1)?.event).toBe("response.completed")
+  expect(http).toHaveBeenCalledTimes(2)
 })
 
 const createTestPooledStream = (

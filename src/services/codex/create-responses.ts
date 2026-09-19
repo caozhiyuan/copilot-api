@@ -28,7 +28,13 @@ import {
   createResponsesSafeStream,
   encodePoolKeyPart,
   isTerminalResponsesStreamChunk,
+  isSuccessfulResponsesStreamChunk,
+  isFailedResponsesStreamChunk,
 } from "~/services/responses-websocket-helpers"
+import {
+  buildResponsesRecoveryKey,
+  canUseResponsesHttpFallback,
+} from "~/services/responses-transport-recovery"
 import {
   createResponsesHttpEventStream,
   fetchResponsesWithLifecycle,
@@ -469,11 +475,40 @@ const forwardCodexResponsesOverWebSocket = (
     signal,
   )
 
-  return createCodexResponsesWebSocketStream(websocketRequest)
+  const headers = new Headers(websocketRequest.headers)
+  const sessionId =
+    requestHeaders.get("session-id")
+    || requestHeaders.get("x-session-id")
+    || requestHeaders.get("session_id")
+    || headers.get("session-id")
+    || headers.get("session_id")
+    || headers.get("x-session-affinity")
+    || headers.get("x-client-request-id")
+    || websocketRequest.poolKey
+  const recovery =
+    canUseResponsesHttpFallback(payload) ?
+      {
+        key: buildResponsesRecoveryKey([
+          websocketRequest.url,
+          state.codexAccessToken ?? "",
+          state.codexAccountId ?? "",
+          payload.model,
+          sessionId,
+        ]),
+        httpFallback: async () =>
+          (await forwardCodexResponses(payload, requestHeaders, baseUrl, {
+            signal,
+            transport: "http",
+          })) as ResponsesStream,
+      }
+    : undefined
+
+  return createCodexResponsesWebSocketStream(websocketRequest, recovery)
 }
 
 const createCodexResponsesWebSocketStream = (
   request: CodexResponsesWebSocketRequest,
+  recovery?: { key: string; httpFallback: () => Promise<ResponsesStream> },
 ): ResponsesStream => {
   const transportConfig = getResponsesTransportConfig()
   return createResponsesSafeStream(
@@ -482,6 +517,9 @@ const createCodexResponsesWebSocketStream = (
       maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
       maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
       isTerminalChunk: isTerminalResponsesStreamChunk,
+      isReusableChunk: isSuccessfulResponsesStreamChunk,
+      isFailureChunk: isFailedResponsesStreamChunk,
+      recovery,
       openErrorMessage: "Failed to create codex responses websocket",
       openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
       poolIdleTimeoutMs: transportConfig.websocketPoolIdleTimeoutMs,

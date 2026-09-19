@@ -2,6 +2,8 @@ import consola from "consola"
 import { getProxyForUrl } from "proxy-from-env"
 import { WebSocket } from "undici"
 
+import { responsesTransportRecovery } from "~/services/responses-transport-recovery"
+
 export interface PooledWebSocketRequest<TPayload> {
   headers: Record<string, string>
   payload: TPayload
@@ -13,6 +15,12 @@ export interface PooledWebSocketRequest<TPayload> {
 export interface PooledWebSocketStreamOptions<TChunk> {
   createChunk: (data: string) => TChunk
   isTerminalChunk: (chunk: TChunk) => boolean
+  isReusableChunk?: (chunk: TChunk) => boolean
+  isFailureChunk?: (chunk: TChunk) => boolean
+  recovery?: {
+    key: string
+    httpFallback: () => Promise<AsyncIterable<TChunk>>
+  }
   maxBufferedBytes: number
   maxBufferedMessages: number
   openErrorMessage: string
@@ -159,6 +167,14 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
   options: PooledWebSocketStreamOptions<TChunk>,
 ): AsyncIterable<TChunk> {
   throwIfAborted(request.signal)
+  const recovery = options.recovery
+  if (recovery && responsesTransportRecovery.shouldUseHttp(recovery.key)) {
+    consola.info(
+      "Using HTTP Responses after a websocket failure in this session",
+    )
+    yield* await recovery.httpFallback()
+    return
+  }
   const { entry, pooled } = getPooledWebSocketRequestTarget(request, options)
   const release = acquirePooledWebSocketEntry(request.poolKey, entry, pooled)
   let messageStream: WebSocketMessageStream | null = null
@@ -185,7 +201,16 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
       const isTerminal = options.isTerminalChunk(chunk)
       if (isTerminal) {
         messageStream.complete()
-        reusable = true
+        reusable = options.isReusableChunk?.(chunk) ?? true
+        if (options.isFailureChunk?.(chunk) && recovery) {
+          responsesTransportRecovery.recordFailure(recovery.key)
+        }
+        // Invalidate before yielding the error: the downstream may immediately
+        // start another request, or stop consuming without resuming this generator.
+        if (!reusable) {
+          messageStream.dispose()
+          removePooledWebSocketEntry(request.poolKey, entry)
+        }
       }
 
       yield chunk
@@ -197,6 +222,13 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
 
     throw new Error(options.terminalChunkMissingMessage)
   } catch (error) {
+    if (
+      recovery
+      && !request.signal?.aborted
+      && !(error instanceof Error && error.name === "AbortError")
+    ) {
+      responsesTransportRecovery.recordFailure(recovery.key)
+    }
     throw toError(error)
   } finally {
     messageStream?.dispose()

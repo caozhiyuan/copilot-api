@@ -53,6 +53,25 @@ export const isTerminalResponsesStreamChunk = (chunk: {
   }
 }
 
+export const isSuccessfulResponsesStreamChunk = (chunk: {
+  data?: string
+}): boolean => getResponsesStreamEventType(chunk) === "response.completed"
+
+export const isFailedResponsesStreamChunk = (chunk: {
+  data?: string
+}): boolean => {
+  const type = getResponsesStreamEventType(chunk)
+  return type === "error" || type === "response.failed"
+}
+
+const getResponsesStreamEventType = (chunk: { data?: string }): unknown => {
+  try {
+    return (JSON.parse(chunk.data ?? "") as { type?: unknown })?.type
+  } catch {
+    return undefined
+  }
+}
+
 export const createResponsesSafeStream = async function* <
   TChunk extends ResponsesStreamErrorChunk,
 >(
