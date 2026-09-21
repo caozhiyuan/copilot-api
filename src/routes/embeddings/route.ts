@@ -1,10 +1,12 @@
 import { Hono } from "hono"
 
 import {
+  assertBodySizeWithinLimit,
   BodySizeLimitExceededError,
   readBodyWithLimit,
 } from "~/lib/bounded-body"
 import { resolveMappedModel, type ResolvedProviderConfig } from "~/lib/config"
+import { streamEmbeddingResponseBody } from "~/lib/embedding-response-stream"
 import {
   forwardError,
   HTTPError,
@@ -28,6 +30,7 @@ import {
 } from "~/services/providers/provider-proxy"
 
 export const PROVIDER_EMBEDDINGS_RESPONSE_BYTE_LIMIT = 32 * 1024 * 1024
+const PROVIDER_EMBEDDINGS_ERROR_RESPONSE_BYTE_LIMIT = 1024 * 1024
 
 export const embeddingRouteDependencies = {
   createEmbeddings,
@@ -60,36 +63,28 @@ embeddingRoutes.post("/", async (c) => {
           c.req.raw.headers,
           { clientSignal: c.req.raw.signal },
         )
-      let responseBytes: Uint8Array
-      try {
-        responseBytes = await readBodyWithLimit(
-          upstreamResponse.body,
-          PROVIDER_EMBEDDINGS_RESPONSE_BYTE_LIMIT,
-          upstreamResponse.headers.get("content-length"),
-        )
-      } catch (error) {
-        if (error instanceof BodySizeLimitExceededError) {
-          throw new UpstreamResponseSizeLimitExceededError(error.maxBytes)
-        }
-        throw error
-      }
-
-      const bufferedUpstreamResponse = new Response(responseBytes, {
-        headers: upstreamResponse.headers,
-        status: upstreamResponse.status,
-        statusText: upstreamResponse.statusText,
-      })
-      if (!bufferedUpstreamResponse.ok) {
+      assertProviderResponseWithinLimit(upstreamResponse)
+      if (!upstreamResponse.ok) {
+        const bufferedUpstreamResponse =
+          await bufferProviderErrorResponse(upstreamResponse)
         throw new HTTPError(
           `Failed to create ${providerModelAlias.provider} embeddings`,
           bufferedUpstreamResponse,
         )
       }
 
-      const responseText = new TextDecoder().decode(responseBytes)
-      const responseBody = JSON.parse(responseText) as EmbeddingResponse
-      recordEmbeddingUsage(responseBody, payload.model, providerConfig)
-      return createProviderProxyResponse(bufferedUpstreamResponse)
+      const recordUsage = createEmbeddingUsageRecorder(
+        payload.model,
+        providerConfig,
+      )
+      const responseBody = streamEmbeddingResponseBody(
+        upstreamResponse.body,
+        PROVIDER_EMBEDDINGS_RESPONSE_BYTE_LIMIT,
+        (promptTokens) => {
+          recordUsage({ input_tokens: promptTokens, output_tokens: 0 })
+        },
+      )
+      return createProviderProxyResponse(upstreamResponse, responseBody)
     }
 
     const response = await embeddingRouteDependencies.createEmbeddings(payload)
@@ -100,13 +95,48 @@ embeddingRoutes.post("/", async (c) => {
   }
 })
 
-function recordEmbeddingUsage(
-  response: EmbeddingResponse,
+function assertProviderResponseWithinLimit(response: Response): void {
+  try {
+    assertBodySizeWithinLimit(
+      response.body,
+      PROVIDER_EMBEDDINGS_RESPONSE_BYTE_LIMIT,
+      response.headers.get("content-length"),
+    )
+  } catch (error) {
+    if (error instanceof BodySizeLimitExceededError) {
+      throw new UpstreamResponseSizeLimitExceededError(error.maxBytes)
+    }
+    throw error
+  }
+}
+
+async function bufferProviderErrorResponse(
+  response: Response,
+): Promise<Response> {
+  try {
+    const responseBytes = await readBodyWithLimit(
+      response.body,
+      PROVIDER_EMBEDDINGS_ERROR_RESPONSE_BYTE_LIMIT,
+      response.headers.get("content-length"),
+    )
+    return new Response(responseBytes, {
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
+    })
+  } catch (error) {
+    if (error instanceof BodySizeLimitExceededError) {
+      throw new UpstreamResponseSizeLimitExceededError(error.maxBytes)
+    }
+    throw error
+  }
+}
+
+function createEmbeddingUsageRecorder(
   model: string,
   providerConfig?: ResolvedProviderConfig,
-): void {
-  const recordUsage =
-    providerConfig ?
+) {
+  return providerConfig ?
       createProviderTokenUsageRecorder({
         endpoint: "embeddings",
         model,
@@ -118,9 +148,13 @@ function recordEmbeddingUsage(
         endpoint: "embeddings",
         model,
       })
+}
 
-  recordUsage({
-    input_tokens: response.usage.prompt_tokens,
-    output_tokens: 0,
-  })
+function recordEmbeddingUsage(
+  response: EmbeddingResponse,
+  model: string,
+  providerConfig?: ResolvedProviderConfig,
+): void {
+  const recordUsage = createEmbeddingUsageRecorder(model, providerConfig)
+  recordUsage({ input_tokens: response.usage.prompt_tokens, output_tokens: 0 })
 }

@@ -18,11 +18,11 @@ function exceedsDeclaredSize(
   return !Number.isSafeInteger(declaredSize) || declaredSize > maxBytes
 }
 
-export async function readBodyWithLimit(
+export function assertBodySizeWithinLimit(
   body: ReadableStream<Uint8Array> | null,
   maxBytes: number,
   contentLength?: string | null,
-): Promise<Uint8Array> {
+): void {
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer")
   }
@@ -32,6 +32,14 @@ export async function readBodyWithLimit(
     void body?.cancel(error).catch(() => {})
     throw error
   }
+}
+
+export async function readBodyWithLimit(
+  body: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+  contentLength?: string | null,
+): Promise<Uint8Array> {
+  assertBodySizeWithinLimit(body, maxBytes, contentLength)
   if (!body) return new Uint8Array()
 
   const reader = body.getReader()
