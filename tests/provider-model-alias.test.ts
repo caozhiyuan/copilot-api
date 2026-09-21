@@ -179,6 +179,22 @@ describe("provider/model aliases on top-level messages routes", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  test("rejects Claude fallback models on the top-level Messages route", async () => {
+    const response = await createApp().request("/v1/messages", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "gpt-5",
+        models: ["gpt-5", "claude-sonnet-4"],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test("rejects a provider-prefixed Claude model", async () => {
     const response = await createApp().request("/v1/messages", {
       body: JSON.stringify({

@@ -148,6 +148,76 @@ describe("openai-compatible provider messages", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  test("rejects Claude fallback models from provider configuration", async () => {
+    providerConfig = {
+      ...providerConfig,
+      models: {
+        "mai-provider": {
+          extraBody: {
+            models: ["mai-provider", "anthropic/claude-sonnet-4"],
+          },
+          toolContentSupportType: [],
+        },
+      },
+    } as ResolvedProviderConfig
+
+    const response = await createApp().request("/dash/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "mai-provider",
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects Claude fallback models on native provider forwarding", async () => {
+    providerConfig = {
+      ...providerConfig,
+      type: "anthropic",
+      models: {
+        "mai-provider": {
+          extraBody: {
+            models: ["mai-provider", "claude-sonnet-4"],
+          },
+        },
+      },
+    } as ResolvedProviderConfig
+
+    const response = await createApp().request("/dash/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "mai-provider",
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects runtime Claude fallback models before forwarding", async () => {
+    const response = await createApp().request("/dash/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "mai-provider",
+        models: ["mai-provider", "claude-opus-4"],
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test("merges message-level system prompts before OpenAI-compatible translation", async () => {
     providerConfig = {
       ...providerConfig,

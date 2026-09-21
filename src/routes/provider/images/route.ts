@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono"
 
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
-import { isAllowedModel, modelNotAllowedResponse } from "~/lib/model-admission"
+import { assertAllowedModel, ModelNotAllowedError } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { forwardProviderImagesWithLogging } from "~/routes/images/forward-provider-images"
 import { withParsedImagesRequest } from "~/routes/images/parsed-request"
@@ -41,9 +41,10 @@ async function handleProviderImages(
       c.req.raw,
       operation,
       async (parsed) => {
-        if (parsed instanceof Request || !isAllowedModel(parsed.model)) {
-          return modelNotAllowedResponse(c)
+        if (parsed instanceof Request) {
+          throw new ModelNotAllowedError()
         }
+        assertAllowedModel(parsed.model)
 
         const request = parsed.createRequest(parsed.model)
         if (providerConfig.name === "codex") {

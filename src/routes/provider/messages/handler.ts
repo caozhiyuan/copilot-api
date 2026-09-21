@@ -37,7 +37,7 @@ import {
 } from "~/lib/dashscope"
 import { HTTPError } from "~/lib/error"
 import { createHandlerLogger, debugJson, debugLazy } from "~/lib/logger"
-import { assertAllowedModel } from "~/lib/model-admission"
+import { assertAllowedModelSelection } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { writeSSEIfConnected } from "~/lib/sse"
 import { resolveBridgeToolSearchName } from "~/lib/tool-search"
@@ -141,7 +141,7 @@ export async function handleProviderMessagesForProvider(
   },
 ): Promise<Response> {
   const { payload, provider, usageEndpoint } = options
-  assertAllowedModel(payload.model)
+  assertAllowedModelSelection(payload)
 
   const providerConfig =
     await providerMessagesHandlerDependencies.resolveProviderConfig(provider)
@@ -213,6 +213,7 @@ export async function handleProviderMessagesForProvider(
       payload,
       provider,
     })
+    assertAllowedModelSelection(payload)
     const upstreamResponse = await forwardProviderMessages(
       effectiveType === providerConfig.type ?
         providerConfig
@@ -297,6 +298,7 @@ const handleOpenAIResponsesProviderWebSearchMessages = async (
   })
 
   if (providerConfig.name === "codex") {
+    assertAllowedModelSelection(responsesPayload)
     const upstreamResponse = await forwardCodexResponses(
       responsesPayload,
       c.req.raw.headers,
@@ -332,6 +334,7 @@ const handleOpenAIResponsesProviderWebSearchMessages = async (
     })
   }
 
+  assertAllowedModelSelection(responsesPayload)
   const upstreamResponse = await forwardProviderResponses(
     providerConfig,
     responsesPayload,
@@ -427,6 +430,7 @@ const handleOpenAIResponsesProviderMessages = async (
   })
 
   if (providerConfig.name === "codex") {
+    assertAllowedModelSelection(responsesPayload)
     const upstreamResponse = await forwardCodexResponses(
       responsesPayload,
       c.req.raw.headers,
@@ -477,6 +481,7 @@ const handleOpenAIResponsesProviderMessages = async (
     })
   }
 
+  assertAllowedModelSelection(responsesPayload)
   const upstreamResponse = await forwardProviderResponses(
     providerConfig,
     responsesPayload,
@@ -576,6 +581,7 @@ const handleOpenAICompatibleProviderMessages = async (
     provider,
   })
 
+  assertAllowedModelSelection(openAIPayload)
   const upstreamResponse = await forwardProviderChatCompletions(
     providerConfig,
     openAIPayload,

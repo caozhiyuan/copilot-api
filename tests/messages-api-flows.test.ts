@@ -578,7 +578,7 @@ test("messages Messages flow records Copilot AIU from streaming message delta", 
   const payload: AnthropicMessagesPayload = {
     max_tokens: 128,
     messages: [{ role: "user", content: "hello" }],
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
     stream: true,
   }
   const app = new Hono()
@@ -599,7 +599,7 @@ test("messages Messages flow records Copilot AIU from streaming message delta", 
     period: "today",
   })
 
-  expect(capturedMessagesPayload?.model).toBe("claude-sonnet-4.6")
+  expect(capturedMessagesPayload?.model).toBe("gpt-5.4")
   expect(usageEvents.items).toHaveLength(1)
   expect(usageEvents.items[0]).toMatchObject({
     cache_creation_input_tokens: 10_612,
@@ -611,7 +611,7 @@ test("messages Messages flow records Copilot AIU from streaming message delta", 
       total_cost_nanos: 41_199_000,
     },
     input_tokens: 3,
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
     output_tokens: 93,
     total_nano_aiu: 4_119_900_000,
   })
@@ -659,7 +659,7 @@ test("messages Messages flow emits an error event when the stream ends without m
   const payload: AnthropicMessagesPayload = {
     max_tokens: 128,
     messages: [{ role: "user", content: "hello" }],
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
     stream: true,
   }
   const app = new Hono()
@@ -725,7 +725,7 @@ test("messages Messages flow emits an error event when the upstream stream throw
   const payload: AnthropicMessagesPayload = {
     max_tokens: 128,
     messages: [{ role: "user", content: "hello" }],
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
     stream: true,
   }
   const app = new Hono()
@@ -767,7 +767,7 @@ test("messages Messages flow forwards an upstream error event without appending 
   const payload: AnthropicMessagesPayload = {
     max_tokens: 128,
     messages: [{ role: "user", content: "hello" }],
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
     stream: true,
   }
   const app = new Hono()
@@ -826,7 +826,7 @@ test("messages Messages flow ends without an error event on normal completion", 
   const payload: AnthropicMessagesPayload = {
     max_tokens: 128,
     messages: [{ role: "user", content: "hello" }],
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
     stream: true,
   }
   const app = new Hono()
@@ -869,7 +869,7 @@ test("messages Messages flow records Copilot AIU from non-streaming response", a
   const payload: AnthropicMessagesPayload = {
     max_tokens: 128,
     messages: [{ role: "user", content: "hello" }],
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
   }
 
   const response = await handleWithMessagesApi(createContext(), payload, {
@@ -885,7 +885,7 @@ test("messages Messages flow records Copilot AIU from non-streaming response", a
     period: "today",
   })
 
-  expect(capturedMessagesPayload?.model).toBe("claude-sonnet-4.6")
+  expect(capturedMessagesPayload?.model).toBe("gpt-5.4")
   expect(usageEvents.items).toHaveLength(1)
   expect(usageEvents.items[0]).toMatchObject({
     cache_creation_input_tokens: 200,
@@ -897,7 +897,7 @@ test("messages Messages flow records Copilot AIU from non-streaming response", a
       total_cost_nanos: 10_000_000,
     },
     input_tokens: 12,
-    model: "claude-sonnet-4.6",
+    model: "gpt-5.4",
     output_tokens: 8,
     total_nano_aiu: 1_000_000_000,
   })

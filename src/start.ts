@@ -15,6 +15,7 @@ import {
 } from "./lib/credential-store"
 import { isAllowedModel } from "./lib/model-admission"
 import { initOpencodeVersion } from "./lib/opencode"
+import type { Model } from "./lib/types/models"
 import { ensurePaths } from "./lib/paths"
 import { initProxyFromEnv } from "./lib/proxy"
 import {
@@ -102,6 +103,30 @@ async function setupCopilotMode(
   }
 }
 
+const CLAUDE_CODE_MODEL_ENDPOINTS = new Set([
+  "/chat/completions",
+  "/responses",
+  "/v1/messages",
+  "ws:/responses",
+])
+
+export function selectClaudeCodeModel(
+  models: Array<Pick<Model, "id" | "supported_endpoints">>,
+): string | undefined {
+  const languageModels = models.filter(
+    (model) =>
+      isAllowedModel(model.id)
+      && model.supported_endpoints?.some((endpoint) =>
+        CLAUDE_CODE_MODEL_ENDPOINTS.has(endpoint),
+      ),
+  )
+
+  return (
+    languageModels.find((model) => /^gpt(?:[-_.]|$)/iu.test(model.id.trim()))
+      ?.id ?? languageModels[0]?.id
+  )
+}
+
 function runClaudeCode(serverUrl: string): void {
   consola.log(
     "\n💡 Tip: The --claude-code flag generates a clipboard command for launching Claude Code against this gateway. \n"
@@ -110,11 +135,7 @@ function runClaudeCode(serverUrl: string): void {
 
   invariant(state.models, "Models should be loaded by now")
 
-  const defaultModel =
-    state.models.data.find(
-      (model) =>
-        isAllowedModel(model.id) && model.id.toLowerCase().startsWith("gpt"),
-    )?.id ?? state.models.data.find((model) => isAllowedModel(model.id))?.id
+  const defaultModel = selectClaudeCodeModel(state.models.data)
   invariant(
     defaultModel,
     "No OpenAI or Microsoft MAI model is available for Claude Code",

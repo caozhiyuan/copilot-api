@@ -1,5 +1,3 @@
-import type { Context } from "hono"
-
 /**
  * Stable client-facing error returned whenever a request selects a model that
  * is outside this distribution's supported model families.
@@ -92,8 +90,4 @@ export function filterAllowedModels<T>(
   getModelId: (model: T) => unknown,
 ): Array<T> {
   return models.filter((model) => isAllowedModel(getModelId(model)))
-}
-
-export function modelNotAllowedResponse(c: Context): Response {
-  return c.json({ error: MODEL_NOT_ALLOWED_ERROR }, 400)
 }

@@ -9,7 +9,10 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { assertAllowedModel } from "~/lib/model-admission"
+import {
+  assertAllowedModel,
+  assertAllowedModelSelection,
+} from "~/lib/model-admission"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
 import { state } from "~/lib/state"
@@ -83,7 +86,7 @@ export async function handleCompletionPayload(
       `Resolved model mapping: ${requestedModel} -> ${anthropicPayload.model}`,
     )
   }
-  assertAllowedModel(anthropicPayload.model)
+  assertAllowedModelSelection(anthropicPayload)
 
   if (!dispatchOptions.skipWebSearch) {
     const webSearchResult = await tryHandleWebSearch(c, anthropicPayload, {
@@ -174,8 +177,6 @@ export async function handleCompletionPayload(
   logger.debug("Extracted session ID:", sessionId)
 
   const selectedModel = findEndpointModel(anthropicPayload.model)
-  anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
-  assertAllowedModel(anthropicPayload.model)
 
   if (shouldUseMessagesApi(selectedModel)) {
     return await messagesFlowHandlers.handleWithMessagesApi(
