@@ -166,6 +166,19 @@ export async function handleCompletionPayload(
     applyLastMessageCacheControl(anthropicPayload, lastMessageCacheControl)
   }
 
+  const effectiveProviderModelAlias = await resolveConfiguredProviderModelAlias(
+    anthropicPayload.model,
+    providerMessagesHandlerDependencies.resolveProviderConfig,
+  )
+  if (effectiveProviderModelAlias) {
+    anthropicPayload.model = effectiveProviderModelAlias.model
+    return await handleProviderMessagesForProvider(c, {
+      payload: anthropicPayload,
+      provider: effectiveProviderModelAlias.provider,
+      usageEndpoint: dispatchOptions.usageEndpoint,
+    })
+  }
+
   const requestId =
     dispatchOptions.requestId
     ?? generateRequestIdFromPayload(anthropicPayload, sessionId)

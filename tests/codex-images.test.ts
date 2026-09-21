@@ -219,6 +219,21 @@ describe("Codex images forwarding", () => {
     expect(await new Response(init?.body).json()).toEqual(payload)
   })
 
+  test("rebuilds unchanged generation bodies with one validated model", async () => {
+    const response = await createApp().request("/v1/images/generations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"model":"claude-image-1","model":"gpt-image-2","prompt":"safe"}',
+    })
+
+    expect(response.status).toBe(200)
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    expect(await new Response(init?.body).json()).toEqual({
+      model: "gpt-image-2",
+      prompt: "safe",
+    })
+  })
+
   test("rewrites a mapped JSON generation model before forwarding to Codex", async () => {
     modelMappings = {
       "gpt-image-1": "gpt-image-2",

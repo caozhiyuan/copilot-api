@@ -14,6 +14,7 @@ import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { ChatCompletionsPayload } from "~/lib/types/chat-completions"
 import type { ResponsesPayload } from "~/lib/types/responses"
 import { parseUserIdMetadata } from "~/lib/utils"
+import type { EmbeddingRequest } from "~/services/copilot/create-embeddings"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 
 const SHARED_FORWARDABLE_HEADERS = ["accept", "user-agent"] as const
@@ -176,6 +177,29 @@ export async function forwardProviderChatCompletions(
     {
       method: "POST",
       headers,
+      body: JSON.stringify(payload),
+    },
+    {
+      clientSignal: options.clientSignal,
+      headersTimeoutMs: transportConfig.headersTimeoutMs,
+      streamInactivityTimeoutMs: transportConfig.streamInactivityTimeoutMs,
+    },
+  )
+}
+
+export async function forwardProviderEmbeddings(
+  providerConfig: ResolvedProviderConfig,
+  payload: EmbeddingRequest,
+  requestHeaders: Headers,
+  options: { clientSignal?: AbortSignal } = {},
+): Promise<Response> {
+  consola.log(`<-- model: ${payload.model}`)
+  const transportConfig = getUpstreamTransportConfig()
+  return await fetchUpstreamWithLifecycle(
+    `${providerConfig.baseUrl}/v1/embeddings`,
+    {
+      method: "POST",
+      headers: buildProviderUpstreamHeaders(providerConfig, requestHeaders),
       body: JSON.stringify(payload),
     },
     {

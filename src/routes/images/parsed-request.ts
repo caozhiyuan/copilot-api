@@ -97,7 +97,6 @@ async function parseGenerationsRequest(
         mappedModel,
       ),
     model,
-    originalRequest,
   }
 }
 

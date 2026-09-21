@@ -110,12 +110,17 @@ const CLAUDE_CODE_MODEL_ENDPOINTS = new Set([
   "ws:/responses",
 ])
 
+function isSafeClaudeCodeModelId(modelId: string): boolean {
+  return /^[A-Za-z0-9]/u.test(modelId) && !/[^A-Za-z0-9._:/-]/u.test(modelId)
+}
+
 export function selectClaudeCodeModel(
   models: Array<Pick<Model, "id" | "supported_endpoints">>,
 ): string | undefined {
   const languageModels = models.filter(
     (model) =>
       isAllowedModel(model.id)
+      && isSafeClaudeCodeModelId(model.id)
       && model.supported_endpoints?.some((endpoint) =>
         CLAUDE_CODE_MODEL_ENDPOINTS.has(endpoint),
       ),

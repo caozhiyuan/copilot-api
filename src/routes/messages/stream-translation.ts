@@ -23,13 +23,7 @@ class InvalidToolCallStreamError extends Error {
 }
 
 function isToolBlockOpen(state: AnthropicStreamState): boolean {
-  if (!state.contentBlockOpen) {
-    return false
-  }
-  // Check if the current block index corresponds to any known tool call
-  return Object.values(state.toolCalls).some(
-    (tc) => tc.anthropicBlockIndex === state.contentBlockIndex,
-  )
+  return state.contentBlockOpen && Boolean(state.toolBlockOpen)
 }
 
 export function translateChunkToAnthropicEvents(
@@ -113,6 +107,7 @@ function handleFinish(
         index: state.contentBlockIndex,
       })
       state.contentBlockOpen = false
+      state.toolBlockOpen = false
       state.contentBlockIndex++
       if (!toolBlockOpen) {
         handleReasoningOpaque(choice.delta, events, state)
@@ -204,6 +199,7 @@ function handleToolCalls(
       }
       if (!existing) {
         state.toolCalls[toolCall.index] = info
+        state.pendingToolCallCount = (state.pendingToolCallCount ?? 0) + 1
       }
 
       if (toolCall.id) {
@@ -230,9 +226,14 @@ function handleToolCalls(
           })
           state.contentBlockIndex++
           state.contentBlockOpen = false
+          state.toolBlockOpen = false
         }
 
         info.anthropicBlockIndex = state.contentBlockIndex
+        state.pendingToolCallCount = Math.max(
+          0,
+          (state.pendingToolCallCount ?? 0) - 1,
+        )
 
         events.push({
           type: "content_block_start",
@@ -245,6 +246,7 @@ function handleToolCalls(
           },
         })
         state.contentBlockOpen = true
+        state.toolBlockOpen = true
 
         if (info.pendingArgs.length > 0) {
           events.push({
@@ -301,6 +303,7 @@ function handleReasoningOpaqueInToolCalls(
     })
     state.contentBlockIndex++
     state.contentBlockOpen = false
+    state.toolBlockOpen = false
   }
   handleReasoningOpaque(delta, events, state)
 }
@@ -323,7 +326,8 @@ function handleContent(
       if (deferredContentBytes + contentBytes > MAX_PENDING_STREAM_BYTES) {
         throw new InvalidToolCallStreamError()
       }
-      state.deferredContent = `${state.deferredContent ?? ""}${delta.content}`
+      state.deferredContent ??= []
+      state.deferredContent.push(delta.content)
       state.deferredContentBytes = deferredContentBytes + contentBytes
       return
     }
@@ -338,6 +342,7 @@ function handleContent(
         },
       })
       state.contentBlockOpen = true
+      state.toolBlockOpen = false
     }
 
     events.push({
@@ -381,9 +386,7 @@ function hasToolCallDelta(delta: Delta): boolean {
 }
 
 function hasPendingToolCall(state: AnthropicStreamState): boolean {
-  return Object.values(state.toolCalls).some(
-    (toolCall) => toolCall.anthropicBlockIndex === -1,
-  )
+  return (state.pendingToolCallCount ?? 0) > 0
 }
 
 function flushDeferredContent(
@@ -412,7 +415,7 @@ function flushDeferredContent(
       index: state.contentBlockIndex,
       delta: {
         type: "text_delta",
-        text: state.deferredContent,
+        text: state.deferredContent.join(""),
       },
     },
     {
@@ -423,6 +426,7 @@ function flushDeferredContent(
   state.deferredContent = undefined
   state.deferredContentBytes = 0
   state.contentBlockOpen = false
+  state.toolBlockOpen = false
   state.contentBlockIndex++
 }
 

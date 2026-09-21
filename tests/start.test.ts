@@ -28,6 +28,18 @@ describe("Claude Code model selection", () => {
     ).toBe("gpt-5.4")
   })
 
+  test("rejects shell syntax in remotely supplied model IDs", () => {
+    expect(
+      selectClaudeCodeModel([
+        {
+          id: "gpt-5;touch${IFS}/tmp/pwn",
+          supported_endpoints: ["/responses"],
+        },
+        { id: "mai-1-preview", supported_endpoints: ["/responses"] },
+      ]),
+    ).toBe("mai-1-preview")
+  })
+
   test("returns undefined without an eligible model", () => {
     expect(
       selectClaudeCodeModel([

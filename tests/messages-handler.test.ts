@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
+import type { ResolvedProviderConfig } from "~/lib/config"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 
 import { compactSummaryPromptStart, compactTextOnlyGuard } from "~/lib/compact"
@@ -11,6 +12,9 @@ const actualConfigModule = await import("~/lib/config")
 const actualModelsModule = await import("~/lib/models")
 const actualUtilsModule = await import("~/lib/utils")
 const { responsesUtilsDependencies } = await import("~/routes/responses/utils")
+const { providerMessagesHandlerDependencies } = await import(
+  "~/routes/provider/messages/handler"
+)
 
 const state = {
   ...actualStateModule.state,
@@ -83,6 +87,9 @@ const { handleCompletion, handleCompletionPayload, messagesFlowHandlers } =
 
 const defaultMessagesFlowHandlers = { ...messagesFlowHandlers }
 const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
+const defaultProviderMessagesHandlerDependencies = {
+  ...providerMessagesHandlerDependencies,
+}
 
 const createApp = () => {
   const app = new Hono()
@@ -129,6 +136,10 @@ afterEach(() => {
   messagesFlowHandlers.handleWithChatCompletions =
     defaultMessagesFlowHandlers.handleWithChatCompletions
   Object.assign(responsesUtilsDependencies, defaultResponsesUtilsDependencies)
+  Object.assign(
+    providerMessagesHandlerDependencies,
+    defaultProviderMessagesHandlerDependencies,
+  )
 })
 
 describe("messages handler orchestration", () => {
@@ -397,7 +408,7 @@ describe("messages handler orchestration", () => {
 
   test("delegates to the Messages API flow when the model supports /v1/messages", async () => {
     selectedModel = {
-      id: "gpt-messages-model",
+      id: "gpt-original-model",
       supported_endpoints: ["/v1/messages"],
     }
 
@@ -417,7 +428,7 @@ describe("messages handler orchestration", () => {
     expect(handleWithChatCompletions).not.toHaveBeenCalled()
 
     const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
-    expect(forwardedPayload.model).toBe("gpt-messages-model")
+    expect(forwardedPayload.model).toBe("gpt-original-model")
   })
 
   test("maps the requested model before resolving the endpoint model", async () => {
@@ -692,6 +703,62 @@ describe("messages handler orchestration", () => {
       agent_type: "Explore",
     })
     expect(options.anthropicBetaHeader).toBe("warmup-beta")
+  })
+
+  test("dispatches a mapped warmup model to its configured provider", async () => {
+    const originalFetch = globalThis.fetch
+    const fetchMock = mock(
+      (_url: string | URL | Request, _init?: RequestInit) =>
+        Promise.resolve(
+          Response.json({
+            id: "msg-provider",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "text", text: "provider response" }],
+            model: "gpt-small-provider",
+            stop_reason: "end_turn",
+            stop_sequence: null,
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        ),
+    )
+    const providerConfig: ResolvedProviderConfig = {
+      apiKey: "provider-key",
+      authType: "authorization",
+      baseUrl: "https://provider.example",
+      name: "azure-openai",
+      type: "anthropic",
+    }
+    modelMappings = {
+      "gpt-small-model": "azure-openai/gpt-small-provider",
+    }
+    providerMessagesHandlerDependencies.resolveProviderConfig = (provider) =>
+      Promise.resolve(provider === "azure-openai" ? providerConfig : null)
+    ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
+      fetchMock as unknown as typeof fetch
+
+    try {
+      const response = await createApp().request("/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "anthropic-beta": "warmup-beta",
+        },
+        body: JSON.stringify(createPayload()),
+      })
+
+      expect(response.status).toBe(200)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe("https://provider.example/v1/messages")
+      const upstreamPayload = JSON.parse(init?.body as string) as {
+        model: string
+      }
+      expect(upstreamPayload.model).toBe("gpt-small-provider")
+      expect(findEndpointModel).not.toHaveBeenCalled()
+    } finally {
+      ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
+    }
   })
 
   test("rejects a disallowed warmup fallback before selecting a flow", async () => {

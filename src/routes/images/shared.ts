@@ -26,8 +26,6 @@ export interface ParsedImagesRequest {
   /** Rebuilds the forwarding request with the resolved model in the body. */
   createRequest: (model: string) => Request
   model: string
-  /** Unchanged request, forwarded as-is when no rebuild is needed. */
-  originalRequest?: Request
 }
 
 function getContentMetadata(headers: Headers) {
@@ -166,16 +164,7 @@ export async function routeImagesRequest(
       c,
       operation,
       undefined,
-      parsed.originalRequest ?? parsed.createRequest(requestedModel),
-    )
-  }
-
-  if (parsed.originalRequest && mappedModel === requestedModel) {
-    return await handleCodexImages(
-      c,
-      operation,
-      undefined,
-      parsed.originalRequest,
+      parsed.createRequest(requestedModel),
     )
   }
 
