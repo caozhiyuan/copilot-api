@@ -3,6 +3,7 @@ import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ModelsResponse } from "~/lib/types/models"
+import { MAX_MODELS_CATALOG_SIZE_BYTES } from "~/routes/models/catalog-response"
 import bundledCodexCatalogJson from "~/routes/models/models.json"
 
 const actualConfigModule = await import("~/lib/config")
@@ -91,6 +92,7 @@ const bundledCodexSlugs = bundledCodexModels.map((model) => model.slug)
 let codexCatalogModels: Array<Record<string, unknown>> =
   createDefaultCodexCatalogModels()
 let malformedCatalogUrls = new Set<string>()
+let oversizedCatalogUrls = new Set<string>()
 
 const fetchMock = mock((url: string | URL | Request, _init?: RequestInit) => {
   const requestUrl =
@@ -101,6 +103,17 @@ const fetchMock = mock((url: string | URL | Request, _init?: RequestInit) => {
   if (malformedCatalogUrls.has(requestUrl)) {
     return Promise.resolve(
       new Response("{", { headers: { "content-type": "application/json" } }),
+    )
+  }
+
+  if (oversizedCatalogUrls.has(requestUrl)) {
+    return Promise.resolve(
+      new Response("{}", {
+        headers: {
+          "content-length": String(MAX_MODELS_CATALOG_SIZE_BYTES + 1),
+          "content-type": "application/json",
+        },
+      }),
     )
   }
 
@@ -250,6 +263,7 @@ beforeEach(() => {
   codexSetupError = null
   codexCatalogModels = createDefaultCodexCatalogModels()
   malformedCatalogUrls = new Set()
+  oversizedCatalogUrls = new Set()
   state.models = undefined
   fetchMock.mockClear()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
@@ -1112,6 +1126,23 @@ describe("model routes", () => {
     })
   })
 
+  test("returns 502 for oversized provider catalogs", async () => {
+    providerConfigs = {
+      kimi: createProviderConfig("kimi", "https://kimi.example"),
+    }
+    oversizedCatalogUrls.add("https://kimi.example/v1/models")
+
+    const response = await createApp().request("/kimi/v1/models")
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({
+      error: {
+        message: "Provider 'kimi' returned an invalid models catalog",
+        type: "upstream_error",
+      },
+    })
+  })
+
   test("returns 502 for malformed Codex catalog JSON", async () => {
     providerConfigs = {
       codex: {
@@ -1125,6 +1156,33 @@ describe("model routes", () => {
     state.codexAccessToken = "codex-access-token"
     state.codexAccountId = "account-123"
     malformedCatalogUrls.add("https://chatgpt.com/backend-api/codex/models")
+
+    const response = await createApp().request("/codex/v1/models", {
+      headers: { "user-agent": "codex-tui/0.144.1" },
+    })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({
+      error: {
+        message: "Codex returned an invalid models catalog",
+        type: "upstream_error",
+      },
+    })
+  })
+
+  test("returns 502 for oversized Codex catalogs", async () => {
+    providerConfigs = {
+      codex: {
+        apiKey: "codex-token",
+        authType: "oauth2",
+        baseUrl: "https://ignored.example/backend-api",
+        name: "codex",
+        type: "openai-responses",
+      },
+    }
+    state.codexAccessToken = "codex-access-token"
+    state.codexAccountId = "account-123"
+    oversizedCatalogUrls.add("https://chatgpt.com/backend-api/codex/models")
 
     const response = await createApp().request("/codex/v1/models", {
       headers: { "user-agent": "codex-tui/0.144.1" },

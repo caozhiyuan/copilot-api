@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { MultipartBodyTooLargeError } from "~/routes/images/temp-form-data"
+import {
+  DEFAULT_MULTIPART_STAGING_LIMITS,
+  MultipartBodyTooLargeError,
+} from "~/routes/images/temp-form-data"
+
+const MAX_IMAGE_GENERATION_BODY_SIZE_BYTES =
+  DEFAULT_MULTIPART_STAGING_LIMITS.maxBodySizeBytes
 
 const actualConfigModule = await import("~/lib/config")
 const actualTokenModule = await import("~/lib/token")
@@ -523,6 +529,31 @@ describe("Codex images forwarding", () => {
     })
   })
 
+  test("rejects oversized provider generation bodies before forwarding", async () => {
+    const request = new Request(
+      "http://localhost/openrouter/v1/images/generations",
+      {
+        method: "POST",
+        headers: {
+          "content-length": String(MAX_IMAGE_GENERATION_BODY_SIZE_BYTES + 1),
+          "content-type": "application/json",
+        },
+        body: "{}",
+      },
+    )
+
+    const response = await createApp().request(request)
+
+    expect(response.status).toBe(413)
+    expect(await response.json()).toEqual({
+      error: {
+        message: `Body exceeds the configured size limit of ${MAX_IMAGE_GENERATION_BODY_SIZE_BYTES} bytes`,
+        type: "invalid_request_error",
+      },
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test("returns 413 when multipart staging exceeds its limits", async () => {
     imageEditsRouteDependencies.stageMultipartBodyToDisk = () =>
       Promise.reject(new MultipartBodyTooLargeError())
@@ -657,6 +688,28 @@ describe("Codex images forwarding", () => {
     expect(url).toBe(
       "https://chatgpt.com/backend-api/codex/images/generations?output=base64",
     )
+  })
+
+  test("cleans staged provider edits immediately when the model is missing", async () => {
+    const cleanup = mock(() => Promise.resolve())
+    const scheduleCleanup = mock(() => {})
+    imageEditsRouteDependencies.stageMultipartBodyToDisk = () =>
+      Promise.resolve({
+        cleanup,
+        directory: "unused",
+        formData: new FormData(),
+        scheduleCleanup,
+      })
+
+    const response = await createApp().request("/openrouter/v1/images/edits", {
+      method: "POST",
+      body: new FormData(),
+    })
+
+    expect(response.status).toBe(400)
+    expect(cleanup).toHaveBeenCalledTimes(1)
+    expect(scheduleCleanup).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("rejects Claude models on provider-scoped image routes", async () => {

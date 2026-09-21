@@ -4,6 +4,7 @@ import type { ResolvedProviderConfig } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
 import { filterAllowedModels, isAllowedModel } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { readModelsCatalogResponse } from "~/routes/models/catalog-response"
 import type {
   CodexModel,
   CodexModelsResponse,
@@ -103,7 +104,7 @@ export async function handleCodexModelsProxy(
 
   let body: unknown
   try {
-    body = await upstreamResponse.json()
+    body = await readModelsCatalogResponse(upstreamResponse)
   } catch {
     return invalidCodexCatalogResponse(c)
   }
@@ -348,7 +349,7 @@ async function tryGetCodexCatalog(
       return null
     }
 
-    const body = await response.json()
+    const body = await readModelsCatalogResponse(response)
     if (!isCodexModelsResponse(body)) {
       logger.warn("models.codex.catalog_invalid")
       return null

@@ -8,6 +8,7 @@ import {
   handleCodexModelsProxy,
   isCodexUserAgent,
 } from "~/routes/models/codex-models"
+import { readModelsCatalogResponse } from "~/routes/models/catalog-response"
 import { getModels as getCodexModels } from "~/services/codex/get-models"
 import {
   createProviderProxyResponse,
@@ -64,7 +65,7 @@ providerModelRoutes.get("/", async (c) => {
 
     let body: unknown
     try {
-      body = await upstreamResponse.json()
+      body = await readModelsCatalogResponse(upstreamResponse)
     } catch {
       return invalidProviderCatalogResponse(c, provider)
     }

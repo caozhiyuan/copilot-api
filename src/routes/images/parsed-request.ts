@@ -1,9 +1,11 @@
+import { readBodyWithLimit } from "~/lib/bounded-body"
 import {
   createForwardRequest,
   snapshotRequestHeaders,
   type ParsedImagesRequest,
 } from "~/routes/images/shared"
 import {
+  DEFAULT_MULTIPART_STAGING_LIMITS,
   stageMultipartBodyToDisk,
   type StagedMultipartBody,
 } from "~/routes/images/temp-form-data"
@@ -12,6 +14,9 @@ import type { CodexImagesOperation } from "~/services/codex/images"
 export const imageEditsRouteDependencies = {
   stageMultipartBodyToDisk,
 }
+
+export const MAX_IMAGE_GENERATION_BODY_SIZE_BYTES =
+  DEFAULT_MULTIPART_STAGING_LIMITS.maxBodySizeBytes
 
 interface StagedEditsRequest {
   model?: string
@@ -60,7 +65,11 @@ async function parseGenerationsRequest(
   request: Request,
 ): Promise<ParsedImagesRequest | Request> {
   const requestHeaders = snapshotRequestHeaders(request)
-  const body = new Uint8Array(await request.arrayBuffer())
+  const body = await readBodyWithLimit(
+    request.body,
+    MAX_IMAGE_GENERATION_BODY_SIZE_BYTES,
+    requestHeaders.get("content-length"),
+  )
   const originalRequest = createForwardRequest(request, requestHeaders, body)
 
   let payload: unknown
@@ -118,6 +127,7 @@ async function parseEditsRequest(
 
 function trackBodyCompletion(
   request: Request,
+  onStart: () => void,
   cleanup: () => Promise<void>,
 ): Request {
   if (!request.body) {
@@ -127,34 +137,42 @@ function trackBodyCompletion(
 
   const reader = (request.body as ReadableStream<Uint8Array>).getReader()
   let complete = false
+  let started = false
   const finish = async () => {
     if (complete) return
     complete = true
     await cleanup()
   }
-  const body = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const result = await reader.read()
-        if (result.done) {
-          controller.close()
-          await finish()
-        } else {
-          controller.enqueue(result.value)
+  const body = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        if (!started) {
+          started = true
+          onStart()
         }
-      } catch (error) {
-        controller.error(error)
-        await finish()
-      }
+        try {
+          const result = await reader.read()
+          if (result.done) {
+            controller.close()
+            await finish()
+          } else {
+            controller.enqueue(result.value)
+          }
+        } catch (error) {
+          controller.error(error)
+          await finish()
+        }
+      },
+      async cancel(reason: unknown) {
+        try {
+          await reader.cancel(reason)
+        } finally {
+          await finish()
+        }
+      },
     },
-    async cancel(reason: unknown) {
-      try {
-        await reader.cancel(reason)
-      } finally {
-        await finish()
-      }
-    },
-  })
+    { highWaterMark: 0 },
+  )
 
   return createForwardRequest(request, new Headers(request.headers), body)
 }
@@ -175,10 +193,14 @@ export async function withParsedImagesRequest<T>(
 
   const { model, requestHeaders, staged } = parsed
   let forwardingStarted = false
-  const trackRequest = (forwardRequest: Request): Request => {
-    forwardingStarted = true
-    return trackBodyCompletion(forwardRequest, staged.cleanup)
-  }
+  const trackRequest = (forwardRequest: Request): Request =>
+    trackBodyCompletion(
+      forwardRequest,
+      () => {
+        forwardingStarted = true
+      },
+      staged.cleanup,
+    )
   const prepared =
     model === undefined ?
       trackRequest(

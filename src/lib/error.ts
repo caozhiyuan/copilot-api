@@ -3,6 +3,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 import consola from "consola"
 
+import { BodySizeLimitExceededError } from "~/lib/bounded-body"
 import {
   MODEL_NOT_ALLOWED_ERROR,
   ModelNotAllowedError,
@@ -43,6 +44,18 @@ export async function forwardError(
 ): Promise<Response> {
   if (error instanceof ModelNotAllowedError) {
     return c.json({ error: MODEL_NOT_ALLOWED_ERROR }, 400)
+  }
+
+  if (error instanceof BodySizeLimitExceededError) {
+    return c.json(
+      {
+        error: {
+          message: error.message,
+          type: "invalid_request_error",
+        },
+      },
+      413,
+    )
   }
 
   if (
