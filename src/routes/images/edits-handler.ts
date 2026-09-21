@@ -19,7 +19,7 @@ export const imageEditsRouteDependencies = {
   stageMultipartBodyToDisk,
 }
 
-function createStagedFormDataRequest(
+export function createStagedFormDataRequest(
   request: Request,
   requestHeaders: Headers,
   formData: FormData,
@@ -40,7 +40,7 @@ function createMultipartImagesRequest(
   return createStagedFormDataRequest(request, requestHeaders, formData)
 }
 
-interface StagedEditsRequest {
+export interface StagedEditsRequest {
   model?: string
   requestHeaders: Headers
   staged: StagedMultipartBody
@@ -53,7 +53,7 @@ interface StagedEditsRequest {
  * malformed multipart bodies throw a typed error because the consumed stream
  * can no longer be forwarded.
  */
-async function parseEditsRequest(
+export async function parseEditsRequest(
   request: Request,
 ): Promise<StagedEditsRequest | Request> {
   const requestHeaders = snapshotRequestHeaders(request)
@@ -87,7 +87,6 @@ export async function handleImagesEdits(c: Context): Promise<Response> {
     try {
       const response =
         model === undefined ?
-          // No model to route on: forward the staged form unchanged.
           await handleCodexImages(
             c,
             "edits",

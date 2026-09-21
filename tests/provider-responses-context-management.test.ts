@@ -260,7 +260,7 @@ describe("provider Responses context management", () => {
             role: "user",
           },
         ],
-        model: "openai/grok-4.5",
+        model: "microsoft/mai-1-preview",
       }),
       headers: {
         "content-type": "application/json",
@@ -281,13 +281,15 @@ describe("provider Responses context management", () => {
     expect(body.input).toHaveLength(3)
   })
 
-  test("normalizes Grok effort across the Codex Messages fallback", async () => {
+  test("normalizes MAI effort across the Codex Messages fallback", async () => {
     providerConfig = {
       apiKey: "provider-key",
       authType: "authorization",
       baseUrl: "https://openai-responses.example",
       models: {
-        "grok-4.5": {},
+        "mai-1-preview": {
+          reasoningEfforts: ["low", "high"],
+        },
       },
       name: "opencode-go",
       type: "openai-responses",
@@ -297,7 +299,7 @@ describe("provider Responses context management", () => {
     const response = await app.request("/opencode-go/v1/responses", {
       body: JSON.stringify({
         input: "hello",
-        model: "grok-4.5",
+        model: "mai-1-preview",
         reasoning: { effort: "max" },
       }),
       headers: {
@@ -689,7 +691,7 @@ describe("provider Responses context management", () => {
       apiKey: "provider-key",
       authType: "authorization",
       baseUrl: "https://openai-chat.example",
-      models: { "chat-test": {} },
+      models: { "mai-chat-test": {} },
       name: "openai",
       type: "openai-compatible",
     }
@@ -701,7 +703,7 @@ describe("provider Responses context management", () => {
           function: { name: string; strict?: boolean }
         }>
       }
-      expect(body.model).toBe("chat-test")
+      expect(body.model).toBe("mai-chat-test")
       expect(body.tools.map((tool) => tool.function.name)).toEqual([
         "apply_patch",
         "workspace__read_file",
@@ -712,7 +714,7 @@ describe("provider Responses context management", () => {
           id: "chatcmpl-lite",
           object: "chat.completion",
           created: 1,
-          model: "chat-test",
+          model: "mai-chat-test",
           choices: [
             {
               index: 0,
@@ -754,7 +756,7 @@ describe("provider Responses context management", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "openai/chat-test",
+        model: "openai/mai-chat-test",
         input: [
           {
             role: "developer",
@@ -790,7 +792,7 @@ describe("provider Responses context management", () => {
       "https://openai-chat.example/v1/chat/completions",
     )
     const body = (await response.json()) as ResponsesResult
-    expect(body.model).toBe("openai/chat-test")
+    expect(body.model).toBe("openai/mai-chat-test")
     expect(body.output).toMatchObject([
       {
         type: "custom_tool_call",
@@ -851,7 +853,7 @@ describe("provider Responses context management", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "kimi/k3",
+        model: "kimi/mai-1-preview",
         input: [
           {
             role: "developer",
@@ -877,7 +879,7 @@ describe("provider Responses context management", () => {
       apiKey: "provider-key",
       authType: "x-api-key",
       baseUrl: "https://anthropic.example",
-      models: { "claude-test": {} },
+      models: { "mai-test": {} },
       name: "anthropic",
       type: "anthropic",
     }
@@ -886,7 +888,7 @@ describe("provider Responses context management", () => {
         model: string
         tools: Array<{ name: string }>
       }
-      expect(body.model).toBe("claude-test")
+      expect(body.model).toBe("mai-test")
       expect(body.tools.map((tool) => tool.name)).toEqual(["apply_patch"])
       return Promise.resolve(
         Response.json({
@@ -899,7 +901,7 @@ describe("provider Responses context management", () => {
             },
           ],
           id: "msg-lite",
-          model: "claude-test",
+          model: "mai-test",
           role: "assistant",
           stop_reason: "tool_use",
           stop_sequence: null,
@@ -911,7 +913,7 @@ describe("provider Responses context management", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "anthropic/claude-test",
+        model: "anthropic/mai-test",
         input: [
           {
             role: "developer",
@@ -930,7 +932,7 @@ describe("provider Responses context management", () => {
       "https://anthropic.example/v1/messages",
     )
     const body = (await response.json()) as ResponsesResult
-    expect(body.model).toBe("anthropic/claude-test")
+    expect(body.model).toBe("anthropic/mai-test")
     expect(body.output[0]).toMatchObject({
       type: "custom_tool_call",
       call_id: "call-patch",
@@ -946,7 +948,7 @@ describe("provider Responses reasoning transport isolation", () => {
       apiKey: "provider-key",
       authType: "x-api-key",
       baseUrl: "https://anthropic.example",
-      models: { "claude-test": {} },
+      models: { "mai-test": {} },
       name: "anthropic",
       type: "anthropic",
     }
@@ -955,7 +957,7 @@ describe("provider Responses reasoning transport isolation", () => {
         Response.json({
           content: [{ type: "text", text: "done" }],
           id: "msg-switch",
-          model: "claude-test",
+          model: "mai-test",
           role: "assistant",
           stop_reason: "end_turn",
           stop_sequence: null,
@@ -967,7 +969,7 @@ describe("provider Responses reasoning transport isolation", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "anthropic/claude-test",
+        model: "anthropic/mai-test",
         input: [
           {
             id: "rs_native",

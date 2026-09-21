@@ -551,6 +551,141 @@ describe("OpenAI stream interleaved tool/content translation", () => {
   })
 })
 
+describe("OpenAI stream tool_call framing split across chunks", () => {
+  test("does not leak interleaved text when tool identity arrives separately", () => {
+    const openAIStream: Array<ChatCompletionChunk> = [
+      {
+        id: "cmpl-split",
+        object: "chat.completion.chunk",
+        created: 1677652288,
+        model: "gpt-5-mini",
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant" },
+            finish_reason: null,
+            logprobs: null,
+          },
+        ],
+      },
+      {
+        id: "cmpl-split",
+        object: "chat.completion.chunk",
+        created: 1677652288,
+        model: "gpt-5-mini",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                { index: 0, id: "call_bash", type: "function", function: {} },
+              ],
+            },
+            finish_reason: null,
+            logprobs: null,
+          },
+        ],
+      },
+      {
+        id: "cmpl-split",
+        object: "chat.completion.chunk",
+        created: 1677652288,
+        model: "gpt-5-mini",
+        choices: [
+          {
+            index: 0,
+            delta: { content: "court" },
+            finish_reason: null,
+            logprobs: null,
+          },
+        ],
+      },
+      {
+        id: "cmpl-split",
+        object: "chat.completion.chunk",
+        created: 1677652288,
+        model: "gpt-5-mini",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  function: { name: "Bash", arguments: '{"cmd":"ls"}' },
+                },
+              ],
+            },
+            finish_reason: null,
+            logprobs: null,
+          },
+        ],
+      },
+      {
+        id: "cmpl-split",
+        object: "chat.completion.chunk",
+        created: 1677652288,
+        model: "gpt-5-mini",
+        choices: [
+          { index: 0, delta: {}, finish_reason: "tool_calls", logprobs: null },
+        ],
+      },
+    ]
+
+    const streamState: AnthropicStreamState = {
+      messageStartSent: false,
+      messageCompleted: false,
+      contentBlockIndex: 0,
+      contentBlockOpen: false,
+      toolCalls: {},
+      thinkingBlockOpen: false,
+    }
+    const translatedStream = openAIStream.flatMap((chunk) =>
+      translateChunkToAnthropicEvents(chunk, streamState),
+    )
+    translatedStream.push(...flushPendingAnthropicStreamEvents(streamState))
+
+    const toolStart = translatedStream.find(
+      (event) =>
+        event.type === "content_block_start"
+        && event.content_block.type === "tool_use",
+    )
+    expect(toolStart).toBeDefined()
+    if (
+      toolStart?.type === "content_block_start"
+      && toolStart.content_block.type === "tool_use"
+    ) {
+      expect(toolStart.content_block.name).toBe("Bash")
+      expect(toolStart.content_block.id).toBe("call_bash")
+    }
+
+    const toolBlockIndex =
+      toolStart?.type === "content_block_start" ? toolStart.index : -1
+    expect(
+      translatedStream.some(
+        (event) =>
+          event.type === "content_block_delta"
+          && event.index === toolBlockIndex
+          && event.delta.type === "input_json_delta"
+          && event.delta.partial_json === '{"cmd":"ls"}',
+      ),
+    ).toBe(true)
+
+    const toolStartPosition = translatedStream.findIndex(
+      (event) =>
+        event.type === "content_block_start"
+        && event.content_block.type === "tool_use",
+    )
+    const deferredTextPosition = translatedStream.findIndex(
+      (event) =>
+        event.type === "content_block_delta"
+        && event.delta.type === "text_delta"
+        && event.delta.text === "court",
+    )
+    expect(deferredTextPosition).toBeGreaterThan(toolStartPosition)
+  })
+})
+
 describe("OpenAI usage-only stream translation", () => {
   test("should emit final Anthropic usage from an OpenAI usage-only chunk", () => {
     const openAIStream: Array<ChatCompletionChunk> = [

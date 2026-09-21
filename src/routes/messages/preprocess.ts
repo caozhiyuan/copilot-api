@@ -32,9 +32,6 @@ export const TOOL_REFERENCE_TURN_BOUNDARY = "Tool loaded."
 const SYSTEM_REMINDER_START = "<system-reminder>"
 const SYSTEM_REMINDER_END = "</system-reminder>"
 const SUBAGENT_START_HOOK_ADDITIONAL_PREFIX = "SubagentStart hook additional"
-export const claudeAutoModelSystemPromptStart =
-  "You are a security monitor for autonomous AI coding agents."
-export const claudeAutoModelStopSequence = "</block>"
 
 const IDE_GET_DIAGNOSTICS_TOOL = "mcp__ide__getDiagnostics"
 const IDE_GET_DIAGNOSTICS_DESCRIPTION =
@@ -386,42 +383,6 @@ export const getCompactType = (
   }
 
   return 0
-}
-
-/**
- * True for Claude Code background security-monitor requests: no tools,
- * `stop_sequences: ["</block>"]`, and a system prompt starting with the
- * security-monitor prefix. These can be rerouted via `claudeAutoModel`.
- */
-export const isClaudeAutoModelRequest = (
-  payload: AnthropicMessagesPayload,
-): boolean => {
-  if (payload.tools && payload.tools.length > 0) {
-    return false
-  }
-
-  const stopSequences = payload.stop_sequences
-  if (
-    !Array.isArray(stopSequences)
-    || stopSequences.length !== 1
-    || stopSequences[0] !== claudeAutoModelStopSequence
-  ) {
-    return false
-  }
-
-  const system = payload.system
-  if (typeof system === "string") {
-    return system.startsWith(claudeAutoModelSystemPromptStart)
-  }
-  if (!Array.isArray(system)) {
-    return false
-  }
-
-  return system.some(
-    (block) =>
-      typeof block.text === "string"
-      && block.text.startsWith(claudeAutoModelSystemPromptStart),
-  )
 }
 
 const mergeContentWithText = (

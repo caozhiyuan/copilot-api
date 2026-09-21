@@ -10,6 +10,7 @@ import {
 } from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { findEndpointModel } from "~/lib/models"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import {
@@ -116,7 +117,7 @@ function invalidRequest(c: Context, message: string): Response {
   )
 }
 
-async function parseAlphaSearchBody(
+export async function parseAlphaSearchBody(
   c: Context,
 ): Promise<AlphaSearchRequest | Response> {
   let body: unknown
@@ -145,12 +146,13 @@ export async function handleAlphaSearchRequest(
   c: Context,
   resolvedProviderConfig?: ResolvedProviderConfig,
 ): Promise<Response> {
-  if (resolvedProviderConfig) {
-    return await handleCodexRequest(c, c.req.raw, resolvedProviderConfig)
-  }
-
   const payload = await parseAlphaSearchBody(c)
   if (payload instanceof Response) return payload
+
+  if (resolvedProviderConfig) {
+    assertAllowedModel(payload.model)
+    return await handleCodexRequest(c, c.req.raw, resolvedProviderConfig)
+  }
 
   const requestedModel = payload.model
 
@@ -161,6 +163,7 @@ export async function handleAlphaSearchRequest(
       `Resolved model mapping: ${requestedModel} -> ${payload.model}`,
     )
   }
+  assertAllowedModel(payload.model)
 
   const resolvedRequestedModel = payload.model
   let providerModelAlias = parseProviderModelAlias(payload.model)
@@ -200,6 +203,7 @@ export async function handleAlphaSearchRequest(
     }
     const resolvedSearchModel =
       alphaSearchRouteDependencies.resolveMappedModel(searchModel)
+    assertAllowedModel(resolvedSearchModel)
     if (!(await isNativeResponsesModel(resolvedSearchModel))) {
       return invalidRequest(
         c,

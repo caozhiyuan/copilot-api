@@ -136,7 +136,7 @@ const makeChatCompletionResponse = () => ({
   id: "chatcmpl-web-search-stripped",
   object: "chat.completion",
   created: 0,
-  model: "qwen-plus",
+  model: "gpt-provider",
   choices: [
     {
       index: 0,
@@ -423,7 +423,7 @@ describe("provider messages web_search", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "What is the Node.js LTS?" }],
-        model: "claude-sonnet-4.5",
+        model: "mai-1-preview",
         tools: [webSearchTool],
       }),
     })
@@ -462,6 +462,24 @@ describe("provider messages web_search", () => {
       "web_search_tool_result",
       "text",
     ])
+  })
+
+  test("rejects a disallowed configured web-search fallback", async () => {
+    messageApiWebSearchModel = "search/CLAUDE-sonnet-4"
+
+    const response = await createApp().request("/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        createCodexMessagesPayload({
+          model: "mai-1-preview",
+          tools: [webSearchTool] as never,
+        }),
+      ),
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("runs pure Anthropic web_search through an openai-responses provider", async () => {
@@ -638,7 +656,7 @@ describe("provider messages web_search", () => {
       type: "openai-compatible",
       baseUrl: "https://provider.example/compatible-mode",
       models: {
-        "qwen-plus": {
+        "gpt-provider": {
           toolContentSupportType: [],
         },
       },
@@ -653,7 +671,7 @@ describe("provider messages web_search", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "gpt-provider",
         tools: [webSearchTool],
       }),
     })

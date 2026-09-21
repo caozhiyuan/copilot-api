@@ -32,7 +32,7 @@ function createJsonImagesRequest(
  * and forwarding an unchanged body to Codex. Rebuilt bodies stay binary so
  * Node does not synthesize a text/plain content type.
  */
-async function parseGenerationsRequest(
+export async function parseGenerationsRequest(
   request: Request,
 ): Promise<ParsedImagesRequest | Request> {
   const requestHeaders = snapshotRequestHeaders(request)

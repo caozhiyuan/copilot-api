@@ -1,6 +1,7 @@
 import type { Context, Env } from "hono"
 
 import { createHandlerLogger } from "~/lib/logger"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { createFallbackModel } from "~/lib/provider-model"
 import { getTokenCount } from "~/lib/tokenizer"
@@ -26,6 +27,7 @@ export async function handleProviderCountTokensForProvider(
   },
 ): Promise<Response> {
   const { payload: anthropicPayload, provider } = options
+  assertAllowedModel(anthropicPayload.model)
   normalizeSystemMessages(anthropicPayload)
   const modelId = anthropicPayload.model.trim()
 

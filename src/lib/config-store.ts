@@ -25,26 +25,16 @@ export interface AppConfig {
   useMessagesApi?: boolean
   useResponsesApiWebSocket?: boolean
   upstreamTransport?: UpstreamTransportConfig
-  anthropicApiKey?: string
   useResponsesApiWebSearch?: boolean
   alphaSearchCodexPriority?: boolean
   alphaSearchModel?: string
-  // Copilot rejects Anthropic's web_search server tool on /v1/messages, so a
-  // Claude request that only asks for web search is switched to this model.
-  // A `provider/model` alias is passed straight through to that provider's
-  // (websearch-capable) message API, while a plain GPT model runs the search
-  // via /responses. Leave unset to disable (the tool is then stripped).
-  // Mixing web_search with other tools is not supported.
+  // Copilot rejects the Anthropic-compatible web_search server tool on
+  // /v1/messages, so a request that only asks for web search is switched to
+  // this model. A `provider/model` alias is passed through to that provider's
+  // message API, while a plain GPT model runs the search via /responses. Leave
+  // unset to disable (the tool is then stripped). Mixing web_search with other
+  // tools is not supported.
   messageApiWebSearchModel?: string
-  // Model used for Claude Code background security-monitor requests on
-  // /v1/messages and provider message APIs: requests without tools, with
-  // `stop_sequences: ["</block>"]` and a system block starting with
-  // "You are a security monitor for autonomous AI coding agents.".
-  // A `provider/model` alias is forwarded to that provider's message API on
-  // the top-level route. Provider message routes use the configured value on
-  // their current provider. Leave empty to disable (default).
-  claudeAutoModel?: string
-  claudeTokenMultiplier?: number
 }
 
 export interface ContextManagementConfig {
@@ -546,11 +536,6 @@ const positiveIntegerOrDefault = (value: unknown, fallback: number): number => {
   return normalized > 0 ? normalized : fallback
 }
 
-export function getAnthropicApiKey(): string | undefined {
-  const config = getConfig()
-  return config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY ?? undefined
-}
-
 export function isResponsesApiWebSearchEnabled(): boolean {
   const config = getConfig()
   return config.useResponsesApiWebSearch ?? true
@@ -570,15 +555,4 @@ export function getMessageApiWebSearchModel(): string | undefined {
   const config = getConfig()
   const model = config.messageApiWebSearchModel ?? "gpt-5-mini"
   return model && model.trim().length > 0 ? model : undefined
-}
-
-export function getClaudeAutoModel(): string | undefined {
-  const config = getConfig()
-  const model = config.claudeAutoModel
-  return model && model.trim().length > 0 ? model.trim() : undefined
-}
-
-export function getClaudeTokenMultiplier(): number {
-  const config = getConfig()
-  return config.claudeTokenMultiplier ?? 1.15
 }

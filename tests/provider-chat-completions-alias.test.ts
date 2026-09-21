@@ -43,7 +43,7 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
         ],
         created: 0,
         id: "chatcmpl-test",
-        model: "qwen-plus",
+        model: "gpt-provider",
         object: "chat.completion",
         usage: {
           completion_tokens: 2,
@@ -72,7 +72,7 @@ beforeEach(() => {
     authType: "authorization",
     baseUrl: "https://dashscope.example/compatible-mode",
     models: {
-      "qwen-plus": {
+      "gpt-provider": {
         extraBody: {
           enable_thinking: true,
           preserve_thinking: true,
@@ -100,7 +100,7 @@ afterEach(() => {
 describe("provider/model aliases on top-level chat completions route", () => {
   test("routes mapped models to provider chat completions before rate limiting", async () => {
     modelMappings = {
-      "gpt-provider": "dash/qwen-plus",
+      "gpt-provider": "dash/gpt-provider",
     }
 
     const app = createApp()
@@ -131,7 +131,7 @@ describe("provider/model aliases on top-level chat completions route", () => {
     const upstreamBody = JSON.parse((init as RequestInit).body as string) as {
       model: string
     }
-    expect(upstreamBody.model).toBe("qwen-plus")
+    expect(upstreamBody.model).toBe("gpt-provider")
   })
 
   test("strips provider prefix and applies provider model defaults", async () => {
@@ -139,7 +139,7 @@ describe("provider/model aliases on top-level chat completions route", () => {
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "dash/qwen-plus",
+        model: "dash/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -157,7 +157,7 @@ describe("provider/model aliases on top-level chat completions route", () => {
     >
     expect(upstreamBody).toMatchObject({
       enable_thinking: true,
-      model: "qwen-plus",
+      model: "gpt-provider",
       preserve_thinking: true,
       temperature: 0.2,
       top_k: 50,
@@ -171,7 +171,7 @@ describe("provider/model aliases on top-level chat completions route", () => {
       body: JSON.stringify({
         enable_thinking: false,
         messages: [{ content: "hello", role: "user" }],
-        model: "dash/qwen-plus",
+        model: "dash/gpt-provider",
         stream: true,
         stream_options: {
           include_usage: false,
@@ -207,7 +207,7 @@ describe("provider/model aliases on top-level chat completions route", () => {
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "dash/qwen-plus",
+        model: "dash/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -234,7 +234,7 @@ describe("context cache on provider chat completions route", () => {
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode",
       name: "dashscope",
       models: {
-        "qwen-plus": {
+        "gpt-provider": {
           extraBody: {
             enable_thinking: true,
             preserve_thinking: true,
@@ -250,7 +250,7 @@ describe("context cache on provider chat completions route", () => {
           { content: "system prompt", role: "system" },
           { content: "hello", role: "user" },
         ],
-        model: "dashscope/qwen-plus",
+        model: "dashscope/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -283,7 +283,7 @@ describe("context cache on provider chat completions route", () => {
       baseUrl: "https://bailian.aliyuncs.com/api/v1",
       name: "my-bailian",
       models: {
-        "qwen-plus": {},
+        "gpt-provider": {},
       },
     } as ResolvedProviderConfig
 
@@ -291,7 +291,7 @@ describe("context cache on provider chat completions route", () => {
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "my-bailian/qwen-plus",
+        model: "my-bailian/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -316,7 +316,7 @@ describe("context cache on provider chat completions route", () => {
       baseUrl: "https://api.example.com/v1",
       name: "custom",
       models: {
-        "qwen-plus": {},
+        "gpt-provider": {},
       },
     } as ResolvedProviderConfig
 
@@ -327,7 +327,7 @@ describe("context cache on provider chat completions route", () => {
           { content: "system prompt", role: "system" },
           { content: "hello", role: "user" },
         ],
-        model: "custom/qwen-plus",
+        model: "custom/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -357,7 +357,7 @@ describe("context cache on provider chat completions route", () => {
       baseUrl: "https://api.example.com/v1",
       name: "custom",
       models: {
-        "qwen-plus": {
+        "gpt-provider": {
           contextCache: true,
         },
       },
@@ -370,7 +370,7 @@ describe("context cache on provider chat completions route", () => {
           { content: "system prompt", role: "system" },
           { content: "hello", role: "user" },
         ],
-        model: "custom/qwen-plus",
+        model: "custom/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -397,7 +397,7 @@ describe("context cache on provider chat completions route", () => {
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode",
       name: "dashscope",
       models: {
-        "qwen-plus": {
+        "gpt-provider": {
           contextCache: false,
         },
       },
@@ -407,7 +407,7 @@ describe("context cache on provider chat completions route", () => {
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "dashscope/qwen-plus",
+        model: "dashscope/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -439,7 +439,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode",
       name: "dashscope",
       models: {
-        "qwen-plus": {},
+        "gpt-provider": {},
       },
     } as ResolvedProviderConfig
 
@@ -447,7 +447,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "dashscope/qwen-plus",
+        model: "dashscope/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -467,7 +467,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode",
       name: "dashscope",
       models: {
-        "qwen-plus": {
+        "gpt-provider": {
           extraBody: {
             preserve_thinking: false,
           },
@@ -479,7 +479,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "dashscope/qwen-plus",
+        model: "dashscope/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -499,7 +499,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode",
       name: "dashscope",
       models: {
-        "qwen-plus": {},
+        "gpt-provider": {},
       },
     } as ResolvedProviderConfig
 
@@ -507,7 +507,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "dashscope/qwen-plus",
+        model: "dashscope/gpt-provider",
         preserve_thinking: false,
       }),
       headers: {
@@ -528,7 +528,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
       baseUrl: "https://api.example.com/v1",
       name: "custom",
       models: {
-        "qwen-plus": {},
+        "gpt-provider": {},
       },
     } as ResolvedProviderConfig
 
@@ -536,7 +536,7 @@ describe("dashscope preserve_thinking default on chat completions route", () => 
     const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
-        model: "custom/qwen-plus",
+        model: "custom/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",

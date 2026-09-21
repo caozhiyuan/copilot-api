@@ -35,7 +35,7 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
         id: "chatcmpl-test",
         object: "chat.completion",
         created: 0,
-        model: "qwen-plus",
+        model: "mai-provider",
         choices: [
           {
             index: 0,
@@ -109,7 +109,7 @@ beforeEach(() => {
     apiKey: "provider-key",
     authType: "authorization",
     models: {
-      "qwen-plus": {
+      "mai-provider": {
         extraBody: {
           enable_thinking: true,
           preserve_thinking: true,
@@ -133,11 +133,26 @@ afterEach(() => {
 })
 
 describe("openai-compatible provider messages", () => {
+  test("rejects a provider-scoped Claude model before forwarding", async () => {
+    const response = await createApp().request("/dash/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "CLAUDE-sonnet-4",
+      }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test("merges message-level system prompts before OpenAI-compatible translation", async () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           contextCache: false,
           toolContentSupportType: [],
         },
@@ -158,7 +173,7 @@ describe("openai-compatible provider messages", () => {
           { role: "assistant", content: "working on it" },
           { role: "system", content: "keep answers short" },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -192,7 +207,7 @@ describe("openai-compatible provider messages", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         enable_thinking: false,
         temperature: 0.4,
       }),
@@ -217,7 +232,7 @@ describe("openai-compatible provider messages", () => {
     expect(body).toMatchObject({
       enable_thinking: false,
       max_completion_tokens: 128,
-      model: "qwen-plus",
+      model: "mai-provider",
       preserve_thinking: true,
       temperature: 0.4,
       top_k: 50,
@@ -241,7 +256,7 @@ describe("openai-compatible provider messages", () => {
 
     const json = (await response.json()) as Record<string, unknown>
     expect(json).toMatchObject({
-      model: "qwen-plus",
+      model: "mai-provider",
       role: "assistant",
       stop_reason: "end_turn",
       usage: {
@@ -268,7 +283,7 @@ describe("openai-compatible provider messages", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           toolContentSupportType: [],
         },
       },
@@ -283,7 +298,7 @@ describe("openai-compatible provider messages", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         stream: true,
       }),
     })
@@ -302,7 +317,7 @@ describe("openai-compatible provider messages", () => {
       id: "chatcmpl-thinking-cut",
       object: "chat.completion.chunk",
       created: 0,
-      model: "qwen-plus",
+      model: "mai-provider",
       choices: [
         {
           index: 0,
@@ -325,7 +340,7 @@ describe("openai-compatible provider messages", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         stream: true,
       }),
     })
@@ -372,7 +387,7 @@ describe("openai-compatible provider messages", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         stream: true,
       }),
     })
@@ -396,7 +411,7 @@ describe("openai-compatible provider messages", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           extraBody: {
             parallel_tool_calls: false,
           },
@@ -414,7 +429,7 @@ describe("openai-compatible provider messages", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -434,7 +449,7 @@ describe("openai-compatible provider messages", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         thinking: {
           type: "enabled",
           budget_tokens: 4096,
@@ -453,7 +468,7 @@ describe("openai-compatible provider messages", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           extraBody: {
             thinking_budget: 8192,
           },
@@ -471,7 +486,7 @@ describe("openai-compatible provider messages", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         thinking: {
           type: "enabled",
           budget_tokens: 4096,
@@ -504,7 +519,7 @@ describe("openai-compatible provider context cache", () => {
           { role: "assistant", content: "second answer" },
           { role: "user", content: "latest" },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -571,7 +586,7 @@ describe("openai-compatible provider context cache", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           contextCache: false,
           toolContentSupportType: [],
         },
@@ -588,7 +603,7 @@ describe("openai-compatible provider context cache", () => {
         max_tokens: 128,
         system: "system prompt",
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -644,7 +659,7 @@ describe("openai-compatible provider message content", () => {
             content: "continue",
           },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -678,7 +693,8 @@ describe("opencode-go reasoning compatibility", () => {
       apiKey: "provider-key",
       authType: "authorization",
       models: {
-        "hy4-preview": {
+        "mai-reasoning": {
+          reasoningField: "reasoning",
           toolContentSupportType: [],
         },
       },
@@ -691,7 +707,7 @@ describe("opencode-go reasoning compatibility", () => {
       id: "gen-1788267775-qTbelOO6wDJXzNXu9Hej",
       object: "chat.completion.chunk",
       created: 1788267775,
-      model: "hy4-preview",
+      model: "mai-reasoning",
       choices: [
         {
           index: 0,
@@ -716,7 +732,7 @@ describe("opencode-go reasoning compatibility", () => {
       id: "gen-1788267775-qTbelOO6wDJXzNXu9Hej",
       object: "chat.completion.chunk",
       created: 1788267775,
-      model: "hy4-preview",
+      model: "mai-reasoning",
       choices: [
         {
           index: 0,
@@ -729,7 +745,7 @@ describe("opencode-go reasoning compatibility", () => {
       id: "gen-1788267775-qTbelOO6wDJXzNXu9Hej",
       object: "chat.completion.chunk",
       created: 1788267775,
-      model: "hy4-preview",
+      model: "mai-reasoning",
       choices: [{ index: 0, finish_reason: "stop", delta: {} }],
       usage: {
         prompt_tokens: 8,
@@ -752,7 +768,7 @@ describe("opencode-go reasoning compatibility", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "hy4-preview",
+        model: "mai-reasoning",
         stream: true,
       }),
     })
@@ -801,7 +817,7 @@ describe("opencode-go reasoning compatibility", () => {
             id: "gen-1788267775",
             object: "chat.completion",
             created: 1788267775,
-            model: "hy4-preview",
+            model: "mai-reasoning",
             choices: [
               {
                 index: 0,
@@ -838,7 +854,7 @@ describe("opencode-go reasoning compatibility", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "hy4-preview",
+        model: "mai-reasoning",
       }),
     })
 
@@ -891,7 +907,7 @@ describe("opencode-go reasoning compatibility", () => {
             content: "continue",
           },
         ],
-        model: "hy4-preview",
+        model: "mai-reasoning",
       }),
     })
 
@@ -939,7 +955,7 @@ describe("opencode-go reasoning compatibility", () => {
             content: "continue",
           },
         ],
-        model: "glm-5.2",
+        model: "mai-default",
       }),
     })
 
@@ -959,7 +975,7 @@ describe("opencode-go reasoning compatibility", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           reasoningField: "reasoning",
           toolContentSupportType: [],
         },
@@ -994,7 +1010,7 @@ describe("opencode-go reasoning compatibility", () => {
             content: "continue",
           },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1033,7 +1049,7 @@ describe("openai-compatible provider tool array content", () => {
             ],
           },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1061,7 +1077,7 @@ describe("openai-compatible provider tool array content", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           toolContentSupportType: ["array"],
         },
       },
@@ -1096,7 +1112,7 @@ describe("openai-compatible provider tool array content", () => {
             ],
           },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1130,7 +1146,7 @@ describe("openai-compatible provider PDF message content", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           supportPdf: true,
           toolContentSupportType: ["pdf"],
         },
@@ -1171,7 +1187,7 @@ describe("openai-compatible provider PDF message content", () => {
             ],
           },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1206,7 +1222,7 @@ describe("openai-compatible provider PDF message content", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           supportPdf: true,
           toolContentSupportType: [],
         },
@@ -1247,7 +1263,7 @@ describe("openai-compatible provider PDF message content", () => {
             ],
           },
         ],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1294,7 +1310,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       name: "custom",
       baseUrl: "https://api.example.com/v1",
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           toolContentSupportType: [],
         },
       },
@@ -1309,7 +1325,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         thinking: {
           type: "enabled",
           budget_tokens: 4096,
@@ -1329,7 +1345,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       name: "custom",
       baseUrl: "https://api.example.com/v1",
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           extraBody: {
             thinking_budget: 8192,
           },
@@ -1347,7 +1363,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         thinking: {
           type: "enabled",
           budget_tokens: 4096,
@@ -1367,7 +1383,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       name: "custom",
       baseUrl: "https://api.example.com/v1",
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           toolContentSupportType: [],
         },
       },
@@ -1383,7 +1399,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
         max_tokens: 128,
         system: "system prompt",
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1409,7 +1425,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       name: "custom",
       baseUrl: "https://api.example.com/v1",
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           contextCache: true,
           toolContentSupportType: [],
         },
@@ -1426,7 +1442,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
         max_tokens: 128,
         system: "system prompt",
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1449,7 +1465,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       name: "my-bailian",
       baseUrl: "https://bailian.aliyuncs.com/api/v1",
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           toolContentSupportType: [],
         },
       },
@@ -1464,7 +1480,7 @@ describe("non-dashscope openai-compatible provider restrictions", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
         thinking: {
           type: "enabled",
           budget_tokens: 4096,
@@ -1484,7 +1500,7 @@ describe("dashscope preserve_thinking default", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           toolContentSupportType: [],
         },
       },
@@ -1499,7 +1515,7 @@ describe("dashscope preserve_thinking default", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1513,7 +1529,7 @@ describe("dashscope preserve_thinking default", () => {
     providerConfig = {
       ...providerConfig,
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           extraBody: {
             preserve_thinking: false,
           },
@@ -1531,7 +1547,7 @@ describe("dashscope preserve_thinking default", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 
@@ -1547,7 +1563,7 @@ describe("dashscope preserve_thinking default", () => {
       name: "custom",
       baseUrl: "https://api.example.com/v1",
       models: {
-        "qwen-plus": {
+        "mai-provider": {
           toolContentSupportType: [],
         },
       },
@@ -1562,7 +1578,7 @@ describe("dashscope preserve_thinking default", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ role: "user", content: "hello" }],
-        model: "qwen-plus",
+        model: "mai-provider",
       }),
     })
 

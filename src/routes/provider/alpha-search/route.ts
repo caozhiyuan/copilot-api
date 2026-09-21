@@ -2,8 +2,12 @@ import { Hono } from "hono"
 
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
-import { handleAlphaSearchRequest } from "~/routes/alpha-search/route"
+import {
+  handleAlphaSearchRequest,
+  parseAlphaSearchBody,
+} from "~/routes/alpha-search/route"
 import {
   createProviderProxyResponse,
   forwardProviderAlphaSearch,
@@ -44,6 +48,10 @@ providerAlphaSearchRoutes.post("/", async (c) => {
         providerConfig,
       )
     }
+
+    const payload = await parseAlphaSearchBody(c)
+    if (payload instanceof Response) return payload
+    assertAllowedModel(payload.model)
 
     await debugJsonAsync(logger, "provider.alpha_search.request", async () => ({
       body: await c.req.raw.clone().text(),

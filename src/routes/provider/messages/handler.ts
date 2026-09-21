@@ -25,7 +25,6 @@ import {
   type ProviderAuthType,
   type ResolvedProviderConfig,
   type ProviderType,
-  getClaudeAutoModel,
   resolveEffectiveProviderType,
   resolveProviderAuthType,
 } from "~/lib/config"
@@ -38,6 +37,7 @@ import {
 } from "~/lib/dashscope"
 import { HTTPError } from "~/lib/error"
 import { createHandlerLogger, debugJson, debugLazy } from "~/lib/logger"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { writeSSEIfConnected } from "~/lib/sse"
 import { resolveBridgeToolSearchName } from "~/lib/tool-search"
@@ -78,10 +78,7 @@ import {
   reconstructWebSearchResponse,
   stripWebSearchServerTool,
 } from "~/routes/messages/web-search/fulfill"
-import {
-  isClaudeAutoModelRequest,
-  normalizeSystemMessages,
-} from "~/routes/messages/preprocess"
+import { normalizeSystemMessages } from "~/routes/messages/preprocess"
 import {
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
@@ -100,7 +97,6 @@ import {
   applyModelDefaults,
   normalizeProviderResponsesReasoningEffort,
 } from "~/routes/provider/utils"
-import consola from "consola"
 
 const logger = createHandlerLogger("provider-messages-handler")
 
@@ -130,14 +126,6 @@ export async function handleProviderMessages(
   const provider = c.req.param("provider")
   const payload = await c.req.json<AnthropicMessagesPayload>()
 
-  const claudeAutoModel = getClaudeAutoModel()
-  if (claudeAutoModel && isClaudeAutoModelRequest(payload)) {
-    consola.debug(
-      `Claude auto model override (${provider}): ${payload.model} -> ${claudeAutoModel}`,
-    )
-    payload.model = claudeAutoModel
-  }
-
   return await handleProviderMessagesForProvider(c, {
     payload,
     provider,
@@ -153,6 +141,8 @@ export async function handleProviderMessagesForProvider(
   },
 ): Promise<Response> {
   const { payload, provider, usageEndpoint } = options
+  assertAllowedModel(payload.model)
+
   const providerConfig =
     await providerMessagesHandlerDependencies.resolveProviderConfig(provider)
   if (!providerConfig) {

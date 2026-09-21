@@ -1,0 +1,166 @@
+import { afterEach, describe, expect, test } from "bun:test"
+
+import {
+  createToolUseSseCapture,
+  isToolUseSseCaptureEnabled,
+} from "~/lib/tool-use-sse-capture"
+
+const CAPTURE_ENV = "COPILOT_API_CAPTURE_TOOLUSE_SSE"
+
+const withCaptureEnv = (value: string | undefined, run: () => void) => {
+  const previous = process.env[CAPTURE_ENV]
+  if (value === undefined) delete process.env[CAPTURE_ENV]
+  else process.env[CAPTURE_ENV] = value
+  try {
+    run()
+  } finally {
+    if (previous === undefined) delete process.env[CAPTURE_ENV]
+    else process.env[CAPTURE_ENV] = previous
+  }
+}
+
+const frame = (event: unknown): string => JSON.stringify(event)
+
+const toolUseFrames = (
+  index: number,
+  id: string,
+  name: string,
+  fragments: Array<string>,
+): Array<[string, string]> => [
+  [
+    "content_block_start",
+    frame({
+      type: "content_block_start",
+      index,
+      content_block: { type: "tool_use", id, name, input: {} },
+    }),
+  ],
+  ...fragments.map((partial): [string, string] => [
+    "content_block_delta",
+    frame({
+      type: "content_block_delta",
+      index,
+      delta: { type: "input_json_delta", partial_json: partial },
+    }),
+  ]),
+  ["content_block_stop", frame({ type: "content_block_stop", index })],
+]
+
+const feed = (
+  capture: NonNullable<ReturnType<typeof createToolUseSseCapture>>,
+  frames: Array<[string, string]>,
+  forwardedOverride?: (received: string, index: number) => string,
+) => {
+  frames.forEach(([eventName, received], index) => {
+    const forwarded = forwardedOverride?.(received, index) ?? received
+    capture.record(eventName, received, forwarded)
+  })
+}
+
+afterEach(() => {
+  delete process.env[CAPTURE_ENV]
+})
+
+describe("tool-use SSE capture gate", () => {
+  test("is inert when the env gate is unset", () => {
+    withCaptureEnv(undefined, () => {
+      expect(isToolUseSseCaptureEnabled()).toBe(false)
+      expect(createToolUseSseCapture()).toBeUndefined()
+    })
+  })
+
+  test("treats explicit falsy values as disabled", () => {
+    for (const value of ["", "0", "false", "off", "no", "  OFF  "]) {
+      withCaptureEnv(value, () => {
+        expect(isToolUseSseCaptureEnabled()).toBe(false)
+        expect(createToolUseSseCapture()).toBeUndefined()
+      })
+    }
+  })
+
+  test("activates for truthy values", () => {
+    for (const value of ["1", "true", "on", "yes"]) {
+      withCaptureEnv(value, () => {
+        expect(isToolUseSseCaptureEnabled()).toBe(true)
+        expect(createToolUseSseCapture()).toBeDefined()
+      })
+    }
+  })
+})
+
+describe("tool-use SSE capture verdict", () => {
+  test("reports a clean boundary for well-formed verbatim tool_use", () => {
+    withCaptureEnv("1", () => {
+      const capture = createToolUseSseCapture()
+      expect(capture).toBeDefined()
+      if (!capture) return
+
+      feed(capture, [
+        [
+          "message_start",
+          frame({ type: "message_start", message: { content: [] } }),
+        ],
+        ...toolUseFrames(0, "toolu_1", "Bash", ['{"command":', '"ls -la"}']),
+        ["message_stop", frame({ type: "message_stop" })],
+      ])
+
+      const summary = capture.finish()
+      expect(summary.verdict).toBe("boundary-clean")
+      expect(summary.toolUseBlocks).toBe(1)
+      expect(summary.malformedBlocks).toBe(0)
+      expect(summary.localDivergence).toBe(false)
+    })
+  })
+
+  test("flags malformed tool input received at the upstream boundary", () => {
+    withCaptureEnv("1", () => {
+      const capture = createToolUseSseCapture()
+      if (!capture) return
+
+      feed(
+        capture,
+        toolUseFrames(0, "toolu_bad", "Bash", [
+          '{"command":',
+          '"ls" court',
+          "}",
+        ]),
+      )
+
+      const summary = capture.finish()
+      expect(summary.verdict).toBe("upstream-boundary-malformed")
+      expect(summary.toolUseBlocks).toBe(1)
+      expect(summary.malformedBlocks).toBe(1)
+    })
+  })
+
+  test("flags local divergence when forwarded bytes differ from received", () => {
+    withCaptureEnv("1", () => {
+      const capture = createToolUseSseCapture()
+      if (!capture) return
+
+      feed(
+        capture,
+        toolUseFrames(0, "toolu_2", "Read", ['{"path":"a"}']),
+        (received, index) =>
+          index === 1 ? received.replace("a", "court") : received,
+      )
+
+      const summary = capture.finish()
+      expect(summary.localDivergence).toBe(true)
+      expect(summary.verdict).toBe("local-divergence")
+    })
+  })
+
+  test("accepts empty tool input", () => {
+    withCaptureEnv("1", () => {
+      const capture = createToolUseSseCapture()
+      if (!capture) return
+
+      feed(capture, toolUseFrames(0, "toolu_3", "NoArgs", []))
+
+      const summary = capture.finish()
+      expect(summary.verdict).toBe("boundary-clean")
+      expect(summary.malformedBlocks).toBe(0)
+    })
+  })
+})

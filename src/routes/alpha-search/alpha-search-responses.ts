@@ -8,6 +8,7 @@ import {
 } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { debugJson, createHandlerLogger } from "~/lib/logger"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { findEndpointModel } from "~/lib/models"
 import {
   createCopilotTokenUsageRecorder,
@@ -617,6 +618,8 @@ async function resolveRemoteModel(
     provider ?
       request.model
     : alphaSearchResponsesDependencies.resolveMappedModel(request.model)
+  assertAllowedModel(model)
+
   if (provider) {
     const providerConfig =
       await alphaSearchResponsesDependencies.resolveProviderConfig(provider)

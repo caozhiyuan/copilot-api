@@ -11,6 +11,7 @@ import {
 import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
+import { filterAllowedModels, isAllowedModel } from "~/lib/model-admission"
 import { toClientModelId } from "~/lib/models"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { state } from "~/lib/state"
@@ -132,7 +133,10 @@ function normalizeProviderModels(
 ): Array<ClientModel> {
   return models
     .map((model) => normalizeProviderModel(provider, model))
-    .filter((model): model is ClientModel => model !== null)
+    .filter(
+      (model): model is ClientModel =>
+        model !== null && isAllowedModel(model.id),
+    )
 }
 
 async function getProviderModelRecords(
@@ -198,7 +202,10 @@ async function getProviderModels(
 async function getAggregatedModels(
   requestHeaders: Headers,
 ): Promise<Array<ClientModel>> {
-  const copilotModels = state.models?.data.map(normalizeCopilotModel) ?? []
+  const copilotModels = filterAllowedModels(
+    state.models?.data ?? [],
+    (model) => model.id,
+  ).map(normalizeCopilotModel)
   const providerModelsByProvider = await Promise.all(
     listEnabledProviders().map((provider) =>
       getProviderModels(provider, requestHeaders),
@@ -245,6 +252,7 @@ async function getSyntheticCodexModels(
 
   const seen = new Set<string>()
   return [...copilotModels, ...providerModels.flat()].filter((candidate) => {
+    if (!isAllowedModel(candidate.catalogSlug ?? candidate.slug)) return false
     if (seen.has(candidate.slug)) return false
     seen.add(candidate.slug)
     return true
@@ -255,7 +263,7 @@ function getCopilotCodexCandidates(): Array<SyntheticCodexModelCandidate> {
   const candidates: Array<SyntheticCodexModelCandidate> = []
   for (const model of state.models?.data ?? []) {
     try {
-      if (isCopilotCodexCandidate(model)) {
+      if (isAllowedModel(model.id) && isCopilotCodexCandidate(model)) {
         candidates.push(createCopilotCodexCandidate(model))
       }
     } catch (error) {
@@ -353,6 +361,8 @@ async function getProviderCodexCandidates(
 
     const candidates: Array<SyntheticCodexModelCandidate> = []
     for (const modelId of modelIds) {
+      if (!isAllowedModel(modelId)) continue
+
       const effectiveType = resolveEffectiveProviderType(
         providerConfig,
         modelId,

@@ -10,7 +10,9 @@ import type { Model } from "~/lib/types/models"
 import {
   getMessageApiWebSearchModel,
   isResponsesApiWebSearchEnabled,
+  resolveMappedModel,
 } from "~/lib/config"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { findEndpointModel } from "~/lib/models"
 import { writeSSEIfConnected } from "~/lib/sse"
 import {
@@ -154,7 +156,10 @@ export const resolveWebSearchRoute = async (
   if (!webSearchModel || !isWebSearchOnlyRequest(payload)) {
     return { kind: "strip" }
   }
-  const alias = parseProviderModelAlias(webSearchModel)
+
+  const resolvedWebSearchModel = resolveMappedModel(webSearchModel)
+  assertAllowedModel(resolvedWebSearchModel)
+  const alias = parseProviderModelAlias(resolvedWebSearchModel)
   if (alias) {
     const configuredAlias = await ensureConfiguredProviderModelAlias(
       alias,
@@ -165,7 +170,7 @@ export const resolveWebSearchRoute = async (
       : { kind: "strip" }
   }
   if (responsesWebSearchEnabled) {
-    return { kind: "responses", model: webSearchModel }
+    return { kind: "responses", model: resolvedWebSearchModel }
   }
   return { kind: "strip" }
 }
@@ -379,6 +384,7 @@ export const handleWebSearchViaResponses = async (
   options: WebSearchFlowOptions,
 ) => {
   const { logger, webSearchModel } = options
+  assertAllowedModel(webSearchModel)
   const wantsStream = Boolean(payload.stream)
 
   // Switch to the GPT web search model and drop the Anthropic server tool so the

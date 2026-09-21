@@ -324,7 +324,10 @@ export interface AnthropicStreamState {
     [openAIToolIndex: number]: {
       id: string
       name: string
+      /** -1 until both id and name are known and the tool_use block opens. */
       anthropicBlockIndex: number
+      /** Arguments buffered while the tool call identity is incomplete. */
+      pendingArgs?: string
     }
   }
 }

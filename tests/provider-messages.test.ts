@@ -48,7 +48,7 @@ const createProviderConfig = (name = "openrouter"): ResolvedProviderConfig => ({
   authType: "authorization",
   baseUrl: "https://openrouter.example/api",
   models: {
-    "claude-sonnet-4": {},
+    "mai-1-preview": {},
   },
   name,
   type: "anthropic",
@@ -57,7 +57,7 @@ const createProviderConfig = (name = "openrouter"): ResolvedProviderConfig => ({
 const createMessagesPayload = (overrides: Record<string, unknown> = {}) => ({
   max_tokens: 128,
   messages: [{ content: "hello", role: "user" }],
-  model: "claude-sonnet-4",
+  model: "mai-1-preview",
   ...overrides,
 })
 
@@ -78,7 +78,7 @@ const createThinkingResponse = () => ({
     },
   ],
   id: "msg_openrouter",
-  model: "claude-sonnet-4",
+  model: "mai-1-preview",
   role: "assistant",
   stop_reason: "end_turn",
   stop_sequence: null,
@@ -106,7 +106,7 @@ const createThinkingStreamResponse = (
     message: {
       content: [],
       id: "msg_openrouter_stream",
-      model: "claude-sonnet-4",
+      model: "mai-1-preview",
       role: "assistant",
       stop_reason: null,
       stop_sequence: null,
@@ -318,7 +318,7 @@ describe("provider Messages Anthropic forwarding", () => {
         message: {
           content: [],
           id: "msg_cut",
-          model: "claude-sonnet-4",
+          model: "mai-1-preview",
           role: "assistant",
           stop_reason: null,
           stop_sequence: null,
@@ -486,7 +486,7 @@ describe("provider Messages per-model type override auth", () => {
       apiKey: "entra-access-token",
       authType: "azure-entra",
       baseUrl: "https://foundry.example/openai",
-      models: { "claude-sonnet-4": { type: "anthropic" } },
+      models: { "mai-1-preview": { type: "anthropic" } },
       name: "foundry",
       type: "openai-compatible",
     })
@@ -508,7 +508,7 @@ describe("provider Messages per-model type override auth", () => {
       apiKey: "provider-key",
       authType: "authorization",
       baseUrl: "https://mixed.example",
-      models: { "claude-sonnet-4": { type: "anthropic" } },
+      models: { "mai-1-preview": { type: "anthropic" } },
       name: "mixed",
       type: "openai-compatible",
     })

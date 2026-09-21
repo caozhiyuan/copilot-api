@@ -10,6 +10,7 @@ import type { Model } from "~/lib/types/models"
 import { debugJson, debugJsonTail, debugLazy } from "~/lib/logger"
 import { writeSSEIfConnected } from "~/lib/sse"
 import { resolveBridgeToolSearchName } from "~/lib/tool-search"
+import { createToolUseSseCapture } from "~/lib/tool-use-sse-capture"
 import {
   createCopilotTokenUsageRecorder,
   mergeAnthropicUsage,
@@ -404,6 +405,7 @@ export const handleWithMessagesApi = async (
       let usage: UsageTokens = {}
       let messageStopSeen = false
       let errorSeen = false
+      const capture = createToolUseSseCapture()
 
       try {
         for await (const event of response) {
@@ -436,6 +438,7 @@ export const handleWithMessagesApi = async (
           } else if (parsedEvent?.type === "error" || eventName === "error") {
             errorSeen = true
           }
+          capture?.record(eventName, data, data)
           await writeSSEIfConnected(stream, {
             event: eventName,
             data,
@@ -444,6 +447,8 @@ export const handleWithMessagesApi = async (
       } catch (error) {
         logger.warn("Messages stream interrupted:", error)
       }
+
+      capture?.finish()
 
       if (!messageStopSeen && !errorSeen) {
         logger.warn(

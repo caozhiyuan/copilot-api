@@ -602,7 +602,7 @@ describe("Alpha search Responses adapter", () => {
       body: JSON.stringify(
         createFallbackPayload(
           { search_query: [{ q: "non-gpt model" }] },
-          { model: "claude-opus-4.1" },
+          { model: "mai-1-preview" },
         ),
       ),
     })
@@ -1032,6 +1032,27 @@ describe("Alpha search Responses adapter", () => {
     expect(body.error.message).toContain(
       "Configured alphaSearchModel 'gpt-5-mini' does not support the Responses endpoint",
     )
+    expect(createResponsesMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects a disallowed configured alpha search fallback", async () => {
+    alphaSearchRouteDependencies.getAlphaSearchModel = () => "CLAUDE-opus-4"
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: { limits: {} },
+          id: "gpt-5.6-sol",
+          supported_endpoints: ["/chat/completions"],
+        },
+      ],
+    } as typeof state.models
+
+    const response = await requestFallback(
+      createFallbackPayload({ search_query: [{ q: "blocked search" }] }),
+    )
+
+    expect(response.status).toBe(400)
     expect(createResponsesMock).not.toHaveBeenCalled()
   })
 

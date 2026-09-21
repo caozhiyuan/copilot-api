@@ -66,7 +66,6 @@ export async function handleResponsesViaMessages(
         translation.messagesPayload,
         {
           compactType: translation.compaction ? COMPACT_REQUEST : undefined,
-          skipClaudeAutoModel: true,
           skipModelMapping: true,
           skipWebSearch: true,
           usageEndpoint: "responses",

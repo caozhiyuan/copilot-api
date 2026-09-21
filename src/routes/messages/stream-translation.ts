@@ -168,10 +168,30 @@ function handleToolCalls(
     handleReasoningOpaqueInToolCalls(state, events, delta)
 
     for (const toolCall of delta.tool_calls) {
-      if (toolCall.id && toolCall.function?.name) {
-        // New tool call starting.
+      const existing = state.toolCalls[toolCall.index] as
+        | AnthropicStreamState["toolCalls"][number]
+        | undefined
+      const info = existing ?? {
+        id: "",
+        name: "",
+        anthropicBlockIndex: -1,
+        pendingArgs: "",
+      }
+      if (!existing) {
+        state.toolCalls[toolCall.index] = info
+      }
+
+      // Copilot may split a tool call's id and function name across chunks.
+      if (toolCall.id) {
+        info.id = toolCall.id
+      }
+      if (toolCall.function?.name) {
+        info.name = toolCall.function.name
+      }
+
+      // Open the tool_use block only after both identity fields are known.
+      if (info.anthropicBlockIndex === -1 && info.id && info.name) {
         if (state.contentBlockOpen) {
-          // Close any previously open block.
           events.push({
             type: "content_block_stop",
             index: state.contentBlockIndex,
@@ -180,34 +200,40 @@ function handleToolCalls(
           state.contentBlockOpen = false
         }
 
-        const anthropicBlockIndex = state.contentBlockIndex
-        state.toolCalls[toolCall.index] = {
-          id: toolCall.id,
-          name: toolCall.function.name,
-          anthropicBlockIndex,
-        }
+        info.anthropicBlockIndex = state.contentBlockIndex
 
         events.push({
           type: "content_block_start",
-          index: anthropicBlockIndex,
+          index: info.anthropicBlockIndex,
           content_block: {
             type: "tool_use",
-            id: toolCall.id,
-            name: toolCall.function.name,
+            id: info.id,
+            name: info.name,
             input: {},
           },
         })
         state.contentBlockOpen = true
+
+        if (info.pendingArgs) {
+          events.push({
+            type: "content_block_delta",
+            index: info.anthropicBlockIndex,
+            delta: {
+              type: "input_json_delta",
+              partial_json: info.pendingArgs,
+            },
+          })
+          info.pendingArgs = ""
+        }
       }
 
       if (toolCall.function?.arguments) {
-        const toolCallInfo = state.toolCalls[toolCall.index]
-        // Tool call can still be empty
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (toolCallInfo) {
+        if (info.anthropicBlockIndex === -1) {
+          info.pendingArgs = `${info.pendingArgs ?? ""}${toolCall.function.arguments}`
+        } else {
           events.push({
             type: "content_block_delta",
-            index: toolCallInfo.anthropicBlockIndex,
+            index: info.anthropicBlockIndex,
             delta: {
               type: "input_json_delta",
               partial_json: toolCall.function.arguments,
@@ -243,7 +269,11 @@ function handleContent(
   if (delta.content && delta.content.length > 0) {
     closeThinkingBlockIfOpen(state, events)
 
-    if (isToolBlockOpen(state) || hasToolCallDelta(delta)) {
+    if (
+      isToolBlockOpen(state)
+      || hasToolCallDelta(delta)
+      || hasPendingToolCall(state)
+    ) {
       state.deferredContent = `${state.deferredContent ?? ""}${delta.content}`
       return
     }
@@ -270,7 +300,7 @@ function handleContent(
     })
   }
 
-  // handle for claude model
+  // Preserve opaque reasoning signatures on Anthropic-compatible streams.
   if (
     delta.content === ""
     && delta.reasoning_opaque
@@ -298,6 +328,12 @@ function handleContent(
 
 function hasToolCallDelta(delta: Delta): boolean {
   return Boolean(delta.tool_calls && delta.tool_calls.length > 0)
+}
+
+function hasPendingToolCall(state: AnthropicStreamState): boolean {
+  return Object.values(state.toolCalls).some(
+    (toolCall) => toolCall.anthropicBlockIndex === -1,
+  )
 }
 
 function flushDeferredContent(
@@ -426,7 +462,7 @@ function handleThinkingText(
   if (reasoningText && reasoningText.length > 0) {
     // compatible with copilot API returning content->reasoning_text->reasoning_opaque in different deltas
     // this is an extremely abnormal situation, probably a server-side bug
-    // only occurs in the claude model, with a very low probability of occurrence
+    // Some upstreams emit this rarely at the end of a reasoning block.
     if (state.contentBlockOpen) {
       delta.content = reasoningText
       delta.reasoning_text = undefined

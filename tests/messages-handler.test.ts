@@ -4,6 +4,7 @@ import { Hono } from "hono"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 
 import { compactSummaryPromptStart, compactTextOnlyGuard } from "~/lib/compact"
+import { forwardError } from "~/lib/error"
 
 const actualStateModule = await import("~/lib/state")
 const actualConfigModule = await import("~/lib/config")
@@ -20,7 +21,7 @@ const state = {
 let messagesApiEnabled = true
 let responsesApiWebSocketEnabled = true
 let modelMappings: Record<string, string> = {}
-let claudeAutoModel: string | undefined
+let smallModel = "gpt-small-model"
 type SelectedModel = {
   id: string
   supported_endpoints?: Array<string>
@@ -65,8 +66,7 @@ await mock.module("~/lib/state", () => ({
 }))
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
-  getClaudeAutoModel: () => claudeAutoModel,
-  getSmallModel: () => "small-model",
+  getSmallModel: () => smallModel,
   isMessagesApiEnabled: () => messagesApiEnabled,
   isResponsesApiWebSocketEnabled: () => responsesApiWebSocketEnabled,
   resolveMappedModel: (model: string) => modelMappings[model] ?? model,
@@ -86,6 +86,7 @@ const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
 
 const createApp = () => {
   const app = new Hono()
+  app.onError((error, c) => forwardError(c, error))
   app.post("/", handleCompletion)
   return app
 }
@@ -93,7 +94,7 @@ const createApp = () => {
 const createPayload = (
   overrides: Partial<AnthropicMessagesPayload> = {},
 ): AnthropicMessagesPayload => ({
-  model: "original-model",
+  model: "gpt-original-model",
   max_tokens: 128,
   messages: [{ role: "user", content: "hello" }],
   ...overrides,
@@ -104,7 +105,7 @@ beforeEach(() => {
   messagesApiEnabled = true
   responsesApiWebSocketEnabled = true
   modelMappings = {}
-  claudeAutoModel = undefined
+  smallModel = "gpt-small-model"
   selectedModel = undefined
 
   responsesUtilsDependencies.isResponsesApiWebSocketEnabled = () =>
@@ -133,12 +134,12 @@ afterEach(() => {
 describe("messages handler orchestration", () => {
   test("merges message-level system prompts before forwarding to the selected flow", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "mai-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
     const payload: AnthropicMessagesPayload = {
-      model: "original-model",
+      model: "mai-original-model",
       max_tokens: 128,
       messages: [
         {
@@ -212,7 +213,7 @@ describe("messages handler orchestration", () => {
 
   test("rewrites getDiagnostics description before forwarding tools", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
@@ -271,12 +272,12 @@ describe("messages handler orchestration", () => {
 
   test("adds cache_control to the last content block after merging tool_result content", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
     const payload: AnthropicMessagesPayload = {
-      model: "original-model",
+      model: "gpt-original-model",
       max_tokens: 128,
       messages: [
         {
@@ -326,12 +327,12 @@ describe("messages handler orchestration", () => {
 
   test("preserves cache_control captured before Tool loaded is stripped", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
     const payload: AnthropicMessagesPayload = {
-      model: "original-model",
+      model: "gpt-original-model",
       max_tokens: 128,
       messages: [
         {
@@ -396,7 +397,7 @@ describe("messages handler orchestration", () => {
 
   test("delegates to the Messages API flow when the model supports /v1/messages", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
@@ -416,15 +417,15 @@ describe("messages handler orchestration", () => {
     expect(handleWithChatCompletions).not.toHaveBeenCalled()
 
     const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
-    expect(forwardedPayload.model).toBe("messages-model")
+    expect(forwardedPayload.model).toBe("gpt-messages-model")
   })
 
   test("maps the requested model before resolving the endpoint model", async () => {
     modelMappings = {
-      "claude-opus-4-7": "messages-model",
+      "claude-opus-4-7": "gpt-messages-model",
     }
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
@@ -439,15 +440,15 @@ describe("messages handler orchestration", () => {
 
     expect(response.status).toBe(200)
     expect(await response.text()).toBe("messages")
-    expect(findEndpointModel).toHaveBeenCalledWith("messages-model")
+    expect(findEndpointModel).toHaveBeenCalledWith("gpt-messages-model")
 
     const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
-    expect(forwardedPayload.model).toBe("messages-model")
+    expect(forwardedPayload.model).toBe("gpt-messages-model")
   })
 
   test("stabilizes Claude Code billing header before forwarding to the Messages API flow", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
@@ -491,7 +492,7 @@ describe("messages handler orchestration", () => {
 
   test("stabilizes Claude Code billing header before forwarding to the Responses API flow", async () => {
     selectedModel = {
-      id: "responses-model",
+      id: "gpt-responses-model",
       supported_endpoints: ["/responses"],
     }
 
@@ -539,7 +540,7 @@ describe("messages handler orchestration", () => {
   test("delegates to the Responses API flow when the model supports ws:/responses", async () => {
     responsesApiWebSocketEnabled = true
     selectedModel = {
-      id: "responses-ws-model",
+      id: "gpt-responses-ws-model",
       supported_endpoints: ["ws:/responses"],
     }
 
@@ -561,7 +562,7 @@ describe("messages handler orchestration", () => {
 
   test("does not delegate compact requests to a ws-only Responses API model", async () => {
     selectedModel = {
-      id: "responses-ws-model",
+      id: "gpt-responses-ws-model",
       supported_endpoints: ["ws:/responses"],
     }
 
@@ -592,7 +593,7 @@ describe("messages handler orchestration", () => {
 
   test("stabilizes Claude Code billing header before falling back to the Chat Completions flow", async () => {
     selectedModel = {
-      id: "chat-model",
+      id: "gpt-chat-model",
       supported_endpoints: [],
     }
 
@@ -639,7 +640,7 @@ describe("messages handler orchestration", () => {
 
   test("applies warmup model override and passes request metadata to the selected flow", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 
@@ -674,7 +675,7 @@ describe("messages handler orchestration", () => {
 
     expect(response.status).toBe(200)
     expect(await response.text()).toBe("messages")
-    expect(findEndpointModel).toHaveBeenCalledWith("small-model")
+    expect(findEndpointModel).toHaveBeenCalledWith("gpt-small-model")
 
     const expectedSessionId = actualUtilsModule.getUUID("session-123")
     const expectedRequestId = actualUtilsModule.generateRequestIdFromPayload(
@@ -693,10 +694,27 @@ describe("messages handler orchestration", () => {
     expect(options.anthropicBetaHeader).toBe("warmup-beta")
   })
 
-  test("keeps the Claude auto model override ahead of warmup selection", async () => {
-    claudeAutoModel = "auto-model"
+  test("rejects a disallowed warmup fallback before selecting a flow", async () => {
+    smallModel = "Claude-Haiku-4"
+
+    const response = await createApp().request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-beta": "warmup-beta",
+      },
+      body: JSON.stringify(createPayload()),
+    })
+
+    expect(response.status).toBe(400)
+    expect(handleWithMessagesApi).not.toHaveBeenCalled()
+    expect(handleWithResponsesApi).not.toHaveBeenCalled()
+    expect(handleWithChatCompletions).not.toHaveBeenCalled()
+  })
+
+  test("uses the configured warmup model for security-monitor-shaped requests", async () => {
     selectedModel = {
-      id: "auto-model",
+      id: "gpt-small-model",
       supported_endpoints: ["/v1/messages"],
     }
 
@@ -723,12 +741,12 @@ describe("messages handler orchestration", () => {
     expect(response.status).toBe(200)
     expect(await response.text()).toBe("messages")
     expect(findEndpointModel).toHaveBeenCalledTimes(1)
-    expect(findEndpointModel).toHaveBeenCalledWith("auto-model")
+    expect(findEndpointModel).toHaveBeenCalledWith("gpt-small-model")
   })
 
   test("prefers dispatch-provided session, request, and subagent context", async () => {
     selectedModel = {
-      id: "messages-model",
+      id: "gpt-messages-model",
       supported_endpoints: ["/v1/messages"],
     }
 

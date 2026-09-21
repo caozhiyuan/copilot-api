@@ -68,7 +68,7 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
         ],
         created: 0,
         id: "chatcmpl-test",
-        model: "qwen-plus",
+        model: "gpt-provider",
         object: "chat.completion",
         usage: {
           completion_tokens: 2,
@@ -97,7 +97,7 @@ beforeEach(() => {
     authType: "authorization",
     baseUrl: "https://dashscope.example/compatible-mode",
     models: {
-      "qwen-plus": {
+      "gpt-provider": {
         temperature: 0.2,
         toolContentSupportType: [],
       },
@@ -121,7 +121,7 @@ afterEach(() => {
 describe("provider/model aliases on top-level messages routes", () => {
   test("routes mapped /v1/messages models to the provider before rate limiting", async () => {
     modelMappings = {
-      "claude-opus-4-7": "dash/qwen-plus",
+      "legacy-model": "dash/gpt-provider",
     }
 
     const app = createApp()
@@ -129,7 +129,7 @@ describe("provider/model aliases on top-level messages routes", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "claude-opus-4-7",
+        model: "legacy-model",
       }),
       headers: {
         "content-type": "application/json",
@@ -148,7 +148,50 @@ describe("provider/model aliases on top-level messages routes", () => {
     const upstreamBody = JSON.parse((init as RequestInit).body as string) as {
       model: string
     }
-    expect(upstreamBody.model).toBe("qwen-plus")
+    expect(upstreamBody.model).toBe("gpt-provider")
+  })
+
+  test("rejects a mapped provider alias that resolves to a Claude model", async () => {
+    modelMappings = {
+      "legacy-model": "dash/claude-sonnet-4",
+    }
+
+    const response = await createApp().request("/v1/messages", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "legacy-model",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({
+      error: {
+        code: "model_not_allowed",
+        message:
+          "The selected model is not allowed. Only OpenAI and Microsoft MAI models are supported.",
+        param: "model",
+        type: "invalid_request_error",
+      },
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects a provider-prefixed Claude model", async () => {
+    const response = await createApp().request("/v1/messages", {
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ content: "hello", role: "user" }],
+        model: "dash/CLAUDE-opus-4",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("routes /v1/messages to the provider and strips the provider prefix", async () => {
@@ -157,7 +200,7 @@ describe("provider/model aliases on top-level messages routes", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "dash/qwen-plus",
+        model: "dash/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -176,10 +219,10 @@ describe("provider/model aliases on top-level messages routes", () => {
     const upstreamBody = JSON.parse((init as RequestInit).body as string) as {
       model: string
     }
-    expect(upstreamBody.model).toBe("qwen-plus")
+    expect(upstreamBody.model).toBe("gpt-provider")
 
     const json = (await response.json()) as { model: string }
-    expect(json.model).toBe("qwen-plus")
+    expect(json.model).toBe("gpt-provider")
   })
 
   test("routes /v1/messages/count_tokens to provider token counting with the stripped model", async () => {
@@ -188,7 +231,7 @@ describe("provider/model aliases on top-level messages routes", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "dash/qwen-plus",
+        model: "dash/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -206,14 +249,14 @@ describe("provider/model aliases on top-level messages routes", () => {
       TokenCountPayload,
       TokenCountModel,
     ]
-    expect(openAIPayload.model).toBe("qwen-plus")
-    expect(selectedModel.id).toBe("qwen-plus")
+    expect(openAIPayload.model).toBe("gpt-provider")
+    expect(selectedModel.id).toBe("gpt-provider")
     expect(selectedModel.capabilities.tokenizer).toBe("o200k_base")
   })
 
   test("routes mapped /v1/messages/count_tokens models to provider token counting", async () => {
     modelMappings = {
-      "claude-opus-4-7": "dash/qwen-plus",
+      "legacy-model": "dash/gpt-provider",
     }
 
     const app = createApp()
@@ -221,7 +264,7 @@ describe("provider/model aliases on top-level messages routes", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "claude-opus-4-7",
+        model: "legacy-model",
       }),
       headers: {
         "content-type": "application/json",
@@ -239,8 +282,8 @@ describe("provider/model aliases on top-level messages routes", () => {
       TokenCountPayload,
       TokenCountModel,
     ]
-    expect(openAIPayload.model).toBe("qwen-plus")
-    expect(selectedModel.id).toBe("qwen-plus")
+    expect(openAIPayload.model).toBe("gpt-provider")
+    expect(selectedModel.id).toBe("gpt-provider")
     expect(selectedModel.capabilities.tokenizer).toBe("o200k_base")
   })
 
@@ -263,7 +306,7 @@ describe("provider/model aliases on top-level messages routes", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "dash/qwen-plus",
+        model: "dash/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -284,21 +327,21 @@ describe("provider/model aliases on top-level messages routes", () => {
 describe("namespaced model ids fall through to the default lookup", () => {
   // Regression guard for namespaced model ids returned by the GitHub Copilot
   // gateway for enterprise accounts. The gateway lists enterprise-configured
-  // models with the account handle as a prefix, e.g. "contoso/glm-5.2" or a
-  // deeper org-scoped "contoso/family/glm-5.2". parseProviderModelAlias
+  // models with the account handle as a prefix, e.g. "contoso/mai-1-preview" or a
+  // deeper org-scoped "contoso/family/mai-1-preview". parseProviderModelAlias
   // previously treated the first segment ("contoso") as a custom provider
   // alias prefix, but no "contoso" entry exists in config.providers, so the
   // request was misrouted to the provider path and surfaced as a 400/404.
   // These ids must fall through to the default model lookup (Copilot
   // upstream) and be sent as-is, exactly like a plain model id.
   test("does not route a namespaced /v1/messages id to the provider path", async () => {
-    // Single-segment namespacing: "contoso/glm-5.2".
+    // Single-segment namespacing: "contoso/mai-1-preview".
     const app = createApp()
     const response = await app.request("/v1/messages", {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "contoso/glm-5.2",
+        model: "contoso/mai-1-preview",
       }),
       headers: {
         "content-type": "application/json",
@@ -315,7 +358,7 @@ describe("namespaced model ids fall through to the default lookup", () => {
   })
 
   test("does not route a namespaced /v1/messages/count_tokens id to the provider path and reaches the estimation fallback", async () => {
-    // Multi-segment namespacing: "contoso/family/glm-5.2". count_tokens is
+    // Multi-segment namespacing: "contoso/family/mai-1-preview". count_tokens is
     // called as a preflight by clients like Claude Code; it must not 404 on
     // a namespaced id while the main /v1/messages flow works.
     const app = createApp()
@@ -323,7 +366,7 @@ describe("namespaced model ids fall through to the default lookup", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "contoso/family/glm-5.2",
+        model: "contoso/family/mai-1-preview",
       }),
       headers: {
         "content-type": "application/json",
@@ -345,7 +388,7 @@ describe("namespaced model ids fall through to the default lookup", () => {
       body: JSON.stringify({
         max_tokens: 128,
         messages: [{ content: "hello", role: "user" }],
-        model: "dash/qwen-plus",
+        model: "dash/gpt-provider",
       }),
       headers: {
         "content-type": "application/json",
@@ -359,6 +402,6 @@ describe("namespaced model ids fall through to the default lookup", () => {
       TokenCountPayload,
       TokenCountModel,
     ]
-    expect(selectedModel.id).toBe("qwen-plus")
+    expect(selectedModel.id).toBe("gpt-provider")
   })
 })

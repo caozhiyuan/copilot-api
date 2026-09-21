@@ -84,7 +84,7 @@ const createMessagesResponse = (
   Response.json({
     content,
     id: "msg-switch",
-    model: "claude-test",
+    model: "mai-test",
     role: "assistant",
     stop_reason: "end_turn",
     stop_sequence: null,
@@ -212,7 +212,7 @@ describe("responses reasoning transport isolation", () => {
       data: [
         {
           capabilities: { limits: { max_prompt_tokens: 128000 } },
-          id: "claude-test",
+          id: "mai-test",
           supported_endpoints: ["/v1/messages"],
         },
       ],
@@ -227,7 +227,7 @@ describe("responses reasoning transport isolation", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-test",
+        model: "mai-test",
         input: [
           {
             id: "rs_native",
@@ -297,12 +297,9 @@ describe("responses reasoning transport isolation", () => {
   for (const [name, models] of [
     [
       "Responses to Messages to Responses",
-      ["gpt-test", "claude-test", "gpt-test"],
+      ["gpt-test", "mai-test", "gpt-test"],
     ],
-    [
-      "Messages to Responses to Messages",
-      ["claude-test", "gpt-test", "claude-test"],
-    ],
+    ["Messages to Responses to Messages", ["mai-test", "gpt-test", "mai-test"]],
   ] as const) {
     test(`round-trips retained client history from ${name}`, async () => {
       state.models = {
@@ -315,7 +312,7 @@ describe("responses reasoning transport isolation", () => {
           },
           {
             capabilities: { limits: { max_prompt_tokens: 128000 } },
-            id: "claude-test",
+            id: "mai-test",
             supported_endpoints: ["/v1/messages"],
           },
         ],
@@ -334,7 +331,7 @@ describe("responses reasoning transport isolation", () => {
                 thinking: "Messages reasoning",
                 signature: "messages-reasoning",
               },
-              { type: "text", text: "Answer from claude-test" },
+              { type: "text", text: "Answer from mai-test" },
             ]),
           ),
       )
@@ -394,16 +391,16 @@ describe("responses handler token usage", () => {
       data: [
         {
           capabilities: {
-            family: "claude",
+            family: "mai",
             limits: { max_prompt_tokens: 128000 },
             object: "model_capabilities",
             supports: { tool_calls: true },
             tokenizer: "o200k_base",
             type: "chat",
           },
-          id: "claude-test",
+          id: "mai-test",
           model_picker_enabled: true,
-          name: "Claude Test",
+          name: "MAI Test",
           object: "model",
           preview: false,
           supported_endpoints: ["/v1/messages"],
@@ -425,7 +422,7 @@ describe("responses handler token usage", () => {
               },
             ],
             id: "msg-lite",
-            model: "claude-test",
+            model: "mai-test",
             role: "assistant",
             stop_reason: "tool_use",
             stop_sequence: null,
@@ -438,7 +435,7 @@ describe("responses handler token usage", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-test",
+        model: "mai-test",
         input: [
           {
             role: "developer",
@@ -475,16 +472,16 @@ describe("responses handler token usage", () => {
       data: [
         {
           capabilities: {
-            family: "claude",
+            family: "mai",
             limits: { max_prompt_tokens: 128000 },
             object: "model_capabilities",
             supports: { tool_calls: true },
             tokenizer: "o200k_base",
             type: "chat",
           },
-          id: "claude-test",
+          id: "mai-test",
           model_picker_enabled: true,
-          name: "Claude Test",
+          name: "MAI Test",
           object: "model",
           preview: false,
           supported_endpoints: ["/v1/messages"],
@@ -503,7 +500,7 @@ describe("responses handler token usage", () => {
           Response.json({
             content: [{ type: "text", text: "hi" }],
             id: "msg-context",
-            model: "claude-test",
+            model: "mai-test",
             role: "assistant",
             stop_reason: "end_turn",
             stop_sequence: null,
@@ -516,7 +513,7 @@ describe("responses handler token usage", () => {
 
     const payload = {
       input: [{ content: "Patch it", role: "user", type: "message" }],
-      model: "claude-test",
+      model: "mai-test",
     }
 
     const response = await createApp().request("/v1/responses", {
@@ -659,16 +656,16 @@ describe("responses handler token usage", () => {
       data: [
         {
           capabilities: {
-            family: "claude",
+            family: "mai",
             limits: { max_prompt_tokens: 128000 },
             object: "model_capabilities",
             supports: { tool_calls: true },
             tokenizer: "o200k_base",
             type: "chat",
           },
-          id: "claude-no-endpoints",
+          id: "mai-no-endpoints",
           model_picker_enabled: true,
-          name: "Claude No Endpoints",
+          name: "MAI No Endpoints",
           object: "model",
           preview: false,
           supported_endpoints: [],
@@ -683,7 +680,7 @@ describe("responses handler token usage", () => {
           Response.json({
             content: [{ type: "text", text: "hi" }],
             id: "msg-codex",
-            model: "claude-no-endpoints",
+            model: "mai-no-endpoints",
             role: "assistant",
             stop_reason: "end_turn",
             stop_sequence: null,
@@ -696,7 +693,7 @@ describe("responses handler token usage", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-no-endpoints",
+        model: "mai-no-endpoints",
         input: "hello",
       }),
       headers: {
@@ -717,16 +714,16 @@ describe("responses handler token usage", () => {
       data: [
         {
           capabilities: {
-            family: "claude",
+            family: "mai",
             limits: { max_prompt_tokens: 128000 },
             object: "model_capabilities",
             supports: { tool_calls: true },
             tokenizer: "o200k_base",
             type: "chat",
           },
-          id: "claude-responses",
+          id: "mai-responses",
           model_picker_enabled: true,
-          name: "Claude Responses",
+          name: "MAI Responses",
           object: "model",
           preview: false,
           supported_endpoints: ["/responses"],
@@ -741,7 +738,7 @@ describe("responses handler token usage", () => {
           Response.json({
             content: [{ type: "text", text: "hi" }],
             id: "msg-codex-native",
-            model: "claude-responses",
+            model: "mai-responses",
             role: "assistant",
             stop_reason: "end_turn",
             stop_sequence: null,
@@ -754,7 +751,7 @@ describe("responses handler token usage", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-responses",
+        model: "mai-responses",
         input: "hello",
       }),
       headers: {
@@ -775,16 +772,16 @@ describe("responses handler token usage", () => {
       data: [
         {
           capabilities: {
-            family: "claude",
+            family: "mai",
             limits: { max_prompt_tokens: 128000 },
             object: "model_capabilities",
             supports: { tool_calls: true },
             tokenizer: "o200k_base",
             type: "chat",
           },
-          id: "claude-tips",
+          id: "mai-tips",
           model_picker_enabled: true,
-          name: "Claude Tips",
+          name: "MAI Tips",
           object: "model",
           preview: false,
           supported_endpoints: ["/v1/messages"],
@@ -799,7 +796,7 @@ describe("responses handler token usage", () => {
           Response.json({
             content: [{ type: "text", text: "hi" }],
             id: "msg-tips",
-            model: "claude-tips",
+            model: "mai-tips",
             role: "assistant",
             stop_reason: "end_turn",
             stop_sequence: null,
@@ -813,7 +810,7 @@ describe("responses handler token usage", () => {
     const app = createApp()
     const codexResponse = await app.request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-tips",
+        model: "mai-tips",
         instructions: "Base instructions",
         input: "hello",
       }),
@@ -825,7 +822,7 @@ describe("responses handler token usage", () => {
     })
     const otherResponse = await app.request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-tips",
+        model: "mai-tips",
         instructions: "Base instructions",
         input: "hello",
       }),
@@ -858,16 +855,16 @@ describe("responses handler token usage", () => {
       data: [
         {
           capabilities: {
-            family: "claude",
+            family: "mai",
             limits: { max_prompt_tokens: 128000 },
             object: "model_capabilities",
             supports: { tool_calls: true },
             tokenizer: "o200k_base",
             type: "chat",
           },
-          id: "claude-no-endpoints",
+          id: "mai-no-endpoints",
           model_picker_enabled: true,
-          name: "Claude No Endpoints",
+          name: "MAI No Endpoints",
           object: "model",
           preview: false,
           supported_endpoints: [],
@@ -884,7 +881,7 @@ describe("responses handler token usage", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-no-endpoints",
+        model: "mai-no-endpoints",
         input: "hello",
       }),
       headers: { "content-type": "application/json" },
@@ -2020,16 +2017,16 @@ describe("responses handler interrupted streams", () => {
       data: [
         {
           capabilities: {
-            family: "claude",
+            family: "mai",
             limits: { max_prompt_tokens: 128000 },
             object: "model_capabilities",
             supports: { tool_calls: true },
             tokenizer: "o200k_base",
             type: "chat",
           },
-          id: "claude-test",
+          id: "mai-test",
           model_picker_enabled: true,
-          name: "Claude Test",
+          name: "MAI Test",
           object: "model",
           preview: false,
           supported_endpoints: ["/v1/messages"],
@@ -2055,7 +2052,7 @@ describe("responses handler interrupted streams", () => {
 
     const response = await createApp().request("/v1/responses", {
       body: JSON.stringify({
-        model: "claude-test",
+        model: "mai-test",
         input: [{ role: "user", type: "message", content: "hi" }],
         stream: true,
       }),

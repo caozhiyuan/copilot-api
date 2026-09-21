@@ -7,6 +7,7 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
 import { writeSSEIfConnected } from "~/lib/sse"
@@ -69,6 +70,8 @@ export const handleResponses = async (c: Context) => {
     )
   }
 
+  assertAllowedModel(payload.model)
+
   const providerModelAlias = await resolveConfiguredProviderModelAlias(
     payload.model,
     providerResponsesHandlerDependencies.resolveProviderConfig,
@@ -103,6 +106,7 @@ export const handleResponses = async (c: Context) => {
     payload.model,
   )
   payload.model = selectedModel?.id ?? payload.model
+  assertAllowedModel(payload.model)
   const normalizedReasoningEffort = normalizeResponsesReasoningEffort(
     payload,
     selectedModel?.capabilities?.supports?.reasoning_effort,

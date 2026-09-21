@@ -3,6 +3,11 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 import consola from "consola"
 
+import {
+  MODEL_NOT_ALLOWED_ERROR,
+  ModelNotAllowedError,
+} from "~/lib/model-admission"
+
 export class HTTPError extends Error {
   response: Response
 
@@ -36,6 +41,10 @@ export async function forwardError(
   c: Context,
   error: unknown,
 ): Promise<Response> {
+  if (error instanceof ModelNotAllowedError) {
+    return c.json({ error: MODEL_NOT_ALLOWED_ERROR }, 400)
+  }
+
   if (
     error instanceof UpstreamHeadersTimeoutError
     || error instanceof UpstreamStreamInactivityTimeoutError

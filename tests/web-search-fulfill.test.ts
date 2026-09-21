@@ -363,12 +363,12 @@ describe("resolveWebSearchRoute", () => {
   it("routes a provider/model alias to provider passthrough", async () => {
     const route = await resolveWebSearchRoute(makePayload(), {
       ...opts,
-      webSearchModel: "anthropic/claude-sonnet-4-5",
+      webSearchModel: "anthropic/mai-1-preview",
       resolveProviderConfig: resolveConfiguredProvider,
     })
     expect(route).toEqual({
       kind: "provider",
-      alias: { provider: "anthropic", model: "claude-sonnet-4-5" },
+      alias: { provider: "anthropic", model: "mai-1-preview" },
     })
   })
 
@@ -377,7 +377,7 @@ describe("resolveWebSearchRoute", () => {
     // must not be routed (404) nor passed to Copilot as a model id.
     const route = await resolveWebSearchRoute(makePayload(), {
       ...opts,
-      webSearchModel: "anthropic/claude-sonnet-4-5",
+      webSearchModel: "anthropic/mai-1-preview",
       resolveProviderConfig: resolveMissingProvider,
     })
     expect(route.kind).toBe("strip")

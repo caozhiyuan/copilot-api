@@ -2,6 +2,7 @@ import type { Context } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
+import { filterAllowedModels, isAllowedModel } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import type {
   CodexModel,
@@ -96,7 +97,24 @@ export async function handleCodexModelsProxy(
     c.req.url,
     c.req.raw.headers,
   )
-  return createProviderProxyResponse(upstreamResponse)
+  if (!upstreamResponse.ok) {
+    return createProviderProxyResponse(upstreamResponse)
+  }
+
+  const body: unknown = await upstreamResponse.json()
+  if (!isCodexModelsResponse(body)) {
+    return c.json(
+      {
+        error: {
+          message: "Codex returned an invalid models catalog",
+          type: "upstream_error",
+        },
+      },
+      502,
+    )
+  }
+
+  return createFilteredCodexCatalogResponse(upstreamResponse, body)
 }
 
 export async function handleMergedCodexModels(
@@ -113,7 +131,10 @@ export async function handleMergedCodexModels(
       return []
     }),
   ])
-  const upstreamModels = upstreamCatalog?.models ?? FALLBACK_CODEX_MODELS
+  const upstreamModels = filterAllowedModels(
+    upstreamCatalog?.models ?? FALLBACK_CODEX_MODELS,
+    (model) => model.slug,
+  ).map(sanitizeCodexModelReferences)
   const template = selectTemplate(upstreamModels)
   const catalogModelsBySlug = new Map(
     upstreamModels.map((model) => [model.slug, model]),
@@ -134,7 +155,11 @@ export async function handleMergedCodexModels(
       })
     : []
   const syntheticModels = candidates
-    .filter((candidate) => !seenSlugs.has(candidate.slug))
+    .filter(
+      (candidate) =>
+        isAllowedModel(candidate.catalogSlug ?? candidate.slug)
+        && !seenSlugs.has(candidate.slug),
+    )
     .flatMap((candidate, index) => {
       const priorityBase = getCandidatePriorityBase(candidate)
       const catalogModel =
@@ -171,6 +196,38 @@ export async function handleMergedCodexModels(
     models,
   }
   return c.json(response)
+}
+
+function createFilteredCodexCatalogResponse(
+  upstreamResponse: Response,
+  catalog: CodexModelsResponse,
+): Response {
+  const body: CodexModelsResponse = {
+    ...catalog,
+    models: filterAllowedModels(catalog.models, (model) => model.slug).map(
+      sanitizeCodexModelReferences,
+    ),
+  }
+  const rewrittenResponse = new Response(JSON.stringify(body), {
+    headers: upstreamResponse.headers,
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+  })
+  return createProviderProxyResponse(rewrittenResponse)
+}
+
+function sanitizeCodexModelReferences(model: CodexModel): CodexModel {
+  const sanitized = { ...model }
+  if (
+    model.auto_review_model_override
+    && !isAllowedModel(model.auto_review_model_override)
+  ) {
+    sanitized.auto_review_model_override = null
+  }
+  if (model.upgrade && !isAllowedModel(model.upgrade.model)) {
+    sanitized.upgrade = null
+  }
+  return sanitized
 }
 
 function createCatalogAlias(

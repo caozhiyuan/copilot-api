@@ -4,12 +4,12 @@ import type { Model } from "~/lib/types/models"
 
 import { COMPACT_REQUEST } from "~/lib/compact"
 import {
-  getClaudeAutoModel,
   getSmallModel,
   isMessagesApiEnabled,
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
+import { assertAllowedModel } from "~/lib/model-admission"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
 import { state } from "~/lib/state"
@@ -36,7 +36,6 @@ import {
   applyLastMessageCacheControl,
   getCompactType,
   getLastMessageContentCacheControl,
-  isClaudeAutoModelRequest,
   mergeToolResultForClaude,
   normalizeSystemMessages,
   sanitizeIdeTools,
@@ -62,7 +61,6 @@ export async function handleCompletion(c: Context) {
 
 export interface CompletionPayloadOptions {
   compactType?: ReturnType<typeof getCompactType>
-  skipClaudeAutoModel?: boolean
   skipModelMapping?: boolean
   skipWebSearch?: boolean
   usageEndpoint?: TokenUsageEndpoint
@@ -85,6 +83,7 @@ export async function handleCompletionPayload(
       `Resolved model mapping: ${requestedModel} -> ${anthropicPayload.model}`,
     )
   }
+  assertAllowedModel(anthropicPayload.model)
 
   if (!dispatchOptions.skipWebSearch) {
     const webSearchResult = await tryHandleWebSearch(c, anthropicPayload, {
@@ -93,19 +92,6 @@ export async function handleCompletionPayload(
         handleProviderMessagesForProvider(ctx, { payload, provider }),
     })
     if (webSearchResult) return webSearchResult
-  }
-
-  const claudeAutoModel = getClaudeAutoModel()
-  const shouldUseClaudeAutoModel = Boolean(
-    !dispatchOptions.skipClaudeAutoModel
-      && claudeAutoModel
-      && isClaudeAutoModelRequest(anthropicPayload),
-  )
-  if (claudeAutoModel && shouldUseClaudeAutoModel) {
-    consola.debug(
-      `Claude auto model override: ${anthropicPayload.model} -> ${claudeAutoModel}`,
-    )
-    anthropicPayload.model = claudeAutoModel
   }
 
   const providerModelAlias = await resolveConfiguredProviderModelAlias(
@@ -145,11 +131,12 @@ export async function handleCompletionPayload(
   // set "CLAUDE_CODE_SUBAGENT_MODEL": "you small model" also can avoid this
   const anthropicBeta = c.req.header("anthropic-beta")
   logger.debug("Anthropic Beta header:", anthropicBeta)
-  if (!state.tokenBasedBilling && !shouldUseClaudeAutoModel) {
+  if (!state.tokenBasedBilling) {
     const tools = anthropicPayload.tools
     const noTools = !tools || tools.length === 0
     if (anthropicBeta && noTools && compactType === 0) {
-      anthropicPayload.model = getSmallModel()
+      anthropicPayload.model = resolveMappedModel(getSmallModel())
+      assertAllowedModel(anthropicPayload.model)
     }
   }
 
@@ -188,6 +175,7 @@ export async function handleCompletionPayload(
 
   const selectedModel = findEndpointModel(anthropicPayload.model)
   anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
+  assertAllowedModel(anthropicPayload.model)
 
   if (shouldUseMessagesApi(selectedModel)) {
     return await messagesFlowHandlers.handleWithMessagesApi(

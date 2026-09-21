@@ -31,4 +31,11 @@ Recent history uses Conventional Commit prefixes such as `feat:` and `chore:`. K
 
 ## Security & Configuration Tips
 
-Do not commit tokens, local credentials, or generated secrets. Review auth, proxy, TLS, and token refresh changes carefully, especially files under `src/lib/`, `src/auth.ts`, and `src/services/github/`.
+Do not commit tokens, local credentials, or generated secrets. Review auth, proxy, TLS, and token refresh changes carefully, especially files under `src/lib/`, `src/auth.ts`, and `src/services/github/`. Model admission is centralized in `src/lib/model-admission.ts`; enforce it after mappings and provider aliases resolve and use it for every exposed model catalog.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
