@@ -5,7 +5,6 @@ import {
   type ParsedImagesRequest,
 } from "~/routes/images/shared"
 import {
-  DEFAULT_MULTIPART_STAGING_LIMITS,
   stageMultipartBodyToDisk,
   type StagedMultipartBody,
 } from "~/routes/images/temp-form-data"
@@ -15,8 +14,7 @@ export const imageEditsRouteDependencies = {
   stageMultipartBodyToDisk,
 }
 
-export const MAX_IMAGE_GENERATION_BODY_SIZE_BYTES =
-  DEFAULT_MULTIPART_STAGING_LIMITS.maxBodySizeBytes
+export const MAX_IMAGE_GENERATION_BODY_SIZE_BYTES = 1024 * 1024
 
 interface StagedEditsRequest {
   model?: string

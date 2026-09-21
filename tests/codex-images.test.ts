@@ -2,13 +2,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import {
-  DEFAULT_MULTIPART_STAGING_LIMITS,
-  MultipartBodyTooLargeError,
-} from "~/routes/images/temp-form-data"
-
-const MAX_IMAGE_GENERATION_BODY_SIZE_BYTES =
-  DEFAULT_MULTIPART_STAGING_LIMITS.maxBodySizeBytes
+import { MAX_IMAGE_GENERATION_BODY_SIZE_BYTES } from "~/routes/images/parsed-request"
+import { MultipartBodyTooLargeError } from "~/routes/images/temp-form-data"
 
 const actualConfigModule = await import("~/lib/config")
 const actualTokenModule = await import("~/lib/token")

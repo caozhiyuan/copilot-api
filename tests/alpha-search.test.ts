@@ -18,9 +18,11 @@ const { forwardCodexAlphaSearch, resolveCodexAlphaSearchUrl } = await import(
 const { forwardCodexModels, getModels, resolveCodexModelsUrl } = await import(
   "~/services/codex/get-models"
 )
-const { alphaSearchRouteDependencies, alphaSearchRoutes } = await import(
-  "~/routes/alpha-search/route"
-)
+const {
+  alphaSearchRouteDependencies,
+  alphaSearchRoutes,
+  MAX_ALPHA_SEARCH_BODY_SIZE_BYTES,
+} = await import("~/routes/alpha-search/route")
 const { alphaSearchResponsesDependencies, resetAlphaSearchState } =
   await import("~/routes/alpha-search/alpha-search-responses")
 const { providerAlphaSearchRouteDependencies, providerAlphaSearchRoutes } =
@@ -462,6 +464,25 @@ describe("Codex alpha search forwarding", () => {
     expect(headers.get("authorization")).toBe("Bearer openrouter-key")
     expect(headers.get("content-type")).toBe("application/json")
     expect(await new Response(init?.body).json()).toEqual(alphaSearchPayload)
+  })
+
+  test("rejects oversized alpha search bodies before forwarding", async () => {
+    for (const path of ["/alpha/search", "/openrouter/v1/alpha/search"]) {
+      fetchMock.mockClear()
+      const response = await createApp().request(
+        new Request(`http://localhost${path}`, {
+          method: "POST",
+          headers: {
+            "content-length": String(MAX_ALPHA_SEARCH_BODY_SIZE_BYTES + 1),
+            "content-type": "application/json",
+          },
+          body: "{}",
+        }),
+      )
+
+      expect(response.status).toBe(413)
+      expect(fetchMock).not.toHaveBeenCalled()
+    }
   })
 
   test("forwards only the validated model from duplicate-key bodies", async () => {

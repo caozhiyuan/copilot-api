@@ -165,6 +165,52 @@ describe("provider/model aliases on top-level chat completions route", () => {
     })
   })
 
+  test("rejects disallowed provider fallback models", async () => {
+    const app = createApp()
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({
+        messages: [{ content: "hello", role: "user" }],
+        model: "dash/gpt-provider",
+        models: ["openai/gpt-5.4", "anthropic/claude-sonnet-4"],
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects disallowed fallback models from provider configuration", async () => {
+    providerConfig = {
+      ...providerConfig,
+      models: {
+        "gpt-provider": {
+          extraBody: {
+            models: ["anthropic/claude-sonnet-4"],
+          },
+        },
+      },
+    } as ResolvedProviderConfig
+
+    const app = createApp()
+    const response = await app.request("/v1/chat/completions", {
+      body: JSON.stringify({
+        messages: [{ content: "hello", role: "user" }],
+        model: "dash/gpt-provider",
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test("keeps request fields over provider defaults and adds stream usage option", async () => {
     const app = createApp()
     const response = await app.request("/v1/chat/completions", {

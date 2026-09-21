@@ -5,7 +5,10 @@ import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { resolveMappedModel } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { assertAllowedModel } from "~/lib/model-admission"
+import {
+  assertAllowedModel,
+  assertAllowedModelSelection,
+} from "~/lib/model-admission"
 import { findEndpointModel } from "~/lib/models"
 import { writeSSEIfConnected } from "~/lib/sse"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
@@ -36,7 +39,7 @@ export async function handleCompletion(c: Context) {
     )
   }
 
-  assertAllowedModel(payload.model)
+  assertAllowedModelSelection(payload)
 
   const providerModelAlias = await resolveConfiguredProviderModelAlias(
     payload.model,

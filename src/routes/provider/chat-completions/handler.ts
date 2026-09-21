@@ -15,7 +15,7 @@ import {
 } from "~/lib/dashscope"
 import { HTTPError } from "~/lib/error"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { assertAllowedModel } from "~/lib/model-admission"
+import { assertAllowedModelSelection } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { writeSSEIfConnected } from "~/lib/sse"
 import {
@@ -47,7 +47,7 @@ export async function handleProviderChatCompletionsForProvider(
   },
 ): Promise<Response> {
   const { payload, provider } = options
-  assertAllowedModel(payload.model)
+  assertAllowedModelSelection(payload)
 
   const providerConfig = await resolveProviderConfig(provider)
   if (
@@ -77,6 +77,7 @@ export async function handleProviderChatCompletionsForProvider(
     providerConfig,
   )
   applyProviderContextCache(payload, modelConfig, providerConfig)
+  assertAllowedModelSelection(payload)
 
   debugJson(logger, "provider.chat_completions.request", {
     payload,

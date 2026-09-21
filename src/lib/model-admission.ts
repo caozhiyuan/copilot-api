@@ -73,6 +73,20 @@ export function assertAllowedModel(
   }
 }
 
+export function assertAllowedModelSelection(payload: {
+  model: unknown
+  models?: unknown
+}): void {
+  assertAllowedModel(payload.model)
+
+  if (!Object.hasOwn(payload, "models")) return
+  if (!Array.isArray(payload.models)) throw new ModelNotAllowedError()
+
+  for (const model of payload.models) {
+    assertAllowedModel(model)
+  }
+}
+
 export function filterAllowedModels<T>(
   models: Array<T>,
   getModelId: (model: T) => unknown,

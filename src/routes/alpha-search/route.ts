@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono"
 import consola from "consola"
 
+import { readBodyWithLimit } from "~/lib/bounded-body"
 import {
   getAlphaSearchModel,
   isAlphaSearchCodexPriorityEnabled,
@@ -28,6 +29,8 @@ import { createProviderProxyResponse } from "~/services/providers/provider-proxy
 const logger = createHandlerLogger("alpha-search-handler")
 
 export const alphaSearchRoutes = new Hono()
+
+export const MAX_ALPHA_SEARCH_BODY_SIZE_BYTES = 10 * 1024 * 1024
 
 export const alphaSearchRouteDependencies = {
   findEndpointModel,
@@ -119,14 +122,33 @@ function invalidRequest(c: Context, message: string): Response {
   )
 }
 
+function getRequestBody(request: Request): ReadableStream<Uint8Array> | null {
+  try {
+    return request.body
+  } catch {
+    return request.clone().body
+  }
+}
+
 export async function parseAlphaSearchBody(
   c: Context,
 ): Promise<AlphaSearchRequest | Response> {
   let body: unknown
   try {
-    body = await c.req.raw.clone().json()
-  } catch {
-    return invalidRequest(c, "Invalid alpha search request: expected JSON body")
+    const bodyBytes = await readBodyWithLimit(
+      getRequestBody(c.req.raw),
+      MAX_ALPHA_SEARCH_BODY_SIZE_BYTES,
+      c.req.header("content-length"),
+    )
+    body = JSON.parse(new TextDecoder().decode(bodyBytes))
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return invalidRequest(
+        c,
+        "Invalid alpha search request: expected JSON body",
+      )
+    }
+    throw error
   }
 
   const model = (body as AlphaSearchRequest | null)?.model

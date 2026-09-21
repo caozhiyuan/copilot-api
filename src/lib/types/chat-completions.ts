@@ -103,6 +103,7 @@ export interface ChatCompletionsPayload {
 
   messages: Array<Message>
   model: string
+  models?: Array<string>
   temperature?: number | null
   top_p?: number | null
   max_tokens?: number | null
