@@ -464,6 +464,29 @@ describe("Codex alpha search forwarding", () => {
     expect(await new Response(init?.body).json()).toEqual(alphaSearchPayload)
   })
 
+  test("forwards only the validated model from duplicate-key bodies", async () => {
+    for (const path of [
+      "/codex/v1/alpha/search",
+      "/openrouter/v1/alpha/search",
+    ]) {
+      fetchMock.mockClear()
+      const response = await createApp().request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: '{"model":"claude-opus-4.7","model":"gpt-5.6-sol","input":[]}',
+      })
+
+      expect(response.status).toBe(200)
+      const [, init] = fetchMock.mock.calls[0] ?? []
+      const forwardedBody = await new Response(init?.body).text()
+      expect(forwardedBody).not.toContain("claude-opus")
+      expect(JSON.parse(forwardedBody)).toEqual({
+        model: "gpt-5.6-sol",
+        input: [],
+      })
+    }
+  })
+
   test("reads request and response bodies when debug logging is enabled", async () => {
     state.verbose = true
 

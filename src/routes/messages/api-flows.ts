@@ -438,7 +438,7 @@ export const handleWithMessagesApi = async (
           } else if (parsedEvent?.type === "error" || eventName === "error") {
             errorSeen = true
           }
-          capture?.record(eventName, data, data)
+          capture?.record(data)
           await writeSSEIfConnected(stream, {
             event: eventName,
             data,

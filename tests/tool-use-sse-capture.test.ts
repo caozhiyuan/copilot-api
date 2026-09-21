@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import {
   createToolUseSseCapture,
   isToolUseSseCaptureEnabled,
+  TOOL_USE_SSE_CAPTURE_BYTE_LIMIT,
 } from "~/lib/tool-use-sse-capture"
 
 const CAPTURE_ENV = "COPILOT_API_CAPTURE_TOOLUSE_SSE"
@@ -49,12 +50,8 @@ const toolUseFrames = (
 const feed = (
   capture: NonNullable<ReturnType<typeof createToolUseSseCapture>>,
   frames: Array<[string, string]>,
-  forwardedOverride?: (received: string, index: number) => string,
 ) => {
-  frames.forEach(([eventName, received], index) => {
-    const forwarded = forwardedOverride?.(received, index) ?? received
-    capture.record(eventName, received, forwarded)
-  })
+  frames.forEach(([, received]) => capture.record(received))
 }
 
 afterEach(() => {
@@ -108,7 +105,7 @@ describe("tool-use SSE capture verdict", () => {
       expect(summary.verdict).toBe("boundary-clean")
       expect(summary.toolUseBlocks).toBe(1)
       expect(summary.malformedBlocks).toBe(0)
-      expect(summary.localDivergence).toBe(false)
+      expect(summary.truncatedBlocks).toBe(0)
     })
   })
 
@@ -133,21 +130,22 @@ describe("tool-use SSE capture verdict", () => {
     })
   })
 
-  test("flags local divergence when forwarded bytes differ from received", () => {
+  test("stops retaining fragments at the capture byte limit", () => {
     withCaptureEnv("1", () => {
       const capture = createToolUseSseCapture()
       if (!capture) return
 
-      feed(
-        capture,
-        toolUseFrames(0, "toolu_2", "Read", ['{"path":"a"}']),
-        (received, index) =>
-          index === 1 ? received.replace("a", "court") : received,
-      )
+      feed(capture, [
+        ...toolUseFrames(0, "toolu_large", "Read", [
+          `{"path":"${"a".repeat(TOOL_USE_SSE_CAPTURE_BYTE_LIMIT)}"}`,
+        ]),
+      ])
 
       const summary = capture.finish()
-      expect(summary.localDivergence).toBe(true)
-      expect(summary.verdict).toBe("local-divergence")
+      expect(summary.verdict).toBe("capture-limit-exceeded")
+      expect(summary.toolUseBlocks).toBe(1)
+      expect(summary.malformedBlocks).toBe(0)
+      expect(summary.truncatedBlocks).toBe(1)
     })
   })
 

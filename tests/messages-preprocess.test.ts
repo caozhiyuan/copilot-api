@@ -1275,65 +1275,6 @@ describe("prepareMessagesApiPayload", () => {
     })
   })
 
-  test("sets summarized display for Claude versions at least 4.7", () => {
-    const models = [
-      "claude-opus-4.7",
-      "claude-opus-4.8",
-      "claude-opus-4.10",
-      "claude-opus-4-7-20260101",
-      "claude-sonnet-4.7",
-    ]
-
-    for (const model of models) {
-      const payload: AnthropicMessagesPayload = {
-        model,
-        max_tokens: 128,
-        messages: [{ role: "user", content: "hello" }],
-        thinking: {
-          type: "enabled",
-          budget_tokens: 1024,
-        },
-      }
-
-      prepareMessagesApiPayload(payload, {
-        capabilities: {
-          supports: {
-            adaptive_thinking: true,
-          },
-        },
-      } as never)
-
-      expect(payload.thinking).toEqual({
-        type: "adaptive",
-        display: "summarized",
-      })
-    }
-  })
-
-  test("does not force summarized display for Claude versions before 4.7", () => {
-    const payload: AnthropicMessagesPayload = {
-      model: "claude-opus-4.6",
-      max_tokens: 128,
-      messages: [{ role: "user", content: "hello" }],
-      thinking: {
-        type: "enabled",
-        budget_tokens: 1024,
-      },
-    }
-
-    prepareMessagesApiPayload(payload, {
-      capabilities: {
-        supports: {
-          adaptive_thinking: true,
-        },
-      },
-    } as never)
-
-    expect(payload.thinking).toEqual({
-      type: "adaptive",
-    })
-  })
-
   test("does not enable adaptive thinking when tool choice forces tool use", () => {
     const payload: AnthropicMessagesPayload = {
       model: "gpt-5.4",

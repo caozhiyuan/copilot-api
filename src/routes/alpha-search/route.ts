@@ -66,7 +66,7 @@ async function forwardCodexAlphaSearchRequest(
   return createProviderProxyResponse(upstreamResponse)
 }
 
-function createAlphaSearchRequest(
+export function createAlphaSearchRequest(
   request: Request,
   payload: AlphaSearchRequest,
 ): Request {
@@ -74,9 +74,11 @@ function createAlphaSearchRequest(
   // wraps incoming requests in a proxy class whose prototype chain satisfies
   // `instanceof Request` without the native internals, so `new Request(req)`
   // throws "Cannot read properties of undefined (reading 'window')".
+  const headers = new Headers(request.headers)
+  headers.delete("content-length")
   return new Request(request.url, {
     body: JSON.stringify(payload),
-    headers: request.headers,
+    headers,
     method: request.method,
     signal: request.signal,
   })
@@ -151,7 +153,11 @@ export async function handleAlphaSearchRequest(
 
   if (resolvedProviderConfig) {
     assertAllowedModel(payload.model)
-    return await handleCodexRequest(c, c.req.raw, resolvedProviderConfig)
+    return await handleCodexRequest(
+      c,
+      createAlphaSearchRequest(c.req.raw, payload),
+      resolvedProviderConfig,
+    )
   }
 
   const requestedModel = payload.model

@@ -11,7 +11,6 @@ import {
   type CompactType,
 } from "~/lib/compact"
 import { getReasoningEffortForModel } from "~/lib/config"
-import { normalizeSdkModelId } from "~/lib/models"
 
 import type {
   AnthropicAssistantContentBlock,
@@ -229,28 +228,6 @@ export const normalizeSystemMessages = (
 
   payload.messages = normalizedMessages
   payload.system = system
-}
-
-const isVersionAtLeast = (
-  version: string,
-  minimumMajor: number,
-  minimumMinor: number,
-): boolean => {
-  const [majorPart, minorPart = "0"] = version.split(".")
-  const major = Number.parseInt(majorPart, 10)
-  const minor = Number.parseInt(minorPart, 10)
-  if (!Number.isInteger(major) || !Number.isInteger(minor)) {
-    return false
-  }
-
-  return (
-    major > minimumMajor || (major === minimumMajor && minor >= minimumMinor)
-  )
-}
-
-const shouldSummarizeThinkingDisplayForModel = (model: string): boolean => {
-  const normalized = normalizeSdkModelId(model)
-  return Boolean(normalized && isVersionAtLeast(normalized.version, 4, 7))
 }
 
 type IndexedAttachment = {
@@ -892,9 +869,6 @@ export const prepareMessagesApiPayload = (
     }
     // align with vscode copilot
     if (!hasThinking) {
-      payload.thinking.display = "summarized"
-    }
-    if (shouldSummarizeThinkingDisplayForModel(payload.model)) {
       payload.thinking.display = "summarized"
     }
     let effort =

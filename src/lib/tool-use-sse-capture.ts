@@ -4,13 +4,10 @@ import { createHandlerLogger } from "./logger"
 
 import type { AnthropicStreamEventData } from "./types/anthropic"
 
-// Debug-gated raw-SSE integrity capture for the Anthropic-compatible Messages
-// flow. The flow forwards upstream SSE verbatim, so this capture determines
-// whether malformed tool input arrived at the gateway boundary or diverged
-// locally. It is inert unless COPILOT_API_CAPTURE_TOOLUSE_SSE is enabled.
-
 const CAPTURE_ENV = "COPILOT_API_CAPTURE_TOOLUSE_SSE"
 const DISABLED_VALUES = new Set(["", "0", "false", "off", "no"])
+const MAX_ACTIVE_TOOL_USE_BLOCKS = 64
+export const TOOL_USE_SSE_CAPTURE_BYTE_LIMIT = 1024 * 1024
 
 export const isToolUseSseCaptureEnabled = (): boolean => {
   const raw = process.env[CAPTURE_ENV]?.trim().toLowerCase()
@@ -20,23 +17,22 @@ export const isToolUseSseCaptureEnabled = (): boolean => {
 interface ToolUseBlockCapture {
   index: number
   fragments: Array<string>
-  malformed: boolean
+  fragmentCount: number
 }
 
 export interface ToolUseSseCaptureSummary {
-  verdict: "upstream-boundary-malformed" | "local-divergence" | "boundary-clean"
+  verdict:
+    | "upstream-boundary-malformed"
+    | "capture-limit-exceeded"
+    | "boundary-clean"
   frames: number
   toolUseBlocks: number
   malformedBlocks: number
-  localDivergence: boolean
+  truncatedBlocks: number
 }
 
 export interface ToolUseSseCapture {
-  record: (
-    eventName: string | undefined,
-    receivedData: string,
-    forwardedData: string,
-  ) => void
+  record: (receivedData: string) => void
   finish: () => ToolUseSseCaptureSummary
 }
 
@@ -67,48 +63,50 @@ const describePayload = (payload: string) => ({
 
 class ActiveToolUseSseCapture implements ToolUseSseCapture {
   private readonly blocks = new Map<number, ToolUseBlockCapture>()
+  private capturedBytes = 0
+  private captureLimitExceeded = false
   private frameCount = 0
-  private localDivergence = false
+  private malformedBlockCount = 0
+  private toolUseBlockCount = 0
+  private truncatedBlockCount = 0
 
-  record(
-    eventName: string | undefined,
-    receivedData: string,
-    forwardedData: string,
-  ): void {
+  record(receivedData: string): void {
     try {
       this.frameCount += 1
-
-      if (receivedData !== forwardedData) {
-        this.localDivergence = true
-        logger.warn(
-          "LOCAL DIVERGENCE: forwarded bytes differ from received bytes",
-          JSON.stringify({
-            eventName,
-            forwarded: describePayload(forwardedData),
-            received: describePayload(receivedData),
-          }),
-        )
-      }
+      if (this.captureLimitExceeded) return
 
       const event = parseEvent(receivedData)
       if (!event) return
-      this.inspect(event, receivedData)
+      this.inspect(event)
     } catch {
       // Capture must never disrupt the stream it observes.
     }
   }
 
-  private inspect(event: AnthropicStreamEventData, receivedData: string): void {
+  private exceedCaptureLimit(): void {
+    this.captureLimitExceeded = true
+    this.truncatedBlockCount += this.blocks.size
+    this.blocks.clear()
+  }
+
+  private inspect(event: AnthropicStreamEventData): void {
     if (
       event.type === "content_block_start"
       && event.content_block.type === "tool_use"
     ) {
+      this.toolUseBlockCount += 1
+      if (
+        !this.blocks.has(event.index)
+        && this.blocks.size >= MAX_ACTIVE_TOOL_USE_BLOCKS
+      ) {
+        this.exceedCaptureLimit()
+        return
+      }
       this.blocks.set(event.index, {
         index: event.index,
         fragments: [],
-        malformed: false,
+        fragmentCount: 0,
       })
-      this.logFrame(event.type, receivedData)
       return
     }
 
@@ -118,50 +116,55 @@ class ActiveToolUseSseCapture implements ToolUseSseCapture {
     ) {
       const block = this.blocks.get(event.index)
       if (!block) return
+      const fragmentBytes = Buffer.byteLength(event.delta.partial_json)
+      if (
+        this.capturedBytes + fragmentBytes
+        > TOOL_USE_SSE_CAPTURE_BYTE_LIMIT
+      ) {
+        this.exceedCaptureLimit()
+        return
+      }
+      this.capturedBytes += fragmentBytes
       block.fragments.push(event.delta.partial_json)
-      this.logFrame(event.type, receivedData)
+      block.fragmentCount += 1
       return
     }
 
     if (event.type === "content_block_stop") {
       const block = this.blocks.get(event.index)
       if (!block) return
+      this.blocks.delete(event.index)
       const assembled = block.fragments.join("")
-      block.malformed = !assembleIsValid(assembled)
-      this.logFrame(event.type, receivedData)
-      if (block.malformed) {
+      if (!assembleIsValid(assembled)) {
+        this.malformedBlockCount += 1
         logger.warn(
           "UPSTREAM MALFORMED: tool_use input is not valid JSON at the copilot-api boundary",
           JSON.stringify({
             index: block.index,
-            fragments: block.fragments.length,
+            fragments: block.fragmentCount,
             input: describePayload(assembled),
           }),
         )
       }
+      block.fragments.length = 0
     }
   }
 
-  private logFrame(eventName: string, data: string): void {
-    logger.info(
-      "tool_use frame",
-      JSON.stringify({ eventName, ...describePayload(data) }),
-    )
-  }
-
   finish(): ToolUseSseCaptureSummary {
-    const blocks = [...this.blocks.values()]
-    const malformed = blocks.filter((block) => block.malformed).length
+    if (this.blocks.size > 0) {
+      this.truncatedBlockCount += this.blocks.size
+      this.blocks.clear()
+    }
     const verdict: ToolUseSseCaptureSummary["verdict"] =
-      malformed > 0 ? "upstream-boundary-malformed"
-      : this.localDivergence ? "local-divergence"
+      this.malformedBlockCount > 0 ? "upstream-boundary-malformed"
+      : this.captureLimitExceeded ? "capture-limit-exceeded"
       : "boundary-clean"
     const summary: ToolUseSseCaptureSummary = {
       verdict,
       frames: this.frameCount,
-      toolUseBlocks: blocks.length,
-      malformedBlocks: malformed,
-      localDivergence: this.localDivergence,
+      toolUseBlocks: this.toolUseBlockCount,
+      malformedBlocks: this.malformedBlockCount,
+      truncatedBlocks: this.truncatedBlockCount,
     }
     try {
       logger.info("capture summary", JSON.stringify(summary))

@@ -12,7 +12,6 @@ import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { filterAllowedModels, isAllowedModel } from "~/lib/model-admission"
-import { toClientModelId } from "~/lib/models"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { state } from "~/lib/state"
 import type { Model } from "~/lib/types/models"
@@ -42,13 +41,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeCopilotModel(model: Model): ClientModel {
   const capabilities = model.capabilities
   const contextWindow = capabilities?.limits?.max_context_window_tokens ?? 0
-  const clientId = toClientModelId(model.id)
   const is1m = contextWindow >= 1_000_000
 
   return {
-    claude_model_id: is1m ? `${clientId}[1m]` : clientId,
+    claude_model_id: is1m ? `${model.id}[1m]` : model.id,
     ...model,
-    id: clientId,
+    id: model.id,
     object: "model",
     type: "model",
     created: 0,
@@ -316,7 +314,7 @@ function createCopilotCodexCandidate(
     model.capabilities.supports.reasoning_effort,
   )
   return {
-    slug: toClientModelId(model.id),
+    slug: model.id,
     displayName: model.name,
     description: describeCopilotAdapter(model),
     contextWindow: positiveNumber(

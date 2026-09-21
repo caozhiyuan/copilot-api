@@ -684,6 +684,78 @@ describe("OpenAI stream tool_call framing split across chunks", () => {
     )
     expect(deferredTextPosition).toBeGreaterThan(toolStartPosition)
   })
+
+  test("rejects excessive arguments before a tool identity is complete", () => {
+    const streamState: AnthropicStreamState = {
+      messageStartSent: false,
+      messageCompleted: false,
+      contentBlockIndex: 0,
+      contentBlockOpen: false,
+      toolCalls: {},
+      thinkingBlockOpen: false,
+    }
+    const chunk: ChatCompletionChunk = {
+      id: "cmpl-large-tool",
+      object: "chat.completion.chunk",
+      created: 1677652288,
+      model: "gpt-5-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                function: { arguments: "a".repeat(1024 * 1024 + 1) },
+              },
+            ],
+          },
+          finish_reason: null,
+          logprobs: null,
+        },
+      ],
+    }
+
+    expect(() => translateChunkToAnthropicEvents(chunk, streamState)).toThrow(
+      "Malformed tool call stream",
+    )
+  })
+
+  test("rejects excessive pending tool calls", () => {
+    const streamState: AnthropicStreamState = {
+      messageStartSent: false,
+      messageCompleted: false,
+      contentBlockIndex: 0,
+      contentBlockOpen: false,
+      toolCalls: {},
+      thinkingBlockOpen: false,
+    }
+    const chunk: ChatCompletionChunk = {
+      id: "cmpl-many-tools",
+      object: "chat.completion.chunk",
+      created: 1677652288,
+      model: "gpt-5-mini",
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: Array.from({ length: 129 }, (_, index) => ({
+              index,
+              id: `call_${index}`,
+              type: "function" as const,
+              function: {},
+            })),
+          },
+          finish_reason: null,
+          logprobs: null,
+        },
+      ],
+    }
+
+    expect(() => translateChunkToAnthropicEvents(chunk, streamState)).toThrow(
+      "Malformed tool call stream",
+    )
+  })
 })
 
 describe("OpenAI usage-only stream translation", () => {

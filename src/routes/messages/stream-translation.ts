@@ -11,6 +11,17 @@ import {
 } from "~/lib/types/anthropic"
 import { mapOpenAIStopReasonToAnthropic } from "./utils"
 
+const MAX_STREAM_TOOL_CALLS = 128
+const MAX_PENDING_STREAM_BYTES = 1024 * 1024
+const MAX_TOOL_IDENTITY_BYTES = 16 * 1024
+
+class InvalidToolCallStreamError extends Error {
+  constructor() {
+    super("Malformed tool call stream")
+    this.name = "InvalidToolCallStreamError"
+  }
+}
+
 function isToolBlockOpen(state: AnthropicStreamState): boolean {
   if (!state.contentBlockOpen) {
     return false
@@ -92,6 +103,9 @@ function handleFinish(
 ) {
   const { events, chunk } = context
   if (choice.finish_reason && choice.finish_reason.length > 0) {
+    if (hasPendingToolCall(state)) {
+      throw new InvalidToolCallStreamError()
+    }
     if (state.contentBlockOpen) {
       const toolBlockOpen = isToolBlockOpen(state)
       context.events.push({
@@ -168,24 +182,42 @@ function handleToolCalls(
     handleReasoningOpaqueInToolCalls(state, events, delta)
 
     for (const toolCall of delta.tool_calls) {
-      const existing = state.toolCalls[toolCall.index] as
-        | AnthropicStreamState["toolCalls"][number]
-        | undefined
+      if (!Number.isSafeInteger(toolCall.index) || toolCall.index < 0) {
+        throw new InvalidToolCallStreamError()
+      }
+      const existing =
+        Object.hasOwn(state.toolCalls, toolCall.index) ?
+          state.toolCalls[toolCall.index]
+        : undefined
+      if (
+        !existing
+        && Object.keys(state.toolCalls).length >= MAX_STREAM_TOOL_CALLS
+      ) {
+        throw new InvalidToolCallStreamError()
+      }
       const info = existing ?? {
         id: "",
         name: "",
         anthropicBlockIndex: -1,
         pendingArgs: [],
+        pendingArgsBytes: 0,
       }
       if (!existing) {
         state.toolCalls[toolCall.index] = info
       }
 
-      // Copilot may split a tool call's id and function name across chunks.
       if (toolCall.id) {
+        if (Buffer.byteLength(toolCall.id) > MAX_TOOL_IDENTITY_BYTES) {
+          throw new InvalidToolCallStreamError()
+        }
         info.id = toolCall.id
       }
       if (toolCall.function?.name) {
+        if (
+          Buffer.byteLength(toolCall.function.name) > MAX_TOOL_IDENTITY_BYTES
+        ) {
+          throw new InvalidToolCallStreamError()
+        }
         info.name = toolCall.function.name
       }
 
@@ -224,12 +256,24 @@ function handleToolCalls(
             },
           })
           info.pendingArgs.length = 0
+          state.pendingToolCallBytes = Math.max(
+            0,
+            (state.pendingToolCallBytes ?? 0) - info.pendingArgsBytes,
+          )
+          info.pendingArgsBytes = 0
         }
       }
 
       if (toolCall.function?.arguments) {
         if (info.anthropicBlockIndex === -1) {
+          const argumentBytes = Buffer.byteLength(toolCall.function.arguments)
+          const pendingBytes = state.pendingToolCallBytes ?? 0
+          if (pendingBytes + argumentBytes > MAX_PENDING_STREAM_BYTES) {
+            throw new InvalidToolCallStreamError()
+          }
           info.pendingArgs.push(toolCall.function.arguments)
+          info.pendingArgsBytes += argumentBytes
+          state.pendingToolCallBytes = pendingBytes + argumentBytes
         } else {
           events.push({
             type: "content_block_delta",
@@ -274,7 +318,13 @@ function handleContent(
       || hasToolCallDelta(delta)
       || hasPendingToolCall(state)
     ) {
+      const contentBytes = Buffer.byteLength(delta.content)
+      const deferredContentBytes = state.deferredContentBytes ?? 0
+      if (deferredContentBytes + contentBytes > MAX_PENDING_STREAM_BYTES) {
+        throw new InvalidToolCallStreamError()
+      }
       state.deferredContent = `${state.deferredContent ?? ""}${delta.content}`
+      state.deferredContentBytes = deferredContentBytes + contentBytes
       return
     }
 
@@ -371,6 +421,7 @@ function flushDeferredContent(
     },
   )
   state.deferredContent = undefined
+  state.deferredContentBytes = 0
   state.contentBlockOpen = false
   state.contentBlockIndex++
 }

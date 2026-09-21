@@ -5,6 +5,7 @@ import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
 import { assertAllowedModel } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import {
+  createAlphaSearchRequest,
   handleAlphaSearchRequest,
   parseAlphaSearchBody,
 } from "~/routes/alpha-search/route"
@@ -52,16 +53,17 @@ providerAlphaSearchRoutes.post("/", async (c) => {
     const payload = await parseAlphaSearchBody(c)
     if (payload instanceof Response) return payload
     assertAllowedModel(payload.model)
+    const request = createAlphaSearchRequest(c.req.raw, payload)
 
     await debugJsonAsync(logger, "provider.alpha_search.request", async () => ({
-      body: await c.req.raw.clone().text(),
+      body: await request.clone().text(),
       provider,
     }))
 
     const upstreamResponse =
       await providerAlphaSearchRouteDependencies.forwardProviderAlphaSearch(
         providerConfig,
-        c.req.raw,
+        request,
         { clientSignal: c.req.raw.signal },
       )
 

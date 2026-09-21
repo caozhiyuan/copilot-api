@@ -320,6 +320,8 @@ export interface AnthropicStreamState {
   thinkingBlockOpen: boolean
   pendingMessageDelta?: AnthropicMessageDeltaEvent
   deferredContent?: string
+  deferredContentBytes?: number
+  pendingToolCallBytes?: number
   toolCalls: {
     [openAIToolIndex: number]: {
       id: string
@@ -328,6 +330,7 @@ export interface AnthropicStreamState {
       anthropicBlockIndex: number
       /** Arguments buffered while the tool call identity is incomplete. */
       pendingArgs: Array<string>
+      pendingArgsBytes: number
     }
   }
 }
