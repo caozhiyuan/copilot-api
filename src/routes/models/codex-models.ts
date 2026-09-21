@@ -101,17 +101,14 @@ export async function handleCodexModelsProxy(
     return createProviderProxyResponse(upstreamResponse)
   }
 
-  const body: unknown = await upstreamResponse.json()
+  let body: unknown
+  try {
+    body = await upstreamResponse.json()
+  } catch {
+    return invalidCodexCatalogResponse(c)
+  }
   if (!isCodexModelsResponse(body)) {
-    return c.json(
-      {
-        error: {
-          message: "Codex returned an invalid models catalog",
-          type: "upstream_error",
-        },
-      },
-      502,
-    )
+    return invalidCodexCatalogResponse(c)
   }
 
   return createFilteredCodexCatalogResponse(upstreamResponse, body)
@@ -196,6 +193,18 @@ export async function handleMergedCodexModels(
     models,
   }
   return c.json(response)
+}
+
+function invalidCodexCatalogResponse(c: Context): Response {
+  return c.json(
+    {
+      error: {
+        message: "Codex returned an invalid models catalog",
+        type: "upstream_error",
+      },
+    },
+    502,
+  )
 }
 
 function createFilteredCodexCatalogResponse(

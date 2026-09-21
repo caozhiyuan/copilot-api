@@ -4,15 +4,14 @@ import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { isAllowedModel, modelNotAllowedResponse } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
-import {
-  createStagedFormDataRequest,
-  parseEditsRequest,
-  type StagedEditsRequest,
-} from "~/routes/images/edits-handler"
-import { parseGenerationsRequest } from "~/routes/images/generations-handler"
-import { handleCodexImages } from "~/routes/images/route"
-import type { CodexImagesOperation } from "~/services/codex/images"
 import { forwardProviderImagesWithLogging } from "~/routes/images/forward-provider-images"
+import { withParsedImagesRequest } from "~/routes/images/parsed-request"
+import { handleCodexImages } from "~/routes/images/shared"
+import {
+  InvalidMultipartBodyError,
+  MultipartBodyTooLargeError,
+} from "~/routes/images/temp-form-data"
+import type { CodexImagesOperation } from "~/services/codex/images"
 
 const logger = createHandlerLogger("provider-images-handler")
 
@@ -38,53 +37,42 @@ async function handleProviderImages(
       )
     }
 
-    let request: Request
-    let stagedEdits: StagedEditsRequest | undefined
+    return await withParsedImagesRequest(
+      c.req.raw,
+      operation,
+      async (parsed) => {
+        if (parsed instanceof Request || !isAllowedModel(parsed.model)) {
+          return modelNotAllowedResponse(c)
+        }
 
-    if (operation === "generations") {
-      const parsed = await parseGenerationsRequest(c.req.raw)
-      if (parsed instanceof Request) {
-        return modelNotAllowedResponse(c)
-      }
-      if (!isAllowedModel(parsed.model)) {
-        return modelNotAllowedResponse(c)
-      }
-      request = parsed.originalRequest ?? parsed.createRequest(parsed.model)
-    } else {
-      const parsed = await parseEditsRequest(c.req.raw)
-      if (parsed instanceof Request || parsed.model === undefined) {
-        if (!(parsed instanceof Request)) await parsed.staged.cleanup()
-        return modelNotAllowedResponse(c)
-      }
-      stagedEdits = parsed
-      if (!isAllowedModel(parsed.model)) {
-        await parsed.staged.cleanup()
-        return modelNotAllowedResponse(c)
-      }
-      request = createStagedFormDataRequest(
-        c.req.raw,
-        parsed.requestHeaders,
-        parsed.staged.formData,
+        const request = parsed.createRequest(parsed.model)
+        if (providerConfig.name === "codex") {
+          return await handleCodexImages(c, operation, providerConfig, request)
+        }
+        return await forwardProviderImagesWithLogging(
+          providerConfig,
+          request,
+          operation,
+          { logger, provider },
+        )
+      },
+    )
+  } catch (error) {
+    if (
+      error instanceof InvalidMultipartBodyError
+      || error instanceof MultipartBodyTooLargeError
+    ) {
+      return c.json(
+        {
+          error: {
+            message: error.message,
+            type: "invalid_request_error",
+          },
+        },
+        error instanceof MultipartBodyTooLargeError ? 413 : 400,
       )
     }
 
-    try {
-      const response =
-        providerConfig.name === "codex" ?
-          await handleCodexImages(c, operation, providerConfig, request)
-        : await forwardProviderImagesWithLogging(
-            providerConfig,
-            request,
-            operation,
-            { logger, provider },
-          )
-      stagedEdits?.staged.scheduleCleanup()
-      return response
-    } catch (error) {
-      await stagedEdits?.staged.cleanup()
-      throw error
-    }
-  } catch (error) {
     logger.error(`provider.images.${operation}.error`, { provider, error })
     return await forwardError(c, error)
   }

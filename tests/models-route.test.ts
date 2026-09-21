@@ -90,12 +90,19 @@ const bundledCodexSlugs = bundledCodexModels.map((model) => model.slug)
 
 let codexCatalogModels: Array<Record<string, unknown>> =
   createDefaultCodexCatalogModels()
+let malformedCatalogUrls = new Set<string>()
 
 const fetchMock = mock((url: string | URL | Request, _init?: RequestInit) => {
   const requestUrl =
     typeof url === "string" ? url
     : url instanceof URL ? url.toString()
     : url.url
+
+  if (malformedCatalogUrls.has(requestUrl)) {
+    return Promise.resolve(
+      new Response("{", { headers: { "content-type": "application/json" } }),
+    )
+  }
 
   if (requestUrl.startsWith("https://chatgpt.com/backend-api/codex/models")) {
     return Promise.resolve(
@@ -242,6 +249,7 @@ beforeEach(() => {
   providerConfigs = {}
   codexSetupError = null
   codexCatalogModels = createDefaultCodexCatalogModels()
+  malformedCatalogUrls = new Set()
   state.models = undefined
   fetchMock.mockClear()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
@@ -1085,6 +1093,50 @@ describe("model routes", () => {
       "openai/gpt-5.4",
       "MAI-1-preview",
     ])
+  })
+
+  test("returns 502 for malformed provider catalog JSON", async () => {
+    providerConfigs = {
+      kimi: createProviderConfig("kimi", "https://kimi.example"),
+    }
+    malformedCatalogUrls.add("https://kimi.example/v1/models")
+
+    const response = await createApp().request("/kimi/v1/models")
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({
+      error: {
+        message: "Provider 'kimi' returned an invalid models catalog",
+        type: "upstream_error",
+      },
+    })
+  })
+
+  test("returns 502 for malformed Codex catalog JSON", async () => {
+    providerConfigs = {
+      codex: {
+        apiKey: "codex-token",
+        authType: "oauth2",
+        baseUrl: "https://ignored.example/backend-api",
+        name: "codex",
+        type: "openai-responses",
+      },
+    }
+    state.codexAccessToken = "codex-access-token"
+    state.codexAccountId = "account-123"
+    malformedCatalogUrls.add("https://chatgpt.com/backend-api/codex/models")
+
+    const response = await createApp().request("/codex/v1/models", {
+      headers: { "user-agent": "codex-tui/0.144.1" },
+    })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({
+      error: {
+        message: "Codex returned an invalid models catalog",
+        type: "upstream_error",
+      },
+    })
   })
 
   test("forwards Codex clients on the provider-scoped models route", async () => {

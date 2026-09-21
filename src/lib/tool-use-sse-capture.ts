@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { createHandlerLogger } from "./logger"
 
 import type { AnthropicStreamEventData } from "./types/anthropic"
@@ -17,10 +19,7 @@ export const isToolUseSseCaptureEnabled = (): boolean => {
 
 interface ToolUseBlockCapture {
   index: number
-  id: string
-  name: string
   fragments: Array<string>
-  stopped: boolean
   malformed: boolean
 }
 
@@ -61,6 +60,11 @@ const assembleIsValid = (assembled: string): boolean => {
   }
 }
 
+const describePayload = (payload: string) => ({
+  bytes: Buffer.byteLength(payload),
+  sha256: createHash("sha256").update(payload).digest("hex"),
+})
+
 class ActiveToolUseSseCapture implements ToolUseSseCapture {
   private readonly blocks = new Map<number, ToolUseBlockCapture>()
   private frameCount = 0
@@ -78,7 +82,11 @@ class ActiveToolUseSseCapture implements ToolUseSseCapture {
         this.localDivergence = true
         logger.warn(
           "LOCAL DIVERGENCE: forwarded bytes differ from received bytes",
-          JSON.stringify({ eventName, receivedData, forwardedData }),
+          JSON.stringify({
+            eventName,
+            forwarded: describePayload(forwardedData),
+            received: describePayload(receivedData),
+          }),
         )
       }
 
@@ -97,13 +105,10 @@ class ActiveToolUseSseCapture implements ToolUseSseCapture {
     ) {
       this.blocks.set(event.index, {
         index: event.index,
-        id: event.content_block.id,
-        name: event.content_block.name,
         fragments: [],
-        stopped: false,
         malformed: false,
       })
-      logger.info("tool_use frame", receivedData)
+      this.logFrame(event.type, receivedData)
       return
     }
 
@@ -114,30 +119,34 @@ class ActiveToolUseSseCapture implements ToolUseSseCapture {
       const block = this.blocks.get(event.index)
       if (!block) return
       block.fragments.push(event.delta.partial_json)
-      logger.info("tool_use frame", receivedData)
+      this.logFrame(event.type, receivedData)
       return
     }
 
     if (event.type === "content_block_stop") {
       const block = this.blocks.get(event.index)
       if (!block) return
-      block.stopped = true
       const assembled = block.fragments.join("")
       block.malformed = !assembleIsValid(assembled)
-      logger.info("tool_use frame", receivedData)
+      this.logFrame(event.type, receivedData)
       if (block.malformed) {
         logger.warn(
           "UPSTREAM MALFORMED: tool_use input is not valid JSON at the copilot-api boundary",
           JSON.stringify({
             index: block.index,
-            id: block.id,
-            name: block.name,
-            assembledInput: assembled,
-            fragments: block.fragments,
+            fragments: block.fragments.length,
+            input: describePayload(assembled),
           }),
         )
       }
     }
+  }
+
+  private logFrame(eventName: string, data: string): void {
+    logger.info(
+      "tool_use frame",
+      JSON.stringify({ eventName, ...describePayload(data) }),
+    )
   }
 
   finish(): ToolUseSseCaptureSummary {

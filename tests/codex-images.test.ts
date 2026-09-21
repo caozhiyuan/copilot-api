@@ -676,6 +676,24 @@ describe("Codex images forwarding", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  test("rebuilds provider generation bodies with one validated model", async () => {
+    const response = await createApp().request(
+      "/openrouter/v1/images/generations",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: '{"model":"claude-image-1","model":"gpt-image-2","prompt":"safe"}',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    expect(await new Response(init?.body).json()).toEqual({
+      model: "gpt-image-2",
+      prompt: "safe",
+    })
+  })
+
   test("proxies non-codex providers on the provider-scoped images route", async () => {
     const payload = { model: "gpt-image-1", prompt: "generic provider image" }
 
@@ -704,6 +722,31 @@ describe("Codex images forwarding", () => {
     expect(headers.get("authorization")).toBe("Bearer openrouter-key")
     expect(headers.get("content-type")).toBe("application/json")
     expect(await new Response(init?.body).json()).toEqual(payload)
+  })
+
+  test("forwards one validated model in provider image edits", async () => {
+    const formData = new FormData()
+    formData.append("model", "gpt-image-2")
+    formData.append("model", "claude-image-1")
+    formData.set("prompt", "generic edit")
+    formData.set(
+      "image",
+      new Blob(["source-image-bytes"], { type: "image/png" }),
+      "source.png",
+    )
+
+    const response = await createApp().request("/openrouter/v1/images/edits", {
+      method: "POST",
+      body: formData,
+    })
+
+    expect(response.status).toBe(200)
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    const headers = new Headers(init?.headers)
+    const forwardedFormData = await new Response(init?.body, {
+      headers,
+    }).formData()
+    expect(forwardedFormData.getAll("model")).toEqual(["gpt-image-2"])
   })
 
   test("preserves multipart content-type for non-codex provider image edits", async () => {

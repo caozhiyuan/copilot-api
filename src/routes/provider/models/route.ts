@@ -1,4 +1,4 @@
-import { Hono } from "hono"
+import { Hono, type Context } from "hono"
 
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
@@ -62,17 +62,14 @@ providerModelRoutes.get("/", async (c) => {
       return createProviderProxyResponse(upstreamResponse)
     }
 
-    const body: unknown = await upstreamResponse.json()
+    let body: unknown
+    try {
+      body = await upstreamResponse.json()
+    } catch {
+      return invalidProviderCatalogResponse(c, provider)
+    }
     if (!isProviderModelsResponse(body)) {
-      return c.json(
-        {
-          error: {
-            message: `Provider '${provider}' returned an invalid models catalog`,
-            type: "upstream_error",
-          },
-        },
-        502,
-      )
+      return invalidProviderCatalogResponse(c, provider)
     }
 
     const filteredResponse = new Response(
@@ -95,6 +92,21 @@ providerModelRoutes.get("/", async (c) => {
     return await forwardError(c, error)
   }
 })
+
+function invalidProviderCatalogResponse(
+  c: Context,
+  provider: string,
+): Response {
+  return c.json(
+    {
+      error: {
+        message: `Provider '${provider}' returned an invalid models catalog`,
+        type: "upstream_error",
+      },
+    },
+    502,
+  )
+}
 
 function isProviderModelsResponse(
   value: unknown,

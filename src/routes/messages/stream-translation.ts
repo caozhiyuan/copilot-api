@@ -175,7 +175,7 @@ function handleToolCalls(
         id: "",
         name: "",
         anthropicBlockIndex: -1,
-        pendingArgs: "",
+        pendingArgs: [],
       }
       if (!existing) {
         state.toolCalls[toolCall.index] = info
@@ -214,22 +214,22 @@ function handleToolCalls(
         })
         state.contentBlockOpen = true
 
-        if (info.pendingArgs) {
+        if (info.pendingArgs.length > 0) {
           events.push({
             type: "content_block_delta",
             index: info.anthropicBlockIndex,
             delta: {
               type: "input_json_delta",
-              partial_json: info.pendingArgs,
+              partial_json: info.pendingArgs.join(""),
             },
           })
-          info.pendingArgs = ""
+          info.pendingArgs.length = 0
         }
       }
 
       if (toolCall.function?.arguments) {
         if (info.anthropicBlockIndex === -1) {
-          info.pendingArgs = `${info.pendingArgs ?? ""}${toolCall.function.arguments}`
+          info.pendingArgs.push(toolCall.function.arguments)
         } else {
           events.push({
             type: "content_block_delta",
