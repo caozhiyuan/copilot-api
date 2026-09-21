@@ -834,7 +834,7 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 ## API 端点
 
-服务端提供多个 OpenAI / Anthropic 兼容端点。请求会根据所选模型和 `provider/model` 别名路由到 GitHub Copilot、内置 `codex` provider 或已配置的 provider。下列每个 `/v1/...` 端点也都支持 `/:provider/v1/...` 形式的 provider 级路径，表格中不再重复列出。
+服务端提供多个 OpenAI / Anthropic 兼容端点。请求会根据所选模型和 `provider/model` 别名路由到 GitHub Copilot、内置 `codex` provider 或已配置的 provider。Messages、Responses、Models、alpha-search 和 Images 还支持 `/:provider/v1/...` 形式的 provider 级路径；Chat Completions 和 Embeddings 则通过顶层请求中的 `provider/model` 别名路由到已配置的 provider。
 
 ### OpenAI 兼容端点
 
@@ -845,7 +845,7 @@ curl http://localhost:4141/admin/config/model-mappings \
 | `POST /v1/responses`        | `POST` | OpenAI 中用于生成模型响应的高级接口。支持 `Content-Encoding: zstd` 请求体和 `openai-responses` provider 的 `provider/model` 别名。zstd 请求解压仅作用于 Responses 路由，包括 provider-scoped 别名路由。 |
 | `POST /v1/chat/completions` | `POST` | 为给定聊天对话创建模型响应。支持 `openai-compatible` provider 的 `provider/model` 别名；目标 provider 已配置时可在没有 Copilot 的情况下使用。 |
 | `GET /v1/models`            | `GET` | 仅列出 Copilot 与已启用 provider 中通过准入的 OpenAI 和 MAI 模型，并使用 `provider/model-id` 形式。Codex 客户端（`User-Agent` 以 `codex` 开头）会收到同样经过过滤的合并目录。 |
-| `POST /v1/embeddings`       | `POST` | 创建表示输入文本的向量嵌入。                                                                             |
+| `POST /v1/embeddings`       | `POST` | 创建嵌入向量。支持 model mapping 和已配置的 `provider/model` 别名；provider 响应体上限为 32 MiB。 |
 
 ### Codex 后端端点
 
@@ -853,9 +853,9 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 | 端点                                                       | 方法 | 说明                                                                                                 |
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
-| `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
-| `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求转发到 Codex Images 上游。请求未携带 `Content-Type` 时，网关默认补充 `application/json`。请求 `model` 命中已配置的 model mapping 时会被改写；映射结果为已配置 provider 的 `provider/model` 别名时，请求将转发到该 provider 的 images 端点。 |
-| `POST /v1/images/edits` | `POST` | 将图片编辑请求转发到 Codex Images 上游。请使用 `multipart/form-data`，并让 HTTP 客户端自动生成 `boundary`；网关在接收上传时就把文件流式写入临时磁盘文件，转发时从磁盘读取，大文件不会常驻内存。multipart 请求总大小上限为 128 MiB，单文件上限为 64 MiB，最多包含 16 个文件；超过限制时返回 `413`。model mapping 与 `provider/model` 别名路由同样适用于此端点。 |
+| `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。JSON 请求体上限为 10 MiB。 |
+| `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求转发到 Codex Images 上游。请求未携带 `Content-Type` 时，网关默认补充 `application/json`。请求 `model` 命中已配置的 model mapping 时会被改写；映射结果为已配置 provider 的 `provider/model` 别名时，请求将转发到该 provider 的 images 端点。请求体上限为 1 MiB。 |
+| `POST /v1/images/edits` | `POST` | 将图片编辑请求转发到 Codex Images 上游。请使用 `multipart/form-data`，并让 HTTP 客户端自动生成 `boundary`。为了在联系任何上游前完成 multipart `model` 的校验与映射，网关会先把整个上传流式写入临时磁盘文件，再从磁盘转发；这会增加一次完整上传的等待时间，但避免大文件常驻内存。multipart 请求总大小上限为 128 MiB，单文件上限为 64 MiB，最多包含 16 个文件；超过限制时返回 `413`。model mapping 与 `provider/model` 别名路由同样适用于此端点。 |
 
 对于路由到 Codex 后端的请求，网关会使用当前 Codex 登录态覆盖客户端的 authorization 和 account header，并保留兼容的请求元数据。基于 Responses 的 alpha-search 则遵循所选 Copilot 或 provider 的路由。
 
@@ -912,7 +912,7 @@ npx @jeffreycao/copilot-api@latest debug --json
 bunx --bun @jeffreycao/copilot-api@latest start
 ```
 
-配置 `dashscope` 后的 OpenAI 兼容 provider 调用示例：
+配置 `openrouter` 后的 OpenAI 兼容 provider 调用示例：
 
 ```sh
 curl http://localhost:4141/v1/chat/completions \

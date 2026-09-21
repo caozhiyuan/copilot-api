@@ -820,8 +820,8 @@ const stripToolEagerInputStreaming = (
   }
 }
 
-// Pre-request processing: filter thinking blocks for Claude models so only
-// valid thinking blocks are sent to the Copilot Messages API.
+// Filter thinking blocks so only signatures accepted by the Copilot
+// Anthropic-compatible Messages API are forwarded.
 const filterAssistantThinkingBlocks = (
   payload: AnthropicMessagesPayload,
 ): void => {

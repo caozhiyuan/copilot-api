@@ -786,7 +786,7 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 ## API Endpoints
 
-The server exposes several OpenAI- and Anthropic-compatible endpoints. Requests can target GitHub Copilot, the built-in `codex` provider, or configured providers depending on the selected model and `provider/model` alias. Every `/v1/...` endpoint below also supports a provider-scoped path in the form `/:provider/v1/...`; those variants are omitted from the tables.
+The server exposes several OpenAI- and Anthropic-compatible endpoints. Requests can target GitHub Copilot, the built-in `codex` provider, or configured providers depending on the selected model and `provider/model` alias. Messages, Responses, Models, alpha-search, and Images also support provider-scoped paths in the form `/:provider/v1/...`; Chat Completions and Embeddings route to configured providers through top-level `provider/model` aliases.
 
 ### OpenAI Compatible Endpoints
 
@@ -797,7 +797,7 @@ These endpoints mimic the OpenAI API structure.
 | `POST /v1/responses`        | `POST` | OpenAI Most advanced interface for generating model responses. Supports `Content-Encoding: zstd` request bodies and `provider/model` aliases for `openai-responses` providers. Zstd request decompression is limited to Responses routes, including provider-scoped aliases. |
 | `POST /v1/chat/completions` | `POST` | Creates a model response for the given chat conversation. Supports `provider/model` aliases for `openai-compatible` providers and can be used without Copilot when the target provider is configured. |
 | `GET /v1/models`            | `GET`  | Lists only admitted OpenAI and MAI models from Copilot and enabled providers, using `provider/model-id` IDs. Codex clients (`User-Agent` beginning with `codex`) receive a similarly filtered merged Codex catalog. |
-| `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
+| `POST /v1/embeddings`       | `POST` | Creates an embedding vector. Model mappings and configured `provider/model` aliases are supported; provider response bodies are limited to 32 MiB. |
 
 ### Codex Backend Endpoints
 
@@ -805,8 +805,8 @@ These endpoints implement Codex backend APIs. Top-level image requests require a
 
 | Endpoint                                                       | Method | Description                                                     |
 | -------------------------------------------------------------- | ------ | --------------------------------------------------------------- |
-| `POST /v1/alpha/search`                | `POST` | Routes Codex alpha-search requests to the Codex backend, or handles supported commands locally and through Responses web search. |
-| `POST /v1/images/generations` | `POST` | Forwards a JSON image generation request to the Codex Images upstream. When the request omits `Content-Type`, the gateway defaults it to `application/json`. Configured model mappings apply to the request `model`; a mapping that resolves to a `provider/model` alias forwards the request to that provider's images endpoint when the provider is configured. |
+| `POST /v1/alpha/search`                | `POST` | Routes Codex alpha-search requests to the Codex backend, or handles supported commands locally and through Responses web search. JSON request bodies are limited to 10 MiB. |
+| `POST /v1/images/generations` | `POST` | Forwards a JSON image generation request to the Codex Images upstream. When the request omits `Content-Type`, the gateway defaults it to `application/json`. Configured model mappings apply to the request `model`; a mapping that resolves to a `provider/model` alias forwards the request to that provider's images endpoint when the provider is configured. Request bodies are limited to 1 MiB. |
 | `POST /v1/images/edits` | `POST` | Forwards an image edit request to the Codex Images upstream. Send this request as `multipart/form-data` and let the HTTP client generate the `boundary`. To validate and map the multipart `model` before contacting any upstream, the gateway first streams the complete upload to temporary disk files, then forwards it from disk; this adds one full-upload delay but avoids holding large uploads in memory. Multipart requests are limited to 128 MiB total, 64 MiB per file, and 16 files; requests over a limit return `413`. Model mappings and `provider/model` alias routing apply to this endpoint as well. |
 
 For requests routed to the Codex backend, the gateway replaces client authorization and account headers with the active Codex login and preserves compatible request metadata. Responses-backed alpha search instead follows the selected Copilot or provider route.
@@ -862,7 +862,7 @@ npx @jeffreycao/copilot-api@latest debug --json
 bunx --bun @jeffreycao/copilot-api@latest start
 ```
 
-OpenAI-compatible provider examples after configuring `dashscope`:
+OpenAI-compatible provider examples after configuring `openrouter`:
 
 ```sh
 curl http://localhost:4141/v1/chat/completions \

@@ -155,10 +155,9 @@ export async function handleCompletionPayload(
     stripToolReferenceTurnBoundary(anthropicPayload)
 
     // Merge tool_result and text blocks into tool_result to avoid consuming premium requests
-    // (caused by skill invocations, edit hooks, plan or to do reminders)
-    // e.g. {"role":"user","content":[{"type":"tool_result","content":"Launching skill: xxx"},{"type":"text","text":"xxx"}]}
-    // not only for claude, but also for opencode
-    // compact requests still run this processing, except for the final compact message itself
+    // (caused by skill invocations, edit hooks, plan or to do reminders).
+    // For example: {"role":"user","content":[{"type":"tool_result","content":"Launching skill: xxx"},{"type":"text","text":"xxx"}]}
+    // Compact requests still run this processing, except for the final compact message itself.
     mergeToolResultForClaude(anthropicPayload, {
       skipLastMessage: compactType === COMPACT_REQUEST,
     })
