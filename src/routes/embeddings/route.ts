@@ -57,11 +57,15 @@ embeddingRoutes.post("/", async (c) => {
         )
       }
 
-      const responseBody = (await upstreamResponse
-        .clone()
-        .json()) as EmbeddingResponse
+      const responseBody = (await upstreamResponse.json()) as EmbeddingResponse
       recordEmbeddingUsage(responseBody, payload.model, providerConfig)
-      return createProviderProxyResponse(upstreamResponse)
+      return createProviderProxyResponse(
+        new Response(JSON.stringify(responseBody), {
+          headers: upstreamResponse.headers,
+          status: upstreamResponse.status,
+          statusText: upstreamResponse.statusText,
+        }),
+      )
     }
 
     const response = await embeddingRouteDependencies.createEmbeddings(payload)

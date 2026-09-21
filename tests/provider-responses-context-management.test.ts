@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
+import { MODEL_NOT_ALLOWED_ERROR } from "~/lib/model-admission"
 import { state } from "~/lib/state"
 import type { ResponsesResult } from "~/lib/types/responses"
 
@@ -429,6 +430,24 @@ describe("provider Responses context management", () => {
 
     expect(body.context_management).toBeUndefined()
     expect(body.input).toHaveLength(3)
+  })
+
+  test("rejects disallowed provider Responses fallback models", async () => {
+    const response = await createApp().request("/openai/v1/responses", {
+      body: JSON.stringify({
+        input: "hello",
+        model: "gpt-test",
+        models: ["gpt-test", "claude-sonnet-4"],
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: MODEL_NOT_ALLOWED_ERROR })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("supports the provider-scoped responses route", async () => {

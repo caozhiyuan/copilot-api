@@ -47,6 +47,39 @@ afterEach(() => {
 })
 
 describe("provider/model aliases on embeddings route", () => {
+  test("proxies provider embeddings without cloning the upstream body", async () => {
+    const upstreamBody = {
+      object: "list",
+      data: [{ object: "embedding", embedding: [0.1], index: 0 }],
+      model: "text-embedding-3-large",
+      usage: { prompt_tokens: 0, total_tokens: 0 },
+    }
+    const upstreamResponse = Response.json(upstreamBody, {
+      headers: { "x-provider-response": "preserved" },
+    })
+    Object.defineProperty(upstreamResponse, "clone", {
+      value: () => {
+        throw new Error("The upstream response must only be consumed once")
+      },
+    })
+    forwardProviderEmbeddings.mockImplementationOnce(() =>
+      Promise.resolve(upstreamResponse),
+    )
+
+    const app = new Hono()
+    app.route("/v1/embeddings", embeddingRoutes)
+
+    const response = await app.request("/v1/embeddings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "embedding", input: "hello" }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("x-provider-response")).toBe("preserved")
+    expect(await response.json()).toEqual(upstreamBody)
+  })
+
   test("routes a mapped embedding model to its configured provider", async () => {
     const app = new Hono()
     app.route("/v1/embeddings", embeddingRoutes)

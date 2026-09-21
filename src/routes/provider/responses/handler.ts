@@ -10,7 +10,7 @@ import {
 } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { assertAllowedModel } from "~/lib/model-admission"
+import { assertAllowedModelSelection } from "~/lib/model-admission"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { requestContext } from "~/lib/request-context"
 import { writeSSEIfConnected } from "~/lib/sse"
@@ -63,7 +63,7 @@ export async function handleProviderResponsesForProvider(
   },
 ): Promise<Response> {
   const { payload, provider } = options
-  assertAllowedModel(payload.model)
+  assertAllowedModelSelection(payload)
 
   debugJson(logger, "Responses request payload:", {
     payload,

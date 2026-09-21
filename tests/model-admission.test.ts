@@ -66,6 +66,20 @@ describe("model admission policy", () => {
     )
   })
 
+  test("rejects disallowed Responses fallback models", async () => {
+    const response = await createApp().request("/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-5.4",
+        models: ["gpt-5.4", "claude-sonnet-4"],
+        input: "hello",
+      }),
+    })
+
+    await expectModelNotAllowed(response)
+  })
+
   test("returns the same client error from every JSON request protocol", async () => {
     const app = createApp()
     const requests = [
