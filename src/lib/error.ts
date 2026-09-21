@@ -18,6 +18,16 @@ export class HTTPError extends Error {
   }
 }
 
+export class UpstreamResponseSizeLimitExceededError extends Error {
+  readonly maxBytes: number
+
+  constructor(maxBytes: number) {
+    super(`Upstream response exceeds the size limit of ${maxBytes} bytes`)
+    this.name = "UpstreamResponseSizeLimitExceededError"
+    this.maxBytes = maxBytes
+  }
+}
+
 export class UpstreamHeadersTimeoutError extends Error {
   readonly timeoutMs: number
 
@@ -55,6 +65,19 @@ export async function forwardError(
         },
       },
       413,
+    )
+  }
+
+  if (error instanceof UpstreamResponseSizeLimitExceededError) {
+    consola.error("Error occurred:", error)
+    return c.json(
+      {
+        error: {
+          message: error.message,
+          type: "upstream_error",
+        },
+      },
+      502,
     )
   }
 

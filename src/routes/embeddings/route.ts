@@ -1,7 +1,15 @@
 import { Hono } from "hono"
 
+import {
+  BodySizeLimitExceededError,
+  readBodyWithLimit,
+} from "~/lib/bounded-body"
 import { resolveMappedModel, type ResolvedProviderConfig } from "~/lib/config"
-import { forwardError, HTTPError } from "~/lib/error"
+import {
+  forwardError,
+  HTTPError,
+  UpstreamResponseSizeLimitExceededError,
+} from "~/lib/error"
 import { assertAllowedModel } from "~/lib/model-admission"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
@@ -18,6 +26,8 @@ import {
   createProviderProxyResponse,
   forwardProviderEmbeddings,
 } from "~/services/providers/provider-proxy"
+
+export const PROVIDER_EMBEDDINGS_RESPONSE_BYTE_LIMIT = 32 * 1024 * 1024
 
 export const embeddingRouteDependencies = {
   createEmbeddings,
@@ -50,22 +60,36 @@ embeddingRoutes.post("/", async (c) => {
           c.req.raw.headers,
           { clientSignal: c.req.raw.signal },
         )
-      if (!upstreamResponse.ok) {
+      let responseBytes: Uint8Array
+      try {
+        responseBytes = await readBodyWithLimit(
+          upstreamResponse.body,
+          PROVIDER_EMBEDDINGS_RESPONSE_BYTE_LIMIT,
+          upstreamResponse.headers.get("content-length"),
+        )
+      } catch (error) {
+        if (error instanceof BodySizeLimitExceededError) {
+          throw new UpstreamResponseSizeLimitExceededError(error.maxBytes)
+        }
+        throw error
+      }
+
+      const bufferedUpstreamResponse = new Response(responseBytes, {
+        headers: upstreamResponse.headers,
+        status: upstreamResponse.status,
+        statusText: upstreamResponse.statusText,
+      })
+      if (!bufferedUpstreamResponse.ok) {
         throw new HTTPError(
           `Failed to create ${providerModelAlias.provider} embeddings`,
-          upstreamResponse,
+          bufferedUpstreamResponse,
         )
       }
 
-      const responseBody = (await upstreamResponse.json()) as EmbeddingResponse
+      const responseText = new TextDecoder().decode(responseBytes)
+      const responseBody = JSON.parse(responseText) as EmbeddingResponse
       recordEmbeddingUsage(responseBody, payload.model, providerConfig)
-      return createProviderProxyResponse(
-        new Response(JSON.stringify(responseBody), {
-          headers: upstreamResponse.headers,
-          status: upstreamResponse.status,
-          statusText: upstreamResponse.statusText,
-        }),
-      )
+      return createProviderProxyResponse(bufferedUpstreamResponse)
     }
 
     const response = await embeddingRouteDependencies.createEmbeddings(payload)

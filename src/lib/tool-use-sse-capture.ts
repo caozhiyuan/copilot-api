@@ -115,7 +115,7 @@ class ActiveToolUseSseCapture implements ToolUseSseCapture {
       && event.delta.type === "input_json_delta"
     ) {
       const block = this.blocks.get(event.index)
-      if (!block) return
+      if (!block || event.delta.partial_json.length === 0) return
       const fragmentBytes = Buffer.byteLength(event.delta.partial_json)
       if (
         this.capturedBytes + fragmentBytes

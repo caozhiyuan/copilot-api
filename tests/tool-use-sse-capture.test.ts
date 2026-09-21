@@ -149,6 +149,28 @@ describe("tool-use SSE capture verdict", () => {
     })
   })
 
+  test("ignores empty partial JSON fragments", () => {
+    withCaptureEnv("1", () => {
+      const capture = createToolUseSseCapture()
+      if (!capture) return
+
+      feed(
+        capture,
+        toolUseFrames(0, "toolu_empty_fragments", "Read", [
+          "",
+          '{"path":',
+          "",
+          '"README.md"}',
+          "",
+        ]),
+      )
+
+      const summary = capture.finish()
+      expect(summary.verdict).toBe("boundary-clean")
+      expect(summary.malformedBlocks).toBe(0)
+    })
+  })
+
   test("accepts empty tool input", () => {
     withCaptureEnv("1", () => {
       const capture = createToolUseSseCapture()
