@@ -759,6 +759,7 @@ Codex provider 最多保存 3 个账号。使用 `copilot-api auth login --provi
     },
     "useMessagesApi": true,
     "useResponsesApiWebSocket": true,
+    "responsesApiStreamRetries": 0,
     "upstreamTransport": {
       "headersTimeoutMs": 300000,
       "streamInactivityTimeoutMs": 300000,
@@ -809,6 +810,7 @@ Codex provider 最多保存 3 个账号。使用 `copilot-api auth login --provi
   - **配置可选值：** `none`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。
 - **useMessagesApi：** 当为 `true` 时，声明了 Copilot 原生 `/v1/messages` 端点的模型会使用 Messages API。如果所选模型未声明 Messages 端点或关闭了该配置，网关会在模型声明了 Responses 端点时使用 Responses，否则在模型支持时回退到 Chat Completions。设为 `false` 可跳过原生 Messages 路由。默认值为 `true`。
 - **useResponsesApiWebSocket：** 当为 `true` 时，Copilot Responses 请求会对声明了 `ws:/responses` 的模型使用 WebSocket；仅声明 `/responses` 的模型使用 HTTP。内置 `codex` provider 的流式 Responses 请求只要启用了该配置就会使用 WebSocket，非流式 Codex 请求始终使用 HTTP。设为 `false` 后，Copilot 会在所选模型声明了 `/responses` 时使用 HTTP，Codex 的流式 Responses 请求也会改走 HTTP。WebSocket 失败后不会自动通过 HTTP 重试。默认值为 `true`。如果代理、VPN 或网络会阻断或干扰 WebSocket 流量，请关闭该配置或切换网络。使用 GitHub Copilot provider 时遇到 `Encrypted function output content could not be decrypted or decoded`，同样把该配置设为 `false`，详见[故障排查](#troubleshooting)。
+- **responsesApiStreamRetries：** 流式 GitHub Copilot Responses 请求在产生任何输出之前被 Copilot 判定失败时（例如 `Encrypted function output content could not be decrypted or decoded`、`internal server error`，或不带错误详情的 `response.failed`），网关在新连接上重新发送该请求的次数。网关会先暂存 `response.created` 与 `response.in_progress`，直到出现第一个输出事件，因此客户端看不到失败的尝试。其他错误，以及已经开始输出之后的失败，都会原样透传。默认值为 `0`（不重试），最大为 `10`。
 - **upstreamTransport：** 上游 chat completions、responses、messages 三类请求共用的生命周期与缓冲区正整数限制。无效值、零或负数会回退到上面列出的默认值。`headersTimeoutMs` 从连接建立开始计算，到收到 HTTP 响应头为止，并不是整个生成过程的总时限。每收到一个 HTTP body chunk 或 WebSocket message 都会重置 `streamInactivityTimeoutMs`，因此持续活跃的长推理任务不会被短总时限中断。`websocketOpenTimeoutMs` 限制 WebSocket 握手时间；`websocketPoolIdleTimeoutMs` 只控制已正常完成且可复用的空闲连接。WebSocket 队列同时受字节数和消息数上限约束；超过任一上限时会终止该 stream 并使 socket 失效，而不会丢弃或重排事件。
 - **useResponsesApiWebSearch：** 当为 `true` 时，服务端会保留 Responses API 中 `type: "web_search"` 的工具并透传到上游。设为 `false` 则会从 `/responses` payload 中移除这些工具。默认值为 `true`。
 - **alphaSearchCodexPriority：** 默认值为 `true`。顶层 alpha-search 请求优先使用 Codex alpha-search 端点，因为它不会消耗 provider 配额。若 Codex 不可用，或该配置设为 `false`，使用非 `codex/model` 的 `provider/model` 别名的请求会调用目标 provider 的 `/v1/responses` 端点，没有 provider 前缀的请求使用 GitHub Copilot Responses web search。该适配器会识别当前所有 Codex search command；不受支持的 `image_query` 和 `screenshot` 会返回成功且明确要求不要重试的 tool output。
@@ -946,12 +948,14 @@ curl http://localhost:4141/dashscope/v1/messages \
 
 **GitHub Copilot 加密输出解密失败**
 
-使用 GitHub Copilot provider 时，如果响应或日志中出现 `Encrypted function output content could not be decrypted or decoded`，通常是上游问题。把 `config.json` 里的 `useResponsesApiWebSocket` 设为 `false`，让 Copilot Responses 改走 HTTP `/responses` 即可绕过：
+使用 GitHub Copilot provider 时，如果响应或日志中出现 `Encrypted function output content could not be decrypted or decoded`，通常是上游问题：部分 Copilot 后端无法解密请求中回放的加密内容（例如 Codex 多智能体消息），而新连接会落到哪个后端并不固定。在 `config.json` 中设置 `responsesApiStreamRetries`，让网关在任何输出到达客户端之前，换一条新连接重试该请求：
 
 ```json
 {
-  "useResponsesApiWebSocket": false
+  "responsesApiStreamRetries": 4
 }
 ```
+
+也可以把 `useResponsesApiWebSocket` 设为 `false`，让 Copilot Responses 改走 HTTP `/responses`。
 
 修改后重启服务生效。完整配置项说明见[配置（config.json）](#configuration-configjson)。

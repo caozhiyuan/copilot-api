@@ -715,6 +715,7 @@ Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `c
     },
     "useMessagesApi": true,
     "useResponsesApiWebSocket": true,
+    "responsesApiStreamRetries": 0,
     "upstreamTransport": {
       "headersTimeoutMs": 300000,
       "streamInactivityTimeoutMs": 300000,
@@ -765,6 +766,7 @@ Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `c
   - **Configuration values:** `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`.
 - **useMessagesApi:** When `true`, models that advertise Copilot's native `/v1/messages` endpoint use the Messages API. If Messages is disabled or unavailable for the selected model, the gateway uses Responses when that model advertises a Responses endpoint, then falls back to Chat Completions when supported. Set this to `false` to skip native Messages routing. Defaults to `true`.
 - **useResponsesApiWebSocket:** When `true`, Copilot Responses requests use WebSocket for models that advertise `ws:/responses`; models that advertise only `/responses` use HTTP. Streamed Responses requests for the built-in `codex` provider use WebSocket whenever this setting is enabled, while non-streaming Codex requests always use HTTP. Set this to `false` to make Copilot use HTTP `/responses` where the selected model advertises it and to send streamed Codex Responses requests over HTTP. WebSocket failures are not retried automatically over HTTP. Defaults to `true`. If a proxy, VPN, or network blocks or destabilizes WebSocket traffic, disable this setting or switch networks. Also set it to `false` when the GitHub Copilot provider fails with `Encrypted function output content could not be decrypted or decoded`; see [Troubleshooting](#troubleshooting).
+- **responsesApiStreamRetries:** Number of times a streamed GitHub Copilot Responses request is sent again on a new connection when Copilot fails it before producing any output (for example with `Encrypted function output content could not be decrypted or decoded`, `internal server error`, or a `response.failed` event without error details). The gateway holds back `response.created` and `response.in_progress` until the first output event, so the client never sees the failed attempts. Other errors, and failures after output has started, are passed through unchanged. Defaults to `0` (no retries); the maximum is `10`.
 - **upstreamTransport:** Positive integer lifecycle and buffering limits for the upstream chat completions, responses, and messages transports. Invalid, zero, or negative values fall back to the defaults shown above. `headersTimeoutMs` covers connection setup through receipt of HTTP response headers; it is not a total generation deadline. `streamInactivityTimeoutMs` is reset by every HTTP body chunk or WebSocket message, allowing long generations to continue while they remain active. `websocketOpenTimeoutMs` limits the WebSocket handshake, while `websocketPoolIdleTimeoutMs` controls only completed, reusable pooled sockets. The byte and message limits bound queued WebSocket events; exceeding either limit fails that stream and invalidates its socket rather than dropping or reordering events.
 - **useResponsesApiWebSearch:** When `true`, the server keeps Responses API tools with `type: "web_search"` and forwards them upstream. Set to `false` to strip those tools from `/responses` payloads. Defaults to `true`.
 - **alphaSearchCodexPriority:** Defaults to `true`. Top-level alpha-search requests prefer the Codex alpha-search endpoint because it does not consume provider quota. If Codex is unavailable, or this setting is `false`, requests with a `provider/model` alias other than `codex/model` use that provider's `/v1/responses` endpoint, and requests without a provider prefix use GitHub Copilot Responses web search. The adapter recognizes every current Codex search command; unsupported `image_query` and `screenshot` operations return successful no-retry tool output.
@@ -896,12 +898,14 @@ curl http://localhost:4141/dashscope/v1/messages \
 
 **GitHub Copilot encrypted output decryption failure**
 
-When the GitHub Copilot provider returns or logs `Encrypted function output content could not be decrypted or decoded`, it is usually an upstream issue. Set `useResponsesApiWebSocket` to `false` in `config.json` so Copilot Responses traffic goes over HTTP `/responses` instead:
+When the GitHub Copilot provider returns or logs `Encrypted function output content could not be decrypted or decoded`, it is usually an upstream issue: some Copilot backends cannot decrypt the encrypted items (such as Codex multi-agent messages) that a request replays, and which backend a new connection reaches varies. Set `responsesApiStreamRetries` in `config.json` so the gateway retries such a request on a new connection before any output reaches the client:
 
 ```json
 {
-  "useResponsesApiWebSocket": false
+  "responsesApiStreamRetries": 4
 }
 ```
+
+Alternatively, set `useResponsesApiWebSocket` to `false` so Copilot Responses traffic goes over HTTP `/responses` instead.
 
 Restart the server after changing the config. See [Configuration (config.json)](#configuration-configjson) for the full option reference.

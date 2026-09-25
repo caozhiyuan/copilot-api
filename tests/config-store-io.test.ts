@@ -6,6 +6,7 @@ import path from "node:path"
 import {
   getAlphaSearchModel,
   getMessageApiWebSearchModel,
+  getResponsesApiStreamRetries,
   reloadConfig,
   setConfiguredApiKeys,
   writeConfigToDisk,
@@ -174,4 +175,19 @@ test("setConfiguredApiKeys can clear all keys", () => {
   const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as StoredConfig
   expect(config.auth.apiKeys).toEqual([])
   expect(config.auth.adminApiKey).toBe("admin-key")
+})
+
+test("getResponsesApiStreamRetries reads the configured retry count", () => {
+  const configPath = useTempConfigPath()
+
+  reloadConfig()
+  expect(getResponsesApiStreamRetries()).toBe(0)
+
+  fs.writeFileSync(
+    configPath,
+    `${JSON.stringify({ responsesApiStreamRetries: 4 })}\n`,
+    "utf8",
+  )
+  reloadConfig()
+  expect(getResponsesApiStreamRetries()).toBe(4)
 })

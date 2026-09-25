@@ -170,6 +170,7 @@ beforeEach(async () => {
   responsesHandlerDependencies.createResponses = createResponses
   responsesHandlerDependencies.findEndpointModel = (model) =>
     state.models?.data.find((candidate) => candidate.id === model)
+  responsesHandlerDependencies.getResponsesApiStreamRetries = () => 0
   responsesHandlerDependencies.isResponsesApiWebSearchEnabled = () => true
   responsesHandlerDependencies.resolveMappedModel = (model) => model
   responsesUtilsDependencies.getModelResponsesApiCompactThreshold = () =>
@@ -2080,5 +2081,72 @@ describe("responses handler interrupted streams", () => {
       "error",
       "response.failed",
     ])
+  })
+})
+
+describe("responses early stream failure retries", () => {
+  const DECRYPT_ERROR =
+    "Encrypted function output content could not be decrypted or decoded."
+
+  const eventChunk = (type: string, fields: Record<string, unknown> = {}) => ({
+    data: JSON.stringify({ type, ...fields }),
+    event: type,
+  })
+
+  const failedAttempt = () =>
+    streamChunks([
+      eventChunk("response.created", { response: { id: "resp_failed" } }),
+      eventChunk("error", {
+        code: "invalid_request_body",
+        error: { code: "invalid_request_body", message: DECRYPT_ERROR },
+        message: DECRYPT_ERROR,
+      }),
+    ])
+
+  const successfulAttempt = () =>
+    streamChunks([
+      eventChunk("response.created", { response: { id: "resp_ok" } }),
+      eventChunk("response.output_text.delta", { delta: "OK" }),
+      eventChunk("response.completed", {
+        response: { ...createResponsesResult("gpt-test"), id: "resp_ok" },
+      }),
+    ])
+
+  const postStream = async () =>
+    await createApp().request("/v1/responses", {
+      body: JSON.stringify({ input: "hello", model: "gpt-test", stream: true }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+  test("retries a stream that fails before any output", async () => {
+    responsesHandlerDependencies.getResponsesApiStreamRetries = () => 2
+    createResponses
+      .mockImplementationOnce(() => Promise.resolve(failedAttempt()))
+      .mockImplementationOnce(() => Promise.resolve(successfulAttempt()))
+
+    const response = await postStream()
+    const body = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(2)
+    expect(createResponses.mock.calls[1]?.[1]?.requestId).toBe(
+      createResponses.mock.calls[0]?.[1]?.requestId,
+    )
+    expect(body).not.toContain("could not be decrypted")
+    expect(body).not.toContain("resp_failed")
+    expect(body.match(/event: response\.created/g)).toHaveLength(1)
+    expect(body).toContain("response.completed")
+  })
+
+  test("passes early failures through when stream retries are disabled", async () => {
+    createResponses.mockImplementation(() => Promise.resolve(failedAttempt()))
+
+    const response = await postStream()
+    const body = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(createResponses).toHaveBeenCalledTimes(1)
+    expect(body).toContain("could not be decrypted")
   })
 })

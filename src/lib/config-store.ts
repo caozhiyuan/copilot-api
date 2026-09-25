@@ -24,6 +24,9 @@ export interface AppConfig {
   >
   useMessagesApi?: boolean
   useResponsesApiWebSocket?: boolean
+  // Retries a Copilot Responses stream on a new connection when it fails
+  // before producing any output. 0 disables retries.
+  responsesApiStreamRetries?: number
   upstreamTransport?: UpstreamTransportConfig
   anthropicApiKey?: string
   useResponsesApiWebSearch?: boolean
@@ -147,6 +150,7 @@ export const defaultConfig: AppConfig = {
   modelResponsesApiCompactThresholds,
   useMessagesApi: true,
   useResponsesApiWebSocket: true,
+  responsesApiStreamRetries: 0,
   upstreamTransport: defaultUpstreamTransportConfig,
   useResponsesApiWebSearch: true,
   alphaSearchCodexPriority: true,
@@ -488,6 +492,21 @@ export function isMessagesApiEnabled(): boolean {
 export function isResponsesApiWebSocketEnabled(): boolean {
   const config = getConfig()
   return config.useResponsesApiWebSocket ?? true
+}
+
+const MAX_RESPONSES_API_STREAM_RETRIES = 10
+
+export function normalizeResponsesApiStreamRetries(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0
+  return Math.min(
+    Math.max(Math.trunc(value), 0),
+    MAX_RESPONSES_API_STREAM_RETRIES,
+  )
+}
+
+export function getResponsesApiStreamRetries(): number {
+  const config = getConfig()
+  return normalizeResponsesApiStreamRetries(config.responsesApiStreamRetries)
 }
 
 // Applies to every upstream HTTP transport (Copilot Chat Completions and

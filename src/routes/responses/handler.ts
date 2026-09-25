@@ -3,6 +3,7 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 
 import {
+  getResponsesApiStreamRetries as getConfiguredResponsesApiStreamRetries,
   isResponsesApiWebSearchEnabled as isConfiguredResponsesApiWebSearchEnabled,
   resolveMappedModel,
 } from "~/lib/config"
@@ -36,6 +37,10 @@ import type {
 import { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
 
 import { handleResponsesViaMessages } from "./messages-handler"
+import {
+  createEarlyFailureRetryStream,
+  type ResponsesStreamChunk,
+} from "./stream-early-failure-retry"
 import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
 import {
   applyResponsesApiContextManagement,
@@ -55,6 +60,7 @@ const logger = createHandlerLogger("responses-handler")
 export const responsesHandlerDependencies = {
   createResponses: createCopilotResponses,
   findEndpointModel,
+  getResponsesApiStreamRetries: getConfiguredResponsesApiStreamRetries,
   isResponsesApiWebSearchEnabled: isConfiguredResponsesApiWebSearchEnabled,
   resolveMappedModel,
 }
@@ -204,7 +210,7 @@ export const handleResponses = async (c: Context) => {
     getResponsesRequestOptions(payload)
   const initiator = subagentMarker ? "agent" : inferredInitiator
 
-  const response = await responsesHandlerDependencies.createResponses(payload, {
+  const createResponsesOptions = {
     vision,
     initiator,
     subagentMarker,
@@ -212,14 +218,23 @@ export const handleResponses = async (c: Context) => {
     sessionId: fallbackSessionId,
     clientSignal: c.req.raw.signal,
     transport: responsesTransport,
-  })
+  }
+  const response = await responsesHandlerDependencies.createResponses(
+    payload,
+    createResponsesOptions,
+  )
 
   if (isStreamingRequested(payload) && isAsyncIterable(response)) {
     logger.debug("Forwarding native Responses stream")
+    const upstream = retryEarlyStreamFailures(
+      response,
+      payload,
+      createResponsesOptions,
+    )
     return streamSSE(c, async (stream) => {
       const idTracker = createStreamIdTracker()
       let usage: UsageTokens = {}
-      const iterator = response[Symbol.asyncIterator]()
+      const iterator = upstream[Symbol.asyncIterator]()
 
       try {
         for await (const chunk of {
@@ -271,6 +286,34 @@ export const handleResponses = async (c: Context) => {
     ),
   })
   return c.json(result)
+}
+
+const retryEarlyStreamFailures = (
+  response: AsyncIterable<ResponsesStreamChunk>,
+  payload: ResponsesPayload,
+  options: Parameters<typeof createCopilotResponses>[1],
+): AsyncIterable<ResponsesStreamChunk> => {
+  const maxRetries = responsesHandlerDependencies.getResponsesApiStreamRetries()
+  if (maxRetries === 0) return response
+
+  return createEarlyFailureRetryStream(response, {
+    maxRetries,
+    retry: async () => {
+      const next = await responsesHandlerDependencies.createResponses(
+        payload,
+        options,
+      )
+      if (!isAsyncIterable<ResponsesStreamChunk>(next)) {
+        throw new Error("Copilot Responses retry did not return a stream")
+      }
+      return next
+    },
+    onRetry: (attempt, reason) => {
+      consola.warn(
+        `Retrying Copilot Responses stream after an early failure (${attempt}/${maxRetries}): ${reason}`,
+      )
+    },
+  })
 }
 
 const isStreamingRequested = (payload: ResponsesPayload): boolean =>
