@@ -230,10 +230,20 @@ export function prepareCodexResponsesWebSocketRequest(
   baseUrl: string = CODEX_API_BASE_URL,
 ): CodexResponsesWebSocketRequest {
   const headers = buildCodexResponsesWebSocketHeaders(requestHeaders)
+  const websocketPayload = buildCodexResponsesWebSocketPayload(payload)
+  const turnState = requestHeaders.get("x-codex-turn-state")
+
+  if (turnState !== null) {
+    // Reused sockets do not repeat handshake headers, so send turn state per request.
+    websocketPayload.client_metadata = {
+      ...(websocketPayload.client_metadata ?? {}),
+      "x-codex-turn-state": turnState,
+    }
+  }
 
   return {
     headers,
-    payload: buildCodexResponsesWebSocketPayload(payload),
+    payload: websocketPayload,
     poolKey: buildCodexResponsesWebSocketPoolKey(payload, headers, baseUrl),
     url: buildCodexResponsesWebSocketUrl(baseUrl),
   }
@@ -439,7 +449,7 @@ const buildCodexResponsesWebSocketPoolKey = (
     .update(
       JSON.stringify(
         Object.entries(headers)
-          .filter(([headerName]) => !headerName.toLowerCase().includes("trace"))
+          .filter(([headerName]) => shouldIncludeHeader(headerName))
           .sort(([left], [right]) => left.localeCompare(right)),
       ),
     )
@@ -612,4 +622,9 @@ const createCodexResponsesWebSocketStreamChunk = (
   } catch {
     return { data }
   }
+}
+
+function shouldIncludeHeader(headerName: string): boolean {
+  const header = headerName.toLowerCase()
+  return !header.includes("trace") && !header.startsWith("x-codex-turn-state")
 }
