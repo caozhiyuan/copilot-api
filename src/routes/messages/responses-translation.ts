@@ -171,6 +171,11 @@ export const translateAnthropicMessagesToResponsesPayload = (
     responsesPayload.prompt_cache_key = promptCacheKey
   }
 
+  // grok meatadata is not supported
+  if (responsesPayload.model.includes("grok")) {
+    delete responsesPayload.metadata
+  }
+
   return responsesPayload
 }
 
