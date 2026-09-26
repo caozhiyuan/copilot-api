@@ -26,6 +26,7 @@ import {
   filterReasoningForTransport,
 } from "~/routes/responses/utils"
 import { handleResponsesViaMessages } from "~/routes/responses/messages-handler"
+import { getCodexTaskTitleModel } from "~/routes/responses/task-title"
 import {
   forwardProviderResponseHeaders,
   normalizeProviderResponsesReasoningEffort,
@@ -62,6 +63,13 @@ export async function handleProviderResponsesForProvider(
   },
 ): Promise<Response> {
   const { payload, provider } = options
+  const taskTitleModel = getCodexTaskTitleModel(
+    c.req.header("user-agent"),
+    payload.input,
+    provider,
+  )
+  if (taskTitleModel) payload.model = taskTitleModel
+  const publicModel = taskTitleModel ?? options.publicModel ?? payload.model
 
   debugJson(logger, "Responses request payload:", {
     payload,
@@ -100,7 +108,7 @@ export async function handleProviderResponsesForProvider(
     filterReasoningForTransport(payload, true)
     return await handleResponsesViaMessages(c, {
       payload,
-      publicModel: options.publicModel ?? payload.model,
+      publicModel,
       targetModel: `${provider}/${payload.model}`,
     })
   }

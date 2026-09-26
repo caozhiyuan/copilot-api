@@ -15,7 +15,7 @@ export interface AppConfig {
   providers?: Record<string, ProviderConfig>
   modelMappings?: Record<string, string>
   extraPrompts?: Record<string, string>
-  smallModel?: string
+  smallModels?: SmallModelsConfig
   contextManagement?: ContextManagementConfig
   modelResponsesApiCompactThresholds?: Record<string, number>
   modelReasoningEfforts?: Record<
@@ -45,6 +45,12 @@ export interface AppConfig {
   // their current provider. Leave empty to disable (default).
   claudeAutoModel?: string
   claudeTokenMultiplier?: number
+}
+
+export interface SmallModelsConfig {
+  codex?: string
+  copilot?: string
+  [providerName: string]: string | undefined
 }
 
 export interface ContextManagementConfig {
@@ -143,7 +149,10 @@ export const defaultConfig: AppConfig = {
   },
   providers: {},
   modelMappings: {},
-  smallModel: "gpt-6-luna",
+  smallModels: {
+    codex: "gpt-6-luna",
+    copilot: "gpt-6-luna",
+  },
   contextManagement: defaultContextManagement,
   modelResponsesApiCompactThresholds,
   useMessagesApi: true,

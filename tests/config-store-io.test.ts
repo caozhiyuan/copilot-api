@@ -10,7 +10,7 @@ import {
   setConfiguredApiKeys,
   writeConfigToDisk,
 } from "~/lib/config-store"
-import { getSmallModel } from "~/lib/model-policy"
+import { getSmallModel, getSmallModelForProvider } from "~/lib/model-policy"
 import { PATHS } from "~/lib/paths"
 
 interface StoredConfig {
@@ -80,7 +80,10 @@ test("reloadConfig creates a default config when it is missing", () => {
   const config = reloadConfig()
 
   expect(config.auth?.apiKeys).toEqual([])
-  expect(config.smallModel).toBe("gpt-6-luna")
+  expect(config.smallModels).toEqual({
+    codex: "gpt-6-luna",
+    copilot: "gpt-6-luna",
+  })
   expect(config.alphaSearchModel).toBe("gpt-6-luna")
   expect(config.messageApiWebSearchModel).toBe("gpt-6-luna")
   expect(config.extraPrompts).toBeUndefined()
@@ -101,8 +104,35 @@ test("model getters use gpt-6-luna when config fields are absent", () => {
   reloadConfig()
 
   expect(getSmallModel()).toBe("gpt-6-luna")
+  expect(getSmallModelForProvider("codex")).toBe("gpt-6-luna")
+  expect(getSmallModelForProvider("copilot")).toBe("gpt-6-luna")
+  expect(getSmallModelForProvider("other-provider")).toBeUndefined()
   expect(getAlphaSearchModel()).toBe("gpt-6-luna")
   expect(getMessageApiWebSearchModel()).toBe("gpt-6-luna")
+})
+
+test("smallModels selects provider models and allows an empty value to disable switching", () => {
+  const configPath = useTempConfigPath()
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({
+      auth: { adminApiKey: "existing-admin-key" },
+      smallModels: {
+        codex: "",
+        copilot: "gpt-copilot-small",
+        openai: "gpt-openai-small",
+      },
+    }),
+    "utf8",
+  )
+
+  reloadConfig()
+
+  expect(getSmallModelForProvider("codex")).toBeUndefined()
+  expect(getSmallModelForProvider("copilot")).toBe("gpt-copilot-small")
+  expect(getSmallModelForProvider("openai")).toBe("gpt-openai-small")
+  expect(getSmallModelForProvider("dashscope")).toBeUndefined()
+  expect(getSmallModel()).toBe("gpt-copilot-small")
 })
 
 test("reloadConfig preserves an unreadable config file", () => {

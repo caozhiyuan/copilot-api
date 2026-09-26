@@ -24,7 +24,11 @@ const { providerResponsesHandlerDependencies } = await import(
 const { responsesHandlerDependencies } = await import(
   "~/routes/responses/handler"
 )
+const { responsesMessagesDependencies } = await import(
+  "~/routes/responses/messages-handler"
+)
 const { responsesUtilsDependencies } = await import("~/routes/responses/utils")
+const { taskTitleDependencies } = await import("~/routes/responses/task-title")
 
 const defaultProviderMessagesHandlerDependencies = {
   ...providerMessagesHandlerDependencies,
@@ -33,7 +37,11 @@ const defaultProviderResponsesHandlerDependencies = {
   ...providerResponsesHandlerDependencies,
 }
 const defaultResponsesHandlerDependencies = { ...responsesHandlerDependencies }
+const defaultResponsesMessagesDependencies = {
+  ...responsesMessagesDependencies,
+}
 const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
+const defaultTaskTitleDependencies = { ...taskTitleDependencies }
 const originalFetch = globalThis.fetch
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
@@ -136,10 +144,156 @@ afterEach(async () => {
     responsesHandlerDependencies,
     defaultResponsesHandlerDependencies,
   )
+  Object.assign(
+    responsesMessagesDependencies,
+    defaultResponsesMessagesDependencies,
+  )
   Object.assign(responsesUtilsDependencies, defaultResponsesUtilsDependencies)
+  Object.assign(taskTitleDependencies, defaultTaskTitleDependencies)
 
   await closeUsageStore()
   Reflect.deleteProperty(process.env, DB_PATH_ENV)
+})
+
+describe("Codex task title model routing on provider Responses", () => {
+  const taskTitlePrompt =
+    "Generate a concise, single-line task title of at most 36 characters and under five words where possible."
+  const titleInput = [
+    { role: "user", content: [{ type: "input_text", text: taskTitlePrompt }] },
+  ]
+
+  beforeEach(() => {
+    taskTitleDependencies.getSmallModelForProvider = (provider) =>
+      provider === "codex" ? "gpt-codex-small"
+      : provider === "copilot" ? "gpt-copilot-small"
+      : provider === "openai" ? "gpt-openai-small"
+      : undefined
+  })
+
+  for (const [name, path, requestedModel, input, userAgent, expectedModel] of [
+    [
+      "Codex provider",
+      "/codex/v1/responses",
+      "gpt-test",
+      titleInput,
+      "codex/1.0",
+      "gpt-codex-small",
+    ],
+    [
+      "Copilot provider",
+      "/copilot/v1/responses",
+      "gpt-test",
+      titleInput,
+      "codex/1.0",
+      "gpt-copilot-small",
+    ],
+    [
+      "configured third-party provider",
+      "/openai/v1/responses",
+      "gpt-test",
+      titleInput,
+      "codex/1.0",
+      "gpt-openai-small",
+    ],
+    [
+      "public provider alias",
+      "/v1/responses",
+      "openai/gpt-test",
+      titleInput,
+      "codex/1.0",
+      "gpt-openai-small",
+    ],
+    [
+      "non-Codex request",
+      "/openai/v1/responses",
+      "gpt-test",
+      titleInput,
+      "other-client/1.0",
+      "gpt-test",
+    ],
+    [
+      "unmatched input",
+      "/openai/v1/responses",
+      "gpt-test",
+      [
+        ...titleInput,
+        { role: "user", content: [{ type: "input_text", text: "Continue" }] },
+        { role: "user", content: [{ type: "input_text", text: "Again" }] },
+      ],
+      "codex/1.0",
+      "gpt-test",
+    ],
+  ] as const) {
+    test(`forwards ${expectedModel} for ${name}`, async () => {
+      const response = await createApp().request(path, {
+        body: JSON.stringify({ model: requestedModel, input }),
+        headers: {
+          "content-type": "application/json",
+          "user-agent": userAgent,
+        },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(200)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [, init] = fetchMock.mock.calls[0]
+      const body = parseJsonRequestBody((init as RequestInit).body) as {
+        model: string
+      }
+      expect(body.model).toBe(expectedModel)
+    })
+  }
+
+  test("does not reuse another provider's small model", async () => {
+    providerConfig = { ...providerConfig!, name: "dashscope" }
+
+    const response = await createApp().request("/dashscope/v1/responses", {
+      body: JSON.stringify({ model: "gpt-test", input: titleInput }),
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "codex/1.0",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    const [, init] = fetchMock.mock.calls[0]
+    const body = parseJsonRequestBody((init as RequestInit).body) as {
+      model: string
+    }
+    expect(body.model).toBe("gpt-test")
+  })
+
+  test("uses the configured small model as the public model for Messages fallback", async () => {
+    providerConfig = { ...providerConfig!, type: "anthropic" }
+    responsesMessagesDependencies.handleCompletionPayload = mock(() =>
+      Promise.resolve(
+        Response.json({
+          content: [{ type: "text", text: "Title" }],
+          id: "msg-title",
+          model: "gpt-openai-small",
+          role: "assistant",
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          type: "message",
+          usage: { input_tokens: 5, output_tokens: 1 },
+        }),
+      ),
+    )
+
+    const response = await createApp().request("/openai/v1/responses", {
+      body: JSON.stringify({ model: "gpt-test", input: titleInput }),
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "codex/1.0",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as ResponsesResult
+    expect(body.model).toBe("gpt-openai-small")
+  })
 })
 
 describe("provider Responses context management", () => {

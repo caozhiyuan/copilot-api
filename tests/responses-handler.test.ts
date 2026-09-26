@@ -102,6 +102,7 @@ const { responsesMessagesDependencies } = await import(
   "~/routes/responses/messages-handler"
 )
 const { responsesRoutes } = await import("~/routes/responses/route")
+const { taskTitleDependencies } = await import("~/routes/responses/task-title")
 const { responsesUtilsDependencies } = await import("~/routes/responses/utils")
 const { generateRequestIdFromPayload, getUUID } = await import("~/lib/utils")
 
@@ -112,6 +113,7 @@ const defaultResponsesMessagesDependencies = {
   ...responsesMessagesDependencies,
 }
 const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
+const defaultTaskTitleDependencies = { ...taskTitleDependencies }
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 
@@ -203,6 +205,134 @@ afterEach(async () => {
     defaultResponsesMessagesDependencies,
   )
   Object.assign(responsesUtilsDependencies, defaultResponsesUtilsDependencies)
+  Object.assign(taskTitleDependencies, defaultTaskTitleDependencies)
+})
+
+describe("Codex task title model routing on Responses", () => {
+  const taskTitlePrompt =
+    "Generate a concise, single-line task title of at most 36 characters and under five words where possible."
+  const titleInput = [
+    { role: "user", content: [{ type: "input_text", text: taskTitlePrompt }] },
+  ]
+
+  beforeEach(() => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: { limits: { max_prompt_tokens: 128000 } },
+          id: "gpt-test",
+          supported_endpoints: ["/responses"],
+        },
+        {
+          capabilities: { limits: { max_prompt_tokens: 128000 } },
+          id: "gpt-small",
+          supported_endpoints: ["/responses"],
+        },
+      ],
+    } as typeof state.models
+    taskTitleDependencies.getSmallModelForProvider = (provider) =>
+      provider === "copilot" ? "gpt-small" : undefined
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+  })
+
+  for (const [name, input, userAgent, expectedModel] of [
+    ["the final input item matches", titleInput, "codex/1.0", "gpt-small"],
+    [
+      "the penultimate input item matches",
+      [
+        ...titleInput,
+        { role: "user", content: [{ type: "input_text", text: "Continue" }] },
+      ],
+      "codex/1.0",
+      "gpt-small",
+    ],
+    [
+      "only an earlier input item matches",
+      [
+        ...titleInput,
+        { role: "user", content: [{ type: "input_text", text: "Continue" }] },
+        { role: "user", content: [{ type: "input_text", text: "Again" }] },
+      ],
+      "codex/1.0",
+      "gpt-test",
+    ],
+    ["the client is not Codex", titleInput, "other-client/1.0", "gpt-test"],
+  ] as const) {
+    test(`selects ${expectedModel} when ${name}`, async () => {
+      const response = await createApp().request("/v1/responses", {
+        body: JSON.stringify({ model: "gpt-test", input }),
+        headers: {
+          "content-type": "application/json",
+          "user-agent": userAgent,
+        },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(200)
+      expect(createResponses).toHaveBeenCalledTimes(1)
+      expect(createResponses.mock.calls[0]?.[0].model).toBe(expectedModel)
+    })
+  }
+
+  test("keeps the requested model when the Copilot small model is disabled", async () => {
+    taskTitleDependencies.getSmallModelForProvider = () => undefined
+
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({ model: "gpt-test", input: titleInput }),
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "codex/1.0",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(createResponses.mock.calls[0]?.[0].model).toBe("gpt-test")
+  })
+
+  test("keeps request tools without remapping the configured small model", async () => {
+    taskTitleDependencies.getSmallModelForProvider = () => "gpt-small"
+    responsesHandlerDependencies.resolveMappedModel = (model) =>
+      model === "gpt-small" ? "gpt-test" : model
+    const tools = [
+      {
+        type: "function",
+        name: "list_files",
+        parameters: { type: "object" },
+        strict: false,
+      },
+    ]
+
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({
+        model: "gpt-test",
+        input: [
+          { role: "developer", type: "additional_tools", tools },
+          ...titleInput,
+        ],
+        tools,
+        tool_choice: "required",
+      }),
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "codex/1.0",
+      },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    const forwarded = createResponses.mock.calls[0]?.[0]
+    expect(forwarded.model).toBe("gpt-small")
+    expect(forwarded.tools).toEqual(tools)
+    expect(forwarded.tool_choice).toBe("required")
+    expect(forwarded.input).toEqual([
+      { role: "developer", type: "additional_tools", tools },
+      ...titleInput,
+    ])
+  })
 })
 
 describe("responses reasoning transport isolation", () => {

@@ -149,7 +149,11 @@ export async function handleCompletionPayload(
     const tools = anthropicPayload.tools
     const noTools = !tools || tools.length === 0
     if (anthropicBeta && noTools && compactType === 0) {
-      anthropicPayload.model = getSmallModel()
+      const smallModel = getSmallModel()
+      consola.debug(
+        `Claude Code warmup small model: ${anthropicPayload.model} -> ${smallModel}`,
+      )
+      anthropicPayload.model = smallModel
     }
   }
 

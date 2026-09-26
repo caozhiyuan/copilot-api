@@ -126,8 +126,18 @@ export function resolveMappedModel(model: string): string {
 }
 
 export function getSmallModel(): string {
-  const config = getConfig()
-  return config.smallModel ?? "gpt-6-luna"
+  return getSmallModelForProvider("copilot") ?? "gpt-6-luna"
+}
+
+export function getSmallModelForProvider(provider: string): string | undefined {
+  const providerName = provider.trim()
+  const configuredModels = getConfig().smallModels
+  const model =
+    configuredModels && Object.hasOwn(configuredModels, providerName) ?
+      configuredModels[providerName]
+    : defaultConfig.smallModels?.[providerName]
+
+  return typeof model === "string" ? model.trim() || undefined : undefined
 }
 
 export function isContextManagementEnabledForMessages(): boolean {
