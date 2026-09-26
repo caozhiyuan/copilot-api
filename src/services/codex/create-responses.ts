@@ -230,20 +230,10 @@ export function prepareCodexResponsesWebSocketRequest(
   baseUrl: string = CODEX_API_BASE_URL,
 ): CodexResponsesWebSocketRequest {
   const headers = buildCodexResponsesWebSocketHeaders(requestHeaders)
-  const websocketPayload = buildCodexResponsesWebSocketPayload(payload)
-  const turnState = requestHeaders.get("x-codex-turn-state")
-
-  if (turnState !== null) {
-    // Reused sockets do not repeat handshake headers, so send turn state per request.
-    websocketPayload.client_metadata = {
-      ...(websocketPayload.client_metadata ?? {}),
-      "x-codex-turn-state": turnState,
-    }
-  }
-
+  // websocket need not x-codex-turn-state, https need this.
   return {
     headers,
-    payload: websocketPayload,
+    payload: buildCodexResponsesWebSocketPayload(payload),
     poolKey: buildCodexResponsesWebSocketPoolKey(payload, headers, baseUrl),
     url: buildCodexResponsesWebSocketUrl(baseUrl),
   }
