@@ -14,14 +14,11 @@ export const forwardProviderResponseHeaders = (
   upstreamHeaders: Headers,
 ): void => {
   const headers = createProviderProxyResponseHeaders(upstreamHeaders)
-  const setCookies = headers.getSetCookie()
   headers.delete("set-cookie")
+  headers.delete("x-models-etag")
 
   for (const [headerName, headerValue] of headers) {
     c.header(headerName, headerValue)
-  }
-  for (const setCookie of setCookies) {
-    c.header("set-cookie", setCookie, { append: true })
   }
 }
 

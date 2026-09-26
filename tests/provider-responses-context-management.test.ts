@@ -482,7 +482,6 @@ describe("provider Responses context management", () => {
         "openai-processing-ms": "42",
         "transfer-encoding": "chunked",
         "x-codex-turn-state": "turn-state-http-123",
-        "x-models-etag": 'W/"models-http-123"',
         "x-request-id": "request-http-123",
       })
       headers.append("set-cookie", "session=a; Path=/")
@@ -505,13 +504,8 @@ describe("provider Responses context management", () => {
       expect(response.headers.get("x-codex-turn-state")).toBe(
         "turn-state-http-123",
       )
-      expect(response.headers.get("x-models-etag")).toBe('W/"models-http-123"')
       expect(response.headers.get("x-request-id")).toBe("request-http-123")
       expect(response.headers.get("openai-processing-ms")).toBe("42")
-      expect(response.headers.getSetCookie()).toEqual([
-        "session=a; Path=/",
-        "affinity=b; Path=/",
-      ])
       expect(response.headers.has("connection")).toBe(false)
       expect(response.headers.has("content-encoding")).toBe(false)
       expect(response.headers.has("content-length")).toBe(false)

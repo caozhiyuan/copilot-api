@@ -508,9 +508,6 @@ test("provider Responses forwards Codex websocket metadata as HTTP headers", asy
     })
 
     expect(response.status).toBe(200)
-    expect(response.headers.get("x-models-etag")).toBe(
-      'W/"cc84b142c478d2fdd3d1257f1a8eefc2"',
-    )
     expect(response.headers.get("x-codex-turn-state")).toBe(
       "turn-state-websocket-123",
     )
