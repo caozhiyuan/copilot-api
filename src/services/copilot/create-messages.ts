@@ -27,13 +27,15 @@ export type CreateMessagesReturn = AnthropicResponse | MessagesStream
 
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14"
 const ADVANCED_TOOL_USE_BETA = "advanced-tool-use-2025-11-20"
+const EXTENDED_CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11"
 const allowedAnthropicBetas = new Set([
   INTERLEAVED_THINKING_BETA,
   "context-management-2025-06-27",
   ADVANCED_TOOL_USE_BETA,
+  EXTENDED_CACHE_TTL_BETA,
 ])
 
-const buildAnthropicBetaHeader = (
+export const buildAnthropicBetaHeader = (
   anthropicBetaHeader: string | undefined,
   thinking: AnthropicMessagesPayload["thinking"],
   _model: string,
