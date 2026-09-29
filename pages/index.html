@@ -1514,34 +1514,45 @@
          * @returns {string} HTML string for the formatted list.
          */
         function formatObject(obj) {
+          if (Array.isArray(obj)) {
+            if (obj.length === 0) {
+              return `<span style="color: var(--color-gray);">[]</span>`;
+            }
+
+            return (
+              '<div class="pl-4">' +
+              obj
+                .map(
+                  (value, index) =>
+                    `<div class="mt-1"><span class="capitalize font-semibold" style="color: var(--color-fg-lightest);">[${index}]:</span> ${formatObject(value)}</div>`,
+                )
+                .join("") +
+              "</div>"
+            );
+          }
+
           if (obj === null || typeof obj !== "object") {
-            return `<span style="color: var(--color-green);">${escapeHtml(JSON.stringify(obj))}</span>`;
+            if (typeof obj === "boolean") {
+              return `<span class="font-semibold" style="color: ${obj ? "var(--color-green)" : "var(--color-red)"}">${escapeHtml(String(obj))}</span>`;
+            }
+
+            return `<span style="color: var(--color-blue);">${escapeHtml(JSON.stringify(obj))}</span>`;
+          }
+
+          const entries = Object.entries(obj);
+          if (entries.length === 0) {
+            return `<span style="color: var(--color-gray);">{}</span>`;
           }
 
           return (
             '<div class="pl-4">' +
-            Object.entries(obj)
+            entries
               .map(([key, value]) => {
                 const formattedKey = escapeHtml(key.replace(/_/g, " "));
-                let displayValue;
-
-                if (Array.isArray(value)) {
-                  displayValue =
-                    value.length > 0
-                      ? `<span style='color: var(--color-gray)'>[...${value.length} items]</span>`
-                      : `<span style='color: var(--color-gray)'>[]</span>`;
-                } else if (typeof value === "object" && value !== null) {
-                  displayValue = formatObject(value);
-                } else if (typeof value === "boolean") {
-                  displayValue = `<span class="font-semibold" style="color: ${value ? "var(--color-green)" : "var(--color-red)"}">${escapeHtml(String(value))}</span>`;
-                } else {
-                  displayValue = `<span style="color: var(--color-blue);">${escapeHtml(JSON.stringify(value))}</span>`;
-                }
-
                 return `<div class="mt-1">
-                                <span class="capitalize font-semibold" style="color: var(--color-fg-lightest);">${formattedKey}:</span>
-                                ${typeof value === "object" && value !== null && !Array.isArray(value) ? displayValue : ` ${displayValue}`}
-                           </div>`;
+                  <span class="capitalize font-semibold" style="color: var(--color-fg-lightest);">${formattedKey}:</span>
+                  ${formatObject(value)}
+                </div>`;
               })
               .join("") +
             "</div>"
@@ -1554,7 +1565,7 @@
          * @returns {string} HTML string for the full data section.
          */
         function renderDetailedData(data) {
-          if (!data || Object.keys(data).length === 0) {
+          if (data === null || typeof data === "undefined") {
             return "";
           }
 
