@@ -62,6 +62,14 @@ const CODEX_MODELS: Array<CodexModelDefinition> = [
     name: "GPT-6 Sol",
     reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
   },
+  {
+    contextWindow: 872_000,
+    id: "gpt-6.1-sol",
+    input: ["text", "image"],
+    maxTokens: 128_000,
+    name: "GPT-6.1 Sol",
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+  },
 ]
 
 const CODEX_MODELS_URL = `${CODEX_API_BASE_URL}/codex/models`

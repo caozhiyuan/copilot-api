@@ -15,7 +15,7 @@
 在 `~/.codex/config.toml` 中加入：
 
 ```toml
-model = "gpt-6-sol"
+model = "gpt-6.1-sol"
 model_reasoning_effort = "max"
 model_provider = "copilot_api"
 model_reasoning_summary = "auto"

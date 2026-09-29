@@ -217,6 +217,7 @@ describe("codex api helpers", () => {
       "gpt-6-astra",
       "gpt-6-luna",
       "gpt-6-sol",
+      "gpt-6.1-sol",
     ])
     expect(
       models.data.every(
@@ -242,5 +243,31 @@ describe("codex api helpers", () => {
       )
       expect(model.capabilities.limits.max_output_tokens).toBe(128_000)
     }
+
+    const gpt61Sol = models.data.find((model) => model.id === "gpt-6.1-sol")
+    expect(gpt61Sol).toMatchObject({
+      capabilities: {
+        limits: {
+          max_context_window_tokens: 872_000,
+          max_output_tokens: 128_000,
+          max_prompt_tokens: 872_000,
+        },
+        supports: {
+          reasoning_effort: ["low", "medium", "high", "xhigh", "max"],
+          vision: true,
+        },
+      },
+      id: "gpt-6.1-sol",
+      name: "GPT-6.1 Sol",
+    })
+    expect(gpt61Sol?.capabilities.supports.reasoning_effort).not.toContain(
+      "none",
+    )
+    expect(gpt61Sol?.capabilities.supports.reasoning_effort).not.toContain(
+      "minimal",
+    )
+    expect(gpt61Sol?.capabilities.supports.reasoning_effort).not.toContain(
+      "ultra",
+    )
   })
 })

@@ -396,6 +396,39 @@ describe("token usage storage", () => {
     }
   })
 
+  test("prices GPT-6.1 Sol cache usage at the 272K input tier boundary", () => {
+    const expectedCosts = [
+      {
+        cache_creation_input_tokens: 1_000,
+        cache_read_input_tokens: 2_000,
+        input_tokens: 269_000,
+        totalCostNanos: 570_700_000,
+      },
+      {
+        cache_creation_input_tokens: 1_000,
+        cache_read_input_tokens: 2_000,
+        input_tokens: 269_001,
+        totalCostNanos: 1_126_404_000,
+      },
+    ]
+
+    for (const { totalCostNanos, ...usage } of expectedCosts) {
+      expect(
+        resolveTokenUsageCost({
+          ...usage,
+          model: "gpt-6.1-sol",
+          output_tokens: 3_000,
+          providerName: "codex",
+          source: "provider",
+        }),
+      ).toEqual({
+        currency: "USD",
+        source: "builtin",
+        total_cost_nanos: totalCostNanos,
+      })
+    }
+  })
+
   test("prices DashScope Qwen3.8 Max with explicit cache prices", () => {
     expect(
       resolveTokenUsageCost({

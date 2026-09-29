@@ -118,6 +118,28 @@ describe("builtin provider model registry", () => {
         ],
       },
     })
+
+    expect(
+      builtinProviderModelRegistry.getModelConfig("codex", "gpt-6.1-sol"),
+    ).toEqual({
+      pricing: {
+        tiers: [
+          {
+            cacheCreationInput: 2.5,
+            cachedInput: 0.1,
+            input: 2,
+            maxInputTokens: 272_000,
+            output: 10,
+          },
+          {
+            cacheCreationInput: 5,
+            cachedInput: 0.2,
+            input: 4,
+            output: 15,
+          },
+        ],
+      },
+    })
   })
 
   test("returns empty results for unknown providers and models", () => {

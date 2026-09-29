@@ -205,6 +205,25 @@ export class BuiltinProviderModelRegistry {
           ],
         },
       },
+      "gpt-6.1-sol": {
+        pricing: {
+          tiers: [
+            {
+              cacheCreationInput: 2.5,
+              cachedInput: 0.1,
+              input: 2,
+              maxInputTokens: 272_000,
+              output: 10,
+            },
+            {
+              cacheCreationInput: 5,
+              cachedInput: 0.2,
+              input: 4,
+              output: 15,
+            },
+          ],
+        },
+      },
     },
     dashscope: {
       "glm-5.3": {
