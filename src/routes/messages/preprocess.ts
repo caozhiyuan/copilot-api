@@ -1,5 +1,6 @@
 import type { Model } from "~/lib/types/models"
 
+import { ASSISTANT_PREFILL_FALLBACK_TEXT } from "~/lib/assistant-prefill"
 import {
   COMPACT_AUTO_CONTINUE,
   COMPACT_REQUEST,
@@ -907,6 +908,32 @@ const filterAssistantThinkingBlocks = (
       })
     }
   }
+}
+
+export const endConversationOnUserTurn = (
+  payload: AnthropicMessagesPayload,
+): void => {
+  const lastMessage = payload.messages.at(-1)
+  if (lastMessage?.role !== "assistant") return
+
+  if (Array.isArray(lastMessage.content)) {
+    while (
+      ["thinking", "redacted_thinking"].includes(
+        lastMessage.content.at(-1)?.type ?? "",
+      )
+    ) {
+      lastMessage.content.pop()
+    }
+    if (lastMessage.content.length === 0) {
+      payload.messages.pop()
+      if (payload.messages.at(-1)?.role === "user") return
+    }
+  }
+
+  payload.messages.push({
+    role: "user",
+    content: ASSISTANT_PREFILL_FALLBACK_TEXT,
+  })
 }
 
 export const prepareMessagesApiPayload = (

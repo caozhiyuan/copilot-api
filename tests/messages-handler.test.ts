@@ -11,7 +11,9 @@ import { Hono } from "hono"
 
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 
+import { assistantPrefillState } from "~/lib/assistant-prefill"
 import { compactSummaryPromptStart, compactTextOnlyGuard } from "~/lib/compact"
+import { HTTPError } from "~/lib/error"
 import { createFallbackModel } from "~/lib/provider-model"
 
 const actualStateModule = await import("~/lib/state")
@@ -41,6 +43,7 @@ type FlowCallOptions = {
   sessionId?: string
   subagentMarker?: unknown
   anthropicBetaHeader?: string
+  initiator?: "agent" | "user"
 }
 
 let selectedModel: SelectedModel | undefined
@@ -116,6 +119,7 @@ beforeEach(() => {
   restoreModelLookup = () => modelLookup.mockRestore()
 
   state.verbose = false
+  assistantPrefillState.rejectingModels.clear()
   messagesApiEnabled = true
   responsesApiWebSocketEnabled = true
   modelMappings = {}
@@ -850,5 +854,155 @@ describe("messages handler orchestration", () => {
     expect(options.sessionId).toBe("dispatch-session")
     expect(options.requestId).toBe("dispatch-request")
     expect(options.subagentMarker).toEqual(dispatchMarker)
+  })
+
+  const createUpstreamError = (message: string) =>
+    new HTTPError(
+      "Failed to create messages",
+      Response.json(
+        { type: "error", error: { type: "invalid_request_error", message } },
+        { status: 400 },
+      ),
+    )
+  const prefillRejectedMessage =
+    "This model does not support assistant message prefill. The conversation must end with a user message."
+  const prefillMessages: AnthropicMessagesPayload["messages"] = [
+    { role: "user", content: "hello" },
+    { role: "assistant", content: "partial answer" },
+  ]
+
+  test("retries with a trailing user turn when the upstream rejects assistant prefill", async () => {
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+    handleWithMessagesApi.mockImplementationOnce(() =>
+      Promise.reject(createUpstreamError(prefillRejectedMessage)),
+    )
+
+    const response = await createApp().request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(createPayload({ messages: prefillMessages })),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe("messages")
+    expect(handleWithMessagesApi).toHaveBeenCalledTimes(2)
+
+    const [, retriedPayload] = handleWithMessagesApi.mock.calls[1]
+    expect(retriedPayload.messages).toHaveLength(3)
+    expect(retriedPayload.messages.slice(0, 2)).toEqual(prefillMessages)
+    const lastMessage = retriedPayload.messages.at(-1)
+    expect(lastMessage?.role).toBe("user")
+    expect(lastMessage?.content).not.toBe("")
+
+    const initiators = handleWithMessagesApi.mock.calls.map(
+      ([, , options]) => options.initiator,
+    )
+    expect(initiators).toEqual([undefined, "agent"])
+  })
+
+  test("skips prefill upfront for a model that already rejected it", async () => {
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+    handleWithMessagesApi.mockImplementationOnce(() =>
+      Promise.reject(createUpstreamError(prefillRejectedMessage)),
+    )
+    const request = () =>
+      createApp().request("/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(createPayload({ messages: prefillMessages })),
+      })
+
+    await request()
+    handleWithMessagesApi.mockClear()
+    const response = await request()
+
+    expect(response.status).toBe(200)
+    expect(handleWithMessagesApi).toHaveBeenCalledTimes(1)
+    const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
+    expect(forwardedPayload.messages.at(-1)?.role).toBe("user")
+  })
+
+  test("drops a trailing thinking-only assistant turn instead of nudging", async () => {
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+    handleWithMessagesApi.mockImplementationOnce(() =>
+      Promise.reject(createUpstreamError(prefillRejectedMessage)),
+    )
+
+    const response = await createApp().request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        createPayload({
+          messages: [
+            { role: "user", content: "hello" },
+            {
+              role: "assistant",
+              content: [
+                { type: "thinking", thinking: "hmm", signature: "sig" },
+              ],
+            },
+          ],
+        }),
+      ),
+    })
+
+    expect(response.status).toBe(200)
+    const [, retriedPayload] = handleWithMessagesApi.mock.calls[1]
+    expect(retriedPayload.messages).toEqual([
+      { role: "user", content: "hello" },
+    ])
+  })
+
+  test("forwards assistant prefill untouched when the upstream accepts it", async () => {
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+
+    const response = await createApp().request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(createPayload({ messages: prefillMessages })),
+    })
+
+    expect(response.status).toBe(200)
+    expect(handleWithMessagesApi).toHaveBeenCalledTimes(1)
+    const [, forwardedPayload] = handleWithMessagesApi.mock.calls[0]
+    expect(forwardedPayload.messages).toEqual(prefillMessages)
+  })
+
+  test("does not retry other upstream errors and leaves the error body readable", async () => {
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+    const upstreamError = createUpstreamError("max_tokens is too large")
+    handleWithMessagesApi.mockImplementationOnce(() =>
+      Promise.reject(upstreamError),
+    )
+
+    const c = {
+      req: { header: () => undefined },
+    } as unknown as Parameters<typeof handleCompletionPayload>[0]
+    const result = handleCompletionPayload(
+      c,
+      createPayload({ messages: prefillMessages }),
+    )
+
+    const thrown = await result.catch((caught: unknown) => caught)
+    expect(thrown).toBe(upstreamError)
+    expect(handleWithMessagesApi).toHaveBeenCalledTimes(1)
+    expect(await upstreamError.response.text()).toContain(
+      "max_tokens is too large",
+    )
   })
 })

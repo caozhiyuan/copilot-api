@@ -3,6 +3,10 @@ import type { Context } from "hono"
 
 import { streamSSE, type SSEMessage } from "hono/streaming"
 
+import {
+  ASSISTANT_PREFILL_FALLBACK_TEXT,
+  withAssistantPrefillFallback,
+} from "~/lib/assistant-prefill"
 import { resolveMappedModel } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
@@ -81,10 +85,24 @@ export async function handleCompletion(c: Context) {
     model: payload.model,
   })
 
-  const response = await createChatCompletions(payload, {
-    clientSignal: c.req.raw.signal,
-    requestId,
-    sessionId,
+  let initiator: "agent" | undefined
+  const response = await withAssistantPrefillFallback({
+    model: payload.model,
+    endsOnAssistant: () => payload.messages.at(-1)?.role === "assistant",
+    applyFallback: () => {
+      payload.messages.push({
+        role: "user",
+        content: ASSISTANT_PREFILL_FALLBACK_TEXT,
+      })
+      initiator = "agent"
+    },
+    run: () =>
+      createChatCompletions(payload, {
+        clientSignal: c.req.raw.signal,
+        requestId,
+        sessionId,
+        initiator,
+      }),
   })
 
   if (isNonStreaming(response)) {

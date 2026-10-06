@@ -28,6 +28,7 @@ let capturedPayload: ChatCompletionsPayload | null = null
 let capturedMessagesPayload: AnthropicMessagesPayload | null = null
 let capturedResponsesPayload: ResponsesPayload | null = null
 let capturedResponsesOptions: {
+  initiator?: "agent" | "user"
   transport?: ResponsesTransport
 } | null = null
 let responsesApiWebSocketEnabled = true
@@ -64,6 +65,7 @@ const createResponses = mock(
   (
     payload: ResponsesPayload,
     options: {
+      initiator?: "agent" | "user"
       transport?: ResponsesTransport
     },
   ): Promise<CreateResponsesReturn> => {
@@ -919,6 +921,29 @@ test("messages Responses flow uses websocket transport by default for dual-endpo
   expect(response.status).toBe(200)
   expect(createResponses).toHaveBeenCalledTimes(1)
   expect(capturedResponsesOptions?.transport).toBe("websocket")
+})
+
+test("messages Responses flow infers the initiator unless one is given", async () => {
+  const run = async (initiator?: "agent") => {
+    await handleWithResponsesApi(
+      createContext(),
+      {
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "gpt-test",
+      },
+      {
+        logger,
+        requestId: "request-1",
+        selectedModel: createModel(["/responses"]),
+        initiator,
+      },
+    )
+    return capturedResponsesOptions?.initiator
+  }
+
+  expect(await run()).toBe("user")
+  expect(await run("agent")).toBe("agent")
 })
 
 test("messages Responses flow adds context management by default", async () => {

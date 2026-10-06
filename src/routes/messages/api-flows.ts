@@ -86,6 +86,7 @@ export interface FlowBaseOptions {
   sessionId?: string
   compactType?: CompactType
   usageEndpoint?: TokenUsageEndpoint
+  initiator?: "agent" | "user"
 }
 
 interface ResponsesFlowOptions extends FlowBaseOptions {
@@ -113,6 +114,7 @@ export const handleWithChatCompletions = async (
     requestId,
     sessionId,
     compactType,
+    initiator,
   } = options
   const openAIPayload = translateToOpenAI(anthropicPayload, {
     validateReasoningEffort: true,
@@ -136,6 +138,7 @@ export const handleWithChatCompletions = async (
       requestId,
       sessionId,
       compactType,
+      initiator,
     },
   )
 
@@ -228,7 +231,12 @@ export const handleWithResponsesApi = async (
   anthropicPayload: AnthropicMessagesPayload,
   options: ResponsesFlowOptions,
 ) => {
-  const { logger, selectedModel, ...requestOptions } = options
+  const {
+    logger,
+    selectedModel,
+    initiator: initiatorOverride,
+    ...requestOptions
+  } = options
 
   const responsesPayload = translateAnthropicMessagesToResponsesPayload(
     anthropicPayload,
@@ -255,7 +263,9 @@ export const handleWithResponsesApi = async (
 
   debugJson(logger, "Translated Responses payload:", responsesPayload)
 
-  const { vision, initiator } = getResponsesRequestOptions(responsesPayload)
+  const { vision, initiator: inferredInitiator } =
+    getResponsesRequestOptions(responsesPayload)
+  const initiator = initiatorOverride ?? inferredInitiator
   const transport =
     getResponsesTransportForModel(selectedModel, {
       compactType: requestOptions.compactType,
@@ -374,6 +384,7 @@ export const handleWithMessagesApi = async (
     requestId,
     sessionId,
     compactType,
+    initiator,
   } = options
 
   prepareMessagesApiPayload(anthropicPayload, selectedModel)
@@ -395,6 +406,7 @@ export const handleWithMessagesApi = async (
       requestId,
       sessionId,
       compactType,
+      initiator,
     },
   )
 

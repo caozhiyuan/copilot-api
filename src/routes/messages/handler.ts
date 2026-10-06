@@ -9,6 +9,7 @@ import {
   isMessagesApiEnabled,
   resolveMappedModel,
 } from "~/lib/config"
+import { withAssistantPrefillFallback } from "~/lib/assistant-prefill"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
 import { findEndpointModel } from "~/lib/models"
@@ -35,6 +36,7 @@ import {
 } from "./api-flows"
 import {
   applyLastMessageCacheControl,
+  endConversationOnUserTurn,
   getCompactType,
   getLastMessageContentCacheControl,
   isClaudeAutoModelRequest,
@@ -195,12 +197,47 @@ export async function handleCompletionPayload(
   const selectedModel = findEndpointModel(anthropicPayload.model)
   anthropicPayload.model = selectedModel?.id ?? anthropicPayload.model
 
-  if (shouldUseMessagesApi(selectedModel)) {
-    return await messagesFlowHandlers.handleWithMessagesApi(
+  let initiator: "agent" | undefined
+  const dispatchToFlow = async () => {
+    if (shouldUseMessagesApi(selectedModel)) {
+      return await messagesFlowHandlers.handleWithMessagesApi(
+        c,
+        anthropicPayload,
+        {
+          anthropicBetaHeader: anthropicBeta,
+          subagentMarker,
+          selectedModel,
+          requestId,
+          sessionId,
+          compactType,
+          logger,
+          usageEndpoint: dispatchOptions.usageEndpoint,
+          initiator,
+        },
+      )
+    }
+
+    if (shouldUseResponsesApi(selectedModel, compactType)) {
+      return await messagesFlowHandlers.handleWithResponsesApi(
+        c,
+        anthropicPayload,
+        {
+          subagentMarker,
+          selectedModel,
+          requestId,
+          sessionId,
+          compactType,
+          logger,
+          usageEndpoint: dispatchOptions.usageEndpoint,
+          initiator,
+        },
+      )
+    }
+
+    return await messagesFlowHandlers.handleWithChatCompletions(
       c,
       anthropicPayload,
       {
-        anthropicBetaHeader: anthropicBeta,
         subagentMarker,
         selectedModel,
         requestId,
@@ -208,39 +245,21 @@ export async function handleCompletionPayload(
         compactType,
         logger,
         usageEndpoint: dispatchOptions.usageEndpoint,
+        initiator,
       },
     )
   }
 
-  if (shouldUseResponsesApi(selectedModel, compactType)) {
-    return await messagesFlowHandlers.handleWithResponsesApi(
-      c,
-      anthropicPayload,
-      {
-        subagentMarker,
-        selectedModel,
-        requestId,
-        sessionId,
-        compactType,
-        logger,
-        usageEndpoint: dispatchOptions.usageEndpoint,
-      },
-    )
-  }
-
-  return await messagesFlowHandlers.handleWithChatCompletions(
-    c,
-    anthropicPayload,
-    {
-      subagentMarker,
-      selectedModel,
-      requestId,
-      sessionId,
-      compactType,
-      logger,
-      usageEndpoint: dispatchOptions.usageEndpoint,
+  return await withAssistantPrefillFallback({
+    model: anthropicPayload.model,
+    endsOnAssistant: () =>
+      anthropicPayload.messages.at(-1)?.role === "assistant",
+    applyFallback: () => {
+      endConversationOnUserTurn(anthropicPayload)
+      initiator = "agent"
     },
-  )
+    run: dispatchToFlow,
+  })
 }
 
 const MESSAGES_ENDPOINT = "/v1/messages"

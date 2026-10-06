@@ -28,6 +28,7 @@ export const createChatCompletions = async (
     requestId: string
     sessionId?: string
     compactType?: CompactType
+    initiator?: "agent" | "user"
   },
 ) => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
@@ -52,7 +53,7 @@ export const createChatCompletions = async (
   // Build headers and add x-initiator
   const headers: Record<string, string> = {
     ...copilotHeaders(state, options.requestId, enableVision),
-    "x-initiator": isAgentCall ? "agent" : "user",
+    "x-initiator": options.initiator ?? (isAgentCall ? "agent" : "user"),
   }
 
   prepareInteractionHeaders(

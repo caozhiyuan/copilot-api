@@ -69,3 +69,15 @@ test("sets x-initiator to user if only user present", async () => {
   ).headers
   expect(headers["x-initiator"]).toBe("user")
 })
+
+test("uses an explicit initiator instead of inferring it from the last message", async () => {
+  const payload: ChatCompletionsPayload = {
+    messages: [{ role: "user", content: "hi" }],
+    model: "gpt-test",
+  }
+  await createChatCompletions(payload, { requestId: "1", initiator: "agent" })
+  const headers = (
+    fetchMock.mock.calls[0][1] as { headers: Record<string, string> }
+  ).headers
+  expect(headers["x-initiator"]).toBe("agent")
+})

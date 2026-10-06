@@ -75,6 +75,7 @@ export const createMessages = async (
     requestId: string
     sessionId?: string
     compactType?: CompactType
+    initiator?: "agent" | "user"
   },
 ): Promise<CreateMessagesReturn> => {
   if (!state.copilotToken) throw new Error("Copilot token not found")
@@ -101,7 +102,7 @@ export const createMessages = async (
 
   const headers: Record<string, string> = {
     ...copilotHeaders(state, options.requestId, enableVision),
-    "x-initiator": isInitiateRequest ? "user" : "agent",
+    "x-initiator": options.initiator ?? (isInitiateRequest ? "user" : "agent"),
   }
 
   prepareInteractionHeaders(

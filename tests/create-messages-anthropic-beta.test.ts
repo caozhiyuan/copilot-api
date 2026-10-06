@@ -106,6 +106,25 @@ describe("Copilot Messages prompt cache forwarding", () => {
     state.copilotToken = originalCopilotToken
   })
 
+  test("uses an explicit initiator instead of inferring it from the last message", async () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-5",
+      max_tokens: 16,
+      messages: [{ role: "user", content: "hello" }],
+    }
+
+    await createMessages(payload, undefined, { requestId: "1" })
+    await createMessages(payload, undefined, {
+      requestId: "1",
+      initiator: "agent",
+    })
+
+    const initiators = fetchMock.mock.calls.map(
+      ([, init]) => (init?.headers as Record<string, string>)["x-initiator"],
+    )
+    expect(initiators).toEqual(["user", "agent"])
+  })
+
   test("forwards the cache beta and one-hour cache control blocks upstream", async () => {
     const payload: AnthropicMessagesPayload = {
       model: "claude-sonnet-5",
