@@ -27,6 +27,7 @@ import {
   resolveServerBinding,
 } from "./lib/server-host"
 import { state } from "./lib/state"
+import { logAvailableModels } from "./services/copilot/models-cache"
 
 interface RunServerOptions {
   host: string
@@ -69,6 +70,9 @@ async function setupCopilotMode(
   )
 
   await setupCopilotRuntime(githubToken)
+  // setupCopilotRuntime() ends with cacheModels(), so the cache is populated
+  // here and the banner can list the IDs a client may request.
+  logAvailableModels()
 }
 
 async function setupProviderMode(): Promise<void> {

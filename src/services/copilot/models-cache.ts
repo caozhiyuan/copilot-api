@@ -50,6 +50,24 @@ const refreshModels = async (fetcher: ModelsFetcher, generation: number) => {
   }
 }
 
+// Startup used to end with a plain "Available models" dump that was dropped
+// when the Copilot setup moved into setupCopilotRuntime(). A fresh terminal
+// now only sees "Models refresh: N new", which never tells the operator which
+// IDs the gateway accepts. Periodic refreshes stay quiet so this stays a
+// one-shot startup banner instead of repeating every 30 minutes.
+export function logAvailableModels(): void {
+  const models = state.models?.data ?? []
+  if (models.length === 0) {
+    consola.warn(
+      "No Copilot models available. Check that the account has Copilot access.",
+    )
+    return
+  }
+
+  const entries = models.map((model) => `- ${model.id}`).join("\n")
+  consola.info(`Available models (${models.length}):\n${entries}`)
+}
+
 const scheduleModelsRefresh = (fetcher: ModelsFetcher, intervalMs: number) => {
   const generation = refreshGeneration
   const jitter = Math.floor(Math.random() * (intervalMs / 6))

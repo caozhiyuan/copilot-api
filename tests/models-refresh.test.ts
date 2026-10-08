@@ -1,9 +1,12 @@
-import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test"
+
+import consola from "consola"
 
 import { state } from "~/lib/state"
 import { sleep } from "~/lib/utils"
 import {
   cacheModels,
+  logAvailableModels,
   stopModelsRefreshLoop,
 } from "~/services/copilot/models-cache"
 
@@ -22,10 +25,26 @@ const fetcherMock = mock(() => Promise.resolve(makeModels(["m1"])))
 // if a stray timer leaks past the afterEach.
 const TEST_INTERVAL_MS = 50
 
+// consola levels carry a `.raw` chain, so a plain noop is not enough to
+// stand in for them. The spies live for the whole file so assertions keep the
+// mock's own type instead of reaching through consola's LogFn signature.
+const infoMock = spyOn(consola, "info").mockImplementation(
+  Object.assign(() => {}, { raw: () => {} }),
+)
+const warnMock = spyOn(consola, "warn").mockImplementation(
+  Object.assign(() => {}, { raw: () => {} }),
+)
+const debugMock = spyOn(consola, "debug").mockImplementation(
+  Object.assign(() => {}, { raw: () => {} }),
+)
+
 beforeEach(() => {
   state.models = undefined
   fetcherMock.mockClear()
   fetcherMock.mockImplementation(() => Promise.resolve(makeModels(["m1"])))
+  infoMock.mockClear()
+  warnMock.mockClear()
+  debugMock.mockClear()
 })
 
 afterEach(() => {
@@ -130,4 +149,49 @@ test("a new cacheModels supersedes an in-flight refresh from the old token", asy
   await sleep(200)
 
   expect(state.models?.data.map((m) => m.id)).toEqual(["b1"])
+})
+
+test("startup lists the models that cacheModels cached", async () => {
+  fetcherMock.mockImplementation(() =>
+    Promise.resolve(makeModels(["gpt-5", "claude-sonnet-4.6"])),
+  )
+
+  await cacheModels(fetcherMock as never, TEST_INTERVAL_MS)
+  // Drop the "Models refresh: N new" line so only the banner is left.
+  infoMock.mockClear()
+  logAvailableModels()
+
+  // The banner is the only startup output that names the usable model IDs, so
+  // it must read the cache that runServer just populated.
+  expect(infoMock).toHaveBeenCalledTimes(1)
+  expect(infoMock).toHaveBeenCalledWith(
+    "Available models (2):\n- gpt-5\n- claude-sonnet-4.6",
+  )
+  expect(warnMock).not.toHaveBeenCalled()
+})
+
+test("startup warns instead of printing an empty model list", () => {
+  logAvailableModels()
+
+  expect(infoMock).not.toHaveBeenCalled()
+  expect(warnMock).toHaveBeenCalledWith(
+    "No Copilot models available. Check that the account has Copilot access.",
+  )
+})
+
+test("periodic refreshes do not reprint the model list", async () => {
+  fetcherMock.mockImplementation(() => Promise.resolve(makeModels(["m1"])))
+  await cacheModels(fetcherMock as never, TEST_INTERVAL_MS)
+  logAvailableModels()
+  infoMock.mockClear()
+
+  fetcherMock.mockImplementation(() =>
+    Promise.resolve(makeModels(["m1", "m2"])),
+  )
+  await sleep(200)
+
+  // Only the "Models refresh: N new" summary, never the full list dump.
+  expect(infoMock).not.toHaveBeenCalledWith(
+    expect.stringContaining("Available models"),
+  )
 })
