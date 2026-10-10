@@ -180,6 +180,7 @@ export interface ResponseCustomToolCallItem {
   type: "custom_tool_call"
   call_id: string
   name: string
+  namespace?: string | null
   input: string
   status?: "in_progress" | "completed" | "incomplete"
 }
@@ -356,6 +357,7 @@ export interface ResponseOutputCustomToolCall {
   type: "custom_tool_call"
   call_id: string
   name: string
+  namespace?: string | null
   input: string
   status?: "in_progress" | "completed" | "incomplete"
 }

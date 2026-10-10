@@ -94,6 +94,9 @@ const createMessagesResponse = (
 
 const { state } = await import("~/lib/state")
 const { closeUsageStore } = await import("~/lib/token-usage")
+const { closePlaintextCollaborationStore } = await import(
+  "~/lib/collaboration-message-store"
+)
 const { tokenUsageRoute } = await import("~/routes/token-usage/route")
 const { responsesHandlerDependencies } = await import(
   "~/routes/responses/handler"
@@ -145,6 +148,7 @@ async function* streamChunks(items: Array<Record<string, unknown>>) {
 beforeEach(async () => {
   process.env[DB_PATH_ENV] = ":memory:"
   await closeUsageStore()
+  await closePlaintextCollaborationStore()
 
   state.copilotToken = "test-token"
   state.accountType = "individual"
@@ -172,6 +176,8 @@ beforeEach(async () => {
   responsesHandlerDependencies.createResponses = createResponses
   responsesHandlerDependencies.findEndpointModel = (model) =>
     state.models?.data.find((candidate) => candidate.id === model)
+  responsesHandlerDependencies.isCopilotResponsesCompatibilityEnabled = () =>
+    false
   responsesHandlerDependencies.isResponsesApiWebSearchEnabled = () => true
   responsesHandlerDependencies.resolveMappedModel = (model) => model
   responsesUtilsDependencies.getModelResponsesApiCompactThreshold = () =>
@@ -186,6 +192,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await closeUsageStore()
+  await closePlaintextCollaborationStore()
   Reflect.deleteProperty(process.env, DB_PATH_ENV)
 
   state.copilotToken = originalState.copilotToken
@@ -2043,5 +2050,431 @@ describe("responses handler interrupted streams", () => {
       "error",
       "response.failed",
     ])
+  })
+})
+
+describe("native Copilot Responses compatibility", () => {
+  const tools = () => [
+    {
+      type: "namespace",
+      name: "collaboration",
+      description: "Subagent tools",
+      tools: [
+        {
+          type: "function",
+          name: "spawn_agent",
+          strict: false,
+          parameters: {
+            type: "object",
+            properties: { message: { type: "string", encrypted: true } },
+          },
+        },
+      ],
+    },
+  ]
+  const callArguments = JSON.stringify({
+    message: 'Plain task 😀 "quoted"\ncollaboration.spawn_agent',
+    task_name: "child",
+  })
+  const functionCall = (namespace: string) => ({
+    type: "function_call" as const,
+    id: "fc_compat",
+    call_id: "call_compat",
+    name: "spawn_agent",
+    namespace,
+    arguments: callArguments,
+    status: "completed" as const,
+  })
+  const sse = (type: string, fields: Record<string, unknown> = {}) => ({
+    event: type,
+    data: JSON.stringify({ type, ...fields }),
+  })
+  const post = (body: Record<string, unknown>) =>
+    createApp().request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "codex_cli_rs/0.162.1",
+      },
+      body: JSON.stringify({ model: "gpt-test", ...body }),
+    })
+
+  beforeEach(() => {
+    responsesHandlerDependencies.isCopilotResponsesCompatibilityEnabled = (
+      model,
+    ) => model === "gpt-test"
+  })
+
+  test("maps additional_tools and replayed calls, then restores a nonstreaming result", async () => {
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve({
+        ...createResponsesResult(payload.model),
+        tools: [
+          {
+            ...tools()[0],
+            name: "copilot_collaboration",
+            tools: [
+              {
+                ...tools()[0].tools[0],
+                parameters: {
+                  type: "object",
+                  properties: { message: { type: "string" } },
+                },
+              },
+            ],
+          },
+        ],
+        output: [functionCall("copilot_collaboration")],
+      }),
+    )
+    const response = await post({
+      stream: false,
+      input: [
+        { type: "additional_tools", role: "developer", tools: tools() },
+        functionCall("collaboration"),
+        {
+          type: "function_call_output",
+          call_id: "call_compat",
+          output: "child finished",
+        },
+      ],
+    })
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as ResponsesResult
+    expect(body.output).toEqual([functionCall("collaboration")])
+    expect(body.tools).toEqual(tools())
+    const forwarded = createResponses.mock.calls[0][0].input as Array<
+      Record<string, unknown>
+    >
+    expect(forwarded[1]).toEqual(functionCall("copilot_collaboration"))
+    expect(forwarded[2]).toEqual({
+      type: "function_call_output",
+      call_id: "call_compat",
+      output: "child finished",
+    })
+    const declarations = forwarded[0].tools as Array<{
+      name: string
+      tools: Array<{
+        parameters: { properties: { message: Record<string, unknown> } }
+      }>
+    }>
+    expect(declarations[0].name).toBe("copilot_collaboration")
+    expect(declarations[0].tools[0].parameters.properties.message).toEqual({
+      type: "string",
+    })
+  })
+
+  test("persists plaintext before delivering a tool call, then corrects Codex's child-message label", async () => {
+    let releaseParent!: () => void
+    const parentMayFinish = new Promise<void>((resolve) => {
+      releaseParent = resolve
+    })
+    createResponses.mockImplementationOnce((payload) =>
+      Promise.resolve(
+        (async function* () {
+          await Promise.resolve()
+          yield sse("response.created", {
+            response: createResponsesResult(payload.model),
+          })
+          yield sse("response.output_item.added", {
+            output_index: 0,
+            item: { ...functionCall("copilot_collaboration"), arguments: "" },
+          })
+          yield sse("response.output_item.done", {
+            output_index: 0,
+            item: functionCall("copilot_collaboration"),
+          })
+          await parentMayFinish
+          yield sse("response.completed", {
+            response: {
+              ...createResponsesResult(payload.model),
+              output: [functionCall("copilot_collaboration")],
+            },
+          })
+        })(),
+      ),
+    )
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+    const parentResponse = await post({
+      tools: tools(),
+      stream: true,
+      input: [],
+    })
+    const reader = parentResponse.body!.getReader()
+    const decoder = new TextDecoder()
+    let text = ""
+    while (!text.includes("response.output_item.done")) {
+      const part = await reader.read()
+      if (part.done) throw new Error("Parent stream ended before its tool call")
+      const value: unknown = part.value
+      if (!(value instanceof Uint8Array))
+        throw new Error("Expected an SSE byte chunk")
+      text += decoder.decode(value, { stream: true })
+    }
+    const message = (JSON.parse(callArguments) as { message: string }).message
+    try {
+      const childResponse = await post({
+        input: [
+          {
+            type: "agent_message",
+            author: "/root",
+            recipient: "/root/child",
+            content: [
+              { type: "input_text", text: "Payload:\n" },
+              { type: "encrypted_content", encrypted_content: message },
+              {
+                type: "encrypted_content",
+                encrypted_content: "unknown-legacy-ciphertext",
+              },
+            ],
+          },
+        ],
+      })
+      expect(childResponse.status).toBe(200)
+      await childResponse.text()
+      expect(createResponses.mock.calls[1][0].input).toEqual([
+        {
+          type: "agent_message",
+          author: "/root",
+          recipient: "/root/child",
+          content: [
+            { type: "input_text", text: "Payload:\n" },
+            { type: "input_text", text: message },
+            {
+              type: "encrypted_content",
+              encrypted_content: "unknown-legacy-ciphertext",
+            },
+          ],
+        },
+      ])
+    } finally {
+      releaseParent()
+      while (!(await reader.read()).done) {
+        /* Drain the parent response. */
+      }
+    }
+  })
+
+  test("checks durable message storage before starting an upstream tool-capable request", async () => {
+    responsesHandlerDependencies.preparePlaintextCollaborationStore = () =>
+      Promise.reject(new Error("Tracking store unavailable"))
+    const response = await post({ tools: tools(), stream: true, input: [] })
+    expect(response.status).toBe(500)
+    expect(createResponses).not.toHaveBeenCalled()
+    await response.text()
+  })
+
+  test.each(["http", "websocket"] as const)(
+    "restores streamed calls and complete output over %s",
+    async (transport) => {
+      responsesUtilsDependencies.isResponsesApiWebSocketEnabled = () =>
+        transport === "websocket"
+      state.models = {
+        object: "list",
+        data: [
+          {
+            id: "gpt-test",
+            supported_endpoints: ["/responses", "ws:/responses"],
+            capabilities: { limits: { max_prompt_tokens: 128000 } },
+          },
+        ],
+      } as typeof state.models
+      const parts = [callArguments.slice(0, 20), callArguments.slice(20)]
+      createResponses.mockImplementation((payload) =>
+        Promise.resolve(
+          streamChunks([
+            sse("response.created", {
+              response: createResponsesResult(payload.model),
+            }),
+            sse("response.output_item.added", {
+              output_index: 0,
+              item: { ...functionCall("copilot_collaboration"), arguments: "" },
+            }),
+            ...parts.map((delta) =>
+              sse("response.function_call_arguments.delta", {
+                item_id: "fc_compat",
+                output_index: 0,
+                delta,
+              }),
+            ),
+            sse("response.output_item.done", {
+              output_index: 0,
+              item: functionCall("copilot_collaboration"),
+            }),
+            sse("response.completed", {
+              response: {
+                ...createResponsesResult(payload.model),
+                output: [functionCall("copilot_collaboration")],
+              },
+            }),
+          ]),
+        ),
+      )
+      const response = await post({
+        stream: true,
+        tools: tools(),
+        input: [{ role: "user", content: "spawn a child" }],
+      })
+      expect(response.status).toBe(200)
+      const events = (await response.text())
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map(
+          (line) =>
+            JSON.parse(line.slice(6)) as {
+              type: string
+              item?: Record<string, unknown>
+              response?: ResponsesResult
+              delta?: string
+            },
+        )
+      expect(
+        events
+          .filter((event) => event.item)
+          .map((event) => event.item?.namespace),
+      ).toEqual(["collaboration", "collaboration"])
+      expect(
+        events
+          .filter(
+            (event) => event.type === "response.function_call_arguments.delta",
+          )
+          .map((event) => event.delta)
+          .join(""),
+      ).toBe(callArguments)
+      expect(events.at(-1)?.response?.output).toEqual([
+        functionCall("collaboration"),
+      ])
+      expect(createResponses.mock.calls[0][1].transport).toBe(transport)
+      expect(createResponses).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  test("leaves collaboration schemas alone when compatibility is disabled", async () => {
+    responsesHandlerDependencies.isCopilotResponsesCompatibilityEnabled = () =>
+      false
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve({
+        ...createResponsesResult(payload.model),
+        output: [functionCall("collaboration")],
+      }),
+    )
+    const response = await post({
+      tools: tools(),
+      input: [functionCall("collaboration")],
+    })
+    expect(response.status).toBe(200)
+    expect(createResponses.mock.calls[0][0].tools).toEqual(tools())
+    expect(createResponses.mock.calls[0][0].input).toEqual([
+      functionCall("collaboration"),
+    ])
+    expect(((await response.json()) as ResponsesResult).output).toEqual([
+      functionCall("collaboration"),
+    ])
+  })
+
+  test("leaves models outside the compatibility list alone", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          id: "gpt-other",
+          supported_endpoints: ["/responses"],
+          capabilities: { limits: { max_prompt_tokens: 128000 } },
+        },
+      ],
+    } as typeof state.models
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve(createResponsesResult(payload.model)),
+    )
+    const response = await post({
+      model: "gpt-other",
+      tools: tools(),
+      input: [],
+    })
+    expect(response.status).toBe(200)
+    expect(createResponses.mock.calls[0][0].tools).toEqual(tools())
+  })
+
+  test("returns HTTP 400 for an empty failed event followed by invalid_request_body", async () => {
+    let closed = false
+    createResponses.mockImplementation(() =>
+      Promise.resolve(
+        (async function* () {
+          try {
+            await Promise.resolve()
+            yield sse("response.created", {
+              response: createResponsesResult("gpt-test"),
+            })
+            yield sse("response.failed", {
+              response: {
+                ...createResponsesResult("gpt-test"),
+                status: "failed",
+                error: null,
+                usage: { input_tokens: 5, output_tokens: 0, total_tokens: 5 },
+              },
+            })
+            yield sse("error", {
+              code: "invalid_request_body",
+              message: "Encrypted content could not be decrypted or parsed.",
+              param: null,
+            })
+          } finally {
+            closed = true
+          }
+        })(),
+      ),
+    )
+    const response = await post({
+      stream: true,
+      input: [{ role: "user", content: "test" }],
+    })
+    expect(response.status).toBe(400)
+    expect(response.headers.get("content-type")).toContain("application/json")
+    expect(await response.json()).toEqual({
+      error: {
+        code: "invalid_request_body",
+        type: "invalid_request_error",
+        message: "Encrypted content could not be decrypted or parsed.",
+        param: null,
+      },
+    })
+    expect(createResponses).toHaveBeenCalledTimes(1)
+    expect(createResponses.mock.calls[0][1].clientSignal?.aborted).toBe(true)
+    expect(closed).toBe(true)
+  })
+
+  test("keeps failures on an already-started stream and does not replay a tool call", async () => {
+    createResponses.mockImplementation(() =>
+      Promise.resolve(
+        streamChunks([
+          sse("response.created", {
+            response: createResponsesResult("gpt-test"),
+          }),
+          sse("response.output_item.added", {
+            output_index: 0,
+            item: functionCall("copilot_collaboration"),
+          }),
+          sse("response.failed", {
+            response: {
+              ...createResponsesResult("gpt-test"),
+              error: null,
+              status: "failed",
+            },
+          }),
+          sse("error", {
+            code: "invalid_request_body",
+            message: "later failure",
+          }),
+        ]),
+      ),
+    )
+    const response = await post({ tools: tools(), stream: true, input: [] })
+    expect(response.status).toBe(200)
+    const body = await response.text()
+    expect(body).toContain('"namespace":"collaboration"')
+    expect(body).toContain("later failure")
+    expect(createResponses).toHaveBeenCalledTimes(1)
   })
 })
