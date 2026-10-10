@@ -87,10 +87,39 @@ beforeEach(() => installCatalog(["text", "pdf"]))
 afterEach(() => installModelsDevCatalog(modelsDevCatalogFixture))
 
 describe("models.dev PDF request translation", () => {
+  test.each<[string, string, string]>([
+    [
+      "dashscope",
+      "https://dashscope-intl.aliyuncs.com/compatible-mode",
+      "alibaba",
+    ],
+    ["kimi", "https://api.moonshot.cn/v1", "moonshotai-cn"],
+  ])(
+    "matches the %s PDF catalog by its official base URL",
+    (name, baseUrl, catalogId) => {
+      installModelsDevCatalog({
+        ...modelsDevCatalogFixture,
+        [catalogId]: {
+          models: {
+            "pdf-model": {
+              id: "pdf-model",
+              modalities: { input: ["text", "pdf"], output: ["text"] },
+            },
+          },
+        },
+      })
+      expect(getProviderModelPdfSupport("pdf-model", { name, baseUrl })).toBe(
+        true,
+      )
+      expect(getProviderModelPdfSupport("pdf-model", { name })).toBe(false)
+    },
+  )
   test.each(["codex", "xai"])(
-    "uses builtin PDF defaults for uncatalogued %s models and allows disabling them",
+    "keeps PDF defaults only for uncatalogued Codex models: %s",
     (name) => {
-      expect(getProviderModelPdfSupport("unknown-model", { name })).toBe(true)
+      expect(getProviderModelPdfSupport("unknown-model", { name })).toBe(
+        name === "codex",
+      )
       expect(
         getProviderModelPdfSupport("unknown-model", {
           name,

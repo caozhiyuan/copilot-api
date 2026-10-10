@@ -41,6 +41,16 @@ These endpoints mimic the OpenAI API structure.
 | `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) are forwarded to the Codex Models upstream. |
 | `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
 
+### Model Discovery Sources
+
+`GET /models`, `GET /v1/models`, and `GET /:provider/v1/models` read `xai`, `openrouter`, `deepseek`, `kimi`, `dashscope`, and `opencode-go` models from the models.dev cache without querying those providers' model endpoints. Kimi defaults to `kimi-code-plan-cn` and DashScope to `alibaba-cn`; other official URLs select their matching catalogs. Explicit `modelsDevProviderId` takes priority.
+
+Models missing from the catalog receive no built-in entries. A provider-scoped request with no valid cached models returns `503` (`service_unavailable`); aggregation skips empty catalogs. Capabilities, limits, and USD prices come from the catalog, with explicit model settings taking priority.
+
+All models.dev lists exclude deprecated models and those released before `2026-05-01`, including explicit display selections. Models without a valid `release_date` remain listed.
+
+The Codex model catalog, Copilot model cache, and other custom providers retain their existing remote discovery behavior.
+
 ### Codex Backend Endpoints
 
 These endpoints implement Codex backend APIs. Top-level image requests require an active Codex login; alpha search can use either the Codex backend or a Responses web-search adapter.

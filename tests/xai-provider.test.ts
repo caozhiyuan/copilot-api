@@ -14,6 +14,9 @@ import { fileURLToPath } from "node:url"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ResponsesPayload } from "~/lib/types/responses"
+import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+
+import { modelsDevProviderCatalogFixture } from "./fixtures/models-dev-catalog"
 
 // Existing route tests replace ES modules; run real-config integration checks
 // in a subprocess so those mocks cannot affect credential and account behavior.
@@ -71,6 +74,7 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
   let taskDir: string
 
   beforeEach(() => {
+    installModelsDevCatalog(modelsDevProviderCatalogFixture)
     taskDir = fs.mkdtempSync(path.join(os.tmpdir(), "copilot-api-xai-"))
     PATHS.APP_DIR = taskDir
     PATHS.CONFIG_PATH = path.join(taskDir, "config.json")
@@ -380,7 +384,7 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
       expect(consola.log).not.toHaveBeenCalledWith("cli-access")
     })
 
-    test("lists only builtin Grok 4.7 in provider and aggregated model endpoints without upstream discovery", async () => {
+    test("lists cached models.dev xAI models in provider and aggregated endpoints without upstream discovery", async () => {
       await persistXaiCredentials(credentials)
       const upstream = mock(() =>
         Promise.reject(new Error("Model listing must stay local")),
@@ -394,13 +398,19 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
         data: Array<{ id: string; context_window: number }>
       }
       expect(raw.status).toBe(200)
-      expect(body.data.map((model) => model.id)).toEqual(["grok-4.7"])
+      expect(body.data.map((model) => model.id)).toEqual([
+        "grok-4.7",
+        "grok-catalog-only",
+      ])
       expect(body.data[0].context_window).toBe(500_000)
       const aggregated = await app.request("/v1/models")
       const models = (await aggregated.json()) as {
         data: Array<{ id: string }>
       }
-      expect(models.data.map((model) => model.id)).toEqual(["xai/grok-4.7"])
+      expect(models.data.map((model) => model.id)).toEqual([
+        "xai/grok-4.7",
+        "xai/grok-catalog-only",
+      ])
       expect(upstream).not.toHaveBeenCalled()
       const codex = await app.request("/v1/models", {
         headers: { "user-agent": "codex/1.0" },

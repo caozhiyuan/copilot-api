@@ -16,7 +16,11 @@ import {
 } from "~/routes/models/opencode-models"
 import bundledCodexCatalogJson from "~/routes/models/models.json"
 
-import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
+import {
+  modelsDevReleaseModelsFixture,
+  modelsDevCatalogFixture,
+  modelsDevProviderCatalogFixture,
+} from "./fixtures/models-dev-catalog"
 
 const actualConfigModule = await import("~/lib/config")
 const actualTokenModule = await import("~/lib/token")
@@ -135,7 +139,7 @@ const CODEX_CATALOG_ETAG = 'W/"catalog-1"'
 let codexCatalogModels: Array<Record<string, unknown>> =
   createDefaultCodexCatalogModels()
 
-const fetchMock = mock((url: string | URL | Request, _init?: RequestInit) => {
+const fetchModels = (url: string | URL | Request, _init?: RequestInit) => {
   const requestUrl =
     typeof url === "string" ? url
     : url instanceof URL ? url.toString()
@@ -259,7 +263,8 @@ const fetchMock = mock((url: string | URL | Request, _init?: RequestInit) => {
       ],
     }),
   )
-})
+}
+const fetchMock = mock(fetchModels)
 
 function createApp(fullCatalog = true) {
   const app = new Hono()
@@ -279,7 +284,7 @@ function createApp(fullCatalog = true) {
 
 beforeEach(() => {
   setRouteConfig({})
-  installModelsDevCatalog(modelsDevCatalogFixture)
+  installModelsDevCatalog(modelsDevProviderCatalogFixture)
   enabledProviders = []
   providerConfigs = {}
   codexSetupError = null
@@ -287,7 +292,8 @@ beforeEach(() => {
   modelMappings = { ...defaultConfig.modelMappings }
   codexCatalogModels = createDefaultCodexCatalogModels()
   state.models = undefined
-  fetchMock.mockClear()
+  fetchMock.mockReset()
+  fetchMock.mockImplementation(fetchModels)
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
     fetchMock as unknown as typeof fetch
 })
@@ -305,6 +311,190 @@ afterEach(() => {
 })
 
 describe("model routes", () => {
+  test.each([
+    ["/dashscope/v1/models", "curl/8.0"],
+    ["/v1/models", "curl/8.0"],
+    ["/v1/models", "opencode/2.0"],
+    ["/v1/models", "claude-cli/2.1"],
+    ["/v1/models", "codex/1.0"],
+  ])(
+    "filters old DashScope releases on %s for %s including explicit selections",
+    async (endpoint, userAgent) => {
+      installModelsDevCatalog({
+        ...modelsDevProviderCatalogFixture,
+        "alibaba-cn": { models: modelsDevReleaseModelsFixture },
+      })
+      enabledProviders = ["dashscope"]
+      providerConfigs.dashscope = {
+        ...createProviderConfig("dashscope", "https://gateway.example"),
+        agentsModels: Object.keys(modelsDevReleaseModelsFixture),
+        models: { "before-cutoff": {}, "qwen-plus": {} },
+      }
+      const response = await createApp().request(endpoint, {
+        headers: { "user-agent": userAgent },
+      })
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as {
+        data?: Array<{ id: string }>
+        models?: Array<{ slug: string }>
+      }
+      const ids =
+        body.models?.map((model) => model.slug)
+        ?? body.data?.map((model) => model.id)
+        ?? []
+      const dashScopeIds =
+        endpoint.startsWith("/dashscope/") ? ids : (
+          ids
+            .filter((id) => id.startsWith("dashscope/"))
+            .map((id) => id.slice("dashscope/".length))
+        )
+      const visibleIds = [
+        "after-cutoff",
+        "invalid-date",
+        "on-cutoff",
+        "unknown-date",
+      ]
+      expect(dashScopeIds.sort()).toEqual(
+        userAgent.startsWith("claude") ?
+          visibleIds.map((id) => `my-claude-${id}[1m]`)
+        : visibleIds,
+      )
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each<[string, Array<string>]>([
+    ["xai", ["grok-4.7", "grok-catalog-only"]],
+    ["openrouter", ["openai/gpt-5.1-codex"]],
+    ["deepseek", ["deepseek-flash", "deepseek-v4-pro"]],
+    ["kimi", ["k3", "k3-256k"]],
+    [
+      "dashscope",
+      [
+        "deepseek-v4.1-flash",
+        "glm-5.3",
+        "kimi-k3",
+        "qwen3.7-plus",
+        "qwen3.8-flash",
+        "qwen3.8-max",
+      ],
+    ],
+  ])(
+    "serves cached %s models on both endpoints without provider requests",
+    async (provider, ids) => {
+      enabledProviders = [provider]
+      providerConfigs[provider] = createProviderConfig(
+        provider,
+        "https://reject.example",
+      )
+      const app = createApp()
+      const raw = await app.request(`/${provider}/v1/models`)
+      expect(raw.status).toBe(200)
+      const rawBody = (await raw.json()) as { data: Array<{ id: string }> }
+      expect(rawBody.data.map((model) => model.id)).toEqual(ids)
+      const aggregated = await app.request("/v1/models")
+      const body = (await aggregated.json()) as { data: Array<{ id: string }> }
+      expect(body.data.map((model) => model.id)).toEqual(
+        ids.map((id) => `${provider}/${id}`),
+      )
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["xai", "openrouter", "deepseek", "kimi", "dashscope"])(
+    "returns a local catalog error for missing %s records without remote fallback",
+    async (provider) => {
+      installModelsDevCatalog(modelsDevCatalogFixture)
+      enabledProviders = [provider]
+      providerConfigs[provider] = createProviderConfig(
+        provider,
+        "https://reject.example",
+      )
+      const raw = await createApp().request(`/${provider}/v1/models`)
+      expect(raw.status).toBe(503)
+      expect(await raw.json()).toMatchObject({
+        error: { type: "service_unavailable" },
+      })
+      const aggregated = await createApp().request("/v1/models")
+      expect(await aggregated.json()).toMatchObject({ data: [] })
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test("honors explicit models.dev provider mappings while keeping the gateway provider name", async () => {
+    enabledProviders = ["kimi"]
+    providerConfigs.kimi = {
+      ...createProviderConfig("kimi", "https://reject.example"),
+      modelsDevProviderId: "openrouter",
+    }
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "opencode" },
+    })
+    const { data } = (await response.json()) as { data: Array<OpencodeModel> }
+    expect(data[0]).toMatchObject({
+      id: "kimi/openai/gpt-5.1-codex",
+      limit: { context: 300_000, output: 128_000 },
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test("keeps Codex catalog discovery remote and Copilot records intact while other providers stay local", async () => {
+    enableCodexCatalog()
+    enabledProviders.push("xai", "openrouter", "deepseek", "kimi", "dashscope")
+    for (const provider of enabledProviders.filter((name) => name !== "codex"))
+      providerConfigs[provider] = createProviderConfig(
+        provider,
+        "https://reject.example",
+      )
+    state.models = createCopilotModels(["claude-sonnet-4.6"])
+    state.models.data[0].supported_endpoints = ["/v1/messages"]
+    const original = structuredClone(state.models)
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "codex/1.0" },
+    })
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as CodexModelsResponse
+    const slugs = body.models.map((model) => model.slug)
+    for (const slug of [
+      "gpt-native",
+      "claude-sonnet-4-6",
+      "xai/grok-catalog-only",
+      "openrouter/openai/gpt-5.1-codex",
+      "deepseek/deepseek-flash",
+      "kimi/k3",
+      "dashscope/qwen3.8-max",
+    ])
+      expect(slugs).toContain(slug)
+    expect(state.models).toEqual(original)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toStartWith(
+      "https://chatgpt.com/backend-api/codex/models",
+    )
+  })
+
+  test.each(["curl/8.0", "claude-cli/2.1", "opencode/2.0", "codex/1.0"])(
+    "serves cached Alibaba CN discovery for %s without remote requests",
+    async (userAgent) => {
+      enabledProviders = ["dashscope"]
+      providerConfigs.dashscope = createProviderConfig(
+        "dashscope",
+        "https://reject.example",
+      )
+      const raw = await createApp().request("/dashscope/v1/models")
+      expect(raw.status).toBe(200)
+      const rawBody = (await raw.json()) as { data: Array<{ id: string }> }
+      expect(rawBody.data).toHaveLength(6)
+      expect(rawBody.data.map((model) => model.id)).not.toContain(
+        "ZHIPU/GLM-5.3-FlashX",
+      )
+      const response = await createApp().request("/v1/models", {
+        headers: { "user-agent": userAgent },
+      })
+      expect(response.status).toBe(200)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
   test.each([
     "opencode/2.0.24",
     "custom-client (OpenCode2; Windows)",
@@ -781,24 +971,22 @@ describe("model routes", () => {
     },
   )
 
-  test("converts built-in CNY prices to USD for OpenCode", async () => {
+  test("reads Alibaba CN prices in USD for OpenCode", async () => {
     enabledProviders = ["dashscope"]
     providerConfigs.dashscope = createProviderConfig(
       "dashscope",
       "https://dashscope.example",
     )
-    fetchMock.mockImplementationOnce(() =>
-      Promise.resolve(Response.json({ data: [{ id: "deepseek-v4.1-flash" }] })),
-    )
+    providerConfigs.dashscope.agentsModels = ["deepseek-v4.1-flash"]
     const response = await createApp().request("/v1/models", {
       headers: { "user-agent": "opencode" },
     })
     const { data } = (await response.json()) as { data: Array<OpencodeModel> }
     expect(data[0].cost).toEqual([
       {
-        input: 0.298507,
-        output: 1.19403,
-        cache: { read: 0.029851, write: 0 },
+        input: 0.15,
+        output: 0.6,
+        cache: { read: 0.003, write: 0 },
       },
     ])
   })
@@ -882,10 +1070,10 @@ describe("model routes", () => {
       { input: 0, output: 0, cache: { read: 0, write: 0 } },
     ])
     expect(data[1].cost).toEqual([])
-    expect(data[1].limit).toEqual({ context: 200_000, output: 32_000 })
+    expect(data[1].limit).toEqual({ context: 256_000, output: 32_000 })
   })
 
-  test("discovers OpenRouter modalities and limits from the upstream catalog", async () => {
+  test("discovers OpenRouter modalities and limits from models.dev", async () => {
     enabledProviders = ["openrouter"]
     providerConfigs.openrouter = createProviderConfig(
       "openrouter",
@@ -898,9 +1086,10 @@ describe("model routes", () => {
     expect(data[0]).toMatchObject({
       id: "openrouter/openai/gpt-5.1-codex",
       modelID: "openrouter/openai/gpt-5.1-codex",
-      capabilities: { input: ["file", "image", "text"] },
-      limit: { context: 300_000, output: 32_000 },
+      capabilities: { input: ["text", "image"] },
+      limit: { context: 300_000, output: 128_000 },
     })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("uses built-in Codex prices and skips unavailable providers for OpenCode", async () => {
@@ -1080,7 +1269,7 @@ describe("model routes", () => {
   })
 
   test.each(["codex", "xai"])(
-    "advertises PDF input by default for the %s provider",
+    "advertises known PDF input for the %s provider",
     async (provider) => {
       if (provider === "codex") {
         enableCodexCatalog()
@@ -1105,8 +1294,17 @@ describe("model routes", () => {
       const { data } = (await response.json()) as { data: Array<OpencodeModel> }
       expect(data.length).toBeGreaterThan(0)
       expect(
-        data.every((model) => model.capabilities.input.includes("pdf")),
-      ).toBe(true)
+        data.find(
+          (model) =>
+            model.id
+            === (provider === "codex" ? "codex/gpt-6-luna" : "xai/grok-4.7"),
+        )?.capabilities.input,
+      ).toContain("pdf")
+      if (provider === "xai")
+        expect(
+          data.find((model) => model.id === "xai/grok-catalog-only")
+            ?.capabilities.input,
+        ).not.toContain("pdf")
     },
   )
 
@@ -1134,6 +1332,7 @@ describe("model routes", () => {
         )
       }
       providerConfigs[provider]!.models = { [modelId]: { supportPdf: false } }
+      providerConfigs[provider]!.agentsModels = [modelId]
       const response = await createApp().request("/v1/models", {
         headers: { "user-agent": "opencode" },
       })
@@ -1272,21 +1471,18 @@ describe("model routes", () => {
   test.each([
     { modelId: "qwen3.7-plus", efforts: ["low", "medium", "xhigh"] },
     { modelId: "qwen3.8-max", efforts: ["low", "medium", "xhigh"] },
-    { modelId: "qwen3.8-max-0902", efforts: ["low", "medium", "xhigh"] },
     { modelId: "qwen3.8-flash", efforts: ["low", "medium", "xhigh"] },
     { modelId: "deepseek-v4.1-flash", efforts: ["low", "high", "max"] },
-    { modelId: "kimi/kimi-k3", efforts: ["max"] },
+    { modelId: "kimi-k3", efforts: ["max"] },
   ])(
-    "uses built-in DashScope reasoning variants for $modelId when upstream omits them",
+    "uses cached DashScope reasoning variants for $modelId",
     async ({ modelId, efforts }) => {
       enabledProviders = ["dashscope"]
       providerConfigs.dashscope = createProviderConfig(
         "dashscope",
         "https://dashscope.example",
       )
-      fetchMock.mockImplementationOnce(() =>
-        Promise.resolve(Response.json({ data: [{ id: modelId }] })),
-      )
+      providerConfigs.dashscope.agentsModels = [modelId]
       const response = await createApp().request("/v1/models", {
         headers: { "user-agent": "opencode" },
       })
@@ -1303,6 +1499,7 @@ describe("model routes", () => {
     enabledProviders = ["dashscope"]
     providerConfigs.dashscope = {
       ...createProviderConfig("dashscope", "https://dashscope.example"),
+      agentsModels: ["qwen3.8-max"],
       models: { "qwen3.8-max": { reasoningEfforts: ["medium"] } },
     }
     fetchMock.mockImplementationOnce(() =>
@@ -1984,7 +2181,7 @@ describe("model routes", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  test("uses the models.dev catalog for OpenCode Go when other providers fail", async () => {
+  test("uses the models.dev catalog even when provider models endpoints are unavailable", async () => {
     enabledProviders = ["deepseek", "kimi", "opencode-go"]
     providerConfigs = {
       deepseek: createProviderConfig("deepseek", "https://bad.example"),
@@ -2011,11 +2208,11 @@ describe("model routes", () => {
     expect(
       body.data.find((model) => model.id === "deepseek/deepseek-flash"),
     ).toMatchObject({
-      display_name: "deepseek-flash (deepseek)",
+      display_name: "DeepSeek V4.1 Flash (deepseek)",
       object: "model",
       owned_by: "deepseek",
     })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("serves OpenCode Go provider models from models.dev without upstream fetch", async () => {
@@ -2073,7 +2270,7 @@ describe("model routes", () => {
     ])
   })
 
-  test("uses pricing models for failed providers in the Codex catalog", async () => {
+  test("uses models.dev provider records in the Codex catalog without provider discovery", async () => {
     enabledProviders = ["deepseek", "kimi", "opencode-go"]
     providerConfigs = {
       deepseek: createProviderConfig("deepseek", "https://bad.example"),
@@ -2099,7 +2296,7 @@ describe("model routes", () => {
     ).toMatchObject({
       context_window: 1_000_000,
       input_modalities: ["text", "image"],
-      max_output_tokens: 384_000,
+      max_output_tokens: 393_216,
       shell_type: "shell_command",
     })
     expect(body.models.find((model) => model.slug === "kimi/k3")).toMatchObject(
@@ -2116,7 +2313,7 @@ describe("model routes", () => {
       input_modalities: ["text", "image"],
       max_output_tokens: 64_000,
     })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("prefers user model config over upstream and built-in defaults", async () => {
@@ -2157,11 +2354,17 @@ describe("model routes", () => {
     })
   })
 
-  test("prefers upstream capabilities over built-in catalog defaults", async () => {
+  test("prefers models.dev capabilities over built-in catalog defaults", async () => {
     installModelsDevCatalog({
       ...modelsDevCatalogFixture,
       deepseek: {
-        models: { "deepseek-v4-pro": { limit: { output: 48_000 } } },
+        models: {
+          "deepseek-v4-pro": {
+            id: "deepseek-v4-pro",
+            limit: { context: 128_000, output: 48_000 },
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+        },
       },
     })
     enabledProviders = ["deepseek"]
@@ -2182,15 +2385,19 @@ describe("model routes", () => {
     ).toMatchObject({
       context_window: 128_000,
       input_modalities: ["text", "image"],
-      max_output_tokens: 8_000,
+      max_output_tokens: 48_000,
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("uses models.dev output limits before built-in defaults in the Codex catalog", async () => {
     installModelsDevCatalog({
       ...modelsDevCatalogFixture,
-      kimi: { models: { "kimi-k2.5": { limit: { output: 131_072 } } } },
+      "kimi-code-plan-cn": {
+        models: {
+          "kimi-k2.5": { id: "kimi-k2.5", limit: { output: 131_072 } },
+        },
+      },
     })
     enabledProviders = ["kimi"]
     providerConfigs.kimi = createProviderConfig("kimi", "https://kimi.example")
@@ -2265,9 +2472,9 @@ describe("model routes", () => {
         (model) => model.slug === "openrouter/openai/gpt-5.1-codex",
       ),
     ).toMatchObject({
-      input_modalities: ["image", "text"],
+      input_modalities: ["text", "image"],
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("adds built-in Codex models on both model routes without calling upstream", async () => {
@@ -2699,8 +2906,8 @@ describe("model routes", () => {
     expect(slugs).toContain("opencode-go/grok-4.7")
     expect(slugs).toContain("opencode-go/qwen3.7-plus")
     expect(slugs).not.toContain("opencode-go/grok-4.5")
-    const kimiIndex = slugs.indexOf("kimi/kimi-k2.5")
-    expect(kimiIndex).toBe(slugs.length - 1)
+    const kimiIndex = slugs.indexOf("kimi/k3")
+    expect(slugs.slice(kimiIndex)).toEqual(["kimi/k3", "kimi/k3-256k"])
     expect(
       slugs
         .slice(3, kimiIndex)
@@ -2747,7 +2954,7 @@ describe("model routes", () => {
     expect(slugs).not.toContain("broken-model")
   })
 
-  test("prefers max as the built-in default reasoning effort for Codex models", async () => {
+  test("defaults Codex models to max or the first supported reasoning effort", async () => {
     const copilotModels = createCopilotModels([
       "claude-sonnet-4.6",
       "claude-opus-4.1",
@@ -2767,6 +2974,13 @@ describe("model routes", () => {
       "medium",
     ]
     state.models = copilotModels
+    enabledProviders = ["opencode-go"]
+    providerConfigs = {
+      "opencode-go": createProviderConfig(
+        "opencode-go",
+        "https://opencode.example",
+      ),
+    }
 
     const response = await createApp().request("/v1/models", {
       headers: { "user-agent": "codex-cli/1.0.0" },
@@ -2781,6 +2995,12 @@ describe("model routes", () => {
     ).toMatchObject({ default_reasoning_level: "max" })
     expect(
       body.models.find((model) => model.slug === "claude-opus-4-1"),
+    ).toMatchObject({ default_reasoning_level: "low" })
+    expect(
+      body.models.find((model) => model.slug === "opencode-go/hy3"),
+    ).toMatchObject({ default_reasoning_level: "none" })
+    expect(
+      body.models.find((model) => model.slug === "opencode-go/grok-4.7"),
     ).toMatchObject({ default_reasoning_level: "low" })
   })
 
@@ -2903,7 +3123,7 @@ describe("model routes", () => {
     )
   })
 
-  test("adds image input to Kimi Codex models by default", async () => {
+  test("uses the cached input modalities for each Kimi Codex model", async () => {
     enabledProviders = ["kimi"]
     providerConfigs = {
       kimi: {
@@ -2924,8 +3144,13 @@ describe("model routes", () => {
       models: Array<Record<string, unknown> & { slug: string }>
     }
     expect(
-      body.models.find((model) => model.slug === "kimi/kimi-k2.5"),
-    ).toMatchObject({ input_modalities: ["text", "image"] })
+      body.models.find((model) => model.slug === "kimi/k3-256k"),
+    ).toMatchObject({ input_modalities: ["text"] })
+    expect(body.models.find((model) => model.slug === "kimi/k3")).toMatchObject(
+      {
+        input_modalities: ["text", "image"],
+      },
+    )
   })
 
   test("forwards Codex clients on the provider-scoped models route", async () => {

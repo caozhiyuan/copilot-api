@@ -1,10 +1,9 @@
 import { Hono } from "hono"
-import { getBuiltinProviderModelRecords } from "~/lib/builtin-provider-models"
 
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
-import { getOpencodeGoModelRecords } from "~/lib/models-dev-cache"
 import { withModelDisplayName } from "~/lib/model-display-name"
+import { getLocalProviderModelRecords } from "~/lib/provider-model-catalog"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import {
   handleCodexModelsProxy,
@@ -53,13 +52,16 @@ providerModelRoutes.get("/", async (c) => {
       })
     }
 
-    if (providerConfig.name === "opencode-go") {
-      const models = getOpencodeGoModelRecords()
-      if (models.length === 0) {
+    const localModels = getLocalProviderModelRecords(
+      providerConfig.name,
+      providerConfig,
+    )
+    if (localModels !== undefined) {
+      if (localModels.length === 0) {
         return c.json(
           {
             error: {
-              message: "OpenCode Go model catalog is unavailable",
+              message: `${providerConfig.name} model catalog is unavailable`,
               type: "service_unavailable",
             },
           },
@@ -68,17 +70,7 @@ providerModelRoutes.get("/", async (c) => {
       }
       return c.json({
         object: "list",
-        data: models.map((model) =>
-          withModelDisplayName(model, providerConfig.name),
-        ),
-        has_more: false,
-      })
-    }
-
-    if (providerConfig.name === "xai" && providerConfig.authType === "oauth2") {
-      return c.json({
-        object: "list",
-        data: getBuiltinProviderModelRecords("xai").map((model) =>
+        data: localModels.map((model) =>
           withModelDisplayName(model, providerConfig.name),
         ),
         has_more: false,

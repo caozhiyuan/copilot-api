@@ -27,6 +27,7 @@
     "../src/lib/paths.ts",
     "../src/lib/process-cleanup.ts",
     "../src/lib/provider-config.ts",
+    "../src/lib/provider-model-catalog.ts",
     "../src/lib/provider-management.ts",
     "../src/lib/github-copilot-provider.ts",
     "../src/lib/internal-headers.ts",
@@ -74,7 +75,8 @@
     "../src/services/responses-websocket-helpers.ts",
     "../src/services/responses-websocket.ts",
     "../src/services/upstream-http.ts",
-    "../src/lib/electron-fetch.ts"
+    "../src/lib/electron-fetch.ts",
+    "../tests/fixtures/models-dev-catalog.ts"
   ],
   "compilerOptions": {
     "composite": true,

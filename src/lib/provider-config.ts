@@ -18,6 +18,10 @@ import {
   getModelsDevProviderApi,
   getOpencodeGoModelProviderType,
 } from "./models-dev-cache"
+import {
+  resolveProviderModelsDevId,
+  usesModelsDevModelCatalog,
+} from "./provider-model-catalog"
 
 export interface ResolvedProviderConfig {
   name: string
@@ -243,8 +247,14 @@ export function resolveProviderConfigForModel(
     : undefined
   const configuredModel = providerConfig.models?.[model]
   const catalogPricing =
-    providerConfig.modelsDevProviderId ?
-      getModelsDevModelPricing(providerConfig.modelsDevProviderId, model)
+    (
+      providerConfig.modelsDevProviderId
+      || usesModelsDevModelCatalog(providerConfig.name)
+    ) ?
+      getModelsDevModelPricing(
+        resolveProviderModelsDevId(providerConfig.name, providerConfig),
+        model,
+      )
     : undefined
   const useCatalogPricing =
     catalogPricing !== undefined && configuredModel?.pricing === undefined

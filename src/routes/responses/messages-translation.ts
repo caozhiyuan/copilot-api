@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto"
 
-import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
+import {
+  getProviderModelConfig,
+  resolveProviderModelsDevId,
+} from "~/lib/provider-model-catalog"
 import { compactTextOnlyGuard } from "~/lib/compact"
 import { findEndpointModel } from "~/lib/models"
 import { getModelsDevModelMaxOutputTokens } from "~/lib/models-dev-cache"
@@ -261,13 +264,13 @@ function resolveDefaultMaxOutputTokens(model: string): number {
   const catalogMaxOutputTokens =
     alias ?
       getModelsDevModelMaxOutputTokens(
-        providerConfig?.modelsDevProviderId || alias.provider,
+        resolveProviderModelsDevId(alias.provider, providerConfig),
         alias.model,
       )
     : undefined
   const builtinModelConfig =
     alias ?
-      builtinProviderModelRegistry.getModelConfig(alias.provider, alias.model)
+      getProviderModelConfig(alias.provider, alias.model, providerConfig)
     : undefined
   const tokenLimits =
     alias && (providerConfig || builtinModelConfig || catalogMaxOutputTokens) ?

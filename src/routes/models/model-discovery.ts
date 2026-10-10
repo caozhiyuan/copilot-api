@@ -13,8 +13,11 @@ import {
 } from "~/lib/github-copilot-provider"
 import { createHandlerLogger } from "~/lib/logger"
 import { withModelDisplayName } from "~/lib/model-display-name"
-import { getOpencodeGoModelRecords } from "~/lib/models-dev-cache"
 import { toClientModelId } from "~/lib/models"
+import {
+  getLocalProviderModelRecords,
+  isProviderModelVisible,
+} from "~/lib/provider-model-catalog"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { getProviderAgentModels } from "~/lib/provider-management"
 import { state } from "~/lib/state"
@@ -34,12 +37,47 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function normalizeCopilotModel(model: Model): ClientModel {
-  const clientId = toClientModelId(model.id)
+export function firstPositiveInteger(
+  ...values: Array<unknown>
+): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 1) {
+      return Math.floor(value)
+    }
+  }
+  return undefined
+}
 
+function normalizeModelCapabilities<T extends { capabilities?: unknown }>(
+  model: T,
+) {
+  if (!isRecord(model.capabilities)) return model
+  const limits = getRecordField(model.capabilities, "limits")
+  const supports = getRecordField(model.capabilities, "supports")
+  return {
+    context_window: firstPositiveInteger(
+      limits?.max_context_window_tokens,
+      limits?.max_prompt_tokens,
+    ),
+    max_output_tokens: limits?.max_output_tokens,
+    input_limit: limits?.max_prompt_tokens,
+    input_modalities:
+      typeof supports?.vision === "boolean" ?
+        ["text", ...(supports.vision ? ["image"] : [])]
+      : undefined,
+    reasoning_efforts: supports?.reasoning_effort,
+    ...model,
+  }
+}
+
+export function normalizeCopilotModel(model: Model): ClientModel {
+  const clientId = toClientModelId(model.id)
   return {
     claude_model_id: `${clientId}[1m]`,
-    ...withModelDisplayName(model, GITHUB_COPILOT_PROVIDER),
+    ...withModelDisplayName(
+      normalizeModelCapabilities(model),
+      GITHUB_COPILOT_PROVIDER,
+    ),
     id: clientId,
     object: "model",
     type: "model",
@@ -65,18 +103,14 @@ export function getRecordField(
   return isRecord(value) ? value : undefined
 }
 
-export function getFirstPositiveNumber(
-  model: Record<string, unknown> | undefined,
-  fields: Array<string>,
-): number | undefined {
-  if (!model) return undefined
-  for (const field of fields) {
-    const value = model[field]
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return value
-    }
-  }
-  return undefined
+export function getStringList(value: unknown): Array<string> | undefined {
+  if (!Array.isArray(value)) return undefined
+  const strings = [
+    ...new Set(
+      value.filter((item): item is string => typeof item === "string"),
+    ),
+  ]
+  return strings.length > 0 ? strings : undefined
 }
 
 type ProviderModelsFallbackReason = "error" | "invalid_body" | "non_ok"
@@ -86,7 +120,9 @@ function getFallbackProviderModelRecords(
   reason: ProviderModelsFallbackReason,
   details: Record<string, unknown> = {},
 ): Array<Record<string, unknown>> {
-  const fallbackModels = getBuiltinProviderModelRecords(provider)
+  const fallbackModels =
+    getLocalProviderModelRecords(provider, getRawProviderConfig(provider))
+    ?? getBuiltinProviderModelRecords(provider)
   logger.warn(`models.provider.fallback_${reason}`, {
     provider,
     ...details,
@@ -98,13 +134,14 @@ function getFallbackProviderModelRecords(
 function normalizeProviderModel(
   provider: string,
   model: unknown,
+  config?: ProviderConfig | null,
 ): ClientModel | null {
   if (!isRecord(model)) {
     return null
   }
 
   const rawId = getStringField(model, "id")
-  if (!rawId) {
+  if (!rawId || !isProviderModelVisible(provider, rawId, config)) {
     return null
   }
 
@@ -128,9 +165,10 @@ function normalizeProviderModel(
 function normalizeProviderModels(
   provider: string,
   models: Array<unknown>,
+  config?: ProviderConfig | null,
 ): Array<ClientModel> {
   return models
-    .map((model) => normalizeProviderModel(provider, model))
+    .map((model) => normalizeProviderModel(provider, model, config))
     .filter((model): model is ClientModel => model !== null)
 }
 
@@ -138,12 +176,11 @@ export async function getProviderModelRecords(
   providerConfig: ResolvedProviderConfig,
   requestHeaders: Headers,
 ): Promise<Array<Record<string, unknown>>> {
-  if (providerConfig.name === "opencode-go") {
-    return getOpencodeGoModelRecords()
-  }
-  if (providerConfig.name === "xai" && providerConfig.authType === "oauth2") {
-    return getBuiltinProviderModelRecords("xai")
-  }
+  const localModels = getLocalProviderModelRecords(
+    providerConfig.name,
+    providerConfig,
+  )
+  if (localModels !== undefined) return localModels
 
   try {
     const response = await forwardProviderModels(providerConfig, requestHeaders)
@@ -161,7 +198,7 @@ export async function getProviderModelRecords(
       )
     }
 
-    return body.data.filter(isRecord)
+    return body.data.filter(isRecord).map(normalizeModelCapabilities)
   } catch (error) {
     return getFallbackProviderModelRecords(providerConfig.name, "error", {
       error,
@@ -219,11 +256,12 @@ async function getProviderModels(
 
     const models =
       providerConfig.name === "codex" ?
-        getCodexModels().data
+        getCodexModels().data.map(normalizeModelCapabilities)
       : await getProviderModelRecords(providerConfig, requestHeaders)
     return normalizeProviderModels(
       providerConfig.name,
       selectModels?.(providerConfig, models) ?? models,
+      providerConfig,
     )
   } catch (error) {
     if (provider === "codex") {
@@ -234,10 +272,11 @@ async function getProviderModels(
     const fallbackModels = getFallbackProviderModelRecords(provider, "error", {
       error,
     })
+    const providerConfig = getRawProviderConfig(provider)
     return normalizeProviderModels(
       provider,
-      selectModels?.(getRawProviderConfig(provider), fallbackModels)
-        ?? fallbackModels,
+      selectModels?.(providerConfig, fallbackModels) ?? fallbackModels,
+      providerConfig,
     )
   }
 }

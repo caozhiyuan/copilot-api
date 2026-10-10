@@ -45,6 +45,16 @@ curl http://localhost:4141/admin/config/model-mappings \
 | `GET /v1/models`            | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求会转发到 Codex Models 上游。 |
 | `POST /v1/embeddings`       | `POST` | 创建表示输入文本的向量嵌入。                                                                             |
 
+### 模型发现来源
+
+`GET /models`、`GET /v1/models` 和 `GET /:provider/v1/models` 从 models.dev 缓存读取 `xai`、`openrouter`、`deepseek`、`kimi`、`dashscope`、`opencode-go` 的模型，不查询这些 provider 的远程模型接口。Kimi 默认使用 `kimi-code-plan-cn`，DashScope 默认使用 `alibaba-cn`；其他官方地址匹配对应目录，显式 `modelsDevProviderId` 优先。
+
+目录中没有的模型不补入内置列表。provider 级接口没有有效缓存模型时返回 `503`（`service_unavailable`），顶层列表跳过空目录。模型能力、窗口和 USD 价格来自目录，显式模型配置优先。
+
+所有 models.dev 模型列表过滤已弃用及 `release_date` 早于 `2026-05-01` 的模型，显式展示名单也遵循此规则；没有有效日期的模型保留。
+
+Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程发现保持原有行为。
+
 ### Codex 后端端点
 
 这些端点实现 Codex 后端 API。顶层图片请求要求已有可用的 Codex 登录态；alpha-search 则可以使用 Codex 后端或 Responses web-search 适配器。

@@ -1,4 +1,9 @@
 import { builtinProviderModelRegistry } from "../builtin-provider-models"
+import { getModelsDevModelPricing } from "../models-dev-cache"
+import {
+  resolveProviderModelsDevId,
+  usesModelsDevModelCatalog,
+} from "../provider-model-catalog"
 import type { TokenUsagePeakWindow } from "./peak-windows"
 import {
   normalizeToken,
@@ -6,7 +11,6 @@ import {
   type UsageTokens,
 } from "./store"
 
-export { dashscopePeakWindows, deepseekPeakWindows } from "./peak-windows"
 export type { TokenUsagePeakWindow } from "./peak-windows"
 
 export interface TokenUsagePricingTier {
@@ -47,6 +51,7 @@ export interface TokenUsageCostInput extends UsageTokens {
 interface ResolvedPricing {
   pricing: TokenUsagePricingConfig
   source: string
+  currency?: string
 }
 
 const COST_NANOS_PER_UNIT = 1_000_000_000
@@ -98,7 +103,9 @@ export function resolveTokenUsageCost(
     getInputTokenTotal(input),
     resolvePricingTime(input.at),
   )
-  const currency = resolveProviderCurrency(providerName, input.pricingCurrency)
+  const currency =
+    resolvedPricing.currency
+    ?? resolveProviderCurrency(providerName, input.pricingCurrency)
   if (!currency) {
     return null
   }
@@ -205,6 +212,14 @@ function resolveProviderPricing(
       pricing: configuredPricing,
       source: "config",
     }
+  }
+
+  if (usesModelsDevModelCatalog(providerName)) {
+    const pricing = getModelsDevModelPricing(
+      resolveProviderModelsDevId(providerName),
+      model,
+    )
+    if (pricing) return { pricing, source: "models.dev", currency: "USD" }
   }
 
   const pricingModel =

@@ -26,7 +26,7 @@ import {
   getClaudeAutoModel,
   resolveProviderConfigForModel,
 } from "~/lib/config"
-import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
+import { getProviderModelConfig } from "~/lib/provider-model-catalog"
 import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
 import { logCodexRateLimitsEvent } from "~/lib/codex-rate-limit"
 import {
@@ -718,9 +718,10 @@ const normalizeOpenAICompatibleReasoningContent = (
   // history messages instead of the default "reasoning_content" field
   const reasoningField =
     options.modelConfig?.reasoningField
-    ?? builtinProviderModelRegistry.getModelConfig(
+    ?? getProviderModelConfig(
       options.providerConfig.name,
       payload.model,
+      options.providerConfig,
     )?.reasoningField
     ?? "reasoning_content"
 

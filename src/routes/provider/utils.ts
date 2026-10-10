@@ -1,6 +1,6 @@
 import type { Context } from "hono"
 
-import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
+import { getProviderModelConfig } from "~/lib/provider-model-catalog"
 import type { ModelConfig, ResolvedProviderConfig } from "~/lib/config"
 import {
   resolveSupportedReasoningEffort,
@@ -57,9 +57,10 @@ export const normalizeProviderResponsesReasoningEffort = (
   }
 
   const modelConfig = providerConfig.models?.[payload.model]
-  const builtinModelConfig = builtinProviderModelRegistry.getModelConfig(
+  const builtinModelConfig = getProviderModelConfig(
     providerConfig.name,
     payload.model,
+    providerConfig,
   )
   const configuredEfforts = modelConfig?.reasoningEfforts
   const supportedEfforts =

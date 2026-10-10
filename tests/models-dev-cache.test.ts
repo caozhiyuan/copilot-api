@@ -9,6 +9,7 @@ import { resolveTokenUsageCost } from "~/lib/token-usage/pricing"
 import {
   getModelsDevModelApi,
   getModelsDevModel,
+  getModelsDevModelConfig,
   getModelsDevModelMaxOutputTokens,
   getModelsDevModelPricing,
   getModelsDevModelProviderType,
@@ -24,7 +25,10 @@ import {
   stopModelsDevRefreshLoop,
 } from "~/lib/models-dev-cache"
 
-import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
+import {
+  modelsDevCatalogFixture,
+  modelsDevReleaseModelsFixture,
+} from "./fixtures/models-dev-catalog"
 
 let tempDir: string | undefined
 
@@ -49,6 +53,50 @@ afterEach(async () => {
   await stopModelsDevRefreshLoop()
   if (tempDir) await fs.rm(tempDir, { recursive: true, force: true })
   tempDir = undefined
+})
+
+test("filters older releases consistently across models.dev lists, protocols, limits and pricing", () => {
+  const models = {
+    ...modelsDevReleaseModelsFixture,
+    "before-cutoff": {
+      ...modelsDevReleaseModelsFixture["before-cutoff"],
+      limit: { output: 32_000 },
+      cost: { input: 1, output: 2 },
+      provider: { api: "https://old.example/v1" },
+    },
+  }
+  const catalog = {
+    ...modelsDevCatalogFixture,
+    "opencode-go": { npm: "@ai-sdk/openai-compatible", models },
+    example: {
+      npm: "@ai-sdk/openai-compatible",
+      api: "https://example.com/v1",
+      models,
+    },
+  }
+  const original = structuredClone(catalog)
+  installModelsDevCatalog(catalog)
+  const visibleIds = [
+    "after-cutoff",
+    "invalid-date",
+    "on-cutoff",
+    "unknown-date",
+  ]
+  expect(getOpencodeGoModelIds()).toEqual(visibleIds)
+  expect(getModelsDevProviderModelIds("example")).toEqual(visibleIds)
+  expect(getModelsDevModelConfig("example", "before-cutoff")).toBeUndefined()
+  expect(getModelsDevModelPricing("example", "before-cutoff")).toBeUndefined()
+  expect(
+    getModelsDevModelMaxOutputTokens("example", "before-cutoff"),
+  ).toBeUndefined()
+  expect(
+    getModelsDevModelProviderType("example", "before-cutoff"),
+  ).toBeUndefined()
+  expect(getModelsDevModelApi("example", "before-cutoff")).toBeUndefined()
+  expect(getModelsDevModelProviderType("example", "on-cutoff")).toBe(
+    "openai-compatible",
+  )
+  expect(catalog).toEqual(original)
 })
 
 test("exposes raw models.dev metadata even for providers excluded from the provider picker", () => {

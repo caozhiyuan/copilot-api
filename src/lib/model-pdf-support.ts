@@ -4,6 +4,7 @@ import type { Model } from "~/lib/types/models"
 import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
 import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import { getModelsDevModel } from "~/lib/models-dev-cache"
+import { resolveProviderModelsDevId } from "~/lib/provider-model-catalog"
 
 interface PdfSupportOptions {
   supportPdf?: boolean
@@ -33,12 +34,13 @@ export function getProviderModelPdfSupport(
   provider: Pick<
     ResolvedProviderConfig,
     "name" | "modelsDevProviderId" | "models"
-  >,
+  >
+    & Partial<Pick<ResolvedProviderConfig, "baseUrl">>,
   selectedModel?: Model,
 ): boolean {
   const rawId = selectedModel?.id ?? modelId
   const modelConfig = provider.models?.[rawId] ?? provider.models?.[modelId]
-  const catalogProvider = provider.modelsDevProviderId || provider.name
+  const catalogProvider = resolveProviderModelsDevId(provider.name, provider)
   const catalog =
     getModelsDevModel(catalogProvider, rawId)
     ?? getModelsDevModel(catalogProvider, modelId)

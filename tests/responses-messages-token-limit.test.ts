@@ -9,7 +9,10 @@ import { state } from "~/lib/state"
 import { translateAnthropicMessagesToResponsesPayload } from "~/routes/messages/responses-translation"
 import { translateResponsesToMessages } from "~/routes/responses/messages-translation"
 
-import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
+import {
+  modelsDevCatalogFixture,
+  modelsDevProviderCatalogFixture,
+} from "./fixtures/models-dev-catalog"
 
 const translate = (model: string, maxOutputTokens?: number | null) =>
   translateResponsesToMessages(
@@ -30,7 +33,7 @@ describe("Responses Messages output token defaults", () => {
     originalModels = state.models
     state.models = undefined
     providers = {}
-    installModelsDevCatalog(modelsDevCatalogFixture)
+    installModelsDevCatalog(modelsDevProviderCatalogFixture)
     const lookup = spyOn(
       providerConfig,
       "getRawProviderConfig",
@@ -64,7 +67,7 @@ describe("Responses Messages output token defaults", () => {
   })
 
   test.each([undefined, null])(
-    "uses builtin model metadata when max_output_tokens is %j",
+    "uses cached model metadata when max_output_tokens is %j",
     (maxOutputTokens) => {
       expect(
         translate("deepseek/deepseek-v4-pro", maxOutputTokens).max_tokens,
@@ -73,7 +76,7 @@ describe("Responses Messages output token defaults", () => {
   )
 
   test.each([0, -1, 1.5, NaN, Infinity])(
-    "ignores invalid configured limits %j and uses builtin metadata",
+    "ignores invalid configured limits %j and uses cached metadata",
     (maxOutputTokens) => {
       providers.deepseek = {
         models: { "deepseek-v4-pro": { maxOutputTokens } },
@@ -153,7 +156,7 @@ describe("Responses Messages output token defaults", () => {
   })
 
   test.each([undefined, 0, -1, 1.5, NaN, Infinity])(
-    "falls back to builtin limits when models.dev output is invalid: %j",
+    "falls back to 32000 when models.dev output is invalid: %j",
     (output) => {
       installModelsDevCatalog({
         ...modelsDevCatalogFixture,
@@ -162,7 +165,7 @@ describe("Responses Messages output token defaults", () => {
         },
       })
 
-      expect(translate("deepseek/deepseek-v4-pro").max_tokens).toBe(64_000)
+      expect(translate("deepseek/deepseek-v4-pro").max_tokens).toBe(32_000)
     },
   )
 

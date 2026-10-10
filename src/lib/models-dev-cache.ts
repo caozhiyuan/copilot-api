@@ -29,6 +29,7 @@ const MODELS_DEV_URL = "https://models.dev/api.json"
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const FETCH_TIMEOUT_MS = 15_000
 const OPENCODE_GO = "opencode-go"
+const MIN_RELEASE_DATE = Date.parse("2026-05-01")
 const REASONING_EFFORTS = new Set<CodexReasoningEffort>([
   "none",
   "minimal",
@@ -46,7 +47,7 @@ interface ModelRecord {
   name: string
   object: "model"
   created: number
-  owned_by: typeof OPENCODE_GO
+  owned_by: string
   context_window?: number
   max_output_tokens?: number
   input_modalities?: Array<BuiltinProviderInputModality>
@@ -66,10 +67,6 @@ interface CatalogSnapshot {
   selectableProviders: Array<ModelsDevProviderOption>
   selectableProviderModelTypes: Record<string, Record<string, ProviderType>>
   selectableProviderModelApis: Record<string, Record<string, string>>
-  selectableProviderModelPricing: Record<
-    string,
-    Record<string, TokenUsagePricingConfig>
-  >
 }
 
 export interface ModelsDevProviderOption {
@@ -101,6 +98,15 @@ let activeRefresh: Promise<void> | null = null
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isVisibleModel(model: unknown): model is ModelsDevModel {
+  if (!isRecord(model) || model.status === "deprecated") return false
+  const releaseDate =
+    typeof model.release_date === "string" ?
+      Date.parse(model.release_date)
+    : NaN
+  return !(releaseDate < MIN_RELEASE_DATE)
 }
 
 function getMetadataPath(cachePath: string): string {
@@ -223,21 +229,36 @@ function mapModelConfig(model: ModelsDevModel): BuiltinProviderModelConfig {
   const inputModalities = mapInputModalities(model.modalities)
   const reasoningField = mapReasoningField(model)
   const pricing = mapPricing(model.cost)
-  const defaultReasoningEffort =
-    (
-      (model.family === "Hy" || model.family === "grok")
-      && reasoningEfforts.includes("high")
-    ) ?
-      "high"
-    : undefined
   return {
     ...(contextWindow && { contextWindow }),
     ...(maxOutputTokens && { maxOutputTokens }),
     ...(inputModalities.length > 0 && { inputModalities }),
     ...(reasoningEfforts.length > 0 && { reasoningEfforts }),
-    ...(defaultReasoningEffort && { defaultReasoningEffort }),
     ...(reasoningField && { reasoningField }),
     ...(pricing && { pricing }),
+  }
+}
+
+function mapModelRecord(
+  provider: string,
+  id: string,
+  model: ModelsDevModel,
+  config = mapModelConfig(model),
+): ModelRecord {
+  return {
+    id,
+    name: typeof model.name === "string" && model.name.trim() ? model.name : id,
+    object: "model",
+    created: 0,
+    owned_by: provider,
+    ...(config.contextWindow && { context_window: config.contextWindow }),
+    ...(config.maxOutputTokens && {
+      max_output_tokens: config.maxOutputTokens,
+    }),
+    ...(config.inputModalities && { input_modalities: config.inputModalities }),
+    ...(config.reasoningEfforts && {
+      reasoning_efforts: config.reasoningEfforts,
+    }),
   }
 }
 
@@ -286,7 +307,6 @@ function parseSelectableProviders(
   | "selectableProviders"
   | "selectableProviderModelTypes"
   | "selectableProviderModelApis"
-  | "selectableProviderModelPricing"
 > {
   const selectableProviders: Array<ModelsDevProviderOption> = []
   const selectableProviderModelTypes: Record<
@@ -297,13 +317,6 @@ function parseSelectableProviders(
     string,
     Record<string, string>
   > = Object.create(null) as Record<string, Record<string, string>>
-  const selectableProviderModelPricing: Record<
-    string,
-    Record<string, TokenUsagePricingConfig>
-  > = Object.create(null) as Record<
-    string,
-    Record<string, TokenUsagePricingConfig>
-  >
 
   for (const [id, value] of Object.entries(data)) {
     if (
@@ -344,12 +357,9 @@ function parseSelectableProviders(
       string,
       string
     >
-    const modelPricing: Record<string, TokenUsagePricingConfig> = Object.create(
-      null,
-    ) as Record<string, TokenUsagePricingConfig>
     if (isRecord(value.models)) {
       for (const [modelId, model] of Object.entries(value.models)) {
-        if (!isRecord(model) || model.status === "deprecated") continue
+        if (!isVisibleModel(model)) continue
         const modelProvider = isRecord(model.provider) ? model.provider : null
         const modelNpm = modelProvider?.npm ?? value.npm
         if (
@@ -359,20 +369,14 @@ function parseSelectableProviders(
         ) {
           continue
         }
-        const type = mapProviderType(
-          model as unknown as ModelsDevModel,
-          value.npm,
-        )
+        const type = mapProviderType(model, value.npm)
         modelTypes[modelId] = type
         const modelApi = normalizeCatalogApi(modelProvider?.api)
         if (modelApi) modelApis[modelId] = modelApi
-        const pricing = mapPricing((model as unknown as ModelsDevModel).cost)
-        if (pricing) modelPricing[modelId] = pricing
       }
     }
     selectableProviderModelTypes[id] = modelTypes
     selectableProviderModelApis[id] = modelApis
-    selectableProviderModelPricing[id] = modelPricing
   }
 
   selectableProviders.sort(
@@ -383,7 +387,6 @@ function parseSelectableProviders(
     selectableProviders,
     selectableProviderModelTypes,
     selectableProviderModelApis,
-    selectableProviderModelPricing,
   }
 }
 
@@ -395,10 +398,8 @@ function parseModelOutputTokens(
     if (!isRecord(provider) || !isRecord(provider.models)) continue
     const models = Object.create(null) as Record<string, number>
     for (const [modelId, model] of Object.entries(provider.models)) {
-      if (!isRecord(model) || model.status === "deprecated") continue
-      const output = positiveNumber(
-        (model as unknown as ModelsDevModel).limit?.output,
-      )
+      if (!isVisibleModel(model)) continue
+      const output = positiveNumber(model.limit?.output)
       if (output !== undefined && Number.isInteger(output)) {
         models[modelId] = output
       }
@@ -429,34 +430,11 @@ function parseCatalog(data: unknown): CatalogSnapshot {
   const typedModels = models as ModelsDevProviderMap[string]["models"]
   for (const id of Object.keys(typedModels).sort()) {
     const value = typedModels[id]
-    if (
-      !id.trim()
-      || !isRecord(value)
-      || value.id !== id
-      || value.status === "deprecated"
-    )
-      continue
+    if (!id.trim() || !isVisibleModel(value) || value.id !== id) continue
     const config = mapModelConfig(value)
     configs[id] = config
     providerTypes[id] = mapProviderType(value, providerNpm)
-    records.push({
-      id,
-      name:
-        typeof value.name === "string" && value.name.trim() ? value.name : id,
-      object: "model",
-      created: 0,
-      owned_by: OPENCODE_GO,
-      ...(config.contextWindow && { context_window: config.contextWindow }),
-      ...(config.maxOutputTokens && {
-        max_output_tokens: config.maxOutputTokens,
-      }),
-      ...(config.inputModalities && {
-        input_modalities: config.inputModalities,
-      }),
-      ...(config.reasoningEfforts && {
-        reasoning_efforts: config.reasoningEfforts,
-      }),
-    })
+    records.push(mapModelRecord(OPENCODE_GO, id, value, config))
   }
 
   if (records.length === 0) {
@@ -503,14 +481,47 @@ export function getOpencodeGoModelRecords(): Array<ModelRecord> {
   return snapshot?.records ?? []
 }
 
+export function getModelsDevProviderModelRecords(
+  providerId: string,
+): Array<ModelRecord> {
+  const models = snapshot?.catalog[providerId]?.models
+  if (!isRecord(models)) return []
+
+  return Object.keys(models)
+    .sort()
+    .flatMap((id) => {
+      const model = models[id]
+      if (!id.trim() || !isVisibleModel(model) || model.id !== id) {
+        return []
+      }
+      return [mapModelRecord(providerId, id, model)]
+    })
+}
+
 export function getModelsDevProviderOptions(): Array<ModelsDevProviderOption> {
   return snapshot?.selectableProviders ?? []
+}
+
+export function getModelsDevModelConfig(
+  providerId: string,
+  modelId: string,
+): BuiltinProviderModelConfig | undefined {
+  const model = getModelsDevModel(providerId, modelId)
+  return isVisibleModel(model) ? mapModelConfig(model) : undefined
+}
+
+export function isModelsDevModelVisible(
+  providerId: string,
+  modelId: string,
+): boolean {
+  const model = getModelsDevModel(providerId, modelId)
+  return model === undefined || isVisibleModel(model)
 }
 
 export function getModelsDevProviderModelIds(
   providerId: string,
 ): Array<string> {
-  return Object.keys(snapshot?.selectableProviderModelTypes[providerId] ?? {})
+  return getModelsDevProviderModelRecords(providerId).map((model) => model.id)
 }
 
 export async function loadCachedModelsDevCatalog(): Promise<void> {
@@ -547,7 +558,7 @@ export function getModelsDevModelPricing(
   providerId: string,
   modelId: string,
 ): TokenUsagePricingConfig | undefined {
-  return snapshot?.selectableProviderModelPricing[providerId]?.[modelId]
+  return getModelsDevModelConfig(providerId, modelId)?.pricing
 }
 
 export function getModelsDevModel(
