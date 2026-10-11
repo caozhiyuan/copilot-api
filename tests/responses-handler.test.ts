@@ -1184,6 +1184,72 @@ describe("responses handler token usage", () => {
     ["http", ["/responses"]],
     ["websocket", ["/responses", "ws:/responses"]],
   ] as const) {
+    test(`translates Guardian agent messages before the ${transport} transport`, async () => {
+      state.models = {
+        object: "list",
+        data: [
+          {
+            capabilities: { limits: { max_prompt_tokens: 128000 } },
+            id: "gpt-test",
+            supported_endpoints: [...supportedEndpoints],
+          },
+        ],
+      } as typeof state.models
+      createResponses.mockImplementation((payload) =>
+        Promise.resolve(createResponsesResult(payload.model)),
+      )
+
+      const response = await createApp().request("/v1/responses", {
+        body: JSON.stringify({
+          model: "gpt-test",
+          prompt_cache_key: "guardian:01a12870-03e0-7331-8eec-2b0677454fba",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "guardian_decision",
+              schema: { type: "object" },
+            },
+          },
+          input: [
+            { type: "message", role: "developer", content: "Review action" },
+            {
+              id: "amsg-1",
+              type: "agent_message",
+              author: "agent-a",
+              recipient: "agent-b",
+              content: [
+                { type: "input_text", text: "Planned action" },
+                {
+                  type: "encrypted_content",
+                  encrypted_content: "encrypted-handoff",
+                },
+              ],
+            },
+          ],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(200)
+      expect(createResponses).toHaveBeenCalledTimes(1)
+      const [payload, options] = createResponses.mock.calls[0]
+      expect(options.transport).toBe(transport)
+      expect(options.initiator).toBe("user")
+      expect(payload.input).toEqual([
+        { type: "message", role: "developer", content: "Review action" },
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "Planned action" }],
+        },
+      ])
+      expect(payload.prompt_cache_key).toBe(
+        "guardian:01a12870-03e0-7331-8eec-2b0677454fba",
+      )
+      expect(payload.text?.format?.type).toBe("json_schema")
+    })
+
     test(`sanitizes unsupported Copilot input fields before the ${transport} transport`, async () => {
       state.models = {
         object: "list",

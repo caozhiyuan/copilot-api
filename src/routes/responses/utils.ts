@@ -2,6 +2,7 @@ import type {
   ResponseContextManagementCompactionItem,
   ResponseCustomToolCallOutputItem,
   ResponseFunctionCallOutputItem,
+  ResponseInputAgentMessage,
   ResponseInputContent,
   ResponseInputImage,
   ResponseInputItem,
@@ -144,6 +145,41 @@ const REDACTED_IMAGE_PLACEHOLDER_DATA_URL =
 const COPILOT_UNSUPPORTED_INPUT_ITEM_FIELDS = [
   "internal_chat_message_metadata_passthrough",
 ] as const
+
+const isInputAgentMessage = (
+  item: ResponseInputItem,
+): item is ResponseInputAgentMessage => item.type === "agent_message"
+
+export const normalizeGuardianAgentMessages = (
+  payload: ResponsesPayload,
+): number => {
+  if (
+    !payload.prompt_cache_key?.startsWith("guardia")
+    || payload.text?.format?.type !== "json_schema"
+    || !Array.isArray(payload.input)
+  ) {
+    return 0
+  }
+
+  let normalizedCount = 0
+  payload.input = payload.input.map((item: ResponseInputItem) => {
+    if (!isInputAgentMessage(item)) return item
+
+    const agentMessage = item
+    normalizedCount += 1
+    return {
+      type: "message",
+      role: "user",
+      // Discard encrypted blocks to fix Copilot's error:
+      // "Encrypted function output content could not be decrypted or decoded."
+      content: agentMessage.content.filter(
+        (part) => part.type !== "encrypted_content",
+      ),
+    } satisfies ResponseInputMessage
+  })
+
+  return normalizedCount
+}
 
 export const sanitizeUnsupportedInputFields = (
   payload: ResponsesPayload,
