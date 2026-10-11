@@ -34,6 +34,8 @@ const allowedAnthropicBetas = new Set([
   "context-management-2025-06-27",
   ADVANCED_TOOL_USE_BETA,
   EXTENDED_CACHE_TTL_BETA,
+  "mid-conversation-output-config-2026-07-01",
+  "per-turn-control-2026-07-01",
 ])
 
 export const buildAnthropicBetaHeader = (
