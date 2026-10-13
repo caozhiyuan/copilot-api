@@ -82,6 +82,10 @@ export interface TokenUsageModelSummary extends TokenUsageTotals {
   model: string
 }
 
+export interface TokenUsageSessionSummary extends TokenUsageTotals {
+  session_id: string
+}
+
 export interface TokenUsageEventRecord {
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
@@ -104,6 +108,7 @@ export interface TokenUsageEventRecord {
 
 export interface TokenUsageSummary {
   byModel: Array<TokenUsageModelSummary>
+  bySession: Array<TokenUsageSessionSummary>
   period: TokenUsagePeriod
   range: {
     end_ms: number
@@ -520,6 +525,7 @@ function createEmptySummary(period: TokenUsagePeriod): TokenUsageSummary {
 
   return {
     byModel: [],
+    bySession: [],
     period,
     range: {
       end_ms: range.endMs,
@@ -826,6 +832,65 @@ function getModelCostMap(
   return costMap
 }
 
+function getSessionSummaries(
+  db: SqliteDatabase,
+  range: { endMs: number; startMs: number },
+): Array<TokenUsageSessionSummary> {
+  const rows = db
+    .prepare(
+      `
+    SELECT
+      session_id,
+      COUNT(*) AS request_count,
+      COALESCE(SUM(input_tokens), 0) AS input_tokens,
+      COALESCE(SUM(output_tokens), 0) AS output_tokens,
+      COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+      COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
+      SUM(total_nano_aiu) AS total_nano_aiu,
+      COALESCE(SUM(total_tokens), 0) AS total_tokens
+    FROM token_usage_events
+    WHERE created_at_ms >= ? AND created_at_ms < ?
+    GROUP BY session_id
+    ORDER BY total_tokens DESC, session_id ASC
+  `,
+    )
+    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+  const costRows = db
+    .prepare(
+      `
+    SELECT
+      session_id,
+      cost_currency,
+      COALESCE(SUM(total_cost_nanos), 0) AS total_cost_nanos
+    FROM token_usage_events
+    WHERE
+      created_at_ms >= ?
+      AND created_at_ms < ?
+      AND cost_currency IS NOT NULL
+      AND total_cost_nanos IS NOT NULL
+    GROUP BY session_id, cost_currency
+    ORDER BY session_id ASC, cost_currency ASC
+  `,
+    )
+    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+  const costMap = new Map<string, Array<TokenUsageCost>>()
+  for (const row of costRows) {
+    const cost = costFromRow(row)
+    if (cost) {
+      const id = stringFromRow(row, "session_id")
+      costMap.set(id, [...(costMap.get(id) ?? []), cost])
+    }
+  }
+
+  return rows.map((row) => {
+    const session_id = stringFromRow(row, "session_id")
+    return {
+      ...totalsFromRow(row, costMap.get(session_id) ?? []),
+      session_id,
+    }
+  })
+}
+
 function getModelSummaries(
   db: SqliteDatabase,
   range: { endMs: number; startMs: number },
@@ -969,6 +1034,7 @@ export async function getTokenUsageSummary(
 
   return {
     byModel: getModelSummaries(db, range),
+    bySession: getSessionSummaries(db, range),
     period,
     range: rangePayload(range),
     totals: totalsFromRow(totalsRow, getCostRows(db, range)),

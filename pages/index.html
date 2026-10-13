@@ -672,6 +672,7 @@
         };
 
         // --- State Management ---
+        const SESSION_PAGE_SIZE = 10;
         const state = {
           activeTab: "usage",
           models: null,
@@ -687,6 +688,7 @@
           data: null,
           tokenUsageDailySummary: null,
           tokenUsageSummary: null,
+          tokenUsageSessionPage: 1,
           tokenUsageEventsPage: null,
           tokenUsageDailyError: null,
           tokenUsageSummaryError: null,
@@ -1635,6 +1637,13 @@
           const summary = state.tokenUsageSummary;
           const dailySummary = state.tokenUsageDailySummary;
           const eventsPage = state.tokenUsageEventsPage;
+          const sessionCount = summary?.bySession?.length ?? 0;
+          const sessionPages = Math.max(1, Math.ceil(sessionCount / SESSION_PAGE_SIZE));
+          const sessionPage = Math.min(state.tokenUsageSessionPage, sessionPages);
+          const sessionRows = (summary?.bySession ?? []).slice(
+            (sessionPage - 1) * SESSION_PAGE_SIZE,
+            sessionPage * SESSION_PAGE_SIZE
+          );
           const totals = summary?.totals || EMPTY_TOKEN_USAGE_TOTALS;
           const activeRange =
             summary?.range || dailySummary?.range || eventsPage?.range || null;
@@ -1781,6 +1790,20 @@
                     </div>
                   </div>
                   ${renderTokenUsageModelBreakdown(summary)}
+                </div>
+
+                <div class="panel">
+                  <div class="panel-header">
+                    <div>
+                      <p class="panel-title">Session Breakdown</p>
+                      <p class="panel-meta">${summary ? `Page ${sessionPage} / ${sessionPages} - ${formatNumber(sessionCount)} sessions` : "No summary rows loaded."}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <button type="button" data-session-page="-1" class="pill-button px-3 py-1.5 text-xs font-semibold" ${sessionPage <= 1 ? "disabled" : ""}>Previous</button>
+                      <button type="button" data-session-page="1" class="pill-button px-3 py-1.5 text-xs font-semibold" ${sessionPage >= sessionPages ? "disabled" : ""}>Next</button>
+                    </div>
+                  </div>
+                  ${renderTokenUsageModelBreakdown(summary && { ...summary, bySession: sessionRows }, "session")}
                 </div>
 
                 <div class="panel">
@@ -2248,20 +2271,22 @@
           `;
         }
 
-        function renderTokenUsageModelBreakdown(summary) {
-          if (!summary || summary.byModel.length === 0) {
+        function renderTokenUsageModelBreakdown(summary, by = "model") {
+          const items = by === "session" ? summary?.bySession : summary?.byModel;
+          if (!items || items.length === 0) {
             return renderEmptyState(
               "No token usage recorded for the selected period."
             );
           }
 
-          const rows = summary.byModel
+          const rows = items
             .map((model) => {
+              const name = formatCellText(by === "session" ? model.session_id : model.model);
               return `
                 <tr class="border-b last:border-b-0" style="border-color: var(--color-bg-light-1);">
-                  <td class="px-4 py-2 max-w-[280px] truncate" style="color: var(--color-fg-lightest);" title="${escapeHtml(
-                    model.model
-                  )}">${escapeHtml(model.model)}</td>
+                  <td class="px-4 py-2 max-w-[280px] truncate${by === "session" ? " font-mono" : ""}" style="color: var(--color-fg-lightest);" title="${escapeHtml(
+                    name
+                  )}">${escapeHtml(name)}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     model.request_count
                   )}</td>
@@ -2296,7 +2321,7 @@
               <table class="data-table min-w-[960px] text-left">
                 <thead>
                   <tr>
-                    <th class="px-4 py-2 font-semibold">Model</th>
+                    <th class="px-4 py-2 font-semibold">${by === "session" ? "Session" : "Model"}</th>
                     <th class="px-4 py-2 text-right font-semibold">Requests</th>
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
@@ -2516,6 +2541,7 @@
 
             if (summaryResult.status === "fulfilled") {
               state.tokenUsageSummary = summaryResult.value;
+              state.tokenUsageSessionPage = 1;
             } else if (
               isMissingTokenUsageEndpointError(summaryResult.reason)
             ) {
@@ -2607,6 +2633,7 @@
 
             if (summaryResult.status === "fulfilled") {
               state.tokenUsageSummary = summaryResult.value;
+              state.tokenUsageSessionPage = 1;
             } else if (
               isMissingTokenUsageEndpointError(summaryResult.reason)
             ) {
@@ -2750,6 +2777,16 @@
               state.tokenUsageTrendDay = day;
               render();
             }
+            return;
+          }
+
+          const sessionButton = event.target.closest("[data-session-page]");
+          if (sessionButton) {
+            state.tokenUsageSessionPage = Math.max(
+              1,
+              state.tokenUsageSessionPage + Number(sessionButton.getAttribute("data-session-page"))
+            );
+            render();
             return;
           }
 
