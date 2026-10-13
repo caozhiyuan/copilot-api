@@ -114,6 +114,11 @@ describe("usage viewer model cache hit rate", () => {
       ),
       extractInlineFunctionRange(
         html,
+        "        function formatCellText(value) {",
+        "        function formatRangeDate(value) {",
+      ),
+      extractInlineFunctionRange(
+        html,
         "        function renderTokenUsageValueLines(value) {",
         "        function renderTokenUsageEventsTable(eventsPage) {",
       ),
@@ -132,9 +137,11 @@ describe("usage viewer model cache hit rate", () => {
     const state: {
       isTokenUsageLoading: boolean
       tokenUsageSummary?: TokenUsageSummary
-    } = { isTokenUsageLoading: false }
+      tokenUsageSessionPage: number
+    } = { isTokenUsageLoading: false, tokenUsageSessionPage: 1 }
     const viewer = runInNewContext(source, {
       state,
+      SESSION_PAGE_SIZE: 10,
       renderTokenUsageRangeText: () => "Today",
       renderTokenUsageDailyTrend: () => "",
       renderPaginationButton: () => "",
@@ -297,6 +304,11 @@ describe("usage viewer cost metrics", () => {
       ),
       extractInlineFunctionRange(
         html,
+        "        function formatCellText(value) {",
+        "        function formatRangeDate(value) {",
+      ),
+      extractInlineFunctionRange(
+        html,
         "        function renderTokenUsageValueLines(value) {",
         "        function renderTokenUsageEventsTable(eventsPage) {",
       ),
@@ -315,9 +327,11 @@ describe("usage viewer cost metrics", () => {
     const state: {
       isTokenUsageLoading: boolean
       tokenUsageSummary?: TokenUsageSummary
-    } = { isTokenUsageLoading: false }
+      tokenUsageSessionPage: number
+    } = { isTokenUsageLoading: false, tokenUsageSessionPage: 1 }
     const viewer = runInNewContext(source, {
       state,
+      SESSION_PAGE_SIZE: 10,
       renderTokenUsageRangeText: () => "Today",
       renderTokenUsageDailyTrend: () => "",
       renderPaginationButton: () => "",
@@ -365,6 +379,51 @@ describe("usage viewer cost metrics", () => {
           node.querySelector(".metric-label")?.textContent?.trim() === "Cost",
       )
       expect(costCard?.querySelector(".metric-value")?.textContent).toBe("—")
+
+      const sessions = Array.from({ length: 25 }, (_, index) => ({
+        ...summaryFor([]).totals,
+        session_id: `session-${index + 1}`,
+      }))
+      state.tokenUsageSummary = {
+        ...summaryFor([]),
+        bySession: sessions,
+      } as TokenUsageSummary
+      const sessionPanel = () =>
+        [...win.document.querySelectorAll(".panel")].find(
+          (node) =>
+            node.querySelector(".panel-title")?.textContent
+            === "Session Breakdown",
+        )!
+      const sessionIds = () =>
+        [...sessionPanel().querySelectorAll("tbody tr td:first-child")].map(
+          (node) => node.textContent,
+        )
+      const nextButton = () =>
+        sessionPanel().querySelector('[data-session-page="1"]')!
+      const previousButton = () =>
+        sessionPanel().querySelector('[data-session-page="-1"]')!
+
+      win.document.body.innerHTML = viewer.renderTokenUsageSection()
+      expect(sessionIds()).toHaveLength(10)
+      expect(sessionIds()[0]).toBe("session-1")
+      expect(sessionPanel().textContent).toContain("Page 1 / 3 - 25 sessions")
+      expect(previousButton().hasAttribute("disabled")).toBe(true)
+      expect(nextButton().hasAttribute("disabled")).toBe(false)
+
+      state.tokenUsageSessionPage = 3
+      win.document.body.innerHTML = viewer.renderTokenUsageSection()
+      expect(sessionIds()).toEqual([
+        "session-21",
+        "session-22",
+        "session-23",
+        "session-24",
+        "session-25",
+      ])
+      expect(nextButton().hasAttribute("disabled")).toBe(true)
+
+      state.tokenUsageSessionPage = 99
+      win.document.body.innerHTML = viewer.renderTokenUsageSection()
+      expect(sessionPanel().textContent).toContain("Page 3 / 3")
     } finally {
       await win.happyDOM.close()
     }
