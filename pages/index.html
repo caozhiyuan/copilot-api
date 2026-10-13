@@ -690,6 +690,8 @@
           tokenUsageSummary: null,
           tokenUsageSessionsPage: null,
           isSessionsLoading: false,
+          sessionsRequestId: 0,
+          tokenUsageSessionsError: null,
           tokenUsageEventsPage: null,
           tokenUsageDailyError: null,
           tokenUsageSummaryError: null,
@@ -1807,6 +1809,14 @@
                       <button type="button" data-session-page="1" class="pill-button px-3 py-1.5 text-xs font-semibold" ${!sessionsPage || state.isSessionsLoading || sessionsPage.page >= sessionsPage.total_pages ? "disabled" : ""}>Next</button>
                     </div>
                   </div>
+                  ${
+                    state.tokenUsageSessionsError
+                      ? `<div class="p-4">${renderError(
+                          state.tokenUsageSessionsError,
+                          "Session breakdown failed"
+                        )}<button type="button" data-session-page="0" class="pill-button mt-2 px-3 py-1.5 text-xs font-semibold">Retry</button></div>`
+                      : ""
+                  }
                   ${renderTokenUsageModelBreakdown({ bySession: sessionsPage?.items }, "session")}
                 </div>
 
@@ -2520,6 +2530,7 @@
 
           const period = getSelectedPeriod();
           state.isLoading = true;
+          invalidateSessionsRequest();
           state.error = null;
           state.tokenUsageDailyError = null;
           state.tokenUsageSummaryError = null;
@@ -2618,6 +2629,7 @@
 
           const period = getSelectedPeriod();
           state.isTokenUsageLoading = true;
+          invalidateSessionsRequest();
           state.tokenUsageDailySummary = null;
           state.tokenUsageSessionsPage = null;
           state.tokenUsageSummary = null;
@@ -2730,11 +2742,13 @@
             return;
           }
 
+          const requestId = ++state.sessionsRequestId;
           state.isSessionsLoading = true;
+          state.tokenUsageSessionsError = null;
           render();
 
           try {
-            state.tokenUsageSessionsPage = await fetchJson(
+            const result = await fetchJson(
               buildTokenUsageEventsUrl(
                 resolveUsageUrl(endpoint),
                 getSelectedPeriod(),
@@ -2742,16 +2756,33 @@
                 "sessions"
               )
             );
-          } catch (error) {
-            // Older servers have no sessions endpoint; show the empty state.
-            state.tokenUsageSessionsPage = null;
-            if (!isMissingTokenUsageEndpointError(error)) {
-              console.error("Token usage sessions fetch error:", error);
+            if (requestId !== state.sessionsRequestId) {
+              return;
             }
-          } finally {
-            state.isSessionsLoading = false;
-            render("usage");
+            state.tokenUsageSessionsPage = result;
+          } catch (error) {
+            if (requestId !== state.sessionsRequestId) {
+              return;
+            }
+            // Older servers have no sessions endpoint; show the empty state.
+            if (isMissingTokenUsageEndpointError(error)) {
+              state.tokenUsageSessionsPage = null;
+            } else {
+              console.error("Token usage sessions fetch error:", error);
+              state.tokenUsageSessionsError = getErrorMessage(error);
+            }
           }
+
+          state.isSessionsLoading = false;
+          render("usage");
+        }
+
+        // Drops any in-flight sessions request so a late response cannot
+        // overwrite data for a different period.
+        function invalidateSessionsRequest() {
+          state.sessionsRequestId += 1;
+          state.isSessionsLoading = false;
+          state.tokenUsageSessionsError = null;
         }
 
         // --- Event Handlers & Initialization ---
@@ -2817,9 +2848,10 @@
 
           const sessionButton = event.target.closest("[data-session-page]");
           if (sessionButton) {
-            if (state.tokenUsageSessionsPage && !state.isSessionsLoading) {
+            if (!state.isSessionsLoading) {
+              // Offset 0 is the error retry button: reload the current page.
               void fetchTokenUsageSessionsPage(
-                state.tokenUsageSessionsPage.page
+                (state.tokenUsageSessionsPage?.page ?? 1)
                   + Number(sessionButton.getAttribute("data-session-page"))
               );
             }
