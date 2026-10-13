@@ -19,6 +19,7 @@ import {
   type TokenUsageDailySummary,
   type TokenUsageEventsPage,
   type TokenUsagePeriod,
+  type TokenUsageSessionsPage,
   type TokenUsageSummary,
 } from "~/lib/token-usage"
 import {
@@ -972,5 +973,51 @@ describe("token usage storage", () => {
     expect(daily.days[0]?.totals.total_tokens).toBe(0)
     expect(daily.byModel).toEqual([])
     expect(daily.totals.request_count).toBe(0)
+  })
+})
+
+describe("token usage sessions page", () => {
+  test("aggregates per session and paginates on the server", async () => {
+    for (const [sessionId, tokens] of [
+      ["session-a", 10],
+      ["session-a", 20],
+      ["session-b", 5],
+      ["session-c", 50],
+    ] as const) {
+      recordTokenUsageEvent({
+        endpoint: "messages",
+        input_tokens: tokens,
+        model: "gpt-test",
+        output_tokens: 0,
+        sessionId,
+        source: "copilot",
+      })
+    }
+
+    const fetchPage = async (page: number) => {
+      const response = await createTokenUsageApp().request(
+        `/token-usage/sessions?period=today&page=${page}&page_size=2`,
+      )
+      expect(response.status).toBe(200)
+      return (await response.json()) as TokenUsageSessionsPage
+    }
+
+    const first = await fetchPage(1)
+    expect(first.total).toBe(3)
+    expect(first.total_pages).toBe(2)
+    expect(
+      first.items.map((row) => [
+        row.session_id,
+        row.request_count,
+        row.total_tokens,
+      ]),
+    ).toEqual([
+      ["session-c", 1, 50],
+      ["session-a", 2, 30],
+    ])
+
+    const second = await fetchPage(2)
+    expect(second.items.map((row) => row.session_id)).toEqual(["session-b"])
+    expect((await fetchPage(3)).items).toEqual([])
   })
 })

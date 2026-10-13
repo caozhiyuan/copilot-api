@@ -137,11 +137,15 @@ describe("usage viewer model cache hit rate", () => {
     const state: {
       isTokenUsageLoading: boolean
       tokenUsageSummary?: TokenUsageSummary
-      tokenUsageSessionPage: number
-    } = { isTokenUsageLoading: false, tokenUsageSessionPage: 1 }
+      isSessionsLoading: boolean
+      tokenUsageSessionsPage: unknown
+    } = {
+      isTokenUsageLoading: false,
+      isSessionsLoading: false,
+      tokenUsageSessionsPage: null,
+    }
     const viewer = runInNewContext(source, {
       state,
-      SESSION_PAGE_SIZE: 10,
       renderTokenUsageRangeText: () => "Today",
       renderTokenUsageDailyTrend: () => "",
       renderPaginationButton: () => "",
@@ -327,11 +331,15 @@ describe("usage viewer cost metrics", () => {
     const state: {
       isTokenUsageLoading: boolean
       tokenUsageSummary?: TokenUsageSummary
-      tokenUsageSessionPage: number
-    } = { isTokenUsageLoading: false, tokenUsageSessionPage: 1 }
+      isSessionsLoading: boolean
+      tokenUsageSessionsPage: unknown
+    } = {
+      isTokenUsageLoading: false,
+      isSessionsLoading: false,
+      tokenUsageSessionsPage: null,
+    }
     const viewer = runInNewContext(source, {
       state,
-      SESSION_PAGE_SIZE: 10,
       renderTokenUsageRangeText: () => "Today",
       renderTokenUsageDailyTrend: () => "",
       renderPaginationButton: () => "",
@@ -380,14 +388,17 @@ describe("usage viewer cost metrics", () => {
       )
       expect(costCard?.querySelector(".metric-value")?.textContent).toBe("—")
 
-      const sessions = Array.from({ length: 25 }, (_, index) => ({
-        ...summaryFor([]).totals,
-        session_id: `session-${index + 1}`,
-      }))
-      state.tokenUsageSummary = {
-        ...summaryFor([]),
-        bySession: sessions,
-      } as TokenUsageSummary
+      state.tokenUsageSummary = summaryFor([])
+      const sessionsPage = (page: number, count: number) => ({
+        items: Array.from({ length: count }, (_, index) => ({
+          ...summaryFor([]).totals,
+          session_id: `session-${(page - 1) * 10 + index + 1}`,
+        })),
+        page,
+        total: 25,
+        total_pages: 3,
+      })
+      state.tokenUsageSessionsPage = sessionsPage(1, 10)
       const sessionPanel = () =>
         [...win.document.querySelectorAll(".panel")].find(
           (node) =>
@@ -410,7 +421,7 @@ describe("usage viewer cost metrics", () => {
       expect(previousButton().hasAttribute("disabled")).toBe(true)
       expect(nextButton().hasAttribute("disabled")).toBe(false)
 
-      state.tokenUsageSessionPage = 3
+      state.tokenUsageSessionsPage = sessionsPage(3, 5)
       win.document.body.innerHTML = viewer.renderTokenUsageSection()
       expect(sessionIds()).toEqual([
         "session-21",
@@ -421,9 +432,9 @@ describe("usage viewer cost metrics", () => {
       ])
       expect(nextButton().hasAttribute("disabled")).toBe(true)
 
-      state.tokenUsageSessionPage = 99
+      state.isSessionsLoading = true
       win.document.body.innerHTML = viewer.renderTokenUsageSection()
-      expect(sessionPanel().textContent).toContain("Page 3 / 3")
+      expect(previousButton().hasAttribute("disabled")).toBe(true)
     } finally {
       await win.happyDOM.close()
     }

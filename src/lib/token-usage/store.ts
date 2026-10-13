@@ -108,7 +108,6 @@ export interface TokenUsageEventRecord {
 
 export interface TokenUsageSummary {
   byModel: Array<TokenUsageModelSummary>
-  bySession: Array<TokenUsageSessionSummary>
   period: TokenUsagePeriod
   range: {
     end_ms: number
@@ -140,8 +139,8 @@ export interface TokenUsageDailySummary {
   totals: TokenUsageTotals
 }
 
-export interface TokenUsageEventsPage {
-  items: Array<TokenUsageEventRecord>
+interface TokenUsagePage<T> {
+  items: Array<T>
   page: number
   page_size: number
   period: TokenUsagePeriod
@@ -154,6 +153,9 @@ export interface TokenUsageEventsPage {
   total: number
   total_pages: number
 }
+
+export type TokenUsageEventsPage = TokenUsagePage<TokenUsageEventRecord>
+export type TokenUsageSessionsPage = TokenUsagePage<TokenUsageSessionSummary>
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 const DEFAULT_DB_FILENAME = "copilot-api.sqlite"
@@ -525,7 +527,6 @@ function createEmptySummary(period: TokenUsagePeriod): TokenUsageSummary {
 
   return {
     byModel: [],
-    bySession: [],
     period,
     range: {
       end_ms: range.endMs,
@@ -835,6 +836,8 @@ function getModelCostMap(
 function getSessionSummaries(
   db: SqliteDatabase,
   range: { endMs: number; startMs: number },
+  limit: number,
+  offset: number,
 ): Array<TokenUsageSessionSummary> {
   const rows = db
     .prepare(
@@ -852,9 +855,13 @@ function getSessionSummaries(
     WHERE created_at_ms >= ? AND created_at_ms < ?
     GROUP BY session_id
     ORDER BY total_tokens DESC, session_id ASC
+    LIMIT ? OFFSET ?
   `,
     )
-    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+    .all(range.startMs, range.endMs, limit, offset) as Array<
+    Record<string, unknown>
+  >
+  const sessionIds = rows.map((row) => stringFromRow(row, "session_id"))
   const costRows = db
     .prepare(
       `
@@ -866,13 +873,16 @@ function getSessionSummaries(
     WHERE
       created_at_ms >= ?
       AND created_at_ms < ?
+      AND session_id IN (${sessionIds.map(() => "?").join(", ")})
       AND cost_currency IS NOT NULL
       AND total_cost_nanos IS NOT NULL
     GROUP BY session_id, cost_currency
     ORDER BY session_id ASC, cost_currency ASC
   `,
     )
-    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+    .all(range.startMs, range.endMs, ...sessionIds) as Array<
+    Record<string, unknown>
+  >
   const costMap = new Map<string, Array<TokenUsageCost>>()
   for (const row of costRows) {
     const cost = costFromRow(row)
@@ -1034,7 +1044,6 @@ export async function getTokenUsageSummary(
 
   return {
     byModel: getModelSummaries(db, range),
-    bySession: getSessionSummaries(db, range),
     period,
     range: rangePayload(range),
     totals: totalsFromRow(totalsRow, getCostRows(db, range)),
@@ -1137,6 +1146,42 @@ export async function getTokenUsageEventsPage(input: {
       start_ms: range.startMs,
       start_utc: new Date(range.startMs).toISOString(),
     },
+    total,
+    total_pages: Math.max(1, Math.ceil(total / pageSize)),
+  }
+}
+
+export async function getTokenUsageSessionsPage(input: {
+  page: number
+  pageSize: number
+  period: TokenUsagePeriod
+}): Promise<TokenUsageSessionsPage> {
+  const page = Math.max(1, Math.floor(input.page))
+  const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize)))
+  if (!isTokenUsageStorageEnabled()) {
+    return { ...createEmptyEventsPage(input), items: [] }
+  }
+
+  await flushTokenUsageEvents()
+  const db = await getDb()
+  const range = getPeriodRangeFromDb(db, input.period)
+  const totalRow = db
+    .prepare(
+      `
+    SELECT COUNT(DISTINCT session_id) AS total
+    FROM token_usage_events
+    WHERE created_at_ms >= ? AND created_at_ms < ?
+  `,
+    )
+    .get(range.startMs, range.endMs) as Record<string, unknown> | undefined
+  const total = numberFromRow(totalRow, "total")
+
+  return {
+    items: getSessionSummaries(db, range, pageSize, (page - 1) * pageSize),
+    page,
+    page_size: pageSize,
+    period: input.period,
+    range: rangePayload(range),
     total,
     total_pages: Math.max(1, Math.ceil(total / pageSize)),
   }
