@@ -37,13 +37,20 @@ Copilot API is a local AI gateway that connects Claude Code, OpenCode, Codex, an
 **Bun >= 1.4.0 is recommended** for running the npm package. Node.js >= 22.13.0 (`npx`) is also supported. A Copilot subscription is needed only for the GitHub Copilot provider; other configured providers can run independently.
 
 ```sh
+# Bun (recommended)
 bunx --bun @jeffreycao/copilot-api start
+
+# Or use Node.js
+npx @jeffreycao/copilot-api@latest start
 ```
 
 The server listens on `http://localhost:4141` by default. Optionally authenticate with GitHub Copilot or configure a third-party provider first:
 
 ```sh
 bunx --bun @jeffreycao/copilot-api auth login
+
+# Or use Node.js
+npx @jeffreycao/copilot-api@latest auth login
 ```
 
 Verify the gateway is up:

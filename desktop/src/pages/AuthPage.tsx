@@ -125,9 +125,14 @@ export default function AuthPage({ onBack, onSuccess }: AuthPageProps) {
   const [error, setError] = useState('')
   const [polling, setPolling] = useState(false)
   const [copied, setCopied] = useState(false)
+  const mountedRef = useRef(false)
+  const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
+      clearTimeout(copyFeedbackTimer.current)
       const attempt = oauthLoginRef.current
       if (attempt) {
         attempt.unsubscribe()
@@ -175,15 +180,20 @@ export default function AuthPage({ onBack, onSuccess }: AuthPageProps) {
         .catch((err: unknown) => setError((err as Error).message))
   }
 
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      if (!mountedRef.current) return
+      setCopied(true)
+      clearTimeout(copyFeedbackTimer.current)
+      copyFeedbackTimer.current = setTimeout(() => setCopied(false), 1500)
+    } catch (err) {
+      if (mountedRef.current) setError((err as Error).message)
+    }
+  }
+
   const handleCopyCode = () => {
-    if (!pendingDeviceCode) return
-    void navigator.clipboard
-      .writeText(pendingDeviceCode.user_code)
-      .then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-      })
-      .catch((err: unknown) => setError((err as Error).message))
+    if (pendingDeviceCode) void copyText(pendingDeviceCode.user_code)
   }
 
   const handleSaveToken = async () => {
@@ -429,15 +439,7 @@ export default function AuthPage({ onBack, onSuccess }: AuthPageProps) {
     }
   }
 
-  const handleCopyCodexUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(codexAuthUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }
+  const handleCopyCodexUrl = () => copyText(codexAuthUrl)
 
   const handleOpenCodexUrl = async () => {
     try {

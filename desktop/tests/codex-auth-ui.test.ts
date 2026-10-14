@@ -186,6 +186,42 @@ async function start(back?: () => void, provider: 'codex' | 'xai' = 'codex') {
 }
 
 describe('Codex authorization page', () => {
+  test('clears the copied feedback timer when the authorization page unmounts', async () => {
+    const schedule = spyOn(globalThis, 'setTimeout')
+    const clear = spyOn(globalThis, 'clearTimeout')
+    await start()
+    await act(async () => button('Copy').click())
+    const timerIndex = schedule.mock.calls.findIndex(
+      ([, delay]) => delay === 1500,
+    )
+    expect(timerIndex).toBeGreaterThanOrEqual(0)
+    const timer = schedule.mock.results[timerIndex]
+    if (timer?.type !== 'return')
+      throw new Error('Copy feedback timer was not scheduled')
+    await act(async () => root.render(null))
+    expect(clear).toHaveBeenCalledWith(timer.value)
+  })
+
+  test.each(['resolve', 'reject'] as const)(
+    'ignores a clipboard operation that completes with %s after unmounting',
+    async (outcome) => {
+      const clipboard = Promise.withResolvers<void>()
+      copyUrl.mockReturnValueOnce(clipboard.promise)
+      await start()
+      await act(async () => button('Copy').click())
+      await act(async () => root.render(null))
+      const schedule = spyOn(globalThis, 'setTimeout')
+      await act(async () => {
+        if (outcome === 'resolve') clipboard.resolve()
+        else clipboard.reject(new Error('Clipboard closed'))
+      })
+      expect(schedule.mock.calls.some(([, delay]) => delay === 1500)).toBe(
+        false,
+      )
+      expect(container.textContent).toBe('')
+    },
+  )
+
   test('shows a copyable URL and opens the browser only after a manual click', async () => {
     await start()
     const field = container.querySelector('textarea')!

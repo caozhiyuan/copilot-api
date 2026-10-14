@@ -41,13 +41,20 @@ Copilot API 是一个本地 AI 网关，让 Claude Code、OpenCode、Codex 等�
 **推荐使用 Bun >= 1.4.0 运行 npm 包**，也支持 Node.js >= 22.13.0（`npx`）。使用 GitHub Copilot 时需要相应订阅；也可以配置其他 provider 独立运行。
 
 ```sh
+# Bun（推荐）
 bunx --bun @jeffreycao/copilot-api start
+
+# 也可以使用 Node.js
+npx @jeffreycao/copilot-api@latest start
 ```
 
 服务默认监听 `http://localhost:4141`。也可以先登录 GitHub Copilot 或配置第三方 provider：
 
 ```sh
 bunx --bun @jeffreycao/copilot-api auth login
+
+# 也可以使用 Node.js
+npx @jeffreycao/copilot-api@latest auth login
 ```
 
 验证网关已启动：
