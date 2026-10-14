@@ -34,24 +34,25 @@ Copilot API is a local AI gateway that connects Claude Code, OpenCode, Codex, an
 
 ## Quick Start
 
-**Bun >= 1.4.0 is recommended** for running the npm package. Node.js >= 22.13.0 (`npx`) is also supported. A Copilot subscription is needed only for the GitHub Copilot provider; other configured providers can run independently.
+Requires **Node.js >= 22.13.0** (npx) or **Bun >= 1.4.0**. A Copilot subscription is needed only for the GitHub Copilot provider; other configured providers can run independently.
 
 ```sh
-# Bun (recommended)
-bunx --bun @jeffreycao/copilot-api start
-
-# Or use Node.js
 npx @jeffreycao/copilot-api@latest start
 ```
 
 The server listens on `http://localhost:4141` by default. Optionally authenticate with GitHub Copilot or configure a third-party provider first:
 
 ```sh
-bunx --bun @jeffreycao/copilot-api auth login
-
-# Or use Node.js
 npx @jeffreycao/copilot-api@latest auth login
 ```
+
+Alternatively, run with Bun >= 1.4.0:
+
+```sh
+bunx --bun @jeffreycao/copilot-api start
+```
+
+Use `--bun` to select the Bun runtime and omit `@latest` for routine starts to reuse the cache. See [Bun setup](docs/guides/en/getting-started.md#using-with-bun) for global installation and upgrades.
 
 Verify the gateway is up:
 
@@ -60,7 +61,7 @@ curl http://localhost:4141/v1/models
 ```
 
 > [!NOTE]
-> Use `bunx --bun` to force Bun despite the package’s Node shebang. Omit `@latest` for routine starts to reuse the cached install; use it when upgrading, or [install globally](docs/guides/en/getting-started.md#using-with-bun). Token usage storage supports Bun and Node.js >= 22.13.0.
+> Token usage storage requires Node.js >= 22.13.0 or Bun. See [Using with npx](docs/guides/en/getting-started.md#using-with-npx) for details.
 
 From here, jump to the guide for your client: [Claude Code](docs/guides/en/claude-code.md#using-with-claude-code), [OpenCode](docs/guides/en/opencode.md#using-with-opencode), [Codex](docs/guides/en/codex.md#using-with-codex), or run it with [Docker](docs/guides/en/docker.md#using-with-docker).
 
@@ -95,7 +96,7 @@ Windows x64 (`.exe`), macOS Apple Silicon (`.dmg`), and Linux x64 (`.AppImage`) 
 
 | Guide | Contents |
 | --- | --- |
-| [Installation and Startup](docs/guides/en/getting-started.md) | Prerequisites, project overview, Bun (recommended), `npx` and source runs, provider-only mode without Copilot, and gateway API key setup |
+| [Installation and Startup](docs/guides/en/getting-started.md) | Prerequisites, project overview, `npx` and source runs, provider-only mode without Copilot, and gateway API key setup |
 | [Claude Code](docs/guides/en/claude-code.md) | settings.json, gateway model discovery, model mappings, auto-compact window, and WebSearch behavior |
 | [OpenCode](docs/guides/en/opencode.md) | v2 Responses plugin and automatic model discovery, native compaction, model capabilities and pricing, context limits, and v1 Anthropic SDK setup |
 | [Codex](docs/guides/en/codex.md) | A full `config.toml` provider block, `GITHUB_COPILOT_API_KEY` environment variable setup, auto-review model mapping, generating `model_catalog.json`, and the merged model picker catalog with protocol adapters |
