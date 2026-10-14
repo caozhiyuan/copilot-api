@@ -224,6 +224,9 @@ export interface Locale {
     helpDocs: string
   }
   server: {
+    bunFallback: string
+    runtime: string
+    spawnFailed: string
     tokenNotFound: string
     authRequired: string
     portInUse: string
@@ -267,6 +270,15 @@ export interface Locale {
     noProxy: string
     noProxyDesc: string
     sectionStartup: string
+    serverRuntime: string
+    serverRuntimeDesc: string
+    runtimeBun: string
+    runtimeNode: string
+    bunDetecting: string
+    bunAvailable: string
+    bunUnsupported: string
+    bunUnavailable: string
+    bunProxyNote: string
     oauthApp: string
     oauthAppDefault: string
     oauthAppDesc: string

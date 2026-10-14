@@ -21,13 +21,13 @@ On the GitHub Copilot path, the gateway prefers Copilot's native Anthropic-style
 >
 > 3. **OpenCode configuration:** When using with OpenCode, configure `~/.config/opencode/opencode.json` with `@ai-sdk/anthropic`. See [Using with OpenCode](opencode.md#using-with-opencode).
 >
-> 4. **Built-in `copilot`, `codex` and third-party providers:** Run `npx @jeffreycao/copilot-api@latest auth` and choose `copilot`, `codex`, `deepseek`, `custom`, or other providers.
+> 4. **Built-in `copilot`, `codex` and third-party providers:** Run `bunx --bun @jeffreycao/copilot-api auth` and choose `copilot`, `codex`, `deepseek`, `custom`, or other providers.
 >
 > 5. **Note:** Before using GitHub Copilot, read the [GitHub Copilot Security Notice](../../../NOTICE.md#github-copilot-security-notice).
 
 ## Prerequisites
 
-- Bun (>= 1.2.x)
+- Bun >= 1.4.0 (recommended)
 - Node.js >= 22.13.0 if you plan to run the published CLI with `npx`
 - GitHub account with Copilot subscription only if you want to use the GitHub Copilot provider
 - An API key or OAuth login for at least one configured provider if you want to run without GitHub Copilot
@@ -61,24 +61,49 @@ bun run start start
 
 > The trailing `start` is the CLI subcommand passed to `src/main.ts`, not a typo: `bun run dev start` runs watch mode, `bun run start start` runs production.
 
-## Using with npx
+<a id="using-with-bun"></a>
 
-You can run the project directly using npx:
+## Running the npm package with Bun (recommended)
 
-> [!IMPORTANT]
-> Token usage storage uses Node's built-in `node:sqlite` module when running with `npx`. It is enabled on Node.js >= 22.13.0, the first release where `node:sqlite` works without `--experimental-sqlite`. On older Node.js versions the CLI still starts, but token usage storage is disabled.
->
-> If you want token usage storage without upgrading Node.js, run the published CLI with Bun instead: `bunx --bun @jeffreycao/copilot-api@latest start`.
+Install [Bun >= 1.4.0](https://bun.sh/docs/installation), then run the published npm package directly:
 
 ```sh
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api start
 ```
+
+The `--bun` flag is required: the package has a Node shebang, so plain `bunx` can still launch Node.js. No separate Node.js install is needed to run the published package with Bun.
+
+For frequent use, install globally and explicitly run the installed CLI with Bun:
+
+```sh
+bun add --global @jeffreycao/copilot-api
+bun run --bun copilot-api start
+```
+
+Ensure Bun's global binary directory (`bun pm bin -g`) is on `PATH`. Running plain `copilot-api start` follows the Node shebang; use `bun run --bun` to keep the Bun runtime.
+
+### Cache and upgrades
+
+Omit `@latest` for routine `bunx` starts, or pin an exact package version for repeatable deployments. In repeated `--help` tests with Bun 1.4.0 on Linux, `@latest` re-entered dependency resolution on every invocation; unversioned and exact-version runs reused the warm install without installation output. Re-entering installation does not imply every dependency is downloaded again. Cache expiry and Bun versions can affect this behavior.
+
+Request the latest published version explicitly when upgrading:
+
+```sh
+# bunx: resolve the latest version once, then omit @latest for routine starts
+bunx --bun @jeffreycao/copilot-api@latest start
+
+# Global installation: update once, then run the installed CLI
+bun add --global @jeffreycao/copilot-api@latest
+bun run --bun copilot-api start
+```
+
+See [Bun's bunx documentation](https://bun.sh/docs/pm/bunx) for runtime selection and caching.
 
 With options:
 
 ```sh
-npx @jeffreycao/copilot-api@latest auth keys --add your-gateway-api-key
-npx @jeffreycao/copilot-api@latest start --host 0.0.0.0 --port 8080
+bunx --bun @jeffreycao/copilot-api auth keys --add your-gateway-api-key
+bunx --bun @jeffreycao/copilot-api start --host 0.0.0.0 --port 8080
 ```
 
 Binding to `0.0.0.0` exposes the gateway to the network, so the server requires at least one gateway API key and restricts CORS to same-origin requests.
@@ -86,12 +111,22 @@ Binding to `0.0.0.0` exposes the gateway to the network, so the server requires 
 For authentication or provider configuration only:
 
 ```sh
-npx @jeffreycao/copilot-api@latest auth
+bunx --bun @jeffreycao/copilot-api auth
 ```
 
 To run without GitHub Copilot, configure at least one provider first, then start the server normally:
 
 ```sh
-npx @jeffreycao/copilot-api@latest auth login --provider dashscope
+bunx --bun @jeffreycao/copilot-api auth login --provider dashscope
+bunx --bun @jeffreycao/copilot-api start
+```
+
+## Using with npx
+
+Node.js >= 22.13.0 is supported as an alternative:
+
+```sh
 npx @jeffreycao/copilot-api@latest start
 ```
+
+Token usage storage uses Node's built-in `node:sqlite`, available without `--experimental-sqlite` from Node.js 22.13.0. With Bun, storage uses `bun:sqlite` instead.

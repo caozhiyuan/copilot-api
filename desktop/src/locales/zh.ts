@@ -227,6 +227,10 @@ const zh: Locale = {
     helpDocs: '文档',
   },
   server: {
+    bunFallback:
+      '未检测到 Bun >= 1.4.0，使用内置 Node.js。安装或升级 Bun 后即可启用。',
+    runtime: '服务运行时：{{runtime}}',
+    spawnFailed: '服务子进程启动失败：{{message}}',
     tokenNotFound: '未找到 token',
     authRequired: '未找到可用授权，请先配置 GitHub token 或至少一个 Provider',
     portInUse: '端口 {{port}} 已被占用，请更换其他端口',
@@ -268,7 +272,7 @@ const zh: Locale = {
       'API 服务绑定的地址，留空使用 127.0.0.1。保存后会自动重启运行中的服务',
     hostInvalid: '监听地址无效，请填写如 127.0.0.1 或 0.0.0.0 这样的地址',
     proxySystemNote:
-      '默认使用系统代理。选择自定义代理后，Electron 和本地服务会使用下方配置；选择不使用代理后将直连网络。保存后会自动重启运行中的服务。',
+      'Electron 默认使用系统代理，Bun 服务需要代理时请配置自定义代理。自定义代理对两种运行时均生效；选择不使用代理后将直连。保存后会重启运行中的服务。',
     proxyMode: '代理模式',
     proxyModeSystem: '系统代理',
     proxyModeCustom: '自定义代理',
@@ -278,6 +282,18 @@ const zh: Locale = {
     noProxy: 'no_proxy',
     noProxyDesc: '多个规则用英文逗号分隔，例如 localhost,127.0.0.1。',
     sectionStartup: '启动参数',
+    serverRuntime: '服务运行时',
+    serverRuntimeDesc:
+      '默认优先使用本地 Bun >= 1.4.0，否则使用内置 Node.js。保存后会重启运行中的服务。',
+    runtimeBun: 'Bun（推荐）',
+    runtimeNode: 'Node.js（内置）',
+    bunDetecting: '正在检测本地 Bun…',
+    bunAvailable: '已检测到 Bun {{version}}。',
+    bunUnsupported:
+      'Bun {{version}} 版本不满足要求。请安装 Bun >= 1.4.0，在此之前使用内置 Node.js。',
+    bunUnavailable: '未检测到 Bun >= 1.4.0，安装前使用内置 Node.js。',
+    bunProxyNote:
+      'Bun 不使用 Electron 的系统代理。需要代理时请在“网络”中配置自定义代理，或选择 Node.js 使用系统代理。',
     oauthApp: 'OAuth App',
     oauthAppDefault: '默认 GitHub',
     oauthAppDesc:

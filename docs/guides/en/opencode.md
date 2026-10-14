@@ -30,8 +30,8 @@ The gateway's `config.json` setting `opencodeModelContextWindow` defaults to `40
 Start the AI gateway with the OpenCode OAuth app:
 
 ```sh
-npx @jeffreycao/copilot-api@latest auth --oauth-app=opencode
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api auth --oauth-app=opencode
+bunx --bun @jeffreycao/copilot-api start
 ```
 
 Then point OpenCode at the gateway with `@ai-sdk/anthropic`.

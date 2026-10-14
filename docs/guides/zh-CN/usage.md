@@ -8,9 +8,9 @@
 
 服务启动后，控制台会输出一个 Copilot 使用量看板 URL。这个看板是一个用于监控 API 用量的 Web 界面。
 
-1. 启动服务。例如使用 npx：
+1. 启动服务。例如使用 Bun（推荐）：
    ```sh
-   npx @jeffreycao/copilot-api@latest start
+   bunx --bun @jeffreycao/copilot-api start
    ```
 2. 服务会输出一个 usage viewer 的 URL。将它复制到浏览器中打开，形式大致如下：
    `http://localhost:4141/usage-viewer?endpoint=http://localhost:4141/usage`

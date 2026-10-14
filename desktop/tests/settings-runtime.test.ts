@@ -6,6 +6,7 @@ import type { DesktopSettings } from '../src/types/ipc'
 
 describe('automatic server restart for startup settings', () => {
   test.each<Partial<DesktopSettings>>([
+    { serverRuntime: 'node' },
     { host: '0.0.0.0' },
     { verbose: true },
     { showToken: true },

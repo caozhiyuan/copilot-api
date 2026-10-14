@@ -16,6 +16,7 @@ import type {
 } from '../src/types/ipc'
 
 const initialSettings: DesktopSettings = {
+  serverRuntime: 'bun',
   apiHome: '',
   sqliteDbPath: '',
   oauthApp: 'default',
@@ -96,6 +97,12 @@ beforeEach(async () => {
     value: {
       platform: 'win32',
       getSettings: () => Promise.resolve(structuredClone(settings)),
+      getBunRuntime: () =>
+        Promise.resolve({
+          available: true,
+          version: '1.4.0',
+          path: '/usr/local/bin/bun',
+        }),
       getServerKeys: () => Promise.resolve(structuredClone(keys)),
       saveSettings,
       saveServerKeys,
@@ -266,6 +273,47 @@ async function changeAdminKey() {
 }
 
 describe('settings modal partial saves', () => {
+  test('shows detected Bun and saves an explicit Node runtime selection', async () => {
+    await render()
+    await click('Startup')
+    const select = container.querySelector<HTMLSelectElement>('#server-runtime')
+    expect(select?.value).toBe('bun')
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+      'Bun 1.4.0 detected',
+    )
+    if (!select) throw new Error('Missing runtime selector')
+    await act(async () => {
+      select.value = 'node'
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await click('Save')
+    expect(settings.serverRuntime).toBe('node')
+    expect(alert).not.toHaveBeenCalled()
+  })
+
+  test('explains fallback for an unsupported Bun version', async () => {
+    window.electronAPI.getBunRuntime = () =>
+      Promise.resolve({ available: false, version: '1.3.14' })
+    await render()
+    await click('Startup')
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+      'Bun 1.3.14 is unsupported',
+    )
+    await click('Save')
+    expect(settings.serverRuntime).toBe('bun')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps settings usable when Bun detection fails', async () => {
+    window.electronAPI.getBunRuntime = () =>
+      Promise.reject(new Error('unavailable'))
+    await render()
+    await click('Startup')
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+      'Bun >= 1.4.0 was not found',
+    )
+  })
+
   test('saves desktop preferences when persisted keys fail to refresh', async () => {
     saveServerKeys.mockImplementationOnce((update) => {
       persistKeys(update)

@@ -1,5 +1,6 @@
 import { useState, useEffect, type ReactNode } from 'react'
 import type {
+  BunRuntimeStatus,
   DesktopProxyMode,
   DesktopSettings,
   ServerKeysConfig,
@@ -243,6 +244,7 @@ export default function SettingsModal({
   const { setThemePref } = useTheme()
   const [section, setSection] = useState<Section>(initialSection)
   const [settings, setSettings] = useState<DesktopSettings>({
+    serverRuntime: 'bun',
     apiHome: '',
     sqliteDbPath: '',
     oauthApp: 'default',
@@ -267,17 +269,28 @@ export default function SettingsModal({
   const [initialSettings, setInitialSettings] =
     useState<DesktopSettings | null>(null)
   const [saving, setSaving] = useState(false)
+  const [bunRuntime, setBunRuntime] = useState<BunRuntimeStatus | null>(null)
   const [apiKeysText, setApiKeysText] = useState('')
   const [adminApiKey, setAdminApiKey] = useState('')
   const [loadedServerKeys, setLoadedServerKeys] =
     useState<ServerKeysConfig | null>(null)
 
   useEffect(() => {
+    let active = true
+    void window.electronAPI
+      .getBunRuntime()
+      .then((runtime) => {
+        if (active) setBunRuntime(runtime)
+      })
+      .catch(() => {
+        if (active) setBunRuntime({ available: false })
+      })
     void Promise.all([
       window.electronAPI.getSettings(),
       window.electronAPI.getServerKeys(),
     ])
       .then(([loadedSettings, serverKeys]) => {
+        if (!active) return
         setSettings(loadedSettings)
         setInitialSettings(loadedSettings)
         setApiKeysText(serverKeys.apiKeys.join('\n'))
@@ -285,6 +298,9 @@ export default function SettingsModal({
         setLoadedServerKeys(serverKeys)
       })
       .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [])
 
   const handleSave = async () => {
@@ -740,6 +756,54 @@ export default function SettingsModal({
 
             {section === 'startup' && (
               <div>
+                <div className="mb-4">
+                  <label
+                    htmlFor="server-runtime"
+                    className="text-[13px] font-medium text-ink mb-1.5 block"
+                  >
+                    {t('settings.serverRuntime')}
+                  </label>
+                  <select
+                    id="server-runtime"
+                    value={settings.serverRuntime}
+                    onChange={(e) =>
+                      setSettings((s) => ({
+                        ...s,
+                        serverRuntime: e.target
+                          .value as DesktopSettings['serverRuntime'],
+                      }))
+                    }
+                    className={selectClass}
+                  >
+                    <option value="bun">{t('settings.runtimeBun')}</option>
+                    <option value="node">{t('settings.runtimeNode')}</option>
+                  </select>
+                  <p className="text-[12px] text-ink-faint mt-1.5 leading-relaxed">
+                    {t('settings.serverRuntimeDesc')}
+                  </p>
+                  <p
+                    role="status"
+                    title={bunRuntime?.path}
+                    className="text-[12px] text-ink-faint mt-1.5 leading-relaxed"
+                  >
+                    {bunRuntime === null ?
+                      t('settings.bunDetecting')
+                    : bunRuntime.available ?
+                      t('settings.bunAvailable', {
+                        version: bunRuntime.version ?? '',
+                      })
+                    : bunRuntime.version ?
+                      t('settings.bunUnsupported', {
+                        version: bunRuntime.version,
+                      })
+                    : t('settings.bunUnavailable')}
+                  </p>
+                  {settings.serverRuntime === 'bun' && (
+                    <p className="text-[12px] text-ink-faint mt-1.5 leading-relaxed">
+                      {t('settings.bunProxyNote')}
+                    </p>
+                  )}
+                </div>
                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-400">
                   {t('settings.restartAppNote')}
                 </div>

@@ -72,27 +72,28 @@ OpenCode Go 的模型列表（`/opencode-go/v1/models` 及 `/v1/models` 中的�
 
 ## 使用示例
 
-常用 `npx` 命令：
+npm 包常用命令（推荐 Bun >= 1.4.0）：
 
 ```sh
 # 基础启动
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api start
 
 # 自定义端口并开启详细日志
-npx @jeffreycao/copilot-api@latest start --port 8080 --verbose
+bunx --bun @jeffreycao/copilot-api start --port 8080 --verbose
 
 # 执行认证流程
-npx @jeffreycao/copilot-api@latest auth login
+bunx --bun @jeffreycao/copilot-api auth login
 
 # 配置第三方 provider，然后不依赖 GitHub Copilot 启动
-npx @jeffreycao/copilot-api@latest auth login --provider dashscope
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api auth login --provider dashscope
+bunx --bun @jeffreycao/copilot-api start
 
 # 以 JSON 格式输出调试信息
-npx @jeffreycao/copilot-api@latest debug --json
+bunx --bun @jeffreycao/copilot-api debug --json
 
-# 用 Bun 而不是 Node.js 运行已发布 CLI
-bunx --bun @jeffreycao/copilot-api@latest start
+# 也可以全局安装，再强制使用 Bun 运行已安装 CLI
+bun add --global @jeffreycao/copilot-api
+bun run --bun copilot-api start
 ```
 
 配置 `dashscope` 后的 OpenAI 兼容 provider 调用示例：
@@ -106,3 +107,5 @@ curl http://localhost:4141/dashscope/v1/messages \
   -H "content-type: application/json" \
   -d '{"model":"qwen3.6-plus","max_tokens":1024,"messages":[{"role":"user","content":"hello"}]}'
 ```
+
+缓存、升级及 Node.js 运行方式详见[安装与启动](getting-started.md#using-with-bun)。

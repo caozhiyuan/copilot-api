@@ -251,6 +251,14 @@ export interface AppUpdateStatus {
 
 export type DesktopProxyMode = 'system' | 'custom' | 'direct'
 
+export type ServerRuntime = 'bun' | 'node'
+
+export interface BunRuntimeStatus {
+  available: boolean
+  version?: string
+  path?: string
+}
+
 export interface DesktopProxySettings {
   mode: DesktopProxyMode
   http_proxy: string
@@ -259,6 +267,7 @@ export interface DesktopProxySettings {
 }
 
 export interface DesktopSettings {
+  serverRuntime: ServerRuntime
   apiHome: string
   sqliteDbPath: string
   oauthApp: 'default' | 'opencode'
@@ -309,6 +318,7 @@ declare global {
       stopServer: () => Promise<void>
       getServerStatus: () => Promise<ServerStatus>
       getSettings: () => Promise<DesktopSettings>
+      getBunRuntime: () => Promise<BunRuntimeStatus>
       getAppUpdateStatus: () => Promise<AppUpdateStatus>
       checkAppUpdate: () => Promise<AppUpdateStatus>
       installAppUpdate: () => Promise<AppUpdateStatus>

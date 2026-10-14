@@ -62,6 +62,7 @@ import { readSettings, writeSettings } from './settings-store'
 import { runSettingsTransaction } from './settings-transaction'
 import { createConfigRefresher } from './config-refresh'
 import { shouldRestartServerForSettings } from './settings-runtime'
+import { detectBunRuntime } from './bun-runtime'
 import {
   readServerKeysConfig,
   writeServerKeysConfig,
@@ -483,6 +484,7 @@ export function registerIpcHandlers(
       }
 
       const serverOptions = {
+        runtime: settings.serverRuntime,
         verbose: settings.verbose,
         showToken: settings.showToken,
         host: effectiveHost,
@@ -531,6 +533,7 @@ export function registerIpcHandlers(
 
   // Settings
   ipcMain.handle('settings:get', async () => readSettings())
+  ipcMain.handle('settings:get-bun-runtime', () => detectBunRuntime())
   ipcMain.handle('settings:save', async (_event, settings: DesktopSettings) => {
     if (!isValidServerHost(settings?.host ?? '')) {
       throw new Error(await tMain('server.invalidHost'))
@@ -547,6 +550,7 @@ export function registerIpcHandlers(
       }
       if (isRunning() && shouldRestartServerForSettings(prev, settings)) {
         const status = await startServer(getPort(), {
+          runtime: settings.serverRuntime,
           host: settings.host,
           verbose: settings.verbose,
           showToken: settings.showToken,

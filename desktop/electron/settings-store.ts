@@ -14,6 +14,7 @@ const SETTINGS_PATH = path.join(
 )
 
 const DEFAULT_SETTINGS: DesktopSettings = {
+  serverRuntime: 'bun',
   apiHome: '',
   sqliteDbPath: '',
   oauthApp: 'default',
@@ -75,6 +76,7 @@ export function normalizeSettings(
   settings: Partial<DesktopSettings> | null | undefined,
 ): DesktopSettings {
   return {
+    serverRuntime: settings?.serverRuntime === 'node' ? 'node' : 'bun',
     apiHome:
       typeof settings?.apiHome === 'string' ?
         settings.apiHome

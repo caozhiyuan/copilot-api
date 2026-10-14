@@ -14,7 +14,7 @@
   <a href="https://www.npmjs.com/package/@jeffreycao/copilot-api"><img src="https://img.shields.io/npm/v/@jeffreycao/copilot-api.svg" alt="npm version"></a>
   <a href="https://github.com/caozhiyuan/copilot-api/blob/dev/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <a href="https://github.com/caozhiyuan/copilot-api/stargazers"><img src="https://img.shields.io/github/stars/caozhiyuan/copilot-api.svg" alt="GitHub stars"></a>
-  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-%3E%3D1.2.x-orange.svg" alt="Bun >= 1.2.x"></a>
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-%3E%3D1.4.0-orange.svg" alt="Bun >= 1.4.0"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node-%3E%3D22.13.0-green.svg" alt="Node >= 22.13.0"></a>
 </p>
 
@@ -38,16 +38,16 @@ Copilot API 是一个本地 AI 网关，让 Claude Code、OpenCode、Codex 等�
 
 ## 快速开始
 
-需要 **Node.js >= 22.13.0**（npx）或 **Bun >= 1.2.x**。使用 GitHub Copilot 时需要相应订阅；也可以配置其他 provider 独立运行。
+**推荐使用 Bun >= 1.4.0 运行 npm 包**，也支持 Node.js >= 22.13.0（`npx`）。使用 GitHub Copilot 时需要相应订阅；也可以配置其他 provider 独立运行。
 
 ```sh
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api start
 ```
 
 服务默认监听 `http://localhost:4141`。也可以先登录 GitHub Copilot 或配置第三方 provider：
 
 ```sh
-npx @jeffreycao/copilot-api@latest auth login
+bunx --bun @jeffreycao/copilot-api auth login
 ```
 
 验证网关已启动：
@@ -57,7 +57,7 @@ curl http://localhost:4141/v1/models
 ```
 
 > [!NOTE]
-> token usage 存储需要 Node.js >= 22.13.0 或 Bun。详见[通过 npx 使用](docs/guides/zh-CN/getting-started.md#using-with-npx)。
+> `bunx --bun` 会强制使用 Bun，避免包的 Node shebang 启动 Node。日常启动不带 `@latest`，以复用缓存；升级时再加，也可以[全局安装后运行](docs/guides/zh-CN/getting-started.md#using-with-bun)。token usage 存储支持 Bun 和 Node.js >= 22.13.0。
 
 接下来可按你的客户端选择指南：[与 Claude Code 一起使用](docs/guides/zh-CN/claude-code.md#using-with-claude-code)、[与 OpenCode 一起使用](docs/guides/zh-CN/opencode.md#using-with-opencode)、[与 Codex 一起使用](docs/guides/zh-CN/codex.md#using-with-codex)，或通过 [Docker](docs/guides/zh-CN/docker.md#using-with-docker) 运行。
 
@@ -96,7 +96,7 @@ Windows x64（`.exe`）、macOS Apple Silicon（`.dmg`）和 Linux x64（`.AppIm
 
 | 文档 | 内容 |
 | --- | --- |
-| [安装与启动](docs/guides/zh-CN/getting-started.md) | 环境要求、项目概览、npx 与源码运行、无 Copilot 时的 provider-only 模式，以及网关 API Key 配置 |
+| [安装与启动](docs/guides/zh-CN/getting-started.md) | 环境要求、项目概览、Bun（推荐）、npx 与源码运行、无 Copilot 时的 provider-only 模式，以及网关 API Key 配置 |
 | [Claude Code](docs/guides/zh-CN/claude-code.md) | settings.json、网关模型发现、模型映射、自动压缩窗口与 WebSearch 行为 |
 | [OpenCode](docs/guides/zh-CN/opencode.md) | v2 Responses 插件与自动模型发现、原生压缩、模型能力与价格、上下文上限，以及 v1 Anthropic SDK 配置 |
 | [Codex](docs/guides/zh-CN/codex.md) | 完整的 `config.toml` provider 配置块、`GITHUB_COPILOT_API_KEY` 环境变量设置、自动审核模型映射、生成 `model_catalog.json`，以及合并后的模型选择器目录与协议适配 |

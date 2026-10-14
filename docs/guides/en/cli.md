@@ -66,27 +66,28 @@ Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `c
 
 ## Example Usage
 
-Common `npx` commands:
+Common commands for the npm package (Bun >= 1.4.0 recommended):
 
 ```sh
 # Start the gateway
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api start
 
 # Start on a custom port with verbose logging
-npx @jeffreycao/copilot-api@latest start --port 8080 --verbose
+bunx --bun @jeffreycao/copilot-api start --port 8080 --verbose
 
 # Run the auth flow
-npx @jeffreycao/copilot-api@latest auth login
+bunx --bun @jeffreycao/copilot-api auth login
 
 # Configure a third-party provider, then run without GitHub Copilot
-npx @jeffreycao/copilot-api@latest auth login --provider dashscope
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api auth login --provider dashscope
+bunx --bun @jeffreycao/copilot-api start
 
 # Print debug information as JSON
-npx @jeffreycao/copilot-api@latest debug --json
+bunx --bun @jeffreycao/copilot-api debug --json
 
-# Run the published CLI with Bun instead of Node.js
-bunx --bun @jeffreycao/copilot-api@latest start
+# Or install globally, then force the installed CLI to use Bun
+bun add --global @jeffreycao/copilot-api
+bun run --bun copilot-api start
 ```
 
 OpenAI-compatible provider examples after configuring `dashscope`:
@@ -100,3 +101,5 @@ curl http://localhost:4141/dashscope/v1/messages \
   -H "content-type: application/json" \
   -d '{"model":"qwen3.6-plus","max_tokens":1024,"messages":[{"role":"user","content":"hello"}]}'
 ```
+
+For cache behavior, upgrades, and the Node.js alternative, see [Installation and Startup](getting-started.md#using-with-bun).

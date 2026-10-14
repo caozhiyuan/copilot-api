@@ -17,8 +17,8 @@ Add the tool search bridge to the MCP config used by Claude Code:
   "mcpServers": {
     "tool_search": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@jeffreycao/copilot-api@latest", "mcp"]
+      "command": "bunx",
+      "args": ["--bun", "@jeffreycao/copilot-api", "mcp"]
     }
   }
 }
@@ -31,7 +31,7 @@ opencode v2 does not need this bridge. It already defers MCP tools through Code 
   "mcp": {
     "tool_search": {
       "type": "local",
-      "command": ["npx", "-y", "@jeffreycao/copilot-api@latest", "mcp"]
+      "command": ["bunx", "--bun", "@jeffreycao/copilot-api", "mcp"]
     }
   }
 }

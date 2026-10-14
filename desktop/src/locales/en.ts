@@ -239,6 +239,10 @@ const en: Locale = {
     helpDocs: 'Documentation',
   },
   server: {
+    bunFallback:
+      'Bun >= 1.4.0 was not found; using the bundled Node.js runtime. Install or upgrade Bun to enable it.',
+    runtime: 'Server runtime: {{runtime}}',
+    spawnFailed: 'Failed to launch the server process: {{message}}',
     tokenNotFound: 'Token not found',
     authRequired:
       'No usable authorization found. Configure a GitHub token or at least one provider first',
@@ -288,7 +292,7 @@ const en: Locale = {
       'Address the API server binds to; leave empty for 127.0.0.1. Saving automatically restarts the running service',
     hostInvalid: 'Invalid listening host, for example 127.0.0.1 or 0.0.0.0',
     proxySystemNote:
-      'System proxy is used by default. With a custom proxy, Electron and local services use the settings below; with no proxy, requests connect directly. Saving automatically restarts the running service.',
+      'Electron uses the system proxy by default. Bun services require a custom proxy when needed. Custom proxy settings apply to both runtimes; No proxy connects directly. Saving restarts the running service.',
     proxyMode: 'Proxy mode',
     proxyModeSystem: 'System proxy',
     proxyModeCustom: 'Custom proxy',
@@ -299,6 +303,19 @@ const en: Locale = {
     noProxyDesc:
       'Separate multiple rules with commas, for example localhost,127.0.0.1.',
     sectionStartup: 'Startup',
+    serverRuntime: 'Server runtime',
+    serverRuntimeDesc:
+      'Prefer Bun >= 1.4.0 when installed; otherwise use bundled Node.js. Saving restarts the running server.',
+    runtimeBun: 'Bun (recommended)',
+    runtimeNode: 'Node.js (bundled)',
+    bunDetecting: 'Checking for local Bun…',
+    bunAvailable: 'Bun {{version}} detected.',
+    bunUnsupported:
+      'Bun {{version}} is unsupported. Install Bun >= 1.4.0; bundled Node.js will be used until then.',
+    bunUnavailable:
+      'Bun >= 1.4.0 was not found. Bundled Node.js will be used until Bun is installed.',
+    bunProxyNote:
+      'Bun does not use Electron’s system proxy. Select a custom proxy in Network if needed, or use Node.js for the system proxy.',
     oauthApp: 'OAuth App',
     oauthAppDefault: 'Default GitHub',
     oauthAppDesc:

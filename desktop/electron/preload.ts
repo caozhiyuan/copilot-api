@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServerStatus: () => ipcRenderer.invoke('server:get-status'),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
+  getBunRuntime: () => ipcRenderer.invoke('settings:get-bun-runtime'),
   getAppUpdateStatus: () => ipcRenderer.invoke('update:get-status'),
   checkAppUpdate: () => ipcRenderer.invoke('update:check'),
   installAppUpdate: () => ipcRenderer.invoke('update:install'),

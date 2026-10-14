@@ -166,6 +166,7 @@ describe('desktop proxy config', () => {
 
   test('normalizes desktop settings with proxy mode defaults', () => {
     expect(normalizeSettings(null)).toEqual({
+      serverRuntime: 'bun',
       apiHome: '',
       sqliteDbPath: '',
       oauthApp: 'default',
@@ -206,6 +207,7 @@ describe('desktop proxy config', () => {
         proxy: createProxySettings({ mode: 'direct' }),
       }),
     ).toEqual({
+      serverRuntime: 'bun',
       apiHome: 'C:/copilot-api',
       sqliteDbPath: 'D:/copilot-data/usage.sqlite',
       oauthApp: 'opencode',

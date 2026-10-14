@@ -6,7 +6,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
-| [安装与启动](getting-started.md) | 运行环境、npx、provider 配置与源码运行 |
+| [安装与启动](getting-started.md) | 运行环境、Bun（推荐）、npx、provider 配置与源码运行 |
 | [Claude Code](claude-code.md) | settings.json、网关模型发现与模型映射 |
 | [OpenCode](opencode.md) | v2 Responses 插件、自动模型发现与 v1 Anthropic SDK 配置 |
 | [Codex](codex.md) | config.toml、`GITHUB_COPILOT_API_KEY` 设置、模型目录与自动审核映射 |

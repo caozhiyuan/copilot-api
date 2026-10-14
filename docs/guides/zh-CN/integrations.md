@@ -19,8 +19,8 @@ GPT 模型不要设置 Claude Code 原生的 `ENABLE_TOOL_SEARCH`。这个开关
   "mcpServers": {
     "tool_search": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@jeffreycao/copilot-api@latest", "mcp"]
+      "command": "bunx",
+      "args": ["--bun", "@jeffreycao/copilot-api", "mcp"]
     }
   }
 }
@@ -33,7 +33,7 @@ opencode v2 不需要这个 bridge。v2 已经通过 Code Mode 延迟加载 MCP 
   "mcp": {
     "tool_search": {
       "type": "local",
-      "command": ["npx", "-y", "@jeffreycao/copilot-api@latest", "mcp"]
+      "command": ["bunx", "--bun", "@jeffreycao/copilot-api", "mcp"]
     }
   }
 }

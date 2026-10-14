@@ -167,6 +167,7 @@ class MockProxyAgent extends MockAgent {
 
 const setGlobalDispatcherMock = mock((_dispatcher: unknown) => {})
 const actualUndici = await import("undici")
+const originalWebSocket = globalThis.WebSocket
 
 await mock.module("undici", () => ({
   ...actualUndici,
@@ -219,6 +220,7 @@ const createResponsesResult = (
 })
 
 beforeEach(() => {
+  globalThis.WebSocket = MockWebSocket as unknown as typeof globalThis.WebSocket
   MockWebSocket.autoComplete = true
   MockWebSocket.closeAfterComplete = false
   MockWebSocket.failOpen = false
@@ -234,6 +236,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  globalThis.WebSocket = originalWebSocket
   MockWebSocket.autoComplete = true
   MockWebSocket.closeAfterComplete = false
   MockWebSocket.failOpen = false

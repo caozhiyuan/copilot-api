@@ -6,9 +6,9 @@
 
 After starting the server, a URL to the Copilot Usage Dashboard will be displayed in your console. This dashboard is a web interface for monitoring your API usage.
 
-1.  Start the server. For example, using npx:
+1.  Start the server. For example, using Bun (recommended):
     ```sh
-    npx @jeffreycao/copilot-api@latest start
+    bunx --bun @jeffreycao/copilot-api start
     ```
 2.  The server will output a URL to the usage viewer. Copy and paste this URL into your browser. It will look something like this:
     `http://localhost:4141/usage-viewer?endpoint=http://localhost:4141/usage`

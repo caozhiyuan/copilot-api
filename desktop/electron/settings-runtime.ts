@@ -5,7 +5,8 @@ export function shouldRestartServerForSettings(
   next: DesktopSettings,
 ): boolean {
   return (
-    previous.host.trim() !== next.host.trim()
+    previous.serverRuntime !== next.serverRuntime
+    || previous.host.trim() !== next.host.trim()
     || previous.verbose !== next.verbose
     || previous.showToken !== next.showToken
     || previous.proxy.mode !== next.proxy.mode

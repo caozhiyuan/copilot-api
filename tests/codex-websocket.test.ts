@@ -159,6 +159,7 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
   Promise.resolve(new Response("unexpected http", { status: 500 })),
 )
 const actualUndici = await import("undici")
+const originalWebSocket = globalThis.WebSocket
 
 await mock.module("undici", () => ({
   ...actualUndici,
@@ -223,6 +224,7 @@ const mockFetchJsonResponse = (body: unknown): void => {
 }
 
 beforeEach(() => {
+  globalThis.WebSocket = MockWebSocket as unknown as typeof globalThis.WebSocket
   MockWebSocket.autoComplete = true
   MockWebSocket.instances = []
   MockWebSocket.responseError = null
@@ -238,6 +240,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  globalThis.WebSocket = originalWebSocket
   for (const websocket of MockWebSocket.instances) {
     websocket.close()
   }

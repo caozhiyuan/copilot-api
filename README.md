@@ -14,7 +14,7 @@
   <a href="https://www.npmjs.com/package/@jeffreycao/copilot-api"><img src="https://img.shields.io/npm/v/@jeffreycao/copilot-api.svg" alt="npm version"></a>
   <a href="https://github.com/caozhiyuan/copilot-api/blob/dev/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <a href="https://github.com/caozhiyuan/copilot-api/stargazers"><img src="https://img.shields.io/github/stars/caozhiyuan/copilot-api.svg" alt="GitHub stars"></a>
-  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-%3E%3D1.2.x-orange.svg" alt="Bun >= 1.2.x"></a>
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-%3E%3D1.4.0-orange.svg" alt="Bun >= 1.4.0"></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node-%3E%3D22.13.0-green.svg" alt="Node >= 22.13.0"></a>
 </p>
 
@@ -34,16 +34,16 @@ Copilot API is a local AI gateway that connects Claude Code, OpenCode, Codex, an
 
 ## Quick Start
 
-Requires **Node.js >= 22.13.0** (npx) or **Bun >= 1.2.x**. A Copilot subscription is needed only for the GitHub Copilot provider; other configured providers can run independently.
+**Bun >= 1.4.0 is recommended** for running the npm package. Node.js >= 22.13.0 (`npx`) is also supported. A Copilot subscription is needed only for the GitHub Copilot provider; other configured providers can run independently.
 
 ```sh
-npx @jeffreycao/copilot-api@latest start
+bunx --bun @jeffreycao/copilot-api start
 ```
 
 The server listens on `http://localhost:4141` by default. Optionally authenticate with GitHub Copilot or configure a third-party provider first:
 
 ```sh
-npx @jeffreycao/copilot-api@latest auth login
+bunx --bun @jeffreycao/copilot-api auth login
 ```
 
 Verify the gateway is up:
@@ -53,7 +53,7 @@ curl http://localhost:4141/v1/models
 ```
 
 > [!NOTE]
-> Token usage storage requires Node.js >= 22.13.0 or Bun. See [Using with npx](docs/guides/en/getting-started.md#using-with-npx) for details.
+> Use `bunx --bun` to force Bun despite the package’s Node shebang. Omit `@latest` for routine starts to reuse the cached install; use it when upgrading, or [install globally](docs/guides/en/getting-started.md#using-with-bun). Token usage storage supports Bun and Node.js >= 22.13.0.
 
 From here, jump to the guide for your client: [Claude Code](docs/guides/en/claude-code.md#using-with-claude-code), [OpenCode](docs/guides/en/opencode.md#using-with-opencode), [Codex](docs/guides/en/codex.md#using-with-codex), or run it with [Docker](docs/guides/en/docker.md#using-with-docker).
 
@@ -88,7 +88,7 @@ Windows x64 (`.exe`), macOS Apple Silicon (`.dmg`), and Linux x64 (`.AppImage`) 
 
 | Guide | Contents |
 | --- | --- |
-| [Installation and Startup](docs/guides/en/getting-started.md) | Prerequisites, project overview, `npx` and source runs, provider-only mode without Copilot, and gateway API key setup |
+| [Installation and Startup](docs/guides/en/getting-started.md) | Prerequisites, project overview, Bun (recommended), `npx` and source runs, provider-only mode without Copilot, and gateway API key setup |
 | [Claude Code](docs/guides/en/claude-code.md) | settings.json, gateway model discovery, model mappings, auto-compact window, and WebSearch behavior |
 | [OpenCode](docs/guides/en/opencode.md) | v2 Responses plugin and automatic model discovery, native compaction, model capabilities and pricing, context limits, and v1 Anthropic SDK setup |
 | [Codex](docs/guides/en/codex.md) | A full `config.toml` provider block, `GITHUB_COPILOT_API_KEY` environment variable setup, auto-review model mapping, generating `model_catalog.json`, and the merged model picker catalog with protocol adapters |
