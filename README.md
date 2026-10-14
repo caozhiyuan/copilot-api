@@ -54,6 +54,10 @@ bunx --bun @jeffreycao/copilot-api start
 
 Use `--bun` to select the Bun runtime and omit `@latest` for routine starts to reuse the cache. See [Bun setup](docs/guides/en/getting-started.md#using-with-bun) for global installation and upgrades.
 
+> [!NOTE]
+> To trust system-installed CA certificates (for example, behind a corporate HTTPS proxy), set `NODE_USE_SYSTEM_CA=1` before running `npx` or `bunx`: `export NODE_USE_SYSTEM_CA=1` in bash/zsh, or `$env:NODE_USE_SYSTEM_CA="1"` in PowerShell.
+> Supported by Bun >= 1.4.0 and [Node.js >= 22.19.0 (22.x) or >= 24.6.0](https://nodejs.org/api/cli.html#node_use_system_ca1). Desktop enables this for server subprocesses by default, preserving explicit environment settings.
+
 Verify the gateway is up:
 
 ```sh

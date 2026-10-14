@@ -18,6 +18,7 @@ function runManagerScenario(scenario: string): void {
       let bunRuntime = { available: false }
       let spawnError
       let spawnOptions
+      let forkOptions
       const electronApp = { isPackaged: false, getAppPath: () => process.cwd() }
       const processes = []
       const createProcess = () => {
@@ -38,7 +39,8 @@ function runManagerScenario(scenario: string): void {
       })
       await mock.module('electron', () => ({
         app: electronApp,
-        utilityProcess: { fork() {
+        utilityProcess: { fork(...args) {
+          forkOptions = args
           if (forkError) throw forkError
           return createProcess()
         } },
@@ -183,6 +185,7 @@ test('rejects an invalid host without stopping the healthy server', () => {
 
 test('starts the packaged JavaScript directly with supported Bun and preserves proxy flags', () => {
   runManagerScenario(`
+    delete process.env.NODE_USE_SYSTEM_CA
     bunRuntime = { available: true, version: '1.4.0', path: '/local/bun' }
     electronApp.isPackaged = true
     Object.defineProperty(process, 'resourcesPath', { value: '/app resources' })
@@ -197,6 +200,7 @@ test('starts the packaged JavaScript directly with supported Bun and preserves p
     assert.equal(spawnOptions[1][2], '/app resources/server/main.js')
     assert.deepEqual(spawnOptions[1].slice(3), ['start', '--port', '0', '--proxy-env', '--verbose', '--show-token'])
     assert.equal(spawnOptions[2].env.HTTPS_PROXY, 'http://127.0.0.1:7890/')
+    assert.equal(spawnOptions[2].env.NODE_USE_SYSTEM_CA, '1')
     assert.equal(spawnOptions[2].env.COPILOT_API_GITHUB_TOKEN, undefined)
     assert.equal(spawnOptions[2].windowsHide, true)
     assert.deepEqual(spawnOptions[2].stdio, ['ignore', 'pipe', 'pipe'])
@@ -206,12 +210,15 @@ test('starts the packaged JavaScript directly with supported Bun and preserves p
 
 test('uses bundled Node when Bun is unavailable or explicitly disabled', () => {
   runManagerScenario(`
+    delete process.env.NODE_USE_SYSTEM_CA
     await manager.startServer(0)
     assert.equal(spawnOptions, undefined)
+    assert.equal(forkOptions[2].env.NODE_USE_SYSTEM_CA, '1')
     assert.ok(manager.getLogs().some((line) => line.includes('server.bunFallback')))
     bunRuntime = { available: true, version: '1.4.0', path: '/local/bun' }
     await manager.startServer(0, { runtime: 'node' })
     assert.equal(spawnOptions, undefined)
+    assert.equal(forkOptions[2].env.NODE_USE_SYSTEM_CA, '1')
     assert.ok(!manager.getLogs().some((line) => line.includes('server.bunFallback')))
   `)
 })

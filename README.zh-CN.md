@@ -58,6 +58,10 @@ bunx --bun @jeffreycao/copilot-api start
 
 `--bun` 用于选择 Bun 运行时，日常启动省略 `@latest` 以复用缓存。全局安装与升级方式见 [Bun 使用说明](docs/guides/zh-CN/getting-started.md#using-with-bun)。
 
+> [!NOTE]
+> 如需信任系统安装的 CA 证书（例如使用企业 HTTPS 代理时），请在运行 `npx` 或 `bunx` 前设置 `NODE_USE_SYSTEM_CA=1`：bash/zsh 使用 `export NODE_USE_SYSTEM_CA=1`，PowerShell 使用 `$env:NODE_USE_SYSTEM_CA="1"`。
+> 支持 Bun >= 1.4.0，以及 [Node.js >= 22.19.0（22.x）或 >= 24.6.0](https://nodejs.org/api/cli.html#node_use_system_ca1)。Desktop 默认对子进程启用此设置，并保留显式配置的环境变量。
+
 验证网关已启动：
 
 ```sh
