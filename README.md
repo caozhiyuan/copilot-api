@@ -46,7 +46,7 @@ The server listens on `http://localhost:4141` by default. Optionally authenticat
 npx @jeffreycao/copilot-api@latest auth login
 ```
 
-Alternatively, run with Bun >= 1.4.0:
+Alternatively, run with Bun >= 1.4.0, which can offer better performance:
 
 ```sh
 bunx --bun @jeffreycao/copilot-api start

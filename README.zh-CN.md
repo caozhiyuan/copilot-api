@@ -50,7 +50,7 @@ npx @jeffreycao/copilot-api@latest start
 npx @jeffreycao/copilot-api@latest auth login
 ```
 
-也可以使用 Bun >= 1.4.0 运行：
+也可以使用 Bun >= 1.4.0 运行，可获得更好的性能：
 
 ```sh
 bunx --bun @jeffreycao/copilot-api start
