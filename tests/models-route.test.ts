@@ -2678,6 +2678,53 @@ describe("model routes", () => {
     ).toBe("gpt-responses-websocket through the Copilot Responses API.")
   })
 
+  test("discovers native Google models in both the regular list and Codex Messages catalog", async () => {
+    enabledProviders = ["google"]
+    providerConfigs.google = {
+      name: "google",
+      type: "google",
+      baseUrl: "https://google.example/v1beta",
+      apiKey: "google-key",
+      authType: "x-goog-api-key",
+    }
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          models: [
+            {
+              name: "models/gemini-2.5-flash",
+              displayName: "Gemini Flash",
+              inputTokenLimit: 1048576,
+              outputTokenLimit: 65536,
+              supportedGenerationMethods: ["generateContent"],
+            },
+          ],
+        }),
+      ),
+    )
+    const app = createApp()
+    const regular = await app.request("/v1/models")
+    expect(await regular.json()).toHaveProperty(
+      "data",
+      expect.arrayContaining([
+        expect.objectContaining({ id: "google/gemini-2.5-flash" }),
+      ]),
+    )
+    const response = await app.request("/v1/models?client=codex", {
+      headers: { "user-agent": "codex-cli/1.0.0" },
+    })
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as CodexModelsResponse
+    expect(
+      body.models.find((model) => model.slug === "google/gemini-2.5-flash"),
+    ).toMatchObject({
+      description:
+        "Gemini Flash through the google Messages-to-Google adapter.",
+      use_responses_lite: true,
+      context_window: 1048576,
+    })
+  })
+
   test("describes non-GPT Responses-capable Copilot models as adapter-backed", async () => {
     const copilotModels = createCopilotModels([
       "claude-sonnet-4.6",

@@ -75,7 +75,7 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 | 端点                                                          | 方法 | 说明                                                                                                 |
 | ------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
-| `POST /v1/messages`                                           | `POST` | 为给定对话创建模型响应。支持已配置 provider 的 `provider/model` 别名，包括通过 `openai-compatible` provider 做翻译。 |
+| `POST /v1/messages`                                           | `POST` | 为给定对话创建模型响应。支持已配置 provider 的 `provider/model` 别名，包括通过 `openai-compatible` 和 Google Gemini 原生协议（`google`）provider 做翻译。 |
 | `POST /v1/messages/count_tokens`                              | `POST` | 计算一组消息的 token 数。支持已配置 provider 的 `provider/model` 别名。                          |
 
 ### 使用量监控端点

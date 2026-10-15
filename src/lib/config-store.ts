@@ -122,10 +122,12 @@ export type ProviderAuthType =
   | "azure-entra"
   | "oauth2"
   | "x-api-key"
+  | "x-goog-api-key"
 export const SUPPORTED_PROVIDER_TYPES = [
   "anthropic",
   "openai-compatible",
   "openai-responses",
+  "google",
 ] as const
 export type ProviderType = (typeof SUPPORTED_PROVIDER_TYPES)[number]
 export type ToolContentSupportType = "array" | "image" | "pdf"

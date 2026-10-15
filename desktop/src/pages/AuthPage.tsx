@@ -39,10 +39,12 @@ const PROVIDER_TYPES: ProviderType[] = [
   'anthropic',
   'openai-compatible',
   'openai-responses',
+  'google',
 ]
 const PROVIDER_AUTH_TYPES: ProviderAuthTypeInput[] = [
   '__default__',
   'x-api-key',
+  'x-goog-api-key',
   'authorization',
 ]
 const MAX_OAUTH_ACCOUNTS = 3

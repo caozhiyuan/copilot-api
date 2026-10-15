@@ -267,6 +267,8 @@ function mapProviderType(
   providerNpm: string | undefined,
 ): ProviderType {
   switch (model.provider?.npm || providerNpm) {
+    case "@ai-sdk/google":
+      return "google"
     case "@ai-sdk/anthropic":
       return "anthropic"
     case "@ai-sdk/openai":
@@ -329,6 +331,7 @@ function parseSelectableProviders(
       || !isRecord(value)
       || (value.npm !== "@ai-sdk/openai-compatible"
         && value.npm !== "@ai-sdk/openai"
+        && value.npm !== "@ai-sdk/google"
         && value.npm !== "@ai-sdk/anthropic")
     ) {
       continue
@@ -346,6 +349,7 @@ function parseSelectableProviders(
       api,
       type:
         value.npm === "@ai-sdk/openai" ? "openai-responses"
+        : value.npm === "@ai-sdk/google" ? "google"
         : value.npm === "@ai-sdk/anthropic" ? "anthropic"
         : "openai-compatible",
     })

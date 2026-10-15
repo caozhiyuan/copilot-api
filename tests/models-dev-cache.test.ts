@@ -183,7 +183,7 @@ test("lists usable Chat, Responses, and Anthropic providers without the built-in
       api: "https://${ACCOUNT}.example/v1",
     },
     unsupported: {
-      npm: "@ai-sdk/google",
+      npm: "@ai-sdk/unsupported",
       api: "https://google.example/v1",
     },
   })

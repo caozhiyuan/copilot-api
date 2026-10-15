@@ -47,6 +47,7 @@ export function isSupportedProviderType(value: string): value is ProviderType {
 function getDefaultProviderAuthType(
   providerType: ProviderType,
 ): ProviderAuthType {
+  if (providerType === "google") return "x-goog-api-key"
   return providerType === "anthropic" ? "x-api-key" : "authorization"
 }
 
@@ -60,8 +61,8 @@ export function resolveProviderAuthType(
     return defaultAuthType
   }
 
-  if (authType === "x-api-key") {
-    return "x-api-key"
+  if (authType === "x-api-key" || authType === "x-goog-api-key") {
+    return authType
   }
 
   if (authType === "oauth2") {

@@ -27,7 +27,7 @@ Copilot API is a local AI gateway that connects Claude Code, OpenCode, Codex, an
 ## Highlights
 
 - **Unified API Gateway**: Serve OpenAI-compatible Chat Completions (`/v1/chat/completions`), the OpenAI Responses API (`/v1/responses`), and Anthropic-compatible Messages (`/v1/messages`) from one local endpoint.
-- **Multi-Provider**: Route GitHub Copilot, the built-in `codex` and `xai` providers, and third-party providers (Kimi, DeepSeek, DashScope, OpenRouter, OpenCode Go, or a custom provider from models.dev) behind the same gateway. GitHub Copilot is optional — with at least one enabled provider, the server starts in provider-only mode without a GitHub token.
+- **Multi-Provider**: Route GitHub Copilot, the built-in `codex` and `xai` providers, and third-party providers (Kimi, DeepSeek, DashScope, OpenRouter, OpenCode Go, Google Gemini, or a custom provider from models.dev) behind the same gateway. GitHub Copilot is optional — with at least one enabled provider, the server starts in provider-only mode without a GitHub token.
 - **Coding Agent Ready**: First-class setups for Claude Code, OpenCode, and Codex, including settings.json gateway model discovery and a merged model catalog for Codex.
 - **Streaming & WebSocket**: SSE streaming on all three client-facing protocols. Upstream Copilot Responses traffic selects WebSocket or HTTP from each model's advertised endpoints; streamed Responses traffic for the built-in `codex` provider uses WebSocket by default and uses HTTP when `useResponsesApiWebSocket` is disabled.
 - **Desktop App**: Electron GUI with GitHub Copilot sign-in, Codex and xAI OAuth, provider configuration, token usage, logs, and one-click start/stop.

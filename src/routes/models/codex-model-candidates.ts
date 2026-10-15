@@ -179,11 +179,14 @@ async function getProviderCodexCandidates(
 }
 
 function isMessagesFallbackProviderType(type: ProviderType): boolean {
-  return type === "anthropic" || type === "openai-compatible"
+  return (
+    type === "anthropic" || type === "openai-compatible" || type === "google"
+  )
 }
 
 function describeProviderAdapter(type: ProviderType): string {
   if (type === "anthropic") return "Messages"
+  if (type === "google") return "Messages-to-Google"
   if (type === "openai-responses") return "Messages-to-Responses"
   return "Messages-to-Chat"
 }

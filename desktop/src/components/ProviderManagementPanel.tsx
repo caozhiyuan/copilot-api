@@ -26,6 +26,7 @@ const protocolLabels: Record<string, string> = {
   'github-copilot': 'GitHub Copilot',
   'openai-compatible': 'Chat Completions',
   'openai-responses': 'Responses API',
+  google: 'Google Gemini API',
 }
 
 export default function ProviderManagementPanel({

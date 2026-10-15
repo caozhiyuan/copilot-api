@@ -28,7 +28,11 @@ import type {
 } from '../src/types/ipc'
 import { getGitHubUser, readToken } from './auth'
 
-const CUSTOM_PROVIDER_AUTH_TYPES = ['x-api-key', 'authorization'] as const
+const CUSTOM_PROVIDER_AUTH_TYPES = [
+  'x-api-key',
+  'x-goog-api-key',
+  'authorization',
+] as const
 
 interface AuthStatusDependencies {
   listEnabledProviders?: () => string[]

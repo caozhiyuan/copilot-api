@@ -84,7 +84,11 @@ const AUTH_PROVIDER_NAMES = [
 ] as const
 const CUSTOM_PROVIDER_AUTH_TYPE_OPTION = "__default__"
 const QUICK_PROVIDER_DEFAULT_TYPE_OPTION = "__default__"
-const CUSTOM_PROVIDER_AUTH_TYPES = ["x-api-key", "authorization"] as const
+const CUSTOM_PROVIDER_AUTH_TYPES = [
+  "x-api-key",
+  "x-goog-api-key",
+  "authorization",
+] as const
 
 type BuiltinProviderName = (typeof BUILTIN_PROVIDER_NAMES)[number]
 type AuthProviderName = (typeof AUTH_PROVIDER_NAMES)[number]
@@ -391,6 +395,7 @@ async function promptQuickProviderType(
 function getDefaultProviderAuthType(
   providerType: ProviderType,
 ): ProviderAuthType {
+  if (providerType === "google") return "x-goog-api-key"
   return providerType === "anthropic" ? "x-api-key" : "authorization"
 }
 

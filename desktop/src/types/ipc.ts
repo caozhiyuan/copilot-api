@@ -50,8 +50,8 @@ export interface XaiLoginInput {
 }
 
 export type ProviderType =
-  'anthropic' | 'openai-compatible' | 'openai-responses'
-export type ProviderAuthType = 'authorization' | 'x-api-key'
+  'anthropic' | 'openai-compatible' | 'openai-responses' | 'google'
+export type ProviderAuthType = 'authorization' | 'x-api-key' | 'x-goog-api-key'
 export type ProviderAuthTypeInput = ProviderAuthType | '__default__'
 export interface ModelsDevProviderOption {
   id: string

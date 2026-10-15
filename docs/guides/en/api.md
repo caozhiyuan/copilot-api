@@ -71,7 +71,7 @@ These endpoints are designed to be compatible with the Anthropic Messages API.
 
 | Endpoint                         | Method | Description                                                  |
 | -------------------------------- | ------ | ------------------------------------------------------------ |
-| `POST /v1/messages`              | `POST` | Creates a model response for a given conversation. Supports `provider/model` aliases for configured providers, including translation through `openai-compatible` providers. |
+| `POST /v1/messages`              | `POST` | Creates a model response for a given conversation. Supports `provider/model` aliases for configured providers, including translation through `openai-compatible` and native Google Gemini (`google`) providers. |
 | `POST /v1/messages/count_tokens` | `POST` | Calculates the number of tokens for a given set of messages. Supports `provider/model` aliases for configured providers. |
 
 ### Usage Monitoring Endpoints

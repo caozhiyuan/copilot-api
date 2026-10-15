@@ -225,7 +225,11 @@ const shouldFallbackToMessages = (
   modelId: string,
   effectiveType: ProviderType,
 ): boolean => {
-  if (effectiveType === "anthropic" || effectiveType === "openai-compatible") {
+  if (
+    effectiveType === "anthropic"
+    || effectiveType === "openai-compatible"
+    || effectiveType === "google"
+  ) {
     return true
   }
 

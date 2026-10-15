@@ -103,6 +103,7 @@ import {
   normalizeProviderResponsesReasoningEffort,
 } from "~/routes/provider/utils"
 import consola from "consola"
+import { handleGoogleProviderMessages } from "./google-handler"
 
 const logger = createHandlerLogger("provider-messages-handler")
 
@@ -168,6 +169,16 @@ export async function handleProviderMessagesForProvider(
 
     applyModelDefaults(payload, modelConfig)
     appendClaudeContinuationMessage(payload)
+
+    if (effectiveType === "google") {
+      stripWebSearchServerTool(payload)
+      return await handleGoogleProviderMessages(
+        c,
+        payload,
+        providerConfig,
+        usageEndpoint,
+      )
+    }
 
     if (effectiveType === "openai-responses") {
       if (hasWebSearchServerTool(payload)) {

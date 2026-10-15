@@ -14,6 +14,37 @@ import {
 import type { ProviderConfig } from '../../src/lib/config'
 
 describe('desktop provider auth', () => {
+  test.each(['__default__', 'x-goog-api-key'] as const)(
+    'configures Google with %s auth',
+    (authType) => {
+      let written: ProviderConfig | undefined
+      configureDesktopProvider(
+        {
+          provider: 'custom',
+          name: 'google',
+          type: 'google',
+          apiKey: 'google-key',
+          baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+          authType,
+        },
+        {
+          getEnabledProviders: () => ['google'],
+          getRawProviderConfig: () => null,
+          setProviderConfig(_name, config) {
+            written = config
+            return config
+          },
+        },
+      )
+      expect(written).toEqual({
+        type: 'google',
+        apiKey: 'google-key',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        enabled: true,
+        ...(authType !== '__default__' && { authType }),
+      })
+    },
+  )
   test.each([{ agentsModels: [] }, { agentsModels: ['deepseek-v4-pro'] }])(
     'preserves quick provider Codex selection %j during reauthorization',
     ({ agentsModels }) => {

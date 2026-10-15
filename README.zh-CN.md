@@ -29,7 +29,7 @@ Copilot API 是一个本地 AI 网关，让 Claude Code、OpenCode、Codex 等�
 ## 功能亮点
 
 - **统一 API 网关**：在同一个本地端点上提供 OpenAI 兼容的 Chat Completions（`/v1/chat/completions`）、OpenAI Responses API（`/v1/responses`）和 Anthropic 兼容的 Messages（`/v1/messages`）。
-- **多 Provider 接入**：在同一个网关后面统一路由 GitHub Copilot、内置 `codex`、`xai` provider 和第三方 provider（Kimi、DeepSeek、DashScope、OpenRouter、OpenCode Go 或从 models.dev 选择的自定义 provider）。GitHub Copilot 是可选能力——只要至少有一个启用中的 provider，无需 GitHub token 也能按 provider-only 模式启动。
+- **多 Provider 接入**：在同一个网关后面统一路由 GitHub Copilot、内置 `codex`、`xai` provider 和第三方 provider（Kimi、DeepSeek、DashScope、OpenRouter、OpenCode Go、Google Gemini 或从 models.dev 选择的自定义 provider）。GitHub Copilot 是可选能力——只要至少有一个启用中的 provider，无需 GitHub token 也能按 provider-only 模式启动。
 - **为 Coding Agent 而生**：为 Claude Code、OpenCode 和 Codex 提供完整的配置指南，包括 settings.json 网关模型发现和面向 Codex 的合并模型目录。
 - **Streaming 与 WebSocket**：三种面向客户端的协议都支持 SSE 流式输出。上游 Copilot Responses 流量会根据每个模型声明的端点选择 WebSocket 或 HTTP；内置 `codex` provider 的流式 Responses 请求默认走 WebSocket，关闭 `useResponsesApiWebSocket` 后改走 HTTP。
 - **桌面应用**：Electron 图形界面，支持 GitHub Copilot 登录、Codex 与 xAI OAuth、provider 配置、token 用量、日志查看和一键启动 / 停止。
