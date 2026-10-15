@@ -89,8 +89,7 @@ function invalidRequest(message: string): never {
 function translateToolResult(
   block: AnthropicToolResultBlock,
   toolNames: Map<string, string>,
-  model: string,
-): Array<GooglePart> {
+): GooglePart {
   const name = toolNames.get(block.tool_use_id)
   if (!name)
     invalidRequest(
@@ -103,9 +102,6 @@ function translateToolResult(
     .update(block.tool_use_id)
     .digest("hex")
     .slice(0, 16)
-  const nestedMedia = /^gemini-[34](?:\.|-)/u.test(
-    model.replace(/^models\//u, ""),
-  )
   if (typeof block.content === "string") {
     text.push(block.content)
   } else {
@@ -118,29 +114,26 @@ function translateToolResult(
           inlineData: {
             mimeType: item.source.media_type,
             data: item.source.data,
-            ...(nestedMedia && { displayName }),
+            displayName,
           },
         })
         references.push({ $ref: displayName })
       }
     }
   }
-  const result: GooglePart = {
+  return {
     functionResponse: {
       id: block.tool_use_id,
       name,
       response: {
         [block.is_error ? "error" : "output"]:
-          nestedMedia && media.length > 0 ?
+          media.length > 0 ?
             { text: text.join("\n"), media: references }
           : text.join("\n"),
       },
-      ...(nestedMedia && media.length > 0 && { parts: media }),
+      ...(media.length > 0 && { parts: media }),
     },
   }
-  // Older models still receive the image/PDF as ordinary user media, adjacent
-  // to the tool result, instead of unsupported FunctionResponse.parts.
-  return nestedMedia ? [result] : [result, ...media]
 }
 
 export function translateAnthropicToGoogle(
@@ -201,7 +194,7 @@ export function translateAnthropicToGoogle(
             })
             break
           case "tool_result":
-            parts.push(...translateToolResult(block, toolNames, payload.model))
+            parts.push(translateToolResult(block, toolNames))
             break
           case "thinking":
             translateThinkingBlock(block, parts)

@@ -2692,7 +2692,7 @@ describe("model routes", () => {
         Response.json({
           models: [
             {
-              name: "models/gemini-2.5-flash",
+              name: "models/gemini-3.8-flash",
               displayName: "Gemini Flash",
               inputTokenLimit: 1048576,
               outputTokenLimit: 65536,
@@ -2707,7 +2707,7 @@ describe("model routes", () => {
     expect(await regular.json()).toHaveProperty(
       "data",
       expect.arrayContaining([
-        expect.objectContaining({ id: "google/gemini-2.5-flash" }),
+        expect.objectContaining({ id: "google/gemini-3.8-flash" }),
       ]),
     )
     const response = await app.request("/v1/models?client=codex", {
@@ -2716,7 +2716,7 @@ describe("model routes", () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as CodexModelsResponse
     expect(
-      body.models.find((model) => model.slug === "google/gemini-2.5-flash"),
+      body.models.find((model) => model.slug === "google/gemini-3.8-flash"),
     ).toMatchObject({
       description:
         "Gemini Flash through the google Messages-to-Google adapter.",

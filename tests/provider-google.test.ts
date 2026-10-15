@@ -115,7 +115,7 @@ const send = (
       "x-api-key": "client-secret",
     },
     body: JSON.stringify({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.8-flash",
       max_tokens: 100,
       messages: [{ role: "user", content: "hello" }],
       ...body,
@@ -295,7 +295,7 @@ describe("Google provider configuration and discovery", () => {
 describe("Google Messages routes", () => {
   test("forwards a prefixed Messages request with model defaults and records all usage", async () => {
     provider.models = {
-      "gemini-2.5-flash": {
+      "gemini-3.8-flash": {
         temperature: 0.2,
         topK: 20,
         topP: 0.8,
@@ -312,7 +312,7 @@ describe("Google Messages routes", () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({
       type: "message",
-      model: "gemini-2.5-flash",
+      model: "gemini-3.8-flash",
       content: [{ type: "text", text: "hello" }],
       stop_reason: "end_turn",
       usage: {
@@ -323,7 +323,7 @@ describe("Google Messages routes", () => {
     })
     const [url, init] = fetchMock.mock.calls[0]
     expect(requestUrl(url)).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
     )
     expect(init?.headers).toMatchObject({
       "x-goog-api-key": "google-key",
@@ -356,10 +356,10 @@ describe("Google Messages routes", () => {
       ...provider,
       type: "anthropic",
       authType: "x-api-key",
-      models: { "gemini-2.5-flash": { type: "google" } },
+      models: { "gemini-3.8-flash": { type: "google" } },
     }
     const response = await send(
-      { model: "google/gemini-2.5-flash" },
+      { model: "google/gemini-3.8-flash" },
       "/v1/messages",
     )
     expect(response.status).toBe(200)
@@ -368,10 +368,10 @@ describe("Google Messages routes", () => {
       "google-key",
     )
     expect(requestUrl(fetchMock.mock.calls[0][0])).toContain(
-      "gemini-2.5-flash:generateContent",
+      "gemini-3.8-flash:generateContent",
     )
     expect(fetchMock.mock.calls[0][1]?.body as string).not.toContain(
-      "google/gemini-2.5-flash",
+      "google/gemini-3.8-flash",
     )
   })
   test("supports the existing Responses-to-Messages bridge for Google providers", async () => {
@@ -379,7 +379,7 @@ describe("Google Messages routes", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.8-flash",
         input: "hello",
         max_output_tokens: 100,
         stream: false,
@@ -393,16 +393,22 @@ describe("Google Messages routes", () => {
     expect(requestUrl(fetchMock.mock.calls[0][0])).toContain(":generateContent")
   })
   test.each([
-    { effort: "low", expected: "LOW" as const },
-    { effort: "medium", expected: "MEDIUM" as const },
+    { model: "gemini-3.8-flash", effort: "low", expected: "LOW" as const },
+    {
+      model: "gemini-3.8-flash",
+      effort: "medium",
+      expected: "MEDIUM" as const,
+    },
+    { model: "gemini-4-argon", effort: "low", expected: "LOW" as const },
+    { model: "gemini-4-argon", effort: "medium", expected: "MEDIUM" as const },
   ])(
     "preserves Responses reasoning effort $effort through the Google adapter",
-    async ({ effort, expected }) => {
+    async ({ model, effort, expected }) => {
       const response = await createApp().request("/google/v1/responses", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          model: "gemini-3.1-pro-preview",
+          model,
           input: "hello",
           max_output_tokens: 100,
           reasoning: { effort },
@@ -427,8 +433,8 @@ describe("Google Messages routes", () => {
         npm: "@ai-sdk/openai-compatible",
         api: "https://mixed.example/v1",
         models: {
-          "gemini-3.1-pro-preview": {
-            id: "gemini-3.1-pro-preview",
+          "gemini-3.8-flash": {
+            id: "gemini-3.8-flash",
             provider: {
               npm: "@ai-sdk/google",
               api: "https://mixed.example/google/v1beta",
@@ -445,10 +451,10 @@ describe("Google Messages routes", () => {
       modelsDevProviderId: "mixed",
       baseUrl: "https://mixed.example/v1",
     }
-    const response = await send({ model: "gemini-3.1-pro-preview" })
+    const response = await send({ model: "gemini-3.8-flash" })
     expect(response.status).toBe(200)
     expect(requestUrl(fetchMock.mock.calls[0][0])).toBe(
-      "https://mixed.example/google/v1beta/models/gemini-3.1-pro-preview:generateContent",
+      "https://mixed.example/google/v1beta/models/gemini-3.8-flash:generateContent",
     )
     expect(fetchMock.mock.calls[0][1]?.headers).toHaveProperty(
       "x-goog-api-key",
@@ -484,9 +490,9 @@ describe("Google Messages routes", () => {
         })),
       },
     ]
-    expect(
-      (await send({ model: "gemini-3.1-pro-preview", messages })).status,
-    ).toBe(200)
+    expect((await send({ model: "gemini-3.8-flash", messages })).status).toBe(
+      200,
+    )
     const body = JSON.parse(
       fetchMock.mock.calls[0][1]?.body as string,
     ) as GoogleGenerateContentPayload
@@ -509,7 +515,7 @@ describe("Google Messages routes", () => {
         data: "aW1n",
       })
     }
-    await send({ model: "gemini-3.1-pro-preview", messages })
+    await send({ model: "gemini-3.8-flash", messages })
     expect(fetchMock.mock.calls[1][1]?.body).toBe(
       fetchMock.mock.calls[0][1]?.body,
     )

@@ -38,7 +38,7 @@ function collectContent(
 
 describe("Google SSE to Anthropic", () => {
   test("streams thinking, text and parallel tool calls while retaining all thought signatures", () => {
-    const translator = new GoogleMessagesStreamTranslator("gemini-3-pro")
+    const translator = new GoogleMessagesStreamTranslator("gemini-3.8-flash")
     const events = [
       ...translator.push({
         responseId: "google-id",
@@ -100,7 +100,7 @@ describe("Google SSE to Anthropic", () => {
     ).toHaveLength(1)
     expect(events[0]).toMatchObject({
       type: "message_start",
-      message: { id: "google-id", model: "gemini-3-pro" },
+      message: { id: "google-id", model: "gemini-3.8-flash" },
     })
     expect(events.at(-2)).toMatchObject({
       type: "message_delta",
@@ -114,7 +114,7 @@ describe("Google SSE to Anthropic", () => {
     expect(events.at(-1)).toEqual({ type: "message_stop" })
     const content = collectContent(events)
     const restored = translateAnthropicToGoogle({
-      model: "gemini-3-pro",
+      model: "gemini-3.8-flash",
       max_tokens: 100,
       messages: [{ role: "assistant", content }],
     })

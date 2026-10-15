@@ -17,7 +17,7 @@ import {
 const payload = (
   overrides: Partial<AnthropicMessagesPayload> = {},
 ): AnthropicMessagesPayload => ({
-  model: "gemini-2.5-flash",
+  model: "gemini-3.8-flash",
   max_tokens: 1024,
   messages: [{ role: "user", content: "hello" }],
   ...overrides,
@@ -90,7 +90,7 @@ describe("Messages to Google translation", () => {
     } as const
     const translated = translateAnthropicToGoogle(
       payload({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3.8-flash",
         messages: [
           { role: "user", content: [image, pdf] },
           {
@@ -142,56 +142,6 @@ describe("Messages to Google translation", () => {
         media: names?.map((name) => ({ $ref: name })),
       },
     })
-  })
-
-  test("keeps tool media as ordinary user parts for Gemini 2.5", () => {
-    const translated = translateAnthropicToGoogle(
-      payload({
-        messages: [
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "tool_use",
-                id: "screenshot",
-                name: "browser",
-                input: {},
-              },
-            ],
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "tool_result",
-                tool_use_id: "screenshot",
-                content: [
-                  { type: "text", text: "Screenshot" },
-                  {
-                    type: "image",
-                    source: {
-                      type: "base64",
-                      media_type: "image/png",
-                      data: "aW1n",
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      }),
-    )
-    expect(translated.contents[1].parts).toEqual([
-      {
-        functionResponse: {
-          id: "screenshot",
-          name: "browser",
-          response: { output: "Screenshot" },
-        },
-      },
-      { inlineData: { mimeType: "image/png", data: "aW1n" } },
-    ])
   })
 
   test("translates automatic, disabled, forced and named tool choices", () => {
@@ -287,12 +237,12 @@ describe("Messages to Google translation", () => {
     expect(
       translateAnthropicToGoogle(payload({ thinking: { type: "disabled" } }))
         .generationConfig.thinkingConfig,
-    ).toEqual({ includeThoughts: false, thinkingBudget: 0 })
+    ).toEqual({ includeThoughts: false, thinkingLevel: "LOW" })
     expect(
       translateAnthropicToGoogle(
         payload({ thinking: { type: "enabled", budget_tokens: 2048 } }),
       ).generationConfig.thinkingConfig,
-    ).toEqual({ includeThoughts: true, thinkingBudget: 2048 })
+    ).toEqual({ includeThoughts: true, thinkingLevel: "LOW" })
     expect(
       translateAnthropicToGoogle(
         payload({
@@ -300,7 +250,7 @@ describe("Messages to Google translation", () => {
           output_config: { effort: "max" },
         }),
       ).generationConfig.thinkingConfig,
-    ).toEqual({ includeThoughts: true, thinkingBudget: 24576 })
+    ).toEqual({ includeThoughts: true, thinkingLevel: "HIGH" })
     for (const [effort, thinkingLevel] of [
       ["low", "LOW"],
       ["medium", "MEDIUM"],
@@ -310,7 +260,7 @@ describe("Messages to Google translation", () => {
       expect(
         translateAnthropicToGoogle(
           payload({
-            model: "gemini-3.1-pro-preview",
+            model: "gemini-3.8-flash",
             thinking: { type: "adaptive" },
             output_config: { effort },
           }),
@@ -342,11 +292,11 @@ describe("Messages to Google translation", () => {
           thoughtsTokenCount: 15,
         },
       },
-      "gemini-3-pro",
+      "gemini-3.8-flash",
     )
     expect(response).toMatchObject({
       id: "google-msg",
-      model: "gemini-3-pro",
+      model: "gemini-3.8-flash",
       stop_reason: "tool_use",
       usage: {
         input_tokens: 70,

@@ -52,11 +52,10 @@ export interface GoogleGenerateContentPayload {
   }
 }
 
-export type GoogleThinkingLevel = "MINIMAL" | "LOW" | "MEDIUM" | "HIGH"
+export type GoogleThinkingLevel = "LOW" | "MEDIUM" | "HIGH"
 
 export interface GoogleThinkingConfig {
   includeThoughts?: boolean
-  thinkingBudget?: number
   thinkingLevel?: GoogleThinkingLevel
 }
 
