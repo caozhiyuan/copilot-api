@@ -24,3 +24,6 @@ dist/
 *.vsix
 
 .claude
+
+# mac
+.DS_Store
