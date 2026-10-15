@@ -306,6 +306,44 @@
         font-weight: 750;
       }
 
+      .collapse-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .collapse-toggle:focus-visible {
+        outline: 2px solid var(--color-blue);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
+      .collapse-chevron {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        color: var(--color-gray);
+      }
+
+      .collapse-toggle[aria-expanded="false"] .collapse-chevron {
+        transform: rotate(-90deg);
+      }
+
+      .collapse-body[hidden] {
+        display: none !important;
+      }
+
+      .panel-header:has(+ .collapse-body[hidden]) {
+        border-bottom-color: transparent;
+      }
+
       .section-subtitle {
         margin-top: -4px;
         margin-bottom: 8px;
@@ -700,6 +738,7 @@
           tokenUsageTrendDay: null,
           tokenUsageTrendMetric: ALL_METRICS_VALUE,
           tokenUsageTrendModel: ALL_MODELS_VALUE,
+          collapsedSections: {},
         };
 
         // --- Rendering Logic ---
@@ -1230,6 +1269,110 @@
           createIcons();
         }
 
+        // --- Collapsible Sections ---
+        const COLLAPSED_SECTIONS_STORAGE_KEY =
+          "copilot-api:usage-viewer:collapsed";
+        const COLLAPSIBLE_SECTION_KEYS = new Set([
+          "tokenUsage",
+          "modelBreakdown",
+          "sessionBreakdown",
+          "requestEvents",
+          "copilotQuotas",
+          "usageApiResponse",
+        ]);
+
+        function readCollapsedSections() {
+          try {
+            const raw = window.localStorage.getItem(
+              COLLAPSED_SECTIONS_STORAGE_KEY
+            );
+            const parsed = raw ? JSON.parse(raw) : null;
+            const collapsed = {};
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              for (const key of COLLAPSIBLE_SECTION_KEYS) {
+                if (parsed[key] === true) {
+                  collapsed[key] = true;
+                }
+              }
+            }
+            return collapsed;
+          } catch (error) {
+            console.warn(
+              "Could not read collapsed sections:",
+              getErrorMessage(error)
+            );
+            return {};
+          }
+        }
+
+        function writeCollapsedSections() {
+          try {
+            window.localStorage.setItem(
+              COLLAPSED_SECTIONS_STORAGE_KEY,
+              JSON.stringify(state.collapsedSections)
+            );
+          } catch (error) {
+            console.warn(
+              "Could not store collapsed sections:",
+              getErrorMessage(error)
+            );
+          }
+        }
+
+        function isSectionCollapsed(key) {
+          return state.collapsedSections[key] === true;
+        }
+
+        function getCollapseBodyId(key) {
+          return `collapse-body-${key}`;
+        }
+
+        /**
+         * Renders the toggle button (chevron + label) shown in a section header.
+         * @param {string} key - A COLLAPSIBLE_SECTION_KEYS entry.
+         * @param {string} labelHtml - Trusted HTML for the toggle label.
+         */
+        function renderCollapseToggle(key, labelHtml) {
+          return `<button type="button" class="collapse-toggle" data-collapse-toggle="${key}" aria-expanded="${!isSectionCollapsed(key)}" aria-controls="${getCollapseBodyId(key)}"><i data-lucide="chevron-down" class="collapse-chevron"></i>${labelHtml}</button>`;
+        }
+
+        /**
+         * Opens a section body wrapper that is hidden while the section is
+         * collapsed. Pair with renderCollapseBodyEnd() for multi-part bodies.
+         * @param {string} key - A COLLAPSIBLE_SECTION_KEYS entry.
+         * @param {string} className - Optional extra classes for the wrapper.
+         */
+        function renderCollapseBodyStart(key, className = "") {
+          return `<div id="${getCollapseBodyId(key)}" class="collapse-body ${className}" ${isSectionCollapsed(key) ? "hidden" : ""}>`;
+        }
+
+        function renderCollapseBodyEnd() {
+          return "</div>";
+        }
+
+        function renderCollapseBody(key, bodyHtml, className = "") {
+          return `${renderCollapseBodyStart(key, className)}${bodyHtml}${renderCollapseBodyEnd()}`;
+        }
+
+        function toggleCollapsedSection(button) {
+          const key = button.dataset.collapseToggle;
+          if (!COLLAPSIBLE_SECTION_KEYS.has(key)) {
+            return;
+          }
+          const collapsed = !isSectionCollapsed(key);
+          if (collapsed) {
+            state.collapsedSections[key] = true;
+          } else {
+            delete state.collapsedSections[key];
+          }
+          const body = document.getElementById(getCollapseBodyId(key));
+          if (body) {
+            body.hidden = collapsed;
+          }
+          button.setAttribute("aria-expanded", String(!collapsed));
+          writeCollapsedSections();
+        }
+
         function getModelField(model, fields) {
           for (const field of fields) {
             if (typeof model?.[field] === "string" && model[field].trim()) {
@@ -1464,12 +1607,12 @@
           return `
             <section id="usage-quotas" class="dashboard-section">
               <h2 class="section-heading">
-                <i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i>
-                <span>Copilot Quotas</span>
+                ${renderCollapseToggle(
+                  "copilotQuotas",
+                  `<i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Copilot Quotas</span>`
+                )}
               </h2>
-              <div class="metric-grid">
-                ${quotaCards}
-              </div>
+              ${renderCollapseBody("copilotQuotas", quotaCards, "metric-grid")}
             </section>
           `;
         }
@@ -1482,10 +1625,15 @@
           return `
             <section id="usage-quotas" class="dashboard-section">
               <h2 class="section-heading">
-                <i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i>
-                <span>Copilot Quotas</span>
+                ${renderCollapseToggle(
+                  "copilotQuotas",
+                  `<i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Copilot Quotas</span>`
+                )}
               </h2>
-              ${renderError(state.error, "Usage request failed")}
+              ${renderCollapseBody(
+                "copilotQuotas",
+                renderError(state.error, "Usage request failed")
+              )}
             </section>
           `;
         }
@@ -1620,12 +1768,17 @@
           return `
             <section id="detailed-data" class="dashboard-section">
               <h2 class="section-heading">
-                <i data-lucide="file-text" class="h-5 w-5" style="color: var(--color-blue);"></i>
-                <span>Copilot Usage API Response</span>
+                ${renderCollapseToggle(
+                  "usageApiResponse",
+                  `<i data-lucide="file-text" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Copilot Usage API Response</span>`
+                )}
               </h2>
-              <div class="panel p-4 relative font-mono text-xs code-block overflow-auto" style="max-height: 420px;">
-                ${formattedDetails}
-              </div>
+              ${renderCollapseBody(
+                "usageApiResponse",
+                `<div class="panel p-4 relative font-mono text-xs code-block overflow-auto" style="max-height: 420px;">
+                  ${formattedDetails}
+                </div>`
+              )}
             </section>
           `;
         }
@@ -1665,8 +1818,10 @@
               <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 class="section-heading mb-1">
-                    <i data-lucide="database" class="h-5 w-5" style="color: var(--color-blue);"></i>
-                    <span>Token Usage</span>
+                    ${renderCollapseToggle(
+                      "tokenUsage",
+                      `<i data-lucide="database" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Token Usage</span>`
+                    )}
                   </h2>
                   <p class="section-subtitle mb-0">${escapeHtml(
                     renderTokenUsageRangeText(state.tokenUsagePeriod, activeRange)
@@ -1686,6 +1841,7 @@
                 </div>
               </div>
 
+              ${renderCollapseBodyStart("tokenUsage")}
               ${
                 state.tokenUsageSummaryError
                   ? renderError(
@@ -1791,17 +1947,20 @@
                 <div class="panel">
                   <div class="panel-header">
                     <div>
-                      <p class="panel-title">Model Breakdown</p>
+                      <p class="panel-title">${renderCollapseToggle("modelBreakdown", "<span>Model Breakdown</span>")}</p>
                       <p class="panel-meta">${summary ? `${formatNumber(summary.byModel.length)} models` : "No summary rows loaded."}</p>
                     </div>
                   </div>
-                  ${renderTokenUsageModelBreakdown(summary)}
+                  ${renderCollapseBody(
+                    "modelBreakdown",
+                    renderTokenUsageModelBreakdown(summary)
+                  )}
                 </div>
 
                 <div class="panel">
                   <div class="panel-header">
                     <div>
-                      <p class="panel-title">Session Breakdown</p>
+                      <p class="panel-title">${renderCollapseToggle("sessionBreakdown", "<span>Session Breakdown</span>")}</p>
                       <p class="panel-meta">${sessionsPage ? `Page ${sessionsPage.page} / ${sessionsPage.total_pages} - ${formatNumber(sessionsPage.total)} sessions` : "No session rows loaded."}</p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -1809,6 +1968,7 @@
                       <button type="button" data-session-page="1" class="pill-button px-3 py-1.5 text-xs font-semibold" ${!sessionsPage || state.isSessionsLoading || sessionsPage.page >= sessionsPage.total_pages ? "disabled" : ""}>Next</button>
                     </div>
                   </div>
+                  ${renderCollapseBodyStart("sessionBreakdown")}
                   ${
                     state.tokenUsageSessionsError
                       ? `<div class="p-4">${renderError(
@@ -1818,12 +1978,13 @@
                       : ""
                   }
                   ${renderTokenUsageModelBreakdown({ bySession: sessionsPage?.items }, "session")}
+                  ${renderCollapseBodyEnd()}
                 </div>
 
                 <div class="panel">
                   <div class="panel-header flex-col items-start sm:flex-row sm:items-center">
                     <div>
-                      <p class="panel-title">Request Events</p>
+                      <p class="panel-title">${renderCollapseToggle("requestEvents", "<span>Request Events</span>")}</p>
                       <p class="panel-meta">${escapeHtml(eventsMeta)}</p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -1841,6 +2002,7 @@
                       )}
                     </div>
                   </div>
+                  ${renderCollapseBodyStart("requestEvents")}
                   ${
                     state.tokenUsageEventsError
                       ? `<div class="p-4">${renderError(
@@ -1850,8 +2012,10 @@
                       : ""
                   }
                   ${renderTokenUsageEventsTable(eventsPage)}
+                  ${renderCollapseBodyEnd()}
                 </div>
               </div>
+              ${renderCollapseBodyEnd()}
             </section>
           `;
         }
@@ -2817,6 +2981,11 @@
             void copyModelId(copyButton.dataset.modelCopy);
             return;
           }
+          const collapseToggle = event.target.closest("[data-collapse-toggle]");
+          if (collapseToggle) {
+            toggleCollapsedSection(collapseToggle);
+            return;
+          }
           const detailsButton = event.target.closest("[data-model-details]");
           if (detailsButton) {
             const details = document.getElementById(
@@ -2945,6 +3114,7 @@
           endpointUrlInput.value = initialEndpoint;
           migrateLegacyApiKey(initialEndpoint);
           syncEndpointCredential();
+          state.collapsedSections = readCollapsedSections();
 
           if (endpointFromUrl) {
             void fetchData();

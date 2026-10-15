@@ -23,6 +23,14 @@ function extractInlineFunctionRange(
   return html.slice(start, end)
 }
 
+function extractCollapseHelpers(html: string): string {
+  return extractInlineFunctionRange(
+    html,
+    "        // --- Collapsible Sections ---",
+    "        function getModelField(model, fields) {",
+  )
+}
+
 type UsageViewerFormatters = {
   escapeHtml: (value: unknown) => string
   formatObject: (value: unknown) => string
@@ -42,10 +50,13 @@ async function loadUsageViewerFormatters(): Promise<UsageViewerFormatters> {
       "        function formatObject(obj) {",
       "        function renderTokenUsageSection() {",
     ),
+    extractCollapseHelpers(html),
     "({ escapeHtml, formatObject, renderDetailedData })",
   ].join("\n")
 
-  return runInNewContext(source) as UsageViewerFormatters
+  return runInNewContext(source, {
+    state: { collapsedSections: {} },
+  }) as UsageViewerFormatters
 }
 
 describe("usage viewer period contract", () => {
@@ -132,6 +143,7 @@ describe("usage viewer model cache hit rate", () => {
         "        function renderTokenUsageSection() {",
         "        function getTokenUsageTrendMetrics() {",
       ),
+      extractCollapseHelpers(html),
       "({ renderTokenUsageModelBreakdown, formatCacheHitRate, renderTokenUsageSection })",
     ].join("\n")
     const state: {
@@ -140,7 +152,9 @@ describe("usage viewer model cache hit rate", () => {
       isSessionsLoading: boolean
       tokenUsageSessionsError: string | null
       tokenUsageSessionsPage: unknown
+      collapsedSections: Record<string, boolean>
     } = {
+      collapsedSections: {},
       isTokenUsageLoading: false,
       isSessionsLoading: false,
       tokenUsageSessionsError: null,
@@ -329,6 +343,7 @@ describe("usage viewer cost metrics", () => {
         "        function renderTokenUsageSection() {",
         "        function getTokenUsageTrendMetrics() {",
       ),
+      extractCollapseHelpers(html),
       "({ renderTokenUsageSection })",
     ].join("\n")
     const state: {
@@ -337,7 +352,9 @@ describe("usage viewer cost metrics", () => {
       isSessionsLoading: boolean
       tokenUsageSessionsError: string | null
       tokenUsageSessionsPage: unknown
+      collapsedSections: Record<string, boolean>
     } = {
+      collapsedSections: {},
       isTokenUsageLoading: false,
       isSessionsLoading: false,
       tokenUsageSessionsError: null,
@@ -829,5 +846,484 @@ describe("usage viewer detailed response formatter", () => {
     expect(renderDetailedData({ response: [null] })).toContain(
       "Copilot Usage API Response",
     )
+  })
+})
+
+describe("usage viewer collapsible sections", () => {
+  const storageKey = "copilot-api:usage-viewer:collapsed"
+  const sectionKeys = [
+    "tokenUsage",
+    "modelBreakdown",
+    "sessionBreakdown",
+    "requestEvents",
+    "copilotQuotas",
+    "usageApiResponse",
+  ] as const
+
+  type CollapseState = {
+    collapsedSections: Record<string, boolean>
+    isTokenUsageLoading: boolean
+    isSessionsLoading: boolean
+    tokenUsageSessionsError: string | null
+    tokenUsageSessionsPage: unknown
+    tokenUsageSummary: unknown
+    error: string | null
+    data: { quota_snapshots: Record<string, unknown> } | null
+  }
+
+  type CollapseViewer = {
+    readCollapsedSections: () => Record<string, boolean>
+    renderTokenUsageSection: () => string
+    renderUsageQuotas: (snapshots: unknown) => string
+    renderUsageErrorSection: () => string
+    renderDetailedData: (data: unknown) => string
+    handleContentAreaClick: (event: unknown) => void
+  }
+
+  async function createHarness(
+    options: {
+      stored?: string
+      failRead?: boolean
+      failWrite?: boolean
+    } = {},
+  ) {
+    const html = await readUsageViewerPage()
+    const win = new Window()
+    const store = new Map<string, string>()
+    if (options.stored !== undefined) {
+      store.set(storageKey, options.stored)
+    }
+    const writes: string[] = []
+    const warnings: unknown[][] = []
+    const localStorage = {
+      getItem: (key: string) => {
+        if (options.failRead) throw new Error("read denied")
+        return store.get(key) ?? null
+      },
+      setItem: (key: string, value: string) => {
+        if (options.failWrite) throw new Error("quota exceeded")
+        writes.push(value)
+        store.set(key, value)
+      },
+    }
+    const totals = {
+      request_count: 1,
+      input_tokens: 1,
+      output_tokens: 1,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      costs: [],
+      total_tokens: 2,
+    }
+    const state: CollapseState = {
+      collapsedSections: {},
+      isTokenUsageLoading: false,
+      isSessionsLoading: false,
+      tokenUsageSessionsError: null,
+      tokenUsageSessionsPage: {
+        items: [{ ...totals, session_id: "session-1" }],
+        page: 2,
+        total: 25,
+        total_pages: 3,
+      },
+      tokenUsageSummary: {
+        period: "today",
+        range: { start_ms: 0, end_ms: 1, start_utc: "", end_utc: "" },
+        totals,
+        byModel: [],
+      },
+      error: null,
+      data: {
+        quota_snapshots: { chat: { entitlement: 100, remaining: 50 } },
+      },
+    }
+    const source = [
+      extractInlineFunctionRange(
+        html,
+        "        function escapeHtml(value) {",
+        "        function isMissingTokenUsageEndpointError(error) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function formatNumber(value) {",
+        "        function formatDateTime(value) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function formatCellText(value) {",
+        "        function formatRangeDate(value) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function renderTokenUsageValueLines(value) {",
+        "        function renderTokenUsageEventsTable(eventsPage) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function renderEmptyState(message) {",
+        "        function renderSpinner() {",
+      ),
+      extractCollapseHelpers(html),
+      extractInlineFunctionRange(
+        html,
+        "        function renderUsageQuotas(snapshots) {",
+        "        function formatObject(obj) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function formatObject(obj) {",
+        "        function renderTokenUsageSection() {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function renderTokenUsageSection() {",
+        "        function getTokenUsageTrendMetrics() {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function handleContentAreaClick(event) {",
+        "        function handleContentAreaChange(event) {",
+      ),
+      `({
+        readCollapsedSections,
+        renderTokenUsageSection,
+        renderUsageQuotas,
+        renderUsageErrorSection,
+        renderDetailedData,
+        handleContentAreaClick,
+      })`,
+    ].join("\n")
+    const viewer = runInNewContext(source, {
+      state,
+      document: win.document,
+      Element: win.Element,
+      window: { localStorage },
+      console: { warn: (...args: unknown[]) => warnings.push(args) },
+      renderError: (message: string) => `<p>${message}</p>`,
+      renderTokenUsageRangeText: () => "Today",
+      renderTokenUsageDailyTrend: () => "",
+      renderPaginationButton: (action: string, label: string) =>
+        `<button type="button" data-events-page="${action}">${label}</button>`,
+      renderTokenUsageEventsTable: () => "<table></table>",
+    }) as CollapseViewer
+
+    const root = win.document.body
+    root.addEventListener("click", viewer.handleContentAreaClick)
+    state.collapsedSections = viewer.readCollapsedSections()
+
+    const render = () => {
+      root.innerHTML = [
+        viewer.renderTokenUsageSection(),
+        state.error && !state.data ?
+          viewer.renderUsageErrorSection()
+        : viewer.renderUsageQuotas(state.data?.quota_snapshots),
+        viewer.renderDetailedData(state.data),
+      ].join("")
+    }
+    const toggle = (key: string) =>
+      root.querySelector(`[data-collapse-toggle="${key}"]`)!
+    const body = (key: string) => root.querySelector(`#collapse-body-${key}`)!
+    const isExpanded = (key: string) =>
+      toggle(key).getAttribute("aria-expanded") === "true"
+    const isBodyHidden = (key: string) => body(key).hasAttribute("hidden")
+    const stored = () => store.get(storageKey)
+
+    return {
+      win,
+      state,
+      viewer,
+      root,
+      render,
+      toggle,
+      body,
+      isExpanded,
+      isBodyHidden,
+      stored,
+      writes,
+      warnings,
+    }
+  }
+
+  test("renders every section expanded by default with accessible toggles", async () => {
+    const h = await createHarness()
+    try {
+      h.render()
+      for (const key of sectionKeys) {
+        const button = h.toggle(key)
+        expect(button.tagName).toBe("BUTTON")
+        expect(button.getAttribute("type")).toBe("button")
+        expect(button.getAttribute("aria-expanded")).toBe("true")
+        expect(button.getAttribute("aria-controls")).toBe(
+          `collapse-body-${key}`,
+        )
+        expect(h.body(key)).not.toBeNull()
+        expect(h.isBodyHidden(key)).toBe(false)
+      }
+      expect(h.root.querySelectorAll("[data-collapse-toggle]")).toHaveLength(6)
+      expect(h.root.querySelector("[hidden]")).toBeNull()
+      expect(h.toggle("tokenUsage").textContent).toBe("Token Usage")
+      expect(h.toggle("copilotQuotas").textContent).toBe("Copilot Quotas")
+      expect(h.toggle("usageApiResponse").textContent).toBe(
+        "Copilot Usage API Response",
+      )
+      expect(h.toggle("requestEvents").textContent).toBe("Request Events")
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("renders collapsed sections from stored state", async () => {
+    const h = await createHarness({
+      stored: JSON.stringify({
+        tokenUsage: true,
+        requestEvents: true,
+        usageApiResponse: true,
+      }),
+    })
+    try {
+      h.render()
+      for (const key of ["tokenUsage", "requestEvents", "usageApiResponse"]) {
+        expect(h.isExpanded(key)).toBe(false)
+        expect(h.isBodyHidden(key)).toBe(true)
+      }
+      for (const key of [
+        "modelBreakdown",
+        "sessionBreakdown",
+        "copilotQuotas",
+      ]) {
+        expect(h.isExpanded(key)).toBe(true)
+        expect(h.isBodyHidden(key)).toBe(false)
+      }
+      expect(h.toggle("usageApiResponse").textContent).toContain(
+        "Copilot Usage API Response",
+      )
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("click toggles the section, updates aria state and persists", async () => {
+    const h = await createHarness()
+    try {
+      h.render()
+      const chevron = h.toggle("modelBreakdown").querySelector("i")!
+      chevron.dispatchEvent(new h.win.MouseEvent("click", { bubbles: true }))
+      expect(h.isExpanded("modelBreakdown")).toBe(false)
+      expect(h.isBodyHidden("modelBreakdown")).toBe(true)
+      expect(h.state.collapsedSections).toEqual({ modelBreakdown: true })
+      expect(JSON.parse(h.stored()!)).toEqual({ modelBreakdown: true })
+
+      h.toggle("copilotQuotas").dispatchEvent(
+        new h.win.MouseEvent("click", { bubbles: true }),
+      )
+      expect(JSON.parse(h.stored()!)).toEqual({
+        modelBreakdown: true,
+        copilotQuotas: true,
+      })
+
+      h.toggle("modelBreakdown").dispatchEvent(
+        new h.win.MouseEvent("click", { bubbles: true }),
+      )
+      expect(h.isExpanded("modelBreakdown")).toBe(true)
+      expect(h.isBodyHidden("modelBreakdown")).toBe(false)
+      expect(JSON.parse(h.stored()!)).toEqual({ copilotQuotas: true })
+      expect(h.writes).toHaveLength(3)
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("collapsed state survives re-render and reload", async () => {
+    const h = await createHarness()
+    try {
+      h.render()
+      h.toggle("sessionBreakdown").dispatchEvent(
+        new h.win.MouseEvent("click", { bubbles: true }),
+      )
+      h.state.isTokenUsageLoading = true
+      h.render()
+      expect(h.isExpanded("sessionBreakdown")).toBe(false)
+      expect(h.isBodyHidden("sessionBreakdown")).toBe(true)
+      expect(h.isBodyHidden("requestEvents")).toBe(false)
+      expect(h.viewer.readCollapsedSections()).toEqual({
+        sessionBreakdown: true,
+      })
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("falls back to expanded for corrupt or unknown stored values", async () => {
+    for (const stored of [
+      "{not json",
+      "",
+      "null",
+      "[]",
+      '"tokenUsage"',
+      "42",
+      '{"tokenUsage":"true","requestEvents":1,"bogus":true}',
+    ]) {
+      const h = await createHarness({ stored })
+      try {
+        expect(h.state.collapsedSections).toEqual({})
+        h.render()
+        expect(h.root.querySelector("[hidden]")).toBeNull()
+      } finally {
+        await h.win.happyDOM.close()
+      }
+    }
+
+    const mixed = await createHarness({
+      stored: '{"tokenUsage":true,"bogus":true,"requestEvents":false}',
+    })
+    try {
+      expect(mixed.state.collapsedSections).toEqual({ tokenUsage: true })
+    } finally {
+      await mixed.win.happyDOM.close()
+    }
+  })
+
+  test("storage errors do not break reading or toggling", async () => {
+    const readFailure = await createHarness({ failRead: true })
+    try {
+      expect(readFailure.state.collapsedSections).toEqual({})
+      expect(readFailure.warnings).toHaveLength(1)
+    } finally {
+      await readFailure.win.happyDOM.close()
+    }
+
+    const writeFailure = await createHarness({ failWrite: true })
+    try {
+      writeFailure.render()
+      writeFailure
+        .toggle("tokenUsage")
+        .dispatchEvent(
+          new writeFailure.win.MouseEvent("click", { bubbles: true }),
+        )
+      expect(writeFailure.isExpanded("tokenUsage")).toBe(false)
+      expect(writeFailure.isBodyHidden("tokenUsage")).toBe(true)
+      expect(writeFailure.state.collapsedSections).toEqual({ tokenUsage: true })
+      expect(writeFailure.warnings).toHaveLength(1)
+    } finally {
+      await writeFailure.win.happyDOM.close()
+    }
+  })
+
+  test("paging buttons and other header content do not toggle", async () => {
+    const h = await createHarness()
+    try {
+      h.render()
+      const header = h.body("sessionBreakdown").previousElementSibling
+      for (const target of [
+        header.querySelector('[data-session-page="1"]')!,
+        header.querySelector('[data-session-page="-1"]')!,
+        header.querySelector(".panel-meta")!,
+        header,
+      ]) {
+        target.dispatchEvent(new h.win.MouseEvent("click", { bubbles: true }))
+      }
+      expect(h.isExpanded("sessionBreakdown")).toBe(true)
+      expect(h.isBodyHidden("sessionBreakdown")).toBe(false)
+      expect(h.writes).toHaveLength(0)
+
+      h.toggle("sessionBreakdown").dispatchEvent(
+        new h.win.MouseEvent("click", { bubbles: true }),
+      )
+      expect(
+        header
+          .querySelector('[data-session-page="1"]')
+          ?.hasAttribute("disabled"),
+      ).toBe(false)
+      expect(h.isBodyHidden("sessionBreakdown")).toBe(true)
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("nested panels keep their own state when the parent collapses", async () => {
+    const h = await createHarness()
+    try {
+      h.render()
+      const click = (key: string) =>
+        h
+          .toggle(key)
+          .dispatchEvent(new h.win.MouseEvent("click", { bubbles: true }))
+      click("modelBreakdown")
+      click("tokenUsage")
+
+      const tokenBody = h.body("tokenUsage")
+      expect(h.isBodyHidden("tokenUsage")).toBe(true)
+      expect(tokenBody.contains(h.body("modelBreakdown"))).toBe(true)
+      expect(tokenBody.contains(h.body("sessionBreakdown"))).toBe(true)
+      expect(tokenBody.contains(h.body("requestEvents"))).toBe(true)
+      expect(h.body("copilotQuotas").closest("[hidden]")).toBeNull()
+      expect(h.isBodyHidden("sessionBreakdown")).toBe(false)
+
+      click("tokenUsage")
+      expect(h.isBodyHidden("tokenUsage")).toBe(false)
+      expect(h.isBodyHidden("modelBreakdown")).toBe(true)
+      expect(h.isBodyHidden("sessionBreakdown")).toBe(false)
+      expect(h.isBodyHidden("requestEvents")).toBe(false)
+      expect(JSON.parse(h.stored()!)).toEqual({ modelBreakdown: true })
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("collapsed state applies to loading and error variants", async () => {
+    const h = await createHarness({
+      stored: JSON.stringify({ tokenUsage: true, copilotQuotas: true }),
+    })
+    try {
+      h.state.isTokenUsageLoading = true
+      h.state.error = "usage failed"
+      h.state.data = null
+      h.render()
+      expect(h.root.textContent).toContain("Refreshing summary...")
+      expect(h.root.textContent).toContain("usage failed")
+      expect(h.isExpanded("tokenUsage")).toBe(false)
+      expect(h.isBodyHidden("tokenUsage")).toBe(true)
+      expect(h.isExpanded("copilotQuotas")).toBe(false)
+      expect(h.isBodyHidden("copilotQuotas")).toBe(true)
+      expect(h.body("copilotQuotas").textContent).toContain("usage failed")
+      expect(
+        h.root.querySelector('[data-collapse-toggle="usageApiResponse"]'),
+      ).toBeNull()
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("ignores unknown keys and tolerates a missing body element", async () => {
+    const h = await createHarness()
+    try {
+      h.render()
+      h.root.insertAdjacentHTML(
+        "beforeend",
+        '<button type="button" id="rogue" data-collapse-toggle="bogus" aria-expanded="true"></button>',
+      )
+      h.root
+        .querySelector("#rogue")!
+        .dispatchEvent(new h.win.MouseEvent("click", { bubbles: true }))
+      expect(h.state.collapsedSections).toEqual({})
+      expect(h.writes).toHaveLength(0)
+
+      h.body("requestEvents").remove()
+      h.toggle("requestEvents").dispatchEvent(
+        new h.win.MouseEvent("click", { bubbles: true }),
+      )
+      expect(h.isExpanded("requestEvents")).toBe(false)
+      expect(h.state.collapsedSections).toEqual({ requestEvents: true })
+    } finally {
+      await h.win.happyDOM.close()
+    }
+  })
+
+  test("page wires collapsed state into init and styles", async () => {
+    const html = await readUsageViewerPage()
+    expect(html).toContain(`"${storageKey}"`)
+    expect(html).toContain("state.collapsedSections = readCollapsedSections();")
+    expect(html).toContain('.collapse-toggle[aria-expanded="false"]')
+    expect(html).toContain(".collapse-body[hidden]")
   })
 })
