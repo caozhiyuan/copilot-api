@@ -125,3 +125,9 @@
 向 `/google/v1/messages` 发送 Anthropic Messages 请求，使用 `model: "gemini-2.5-flash"`；也可以向 `/v1/messages` 发送 `model: "google/gemini-2.5-flash"`。网关会转换文本、system、base64 图片/PDF、工具调用及结果、结构化输出、采样参数和 thinking 设置。普通响应和 SSE 都返回 Anthropic Messages 格式。Google 原生模型列表会转换为网关的模型发现格式，`/v1/responses` 也可复用现有 Messages 适配。Google provider 不提供 `/v1/chat/completions`；`count_tokens` 继续使用本地估算。
 
 Google 思考签名保存在 Anthropic thinking block 的不透明 `signature` 中，包括关联文本或工具调用的仅签名 block。客户端在后续工具结果请求中需要保留这些 assistant 历史 block。用量统计包含缓存读取输入和思考输出 token。Anthropic `cache_control` 不会发往 Google；已有 Google 缓存可通过 `models.<id>.extraBody.cachedContent` 指定。Google 特有默认参数可放入 `extraBody.generationConfig`，请求转换得到的同名字段优先。
+
+即使 Responses 客户端只传 `reasoning.effort`（适配为 `output_config.effort`），思考参数转换也会生效。优先级为显式 `thinking: disabled`、显式 `thinking.budget_tokens`、effort。网关为已识别的 Gemini 3/4 型号选择受支持的等级，为 Gemini 2.5 使用 token 预算；不支持的等级向下映射到最近的受支持等级。模型不能关闭思考时，`disabled` 会隐藏思考摘要并使用最低合法设置（例如 Gemini 2.5 Pro 使用 128 token 预算）。未知模型别名保留上游思考默认行为，可通过 `extraBody.generationConfig` 配置原生参数。
+
+预算换算是网关策略：Gemini 2.5 的 `low`/`medium`/`high` 分别使用 2,048/8,192/16,384 token，`xhigh`/`max` 使用该模型的最大预算。对仅支持等级的模型，显式预算不超过 2,048 时映射为 `LOW`，不超过 8,192 时为 `MEDIUM`，更高预算为 `HIGH`，再按型号支持能力归一化。这些等级不保证实际思考 token 数。参见 [Google 思考控制文档](https://ai.google.dev/gemini-api/docs/generate-content/thinking)。
+
+Gemini 3/4 的多模态工具结果会包含稳定、唯一的 `inlineData.displayName`，以及 function response 中与之匹配的 `$ref`。Gemini 2.5 则将工具图片/PDF 作为普通 user 媒体放在文本 function response 旁边。参见 [Google 多模态函数响应](https://ai.google.dev/gemini-api/docs/generate-content/function-calling#multimodal)。

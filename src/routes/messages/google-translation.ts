@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 
 import { HTTPError } from "~/lib/error"
 import type {
@@ -15,6 +15,8 @@ import type {
   GooglePart,
   GoogleUsageMetadata,
 } from "~/lib/types/google"
+
+import { translateGoogleThinking } from "./google-thinking"
 
 // Anthropic has a standard opaque signature field only on thinking blocks.
 // Signature-only blocks carry signatures belonging to the preceding text/tool
@@ -87,7 +89,8 @@ function invalidRequest(message: string): never {
 function translateToolResult(
   block: AnthropicToolResultBlock,
   toolNames: Map<string, string>,
-): GooglePart {
+  model: string,
+): Array<GooglePart> {
   const name = toolNames.get(block.tool_use_id)
   if (!name)
     invalidRequest(
@@ -95,29 +98,49 @@ function translateToolResult(
     )
   const text: Array<string> = []
   const media: Array<Pick<GooglePart, "inlineData">> = []
+  const references: Array<{ $ref: string }> = []
+  const mediaPrefix = createHash("sha256")
+    .update(block.tool_use_id)
+    .digest("hex")
+    .slice(0, 16)
+  const nestedMedia = /^gemini-[34](?:\.|-)/u.test(
+    model.replace(/^models\//u, ""),
+  )
   if (typeof block.content === "string") {
     text.push(block.content)
   } else {
     for (const item of block.content) {
       if (item.type === "text") text.push(item.text)
       else if (item.type === "tool_reference") text.push(item.tool_name)
-      else
+      else {
+        const displayName = `tool-result-${mediaPrefix}-${media.length}`
         media.push({
           inlineData: {
             mimeType: item.source.media_type,
             data: item.source.data,
+            ...(nestedMedia && { displayName }),
           },
         })
+        references.push({ $ref: displayName })
+      }
     }
   }
-  return {
+  const result: GooglePart = {
     functionResponse: {
       id: block.tool_use_id,
       name,
-      response: { [block.is_error ? "error" : "output"]: text.join("\n") },
-      ...(media.length > 0 && { parts: media }),
+      response: {
+        [block.is_error ? "error" : "output"]:
+          nestedMedia && media.length > 0 ?
+            { text: text.join("\n"), media: references }
+          : text.join("\n"),
+      },
+      ...(nestedMedia && media.length > 0 && { parts: media }),
     },
   }
+  // Older models still receive the image/PDF as ordinary user media, adjacent
+  // to the tool result, instead of unsupported FunctionResponse.parts.
+  return nestedMedia ? [result] : [result, ...media]
 }
 
 export function translateAnthropicToGoogle(
@@ -178,7 +201,7 @@ export function translateAnthropicToGoogle(
             })
             break
           case "tool_result":
-            parts.push(translateToolResult(block, toolNames))
+            parts.push(...translateToolResult(block, toolNames, payload.model))
             break
           case "thinking":
             translateThinkingBlock(block, parts)
@@ -229,26 +252,8 @@ export function translateAnthropicToGoogle(
     result.generationConfig.responseJsonSchema =
       payload.output_config.format.schema
   }
-  if (payload.thinking) {
-    const thinking = payload.thinking
-    const config: NonNullable<
-      GoogleGenerateContentPayload["generationConfig"]["thinkingConfig"]
-    > = { includeThoughts: thinking.type !== "disabled" }
-    if (thinking.type === "disabled") config.thinkingBudget = 0
-    else if (thinking.budget_tokens !== undefined)
-      config.thinkingBudget = thinking.budget_tokens
-    else if (
-      payload.output_config?.effort
-      && !/gemini-2[.-]/u.test(payload.model)
-    ) {
-      const effort = payload.output_config.effort
-      config.thinkingLevel =
-        effort === "low" ? "LOW"
-        : effort === "medium" ? "MEDIUM"
-        : "HIGH"
-    }
-    result.generationConfig.thinkingConfig = config
-  }
+  const thinkingConfig = translateGoogleThinking(payload)
+  if (thinkingConfig) result.generationConfig.thinkingConfig = thinkingConfig
   return result
 }
 

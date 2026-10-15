@@ -392,6 +392,129 @@ describe("Google Messages routes", () => {
     })
     expect(requestUrl(fetchMock.mock.calls[0][0])).toContain(":generateContent")
   })
+  test.each([
+    { effort: "low", expected: "LOW" as const },
+    { effort: "medium", expected: "MEDIUM" as const },
+  ])(
+    "preserves Responses reasoning effort $effort through the Google adapter",
+    async ({ effort, expected }) => {
+      const response = await createApp().request("/google/v1/responses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "gemini-3.1-pro-preview",
+          input: "hello",
+          max_output_tokens: 100,
+          reasoning: { effort },
+          stream: false,
+        }),
+      })
+      expect(response.status).toBe(200)
+      const body = JSON.parse(
+        fetchMock.mock.calls[0][1]?.body as string,
+      ) as GoogleGenerateContentPayload
+      expect(body.generationConfig.thinkingConfig).toEqual({
+        includeThoughts: true,
+        thinkingLevel: expected,
+      })
+    },
+  )
+
+  test("routes a mixed-protocol catalog's Google model to its native model API URL", async () => {
+    installModelsDevCatalog({
+      ...modelsDevCatalogFixture,
+      mixed: {
+        npm: "@ai-sdk/openai-compatible",
+        api: "https://mixed.example/v1",
+        models: {
+          "gemini-3.1-pro-preview": {
+            id: "gemini-3.1-pro-preview",
+            provider: {
+              npm: "@ai-sdk/google",
+              api: "https://mixed.example/google/v1beta",
+            },
+          },
+        },
+      },
+    })
+    provider = {
+      ...provider,
+      name: "mixed",
+      type: "openai-compatible",
+      authType: "authorization",
+      modelsDevProviderId: "mixed",
+      baseUrl: "https://mixed.example/v1",
+    }
+    const response = await send({ model: "gemini-3.1-pro-preview" })
+    expect(response.status).toBe(200)
+    expect(requestUrl(fetchMock.mock.calls[0][0])).toBe(
+      "https://mixed.example/google/v1beta/models/gemini-3.1-pro-preview:generateContent",
+    )
+    expect(fetchMock.mock.calls[0][1]?.headers).toHaveProperty(
+      "x-goog-api-key",
+      "google-key",
+    )
+  })
+
+  test("links screenshot tool results to stable, unique inline media names", async () => {
+    const messages: AnthropicMessagesPayload["messages"] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "screenshot-1", name: "browser", input: {} },
+          { type: "tool_use", id: "screenshot-2", name: "browser", input: {} },
+        ],
+      },
+      {
+        role: "user",
+        content: ["screenshot-1", "screenshot-2"].map((tool_use_id) => ({
+          type: "tool_result" as const,
+          tool_use_id,
+          content: [
+            { type: "text" as const, text: "Screenshot taken" },
+            {
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: "image/png" as const,
+                data: "aW1n",
+              },
+            },
+          ],
+        })),
+      },
+    ]
+    expect(
+      (await send({ model: "gemini-3.1-pro-preview", messages })).status,
+    ).toBe(200)
+    const body = JSON.parse(
+      fetchMock.mock.calls[0][1]?.body as string,
+    ) as GoogleGenerateContentPayload
+    const responses = body.contents[1].parts.map(
+      (part) => part.functionResponse!,
+    )
+    const names = responses.map(
+      (response) => response.parts![0].inlineData!.displayName,
+    )
+    expect(new Set(names).size).toBe(2)
+    for (const response of responses) {
+      expect(response.response).toEqual({
+        output: {
+          text: "Screenshot taken",
+          media: [{ $ref: response.parts![0].inlineData!.displayName }],
+        },
+      })
+      expect(response.parts![0].inlineData).toMatchObject({
+        mimeType: "image/png",
+        data: "aW1n",
+      })
+    }
+    await send({ model: "gemini-3.1-pro-preview", messages })
+    expect(fetchMock.mock.calls[1][1]?.body).toBe(
+      fetchMock.mock.calls[0][1]?.body,
+    )
+  })
+
   test("avoids double models/ prefixes and escapes model IDs in upstream URLs", async () => {
     await send({ model: "models/gemini-test" })
     expect(requestUrl(fetchMock.mock.calls[0][0])).toContain(

@@ -152,6 +152,13 @@ test("lists usable Chat, Responses, and Anthropic providers without the built-in
           id: "claude",
           provider: { npm: "@ai-sdk/anthropic" },
         },
+        gemini: {
+          id: "gemini",
+          provider: {
+            npm: "@ai-sdk/google",
+            api: "https://google.example/v1beta",
+          },
+        },
       },
     },
     "responses-provider": {
@@ -221,6 +228,12 @@ test("lists usable Chat, Responses, and Anthropic providers without the built-in
   )
   expect(getModelsDevModelProviderType("chat-provider", "claude")).toBe(
     "anthropic",
+  )
+  expect(getModelsDevModelProviderType("chat-provider", "gemini")).toBe(
+    "google",
+  )
+  expect(getModelsDevModelApi("chat-provider", "gemini")).toBe(
+    "https://google.example/v1beta",
   )
   expect(
     getModelsDevModelProviderType("responses-provider", "completion"),

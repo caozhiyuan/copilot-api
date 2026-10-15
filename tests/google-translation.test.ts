@@ -90,6 +90,7 @@ describe("Messages to Google translation", () => {
     } as const
     const translated = translateAnthropicToGoogle(
       payload({
+        model: "gemini-3.1-pro-preview",
         messages: [
           { role: "user", content: [image, pdf] },
           {
@@ -126,12 +127,71 @@ describe("Messages to Google translation", () => {
       { inlineData: { mimeType: "image/png", data: "aW1n" } },
       { inlineData: { mimeType: "application/pdf", data: "cGRm" } },
     ])
-    expect(translated.contents[2].parts[0].functionResponse).toEqual({
+    const response = translated.contents[2].parts[0].functionResponse
+    expect(response).toMatchObject({
       id: "call-1",
       name: "read",
-      response: { error: "failed\nread" },
+      response: { error: { text: "failed\nread" } },
       parts: translated.contents[0].parts,
     })
+    const names = response?.parts?.map((part) => part.inlineData?.displayName)
+    expect(new Set(names).size).toBe(2)
+    expect(response?.response).toEqual({
+      error: {
+        text: "failed\nread",
+        media: names?.map((name) => ({ $ref: name })),
+      },
+    })
+  })
+
+  test("keeps tool media as ordinary user parts for Gemini 2.5", () => {
+    const translated = translateAnthropicToGoogle(
+      payload({
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "screenshot",
+                name: "browser",
+                input: {},
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "screenshot",
+                content: [
+                  { type: "text", text: "Screenshot" },
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: "image/png",
+                      data: "aW1n",
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(translated.contents[1].parts).toEqual([
+      {
+        functionResponse: {
+          id: "screenshot",
+          name: "browser",
+          response: { output: "Screenshot" },
+        },
+      },
+      { inlineData: { mimeType: "image/png", data: "aW1n" } },
+    ])
   })
 
   test("translates automatic, disabled, forced and named tool choices", () => {
@@ -240,7 +300,7 @@ describe("Messages to Google translation", () => {
           output_config: { effort: "max" },
         }),
       ).generationConfig.thinkingConfig,
-    ).toEqual({ includeThoughts: true })
+    ).toEqual({ includeThoughts: true, thinkingBudget: 24576 })
     for (const [effort, thinkingLevel] of [
       ["low", "LOW"],
       ["medium", "MEDIUM"],
@@ -250,7 +310,7 @@ describe("Messages to Google translation", () => {
       expect(
         translateAnthropicToGoogle(
           payload({
-            model: "gemini-3-pro",
+            model: "gemini-3.1-pro-preview",
             thinking: { type: "adaptive" },
             output_config: { effort },
           }),

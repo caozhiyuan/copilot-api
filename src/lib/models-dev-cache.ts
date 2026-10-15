@@ -369,6 +369,7 @@ function parseSelectableProviders(
         if (
           modelNpm !== "@ai-sdk/openai-compatible"
           && modelNpm !== "@ai-sdk/openai"
+          && modelNpm !== "@ai-sdk/google"
           && modelNpm !== "@ai-sdk/anthropic"
         ) {
           continue

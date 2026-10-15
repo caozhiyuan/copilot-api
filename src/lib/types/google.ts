@@ -4,7 +4,7 @@ export interface GooglePart {
   text?: string
   thought?: boolean
   thoughtSignature?: string
-  inlineData?: { mimeType: string; data: string }
+  inlineData?: { mimeType: string; data: string; displayName?: string }
   functionCall?: {
     id?: string
     name: string
@@ -48,12 +48,16 @@ export interface GoogleGenerateContentPayload {
     stopSequences?: Array<string>
     responseMimeType?: "application/json"
     responseJsonSchema?: Record<string, unknown>
-    thinkingConfig?: {
-      includeThoughts?: boolean
-      thinkingBudget?: number
-      thinkingLevel?: "LOW" | "MEDIUM" | "HIGH"
-    }
+    thinkingConfig?: GoogleThinkingConfig
   }
+}
+
+export type GoogleThinkingLevel = "MINIMAL" | "LOW" | "MEDIUM" | "HIGH"
+
+export interface GoogleThinkingConfig {
+  includeThoughts?: boolean
+  thinkingBudget?: number
+  thinkingLevel?: GoogleThinkingLevel
 }
 
 export interface GoogleUsageMetadata {
