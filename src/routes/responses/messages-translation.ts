@@ -830,8 +830,11 @@ function translateInputToolCall(
   const namespace = getOptionalStringField(item, "namespace") ?? undefined
   const toolIdentity = { kind, name, namespace }
   // Historical calls preserve conversation state; they do not define tools.
+  // A call recorded without a namespace still maps to its declared tool when
+  // the name identifies exactly one, so the history uses the declared alias.
   const descriptor =
     registry.byOriginal.get(createOriginalToolKey(toolIdentity))
+    ?? findOriginalDescriptor(registry, kind, name, namespace)
     ?? createMessagesToolDescriptor(toolIdentity, registry)
   const input =
     kind === "custom" ?

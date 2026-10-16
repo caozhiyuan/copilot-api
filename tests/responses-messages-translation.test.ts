@@ -920,6 +920,105 @@ describe("Responses Lite to Messages translation", () => {
     ])
   })
 
+  test("maps namespace-less tool call history to the unique declared tool", () => {
+    const result = translate({
+      input: [
+        {
+          role: "developer",
+          tools: [
+            {
+              type: "namespace",
+              name: "functions",
+              tools: [
+                {
+                  type: "custom",
+                  name: "exec",
+                  description: "Run a command",
+                  format: { type: "text" },
+                },
+              ],
+            },
+          ],
+          type: "additional_tools",
+        },
+        { role: "user", content: "Run echo one", type: "message" },
+        {
+          type: "custom_tool_call",
+          call_id: "call_exec",
+          name: "exec",
+          input: "echo one",
+          status: "completed",
+        },
+        {
+          type: "custom_tool_call_output",
+          call_id: "call_exec",
+          output: "one",
+        },
+        { role: "user", content: "Run echo two", type: "message" },
+      ],
+    })
+
+    expect(result.messagesPayload.tools?.map((tool) => tool.name)).toEqual([
+      "functions__exec",
+    ])
+    expect(result.messagesPayload.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call_exec",
+          name: "functions__exec",
+          input: { input: "echo one" },
+        },
+      ],
+    })
+  })
+
+  test("keeps namespace-less tool call history unmapped when the name is ambiguous", () => {
+    const customExec = {
+      type: "custom" as const,
+      name: "exec",
+      description: "Run a command",
+      format: { type: "text" as const },
+    }
+    const result = translate({
+      input: [
+        {
+          role: "developer",
+          tools: [
+            { type: "namespace", name: "functions", tools: [customExec] },
+            { type: "namespace", name: "sandbox", tools: [customExec] },
+          ],
+          type: "additional_tools",
+        },
+        { role: "user", content: "Run echo one", type: "message" },
+        {
+          type: "custom_tool_call",
+          call_id: "call_exec",
+          name: "exec",
+          input: "echo one",
+          status: "completed",
+        },
+      ],
+    })
+
+    expect(result.messagesPayload.tools?.map((tool) => tool.name)).toEqual([
+      "functions__exec",
+      "sandbox__exec",
+    ])
+    expect(result.messagesPayload.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call_exec",
+          name: "exec",
+          input: { input: "echo one" },
+        },
+      ],
+    })
+  })
+
   test("marks the last user message when the conversation ends with an assistant tool call", () => {
     const result = translate({
       input: [
