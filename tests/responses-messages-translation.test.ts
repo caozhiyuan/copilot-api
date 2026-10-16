@@ -62,13 +62,13 @@ const expectCanonicalBase64 = (value: string | undefined) => {
 describe("Responses Lite to Messages translation", () => {
   test("includes yielded execution resume guidance in tool call tips", () => {
     expect(MESSAGES_TOOL_CALL_TIPS).toContain(
-      "- Yielded execution is not truncated output. Resume a running `cell_id` with `functions.wait`, and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
+      "- Yielded execution is not truncated output. Resume a running `cell_id` with `wait`, and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
     )
   })
 
   test("includes aborted exec retry guidance in tool call tips", () => {
     expect(MESSAGES_TOOL_CALL_TIPS).toContain(
-      "- If `functions__exec` returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that `functions__exec` is unavailable.",
+      "- If `exec` returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that `exec` is unavailable.",
     )
   })
 
