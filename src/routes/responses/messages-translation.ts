@@ -68,18 +68,18 @@ export const MESSAGES_COMPACTION_PROMPT = [
 
 export const MESSAGES_TOOL_CALL_TIPS = [
   "# Tool Call Tips",
-  "- Do NOT call `exec_command` directly; that tool does not exist. Use the declared code execution custom tool to run commands instead.",
-  '- The code execution custom tool accepts parameters only as {"input":"..."}; put the complete executable code inside input, including properly constructed tools.exec_command(...) calls and text(...) output handling.',
+  "- Do NOT call `exec_command` directly; that tool does not exist. Use `functions.exec` (tool name: `exec`) to run commands instead.",
+  '- The functions.exec tool accepts parameters only as {"input":"..."}; put the complete executable code inside input, including properly constructed tools.exec_command(...) calls and text(...) output handling.',
   "- Construct all tools.exec_command(...) arguments strictly according to its tool definition, and use OS/shell-compatible commands for Windows, Linux, and macOS.",
   "- Always assign the awaited tools.exec_command(...) call to a variable and forward the full result with text(JSON.stringify(r)); unforwarded output is silently dropped and makes results look empty.",
-  "- Yielded execution is not truncated output. Resume a running `cell_id` with the declared tool for waiting on cells, and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
+  "- Yielded execution is not truncated output. Resume a running `cell_id` with `functions.wait` (tool name: `wait`), and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
   "- Read files with the OS-native command (Get-Content/Test-Path on Windows PowerShell, cat/ls on POSIX), quote paths containing spaces, and verify the forwarded output is non-empty before concluding a file was read.",
   "- For long-running commands, keep the returned `session_id` and poll it with `tools.write_stdin` until the command finishes; do not redirect output to a temp file and read it back in a second call.",
-  "- If the code execution custom tool returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that the tool is unavailable.",
+  "- If `functions.exec` returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that `functions.exec` is unavailable.",
 ].join("\n")
 
 const MESSAGES_BATCH_TOOL_CALL_TIPS = [
-  "- Parallel tool calls are disabled for this request. Batch independent commands in one call to the code execution custom tool; keep dependent operations sequential.",
+  "- Parallel tool calls are disabled for this request. Batch independent commands in one functions.exec call; keep dependent operations sequential.",
   'const results = await Promise.allSettled([tools.exec_command({cmd: "git status --short"})]); for (const result of results) text(JSON.stringify(result.status === "fulfilled" ? result.value : {error: String(result.reason)}))',
 ].join("\n")
 
