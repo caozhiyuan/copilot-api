@@ -62,13 +62,13 @@ const expectCanonicalBase64 = (value: string | undefined) => {
 describe("Responses Lite to Messages translation", () => {
   test("includes yielded execution resume guidance in tool call tips", () => {
     expect(MESSAGES_TOOL_CALL_TIPS).toContain(
-      "- Yielded execution is not truncated output. Resume a running `cell_id` with `wait`, and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
+      "- Yielded execution is not truncated output. Resume a running `cell_id` with the declared tool for waiting on cells, and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
     )
   })
 
   test("includes aborted exec retry guidance in tool call tips", () => {
     expect(MESSAGES_TOOL_CALL_TIPS).toContain(
-      "- If `exec` returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that `exec` is unavailable.",
+      "- If the code execution custom tool returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that the tool is unavailable.",
     )
   })
 
@@ -886,6 +886,101 @@ describe("Responses Lite to Messages translation", () => {
     ])
   })
 
+  test.each([undefined, null, ""])(
+    "reuses default tool aliases for historical namespace %j",
+    (namespace) => {
+      for (const collision of [false, true]) {
+        const result = translate({
+          tools:
+            collision ?
+              [{ type: "function", name: "exec", parameters: null }]
+            : [],
+          input: [
+            {
+              type: "additional_tools",
+              role: "developer",
+              tools: [
+                {
+                  type: "namespace",
+                  name: "functions",
+                  tools: [{ type: "custom", name: "exec" }],
+                },
+                {
+                  type: "namespace",
+                  name: "sandbox",
+                  tools: [{ type: "custom", name: "exec" }],
+                },
+              ],
+            },
+            { role: "user", content: "Run it" },
+            {
+              type: "custom_tool_call",
+              call_id: "call-exec",
+              name: "exec",
+              namespace,
+              input: "text(1)",
+            },
+            {
+              type: "custom_tool_call_output",
+              call_id: "call-exec",
+              output: "1",
+            },
+          ],
+          tool_choice: { type: "custom", name: "exec" },
+        })
+        const alias = result.messagesPayload.tools?.at(-2)?.name
+        if (collision) expect(alias).toMatch(/^tool_/u)
+        else expect(alias).toBe("exec")
+        expect(result.messagesPayload.tools?.at(-1)?.name).toBe("sandbox__exec")
+        expect(result.messagesPayload.messages[1]).toMatchObject({
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "call-exec",
+              name: alias,
+              input: { input: "text(1)" },
+            },
+          ],
+        })
+        expect(result.messagesPayload.tool_choice).toEqual({
+          type: "tool",
+          name: alias,
+        })
+      }
+    },
+  )
+
+  test("does not infer a non-default namespace from bare tool history or choice", () => {
+    const payload = {
+      tools: [
+        {
+          type: "namespace",
+          name: "sandbox",
+          tools: [{ type: "custom", name: "exec" }],
+        },
+      ],
+      input: [
+        {
+          type: "custom_tool_call",
+          call_id: "call-exec",
+          name: "exec",
+          input: "text(1)",
+        },
+      ],
+    }
+    const result = translate(payload)
+    expect(result.messagesPayload.tools?.map((tool) => tool.name)).toEqual([
+      "sandbox__exec",
+    ])
+    expect(result.messagesPayload.messages[0]).toMatchObject({
+      content: [{ name: "exec" }],
+    })
+    expect(() =>
+      translate({ ...payload, tool_choice: { type: "custom", name: "exec" } }),
+    ).toThrow("tool_choice references unknown")
+  })
+
   test("does not synthesize tools from undeclared tool call history", () => {
     const result = translate({
       input: [
@@ -1455,12 +1550,21 @@ describe("Responses Lite to Messages translation", () => {
     expect(result.output[0]?.id?.endsWith("__a1")).toBe(true)
   })
 
-  test("translates an apply_patch tool use back to a custom tool call", () => {
+  test.each([false, true])("restores custom calls %j", (namespaced) => {
     const translation = translate({
       input: [
         {
           role: "developer",
-          tools: [{ type: "custom", name: "apply_patch" }],
+          tools:
+            namespaced ?
+              [
+                {
+                  type: "namespace",
+                  name: "functions",
+                  tools: [{ type: "custom", name: "apply_patch" }],
+                },
+              ]
+            : [{ type: "custom", name: "apply_patch" }],
           type: "additional_tools",
         },
         { role: "user", content: "Patch it", type: "message" },
@@ -1492,16 +1596,26 @@ describe("Responses Lite to Messages translation", () => {
         call_id: "call-1",
         name: "apply_patch",
         input: "*** Begin Patch",
+        ...(namespaced ? { namespace: "functions" } : {}),
       },
     ])
   })
 
-  test("streams apply_patch as Responses custom tool events", async () => {
+  test.each([false, true])("streams custom calls %j", async (namespaced) => {
     const translation = translate({
       input: [
         {
           role: "developer",
-          tools: [{ type: "custom", name: "apply_patch" }],
+          tools:
+            namespaced ?
+              [
+                {
+                  type: "namespace",
+                  name: "functions",
+                  tools: [{ type: "custom", name: "apply_patch" }],
+                },
+              ]
+            : [{ type: "custom", name: "apply_patch" }],
           type: "additional_tools",
         },
         { role: "user", content: "Patch it", type: "message" },
@@ -1602,6 +1716,7 @@ describe("Responses Lite to Messages translation", () => {
         name: "apply_patch",
         input: "*** Begin Patch",
         status: "completed",
+        ...(namespaced ? { namespace: "functions" } : {}),
       })
     }
     const completed = events.at(-1)

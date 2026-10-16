@@ -68,18 +68,18 @@ export const MESSAGES_COMPACTION_PROMPT = [
 
 export const MESSAGES_TOOL_CALL_TIPS = [
   "# Tool Call Tips",
-  "- Do NOT call `exec_command` directly; that tool does not exist. Use `exec` to run commands instead.",
-  '- The `exec` tool accepts parameters only as {"input":"..."}; put the complete executable code inside input, including properly constructed tools.exec_command(...) calls and text(...) output handling.',
+  "- Do NOT call `exec_command` directly; that tool does not exist. Use the declared code execution custom tool to run commands instead.",
+  '- The code execution custom tool accepts parameters only as {"input":"..."}; put the complete executable code inside input, including properly constructed tools.exec_command(...) calls and text(...) output handling.',
   "- Construct all tools.exec_command(...) arguments strictly according to its tool definition, and use OS/shell-compatible commands for Windows, Linux, and macOS.",
   "- Always assign the awaited tools.exec_command(...) call to a variable and forward the full result with text(JSON.stringify(r)); unforwarded output is silently dropped and makes results look empty.",
-  "- Yielded execution is not truncated output. Resume a running `cell_id` with `wait`, and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
+  "- Yielded execution is not truncated output. Resume a running `cell_id` with the declared tool for waiting on cells, and a live `session_id` with `tools.write_stdin`, until the command reaches a terminal result.",
   "- Read files with the OS-native command (Get-Content/Test-Path on Windows PowerShell, cat/ls on POSIX), quote paths containing spaces, and verify the forwarded output is non-empty before concluding a file was read.",
   "- For long-running commands, keep the returned `session_id` and poll it with `tools.write_stdin` until the command finishes; do not redirect output to a temp file and read it back in a second call.",
-  "- If `exec` returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that `exec` is unavailable.",
+  "- If the code execution custom tool returns `aborted`, retry at most 3 times. After 3 failures, terminate immediately and inform the user that the tool is unavailable.",
 ].join("\n")
 
 const MESSAGES_BATCH_TOOL_CALL_TIPS = [
-  "- Parallel tool calls are disabled for this request. Batch independent commands in one `exec` call; keep dependent operations sequential.",
+  "- Parallel tool calls are disabled for this request. Batch independent commands in one call to the code execution custom tool; keep dependent operations sequential.",
   'const results = await Promise.allSettled([tools.exec_command({cmd: "git status --short"})]); for (const result of results) text(JSON.stringify(result.status === "fulfilled" ? result.value : {error: String(result.reason)}))',
 ].join("\n")
 
@@ -113,7 +113,6 @@ export const buildOutputFormatInstruction = (
 const COMPACTION_REPLAY_PROMPT =
   "The previous conversation was compacted. Continue from this handoff summary:\n\n"
 const MAX_DEVELOPER_PROMPTS = 5
-const DEFAULT_FUNCTION_NAMESPACE = "functions"
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u
 const CUSTOM_TOOL_INPUT_SCHEMA: Record<string, unknown> = {
   type: "object",
@@ -190,7 +189,7 @@ export function translateResponsesToMessages(
   )
 
   if (options.toolCallTips && payload.parallel_tool_calls === false) {
-    appendToolCallTips(system, registry, MESSAGES_BATCH_TOOL_CALL_TIPS)
+    appendToolCallTips(system, MESSAGES_BATCH_TOOL_CALL_TIPS)
   }
 
   if (normalized.compaction) {
@@ -604,10 +603,7 @@ function createMessagesToolDescriptor(
 ): MessagesToolDescriptor {
   const originalKey = createOriginalToolKey(registration)
   const preferredName =
-    (
-      registration.namespace
-      && registration.namespace !== DEFAULT_FUNCTION_NAMESPACE
-    ) ?
+    registration.namespace && registration.namespace !== "functions" ?
       `${registration.namespace.replaceAll(".", "_")}__${registration.name}`
     : registration.name
   const alias = createToolAlias(preferredName, originalKey, registry)
@@ -642,39 +638,21 @@ function translateInputToAnthropic(
     translateInputItems(input, messages, system, registry)
   }
   if (toolCallTips) {
-    appendToolCallTips(system, registry)
+    appendToolCallTips(system)
   }
   return { messages, system }
 }
 
 function appendToolCallTips(
   system: Array<AnthropicTextBlock>,
-  registry: MessagesToolRegistry,
   tips = MESSAGES_TOOL_CALL_TIPS,
 ): void {
-  const execAlias =
-    findOriginalDescriptor(
-      registry,
-      "custom",
-      "exec",
-      DEFAULT_FUNCTION_NAMESPACE,
-    )?.alias ?? "exec"
-  const waitAlias =
-    findOriginalDescriptor(
-      registry,
-      "function",
-      "wait",
-      DEFAULT_FUNCTION_NAMESPACE,
-    )?.alias ?? "wait"
-  const resolvedTips = tips
-    .replaceAll("`exec`", `\`${execAlias}\``)
-    .replaceAll("`wait`", `\`${waitAlias}\``)
   const lastSystemBlock = system.at(-1)
   if (!lastSystemBlock) {
-    system.push({ type: "text", text: resolvedTips })
+    system.push({ type: "text", text: tips })
     return
   }
-  lastSystemBlock.text = `${lastSystemBlock.text}\n\n${resolvedTips}`
+  lastSystemBlock.text = `${lastSystemBlock.text}\n\n${tips}`
 }
 
 function translateInputItems(
@@ -850,10 +828,11 @@ function translateInputToolCall(
   }
   const name = requireStringField(item, "name", `${kind}_tool_call`)
   const namespace = getOptionalStringField(item, "namespace") ?? undefined
+  const toolIdentity = { kind, name, namespace }
   // Historical calls preserve conversation state; they do not define tools.
   const descriptor =
     findOriginalDescriptor(registry, kind, name, namespace)
-    ?? createMessagesToolDescriptor({ kind, name, namespace }, registry)
+    ?? createMessagesToolDescriptor(toolIdentity, registry)
   const input =
     kind === "custom" ?
       { input: getStringField(item, "input") ?? "" }
@@ -1322,20 +1301,13 @@ function findOriginalDescriptor(
   name: string,
   namespace?: string,
 ): MessagesToolDescriptor | undefined {
-  const exact = registry.byOriginal.get(
-    createOriginalToolKey({ kind, name, namespace }),
-  )
-  if (exact || (namespace && namespace !== DEFAULT_FUNCTION_NAMESPACE)) {
-    return exact
-  }
-  // Codex treats a missing or empty namespace as `functions`. Only these
-  // default forms are interchangeable; never infer another namespace by name.
-  return registry.byOriginal.get(
-    createOriginalToolKey({
-      kind,
-      name,
-      namespace: namespace ? undefined : DEFAULT_FUNCTION_NAMESPACE,
-    }),
+  return (
+    registry.byOriginal.get(createOriginalToolKey({ kind, name, namespace }))
+    ?? (!namespace ?
+      registry.byOriginal.get(
+        createOriginalToolKey({ kind, name, namespace: "functions" }),
+      )
+    : undefined)
   )
 }
 

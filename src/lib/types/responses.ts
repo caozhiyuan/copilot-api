@@ -55,13 +55,11 @@ export type ToolSearchExecution = "client" | "server"
 export interface ToolChoiceFunction {
   name: string
   type: "function"
-  namespace?: string | null
 }
 
 export interface ToolChoiceCustom {
   name: string
   type: "custom"
-  namespace?: string | null
 }
 
 export type Tool =
@@ -183,7 +181,6 @@ export interface ResponseCustomToolCallItem {
   call_id: string
   name: string
   input: string
-  namespace?: string | null
   status?: "in_progress" | "completed" | "incomplete"
 }
 
@@ -360,7 +357,6 @@ export interface ResponseOutputCustomToolCall {
   call_id: string
   name: string
   input: string
-  namespace?: string | null
   status?: "in_progress" | "completed" | "incomplete"
 }
 
