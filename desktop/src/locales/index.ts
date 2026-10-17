@@ -356,7 +356,6 @@ export interface Locale {
     maskedReadOnly: string
     maskedUnavailable: string
     mappingDefaults: string
-    otherSettings: string
     autoModelDefault: string
     autoModelOff: string
     autoModelCustom: string

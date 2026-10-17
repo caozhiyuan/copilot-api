@@ -376,7 +376,6 @@ const zh: Locale = {
     maskedReadOnly: '敏感值已隐藏，当前为只读预览。',
     maskedUnavailable: 'JSON 格式无效。开启“显示敏感值并编辑”后可修复。',
     mappingDefaults: '内置映射会自动补齐；取消默认重写时将模型映射到自身。',
-    otherSettings: '供应商与 API Key 继续在现有管理入口维护。',
     autoModelDefault: '继承默认（自动选择）',
     autoModelOff: '禁用模型替换',
     autoModelCustom: '指定模型',

@@ -404,8 +404,6 @@ const en: Locale = {
       'Invalid JSON. Enable “Show sensitive values and edit” to repair it.',
     mappingDefaults:
       'Built-in mappings are restored automatically; map a model to itself to disable its default rewrite.',
-    otherSettings:
-      'Manage providers and API keys through their existing settings pages.',
     autoModelDefault: 'Inherit default (automatic)',
     autoModelOff: 'Disable model replacement',
     autoModelCustom: 'Specify a model',

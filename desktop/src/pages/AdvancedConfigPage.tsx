@@ -445,9 +445,6 @@ export default function AdvancedConfigPage({
               {t(`configEditor.groups.${item}`)}
             </button>
           ))}
-          <p className="mt-3 w-full px-3 text-[11px] leading-relaxed text-ink-soft">
-            {t('configEditor.otherSettings')}
-          </p>
         </nav>
         <section className="min-w-0 rounded-lg border border-line bg-surface">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
