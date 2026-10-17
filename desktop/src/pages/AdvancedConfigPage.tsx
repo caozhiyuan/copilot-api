@@ -3,15 +3,21 @@ import ConfigFieldEditor from '../components/ConfigFieldEditor'
 import { useLanguage } from '../contexts/LanguageContext'
 import {
   getConfigChanges,
+  getConfigValidation,
   getConfigValue,
   isConfigObject,
   maskConfigValue,
+  mergeConfigDraft,
   parseConfigContent,
   serializeConfig,
   setConfigValue,
-  validateConfigContent,
   type ConfigObject,
 } from '../lib/config-editor'
+import {
+  ConfigEditorError,
+  unwrapConfigEditorReply,
+  type ConfigEditorErrorCode,
+} from '../lib/config-editor-errors'
 import {
   configFields,
   configSections,
@@ -30,16 +36,17 @@ const buttonClass =
 const primaryClass =
   'rounded-md bg-accent-strong px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500'
 
-function inspect(content: string) {
+function inspect(content: string, baselineContent?: string) {
   let config: ConfigObject | null = null
   let error = ''
+  let warnings: string[] = []
   try {
     config = parseConfigContent(content)
-    validateConfigContent(content)
+    warnings = getConfigValidation(content, baselineContent).warnings
   } catch (err) {
     error = (err as Error).message
   }
-  return { config, error }
+  return { config, error, warnings }
 }
 function mappingRows(
   config: ConfigObject,
@@ -58,8 +65,10 @@ function mappingRows(
 
 export default function AdvancedConfigPage({
   serverRunning,
+  active = true,
 }: {
   serverRunning: boolean
+  active?: boolean
 }) {
   const { t } = useLanguage()
   const [document, setDocument] = useState<AppConfigDocument | null>(null)
@@ -73,7 +82,18 @@ export default function AdvancedConfigPage({
   const [error, setError] = useState('')
   const [saveResult, setSaveResult] = useState<AppConfigSaveResult | null>(null)
   const [showChanges, setShowChanges] = useState(false)
-  const draft = useMemo(() => inspect(content), [content])
+  const [conflict, setConflict] = useState(false)
+  const [merged, setMerged] = useState(false)
+  const [pendingMerge, setPendingMerge] = useState<{
+    document: AppConfigDocument
+    mine: ConfigObject
+    disk: ConfigObject
+    conflicts: string[]
+  } | null>(null)
+  const draft = useMemo(
+    () => inspect(content, document?.content),
+    [content, document?.content],
+  )
   const baseline = useMemo(() => inspect(document?.content ?? '{}'), [document])
   const defaults = useMemo(
     () => parseConfigContent(document?.defaultContent ?? '{}'),
@@ -88,6 +108,14 @@ export default function AdvancedConfigPage({
   )
   const dirty = !!document && (content !== document.content || !!mappingError)
   const validationError = draft.error || mappingError
+  const errorMessage = (err: unknown, fallback: ConfigEditorErrorCode) => {
+    if (err instanceof ConfigEditorError) {
+      if (err.code === 'validation')
+        return `${t('configEditor.invalid')}: ${err.message}`
+      return t(`configEditor.errors.${err.code}`)
+    }
+    return t(`configEditor.errors.${fallback}`)
+  }
 
   const acceptDocument = (next: AppConfigDocument) => {
     setDocument(next)
@@ -100,6 +128,9 @@ export default function AdvancedConfigPage({
     )
     setMappingError('')
     setShowChanges(false)
+    setConflict(false)
+    setPendingMerge(null)
+    setMerged(false)
     if (!config) setMode('json')
   }
   const load = async () => {
@@ -107,35 +138,44 @@ export default function AdvancedConfigPage({
     setError('')
     setSaveResult(null)
     try {
-      acceptDocument(await window.electronAPI.getAppConfig())
+      acceptDocument(
+        unwrapConfigEditorReply(await window.electronAPI.getAppConfig()),
+      )
     } catch (err) {
-      setError((err as Error).message)
+      setError(errorMessage(err, 'readFailed'))
     } finally {
       setBusy(false)
     }
   }
   useEffect(() => {
-    let active = true
+    if (!active || dirty) return
+    let current = true
+    setBusy(true)
+    setError('')
+    setSaveResult(null)
     void window.electronAPI
       .getAppConfig()
       .then((next) => {
-        if (active) acceptDocument(next)
+        if (current) acceptDocument(unwrapConfigEditorReply(next))
       })
       .catch((err: unknown) => {
-        if (active) setError((err as Error).message)
+        if (current) setError(errorMessage(err, 'readFailed'))
       })
       .finally(() => {
-        if (active) setBusy(false)
+        if (current) setBusy(false)
       })
     return () => {
-      active = false
+      current = false
     }
-  }, [])
+    // Refresh on entry only when there is no local draft to overwrite.
+  }, [active])
 
   const updateContent = (next: string) => {
     setContent(next)
     setError('')
     setSaveResult(null)
+    setPendingMerge(null)
+    setMerged(false)
   }
   const updateField = (path: string, value: unknown) => {
     if (draft.config)
@@ -164,29 +204,63 @@ export default function AdvancedConfigPage({
       setMappingError('')
     } else {
       for (const field of configFields.filter(
-        (item) => item.section === section,
+        (item) => item.section === section && item.type !== 'secret',
       ))
         next = setConfigValue(next, field.path, undefined)
     }
     updateContent(serializeConfig(next))
   }
+  const acceptMerge = (latest: AppConfigDocument, config: ConfigObject) => {
+    acceptDocument(latest)
+    setContent(serializeConfig(config))
+    setRows(mappingRows(config, parseConfigContent(latest.defaultContent)))
+    setError('')
+    setSaveResult(null)
+    setMerged(true)
+  }
+  const recoverDraft = async () => {
+    if (!document || !baseline.config || !draft.config || mappingError) return
+    setBusy(true)
+    try {
+      const latest = unwrapConfigEditorReply(
+        await window.electronAPI.getAppConfig(),
+      )
+      const disk = parseConfigContent(latest.content)
+      const result = mergeConfigDraft(baseline.config, draft.config, disk)
+      if (result.conflicts.length) {
+        setPendingMerge({
+          document: latest,
+          mine: result.config,
+          disk: mergeConfigDraft(baseline.config, draft.config, disk, 'disk')
+            .config,
+          conflicts: result.conflicts,
+        })
+      } else acceptMerge(latest, result.config)
+    } catch (err) {
+      setError(errorMessage(err, 'readFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
   const save = async (applyOnly = false) => {
-    if (!document || validationError) return
+    if (!document || validationError || pendingMerge) return
     setBusy(true)
     setError('')
     setShowChanges(false)
     try {
-      const result =
+      const result = unwrapConfigEditorReply(
         applyOnly ?
           await window.electronAPI.applyAppConfig(document.revision)
         : await window.electronAPI.saveAppConfig({
             content,
             revision: document.revision,
-          })
+          }),
+      )
       acceptDocument(result)
       setSaveResult(result)
     } catch (err) {
-      setError((err as Error).message)
+      setConflict(err instanceof ConfigEditorError && err.code === 'conflict')
+      setError(errorMessage(err, applyOnly ? 'applyFailed' : 'saveFailed'))
     } finally {
       setBusy(false)
     }
@@ -265,6 +339,64 @@ export default function AdvancedConfigPage({
         >
           {error || `${t('configEditor.invalid')}: ${validationError}`}
         </div>
+      )}
+      {draft.warnings.length > 0 && (
+        <p className="mb-3 break-words rounded-md bg-amber-50 px-3 py-2 text-[12px] text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
+          {t('configEditor.legacyWarning', {
+            fields: draft.warnings.join(', '),
+          })}
+        </p>
+      )}
+      {conflict && (
+        <div className="mb-3 rounded-md border border-line bg-surface px-3 py-2 text-[12px] text-ink-soft">
+          {pendingMerge ?
+            <>
+              <p className="mb-2 break-words">
+                {t('configEditor.mergeConflicts', {
+                  fields: pendingMerge.conflicts.join(', '),
+                })}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  className={buttonClass}
+                  onClick={() =>
+                    acceptMerge(pendingMerge.document, pendingMerge.mine)
+                  }
+                >
+                  {t('configEditor.keepMine')}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className={buttonClass}
+                  onClick={() =>
+                    acceptMerge(pendingMerge.document, pendingMerge.disk)
+                  }
+                >
+                  {t('configEditor.keepDisk')}
+                </button>
+              </div>
+            </>
+          : <button
+              type="button"
+              disabled={busy || !draft.config || !!mappingError}
+              onClick={() => void recoverDraft()}
+              className={buttonClass}
+            >
+              {t('configEditor.mergeLatest')}
+            </button>
+          }
+        </div>
+      )}
+      {merged && (
+        <p
+          role="status"
+          className="mb-3 rounded-md bg-sunken px-3 py-2 text-[12px] text-ink-soft"
+        >
+          {t('configEditor.merged')}
+        </p>
       )}
       {saveResult && (
         <div
@@ -477,7 +609,9 @@ export default function AdvancedConfigPage({
         </button>
         <button
           type="button"
-          disabled={busy || !dirty || !document || !!validationError}
+          disabled={
+            busy || !dirty || !document || !!validationError || !!pendingMerge
+          }
           onClick={() => void save()}
           className={primaryClass}
         >

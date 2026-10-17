@@ -61,7 +61,7 @@ import {
 import { readSettings, writeSettings } from './settings-store'
 import { runSettingsTransaction } from './settings-transaction'
 import { createConfigRefresher } from './config-refresh'
-import { createAppConfigEditor } from './config-editor'
+import { configEditorReply, createAppConfigEditor } from './config-editor'
 import { shouldRestartServerForSettings } from './settings-runtime'
 import { detectBunRuntime } from './bun-runtime'
 import {
@@ -572,12 +572,14 @@ export function registerIpcHandlers(
   ipcMain.handle('config:get-model-mappings', async () =>
     fetchModelMappingsConfig(),
   )
-  ipcMain.handle('config:get-document', () => appConfigEditor.read())
+  ipcMain.handle('config:get-document', () =>
+    configEditorReply(() => appConfigEditor.read(), 'readFailed'),
+  )
   ipcMain.handle('config:save-document', (_event, input: unknown) =>
-    appConfigEditor.save(input),
+    configEditorReply(() => appConfigEditor.save(input), 'saveFailed'),
   )
   ipcMain.handle('config:apply-document', (_event, revision: unknown) =>
-    appConfigEditor.apply(revision),
+    configEditorReply(() => appConfigEditor.apply(revision), 'applyFailed'),
   )
   ipcMain.handle('config:get-provider-management', () => {
     invalidateConfigCache()

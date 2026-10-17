@@ -322,6 +322,19 @@ export interface Locale {
     explicit: string
     reload: string
     reloadDiscard: string
+    mergeLatest: string
+    mergeConflicts: string
+    keepMine: string
+    keepDisk: string
+    merged: string
+    legacyWarning: string
+    errors: {
+      conflict: string
+      validation: string
+      readFailed: string
+      saveFailed: string
+      applyFailed: string
+    }
     discard: string
     review: string
     close: string

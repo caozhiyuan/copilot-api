@@ -11,6 +11,7 @@ import {
 } from '../../src/lib/config-store'
 import {
   createAppConfigEditor,
+  configEditorReply,
   readAppConfigDocument,
   writeAppConfigDocument,
 } from '../electron/config-editor'
@@ -18,12 +19,18 @@ import { createConfigRefresher } from '../electron/config-refresh'
 import {
   getConfigChanges,
   getConfigValue,
+  getConfigValidation,
   maskConfigValue,
+  mergeConfigDraft,
   parseConfigContent,
   serializeConfig,
   setConfigValue,
   validateConfigContent,
 } from '../src/lib/config-editor'
+import {
+  ConfigEditorError,
+  unwrapConfigEditorReply,
+} from '../src/lib/config-editor-errors'
 
 const originalPath = PATHS.CONFIG_PATH
 let directory: string
@@ -59,6 +66,81 @@ function fixture(running = true) {
 }
 
 describe('desktop configuration document', () => {
+  test('preserves tolerated legacy values only when unchanged from the current disk revision', () => {
+    const legacy = {
+      auth: { apiKeys: [''], adminApiKey: 'test-admin' },
+      opencodeModelContextWindow: 0,
+      contextManagement: { messages: null },
+      upstreamTransport: { headersTimeoutMs: -1 },
+    }
+    persist(legacy)
+    const document = readAppConfigDocument()
+    const content = serializeConfig({ ...legacy, useMessagesApi: false })
+    expect(getConfigValidation(content, document.content).warnings).toEqual([
+      'auth.apiKeys',
+      'contextManagement',
+      'opencodeModelContextWindow',
+      'upstreamTransport.headersTimeoutMs',
+    ])
+    writeAppConfigDocument({ revision: document.revision, content })
+    expect(parseConfigContent(readAppConfigDocument().content)).toEqual({
+      ...legacy,
+      useMessagesApi: false,
+    })
+    expect(() =>
+      writeAppConfigDocument({
+        revision: readAppConfigDocument().revision,
+        content: serializeConfig({ ...legacy, opencodeModelContextWindow: -1 }),
+      }),
+    ).toThrow('opencodeModelContextWindow')
+  })
+
+  test('does not exempt new invalid fields or masked secrets as legacy values', () => {
+    expect(() =>
+      validateConfigContent('{"auth":{"apiKeys":[""]}}', '{}'),
+    ).toThrow('apiKeys')
+    expect(() =>
+      validateConfigContent('{"opencodeModelContextWindow":0}', '{}'),
+    ).toThrow('opencodeModelContextWindow')
+    const masked = '{"auth":{"apiKeys":["••••••"]}}'
+    expect(() => validateConfigContent(masked, masked)).toThrow('Masked')
+    expect(
+      validateConfigContent('{"useMessagesApi":false}', '{broken'),
+    ).toEqual({ useMessagesApi: false })
+    expect(() =>
+      validateConfigContent('{"opencodeModelContextWindow":0}', '{broken'),
+    ).toThrow('opencodeModelContextWindow')
+  })
+
+  test('returns typed failures without leaking raw IO errors through either bridge', async () => {
+    expect(
+      await configEditorReply(() => {
+        throw new Error('test-secret-in-io-error')
+      }, 'saveFailed'),
+    ).toEqual({ error: { code: 'saveFailed' } })
+    const reply = await configEditorReply(() => {
+      throw new ConfigEditorError('conflict', 'internal detail')
+    }, 'saveFailed')
+    expect(reply).toEqual({ error: { code: 'conflict' } })
+    try {
+      unwrapConfigEditorReply(reply)
+      throw new Error('Expected conflict')
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigEditorError)
+      expect((error as ConfigEditorError).code).toBe('conflict')
+    }
+    expect(
+      await configEditorReply(() => validateConfigContent('[]'), 'saveFailed'),
+    ).toEqual({
+      error: { code: 'validation', message: 'Config must be a JSON object.' },
+    })
+    const document = readAppConfigDocument()
+    expect(
+      unwrapConfigEditorReply(
+        await configEditorReply(() => document, 'readFailed'),
+      ),
+    ).toEqual(document)
+  })
   test('reads missing, empty and corrupt files without overwriting them', () => {
     const missing = readAppConfigDocument()
     expect(missing.content).toBe('{}\n')
@@ -274,6 +356,108 @@ describe('save and apply status', () => {
 })
 
 describe('configuration validation and editing helpers', () => {
+  test('merges raw secrets, literal dotted names and independent edits without mutating inputs', () => {
+    const baseline = {
+      providers: { 'p.with.dots': { apiKey: 'test-old-key', enabled: true } },
+      modelMappings: { 'alias.v1': 'old' },
+      extension: { keep: true },
+    }
+    const draft = structuredClone(baseline)
+    draft.modelMappings['alias.v1'] = 'custom/new'
+    const disk = structuredClone(baseline)
+    disk.providers['p.with.dots'].apiKey = 'test-new-key'
+    const merged = mergeConfigDraft(baseline, draft, disk)
+    expect(merged.conflicts).toEqual([])
+    expect(merged.config).toEqual({
+      ...disk,
+      modelMappings: draft.modelMappings,
+    })
+    expect(JSON.stringify(merged.config)).not.toContain('••••••')
+    expect(baseline.providers['p.with.dots'].apiKey).toBe('test-old-key')
+    expect(disk.modelMappings['alias.v1']).toBe('old')
+  })
+
+  test('requires explicit resolution for overlapping edits, atomic arrays and delete/change conflicts', () => {
+    const baseline = { model: 'old', list: ['a'], nested: { keep: true } }
+    const draft = { model: 'mine', list: ['b'] }
+    const disk = {
+      model: 'disk',
+      list: ['c'],
+      nested: { keep: false },
+      extra: true,
+    }
+    const mine = mergeConfigDraft(baseline, draft, disk)
+    expect(mine.conflicts).toEqual(['model', 'list', 'nested'])
+    expect(mine.config).toEqual({ ...draft, extra: true })
+    expect(mergeConfigDraft(baseline, draft, disk, 'disk').config).toEqual(disk)
+    expect(mergeConfigDraft({ a: 1 }, { a: 2 }, { a: 2 }).conflicts).toEqual([])
+    expect(
+      mergeConfigDraft({}, { added: { a: 1 } }, { added: { b: 2 } }).config,
+    ).toEqual({ added: { a: 1, b: 2 } })
+    expect(mergeConfigDraft({ a: 1 }, {}, {}).config).toEqual({})
+    expect(
+      mergeConfigDraft(
+        { nested: { a: 1 } },
+        { nested: null },
+        { nested: { a: 2 } },
+      ).conflicts,
+    ).toEqual(['nested'])
+    const special = JSON.parse('{"__proto__":{"flag":true}}') as Record<
+      string,
+      unknown
+    >
+    expect(mergeConfigDraft({}, special, { extra: true }).config).toEqual({
+      ...special,
+      extra: true,
+    })
+    expect(Object.hasOwn(Object.prototype, 'flag')).toBe(false)
+  })
+
+  test('redacts credential aliases and named or tuple headers, including leaf diffs', () => {
+    const before = {
+      future: {
+        privateKey: 'test-private',
+        credentials: { value: 'test-credentials' },
+        auth: 'test-auth',
+        headers: [{ name: 'Authorization', value: 'Bearer test-bearer' }],
+        named: { key: 'X-API-Key', value: 'test-header-key' },
+        tuples: [['Authorization', 'Bearer test-tuple']],
+        maxOutputTokens: 2000,
+      },
+    }
+    const after = structuredClone(before)
+    after.future.named.value = 'test-replacement'
+    after.future.headers[0].value = 'Bearer test-replacement'
+    for (const output of [
+      maskConfigValue(before),
+      getConfigChanges({}, before),
+      getConfigChanges(before, after),
+    ]) {
+      const serialized = JSON.stringify(output)
+      for (const secret of [
+        'test-private',
+        'test-credentials',
+        'test-auth',
+        'test-bearer',
+        'test-header-key',
+        'test-tuple',
+        'test-replacement',
+      ])
+        expect(serialized).not.toContain(secret)
+    }
+    expect(JSON.stringify(maskConfigValue(before))).toContain('2000')
+    expect(validateConfigContent(JSON.stringify(before))).toEqual(before)
+    for (const config of [
+      { privateKey: '••••••' },
+      { credentials: { value: '••••••' } },
+      { future: { auth: '••••••' } },
+      { headers: [{ name: 'Authorization', value: '••••••' }] },
+      { headers: [['X-Api-Key', '••••••']] },
+    ])
+      expect(() => validateConfigContent(JSON.stringify(config))).toThrow(
+        'Masked',
+      )
+  })
   test.each([
     '[]',
     'null',

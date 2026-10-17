@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import type { ConfigField } from '../lib/config-fields'
 
@@ -20,12 +21,24 @@ export default function ConfigFieldEditor({
   const { t } = useLanguage()
   const inherited = value === undefined
   const effective = inherited ? defaultValue : value
+  const [editing, setEditing] = useState<string | null>(null)
+  const emitted = useRef<string>()
+  const fingerprint = JSON.stringify(value)
+  useEffect(() => {
+    if (fingerprint !== emitted.current) setEditing(null)
+  }, [fingerprint])
+  const edit = (text: string, next: unknown) => {
+    emitted.current = JSON.stringify(next)
+    setEditing(text)
+    onChange(next)
+  }
   const id = `config-${field.id}`
   const label = t(`configEditor.fields.${field.id}.label`)
   const stringValue =
-    typeof effective === 'string' || typeof effective === 'number' ?
+    editing
+    ?? (typeof effective === 'string' || typeof effective === 'number' ?
       effective
-    : ''
+    : '')
   return (
     <div className="grid gap-3 border-b border-line-soft px-4 py-3 last:border-0 sm:grid-cols-[minmax(0,1fr)_minmax(150px,240px)] sm:items-center">
       <div className="min-w-0">
@@ -65,20 +78,22 @@ export default function ConfigFieldEditor({
           <textarea
             id={id}
             value={
-              typeof effective === 'string' ? effective : (
+              editing
+              ?? (typeof effective === 'string' ? effective : (
                 JSON.stringify(effective ?? {}, null, 2)
-              )
+              ))
             }
             rows={3}
             disabled={disabled}
             spellCheck={false}
             onChange={(e) => {
               try {
-                onChange(JSON.parse(e.target.value) as unknown)
+                edit(e.target.value, JSON.parse(e.target.value) as unknown)
               } catch {
-                onChange(e.target.value)
+                edit(e.target.value, e.target.value)
               }
             }}
+            onBlur={() => setEditing(null)}
             className={`${inputClass} font-mono text-[12px]`}
           />
         : field.type === 'model' ?
@@ -86,19 +101,22 @@ export default function ConfigFieldEditor({
             <select
               id={id}
               value={
-                inherited ? 'default'
+                editing !== null ? 'custom'
+                : inherited ?
+                  'default'
                 : value === '' ?
                   'off'
                 : 'custom'
               }
               disabled={disabled}
-              onChange={(e) =>
+              onChange={(e) => {
+                setEditing(null)
                 onChange(
                   e.target.value === 'default' ? undefined
                   : e.target.value === 'off' ? ''
                   : 'codex-auto-review',
                 )
-              }
+              }}
               className={inputClass}
             >
               <option value="default">
@@ -109,12 +127,13 @@ export default function ConfigFieldEditor({
                 {t('configEditor.autoModelCustom')}
               </option>
             </select>
-            {!inherited && value !== '' && (
+            {(editing !== null || (!inherited && value !== '')) && (
               <input
                 aria-label={t('configEditor.autoModelCustom')}
                 value={stringValue}
                 disabled={disabled}
-                onChange={(e) => onChange(e.target.value || null)}
+                onChange={(e) => edit(e.target.value, e.target.value)}
+                onBlur={() => setEditing(null)}
                 className={inputClass}
               />
             )}
@@ -139,13 +158,15 @@ export default function ConfigFieldEditor({
                   : '1'
                 : undefined
               }
-              onChange={(e) =>
-                onChange(
-                  field.type === 'number' && e.target.value !== '' ?
-                    Number(e.target.value)
-                  : e.target.value,
-                )
-              }
+              onChange={(e) => {
+                if (field.type === 'number')
+                  edit(
+                    e.target.value,
+                    e.target.value === '' ? undefined : Number(e.target.value),
+                  )
+                else onChange(e.target.value)
+              }}
+              onBlur={() => setEditing(null)}
               className={inputClass}
             />
             {'unit' in field && (
@@ -164,7 +185,10 @@ export default function ConfigFieldEditor({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => onChange(undefined)}
+            onClick={() => {
+              setEditing(null)
+              onChange(undefined)
+            }}
             className="mt-1 text-[11px] text-ink-soft underline decoration-line underline-offset-2 hover:text-ink disabled:opacity-50"
           >
             {t('configEditor.useDefault')}

@@ -339,6 +339,22 @@ const zh: Locale = {
     explicit: '显式配置',
     reload: '重新加载',
     reloadDiscard: '重新加载并放弃更改',
+    mergeLatest: '加载最新并保留草稿',
+    mergeConflicts:
+      '以下字段在草稿和文件中都被修改：{{fields}}。请选择这些字段使用哪一份值；其他修改会保留。',
+    keepMine: '冲突字段使用我的值',
+    keepDisk: '冲突字段使用磁盘值',
+    merged: '已合并到最新配置，请检查草稿后保存。',
+    legacyWarning:
+      '保留了未修改的旧配置值：{{fields}}。服务将按现有规则归一化处理。',
+    errors: {
+      conflict:
+        '配置文件已被其他操作修改。可加载最新文件并保留草稿，或放弃更改。',
+      validation: '请检查配置内容后重试。',
+      readFailed: '读取配置失败，请检查文件访问权限后重试。',
+      saveFailed: '保存配置失败，请检查文件访问权限后重试。',
+      applyFailed: '应用配置失败，请重试。',
+    },
     discard: '撤销更改',
     review: '查看变更',
     close: '关闭',

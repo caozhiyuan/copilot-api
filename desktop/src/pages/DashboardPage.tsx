@@ -1326,6 +1326,7 @@ export default function DashboardPage({
         {(tab === 'advancedConfig' || advancedConfigOpened) && (
           <div className={tab === 'advancedConfig' ? 'h-full' : 'hidden'}>
             <AdvancedConfigPage
+              active={tab === 'advancedConfig'}
               serverRunning={started && !stopping && !restarting}
             />
           </div>

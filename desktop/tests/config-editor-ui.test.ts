@@ -9,18 +9,25 @@ import type {
   AppConfigSaveResult,
   AppConfigUpdate,
 } from '../src/types/ipc'
-import { defaultConfig } from '../../src/lib/config-store'
+import { defaultConfig, type AppConfig } from '../../src/lib/config-store'
+import type { ConfigEditorReply } from '../src/lib/config-editor-errors'
 
 let win: Window
 let root: Root
 let container: HTMLDivElement
 let documentFixture: AppConfigDocument
-let read: ReturnType<typeof mock<() => Promise<AppConfigDocument>>>
+let read: ReturnType<
+  typeof mock<() => Promise<ConfigEditorReply<AppConfigDocument>>>
+>
 let save: ReturnType<
-  typeof mock<(input: AppConfigUpdate) => Promise<AppConfigSaveResult>>
+  typeof mock<
+    (input: AppConfigUpdate) => Promise<ConfigEditorReply<AppConfigSaveResult>>
+  >
 >
 let apply: ReturnType<
-  typeof mock<(revision: string) => Promise<AppConfigSaveResult>>
+  typeof mock<
+    (revision: string) => Promise<ConfigEditorReply<AppConfigSaveResult>>
+  >
 >
 const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
 
@@ -89,11 +96,11 @@ afterEach(async () => {
   }
   previousGlobals.clear()
 })
-async function render(serverRunning = false) {
+async function render(serverRunning = false, active = true) {
   await act(async () =>
     root.render(
       createElement(LanguageProvider, {
-        children: createElement(AdvancedConfigPage, { serverRunning }),
+        children: createElement(AdvancedConfigPage, { serverRunning, active }),
       }),
     ),
   )
@@ -224,9 +231,7 @@ describe('Desktop config editor', () => {
 
   test('preserves a conflict draft and explicitly reloads the new disk version', async () => {
     await render()
-    save.mockRejectedValueOnce(
-      new Error('Config changed on disk. Reload the file.'),
-    )
+    save.mockResolvedValueOnce({ error: { code: 'conflict' } })
     await act(async () => field('useMessagesApi').click())
     await click('Save configuration')
     expect(field('useMessagesApi').checked).toBe(false)
@@ -273,9 +278,9 @@ describe('Desktop config editor', () => {
   })
 
   test('reports load and apply errors without discarding edits', async () => {
-    read.mockRejectedValueOnce(new Error('permission denied'))
+    read.mockResolvedValueOnce({ error: { code: 'readFailed' } })
     await render(true)
-    expect(container.textContent).toContain('permission denied')
+    expect(container.textContent).toContain('Could not read the configuration')
     expect(button('Save and apply').disabled).toBe(true)
     await click('Reload')
     expect(field('useMessagesApi').checked).toBe(true)
@@ -290,9 +295,9 @@ describe('Desktop config editor', () => {
     })
     await act(async () => field('useMessagesApi').click())
     await click('Save and apply')
-    apply.mockRejectedValueOnce(new Error('Config changed on disk'))
+    apply.mockResolvedValueOnce({ error: { code: 'conflict' } })
     await click('Retry apply')
-    expect(container.textContent).toContain('Config changed on disk')
+    expect(container.textContent).toContain('Configuration changed on disk')
     expect(field('useMessagesApi').checked).toBe(false)
   })
 
@@ -376,7 +381,13 @@ describe('Desktop config editor', () => {
     expect(
       container.querySelector('[aria-label="Specify a model"]'),
     ).not.toBeNull()
-    expect(button('Save configuration').disabled).toBe(true)
+    expect(button('Save configuration').disabled).toBe(false)
+    await click('JSON')
+    await reveal()
+    expect((JSON.parse(jsonEditor().value) as AppConfig).claudeAutoModel).toBe(
+      '',
+    )
+    await click('Visual')
     await change(modelInput, 'custom/review-model')
     const prompts = container.querySelector<HTMLTextAreaElement>(
       '#config-extraPrompts',
@@ -449,5 +460,232 @@ describe('Desktop config editor', () => {
     await act(async () => root.render(null))
     await act(async () => pending.resolve(documentFixture))
     expect(container.textContent).toBe('')
+  })
+
+  test('keeps the Anthropic credential when resetting the request settings group', async () => {
+    documentFixture.content = JSON.stringify({
+      anthropicApiKey: 'test-anthropic-key',
+      useMessagesApi: false,
+    })
+    await render()
+    await change(field('anthropicApiKey'), 'test-replaced-key')
+    await click('Reset group to defaults')
+    expect(field('anthropicApiKey').value).toBe('test-replaced-key')
+    await click('Save configuration')
+    expect(JSON.parse(save.mock.calls[0][0].content)).toEqual({
+      anthropicApiKey: 'test-replaced-key',
+    })
+    await click('Use default')
+    await click('Save configuration')
+    expect(JSON.parse(save.mock.calls[1][0].content)).not.toHaveProperty(
+      'anthropicApiKey',
+    )
+  })
+
+  test('refreshes clean drafts on entry but retains unsaved edits across tab changes', async () => {
+    await render(false, false)
+    expect(read).not.toHaveBeenCalled()
+    await render()
+    expect(read).toHaveBeenCalledTimes(1)
+    await render(false, false)
+    documentFixture = {
+      ...documentFixture,
+      revision: 'external',
+      content: '{"useMessagesApi":false}',
+    }
+    await render()
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(field('useMessagesApi').checked).toBe(false)
+    await act(async () => field('useMessagesApi').click())
+    await render(false, false)
+    documentFixture.content = '{"useMessagesApi":false,"external":true}'
+    await render()
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(field('useMessagesApi').checked).toBe(true)
+  })
+
+  test('rebases a conflict draft onto the latest raw document without losing rotated credentials', async () => {
+    const initial = JSON.parse(documentFixture.content) as AppConfig
+    await render()
+    await act(async () => field('useMessagesApi').click())
+    save.mockResolvedValueOnce({ error: { code: 'conflict' } })
+    await click('Save configuration')
+    documentFixture = {
+      ...documentFixture,
+      revision: 'external-revision',
+      content: JSON.stringify({
+        ...initial,
+        providers: { custom: { apiKey: 'test-rotated-key' } },
+        future: { keep: true, added: true },
+      }),
+    }
+    await click('Reload and keep changes')
+    expect(container.textContent).toContain('Merged with the latest file')
+    expect(field('useMessagesApi').checked).toBe(false)
+    await click('Save configuration')
+    expect(save.mock.calls[1][0].revision).toBe('external-revision')
+    const saved = JSON.parse(save.mock.calls[1][0].content) as AppConfig & {
+      future: Record<string, unknown>
+    }
+    expect(saved.providers?.custom.apiKey).toBe('test-rotated-key')
+    expect(saved.auth).toEqual(initial.auth)
+    expect(saved.future).toEqual({ keep: true, added: true })
+    expect(saved.useMessagesApi).toBe(false)
+    expect(save.mock.calls[1][0].content).not.toContain('••••••')
+  })
+
+  test.each([
+    ['Use my values for conflicts', 'mine'],
+    ['Use file values for conflicts', 'disk'],
+  ])(
+    'resolves overlapping changes explicitly with %s',
+    async (choice, expected) => {
+      const baseline = { alphaSearchModel: 'old', useMessagesApi: true }
+      documentFixture.content = JSON.stringify(baseline)
+      await render()
+      await act(async () => field('useMessagesApi').click())
+      await click('Search and images')
+      await change(field('alphaSearchModel'), 'mine')
+      save.mockResolvedValueOnce({ error: { code: 'conflict' } })
+      await click('Save configuration')
+      documentFixture = {
+        ...documentFixture,
+        revision: 'latest',
+        content: JSON.stringify({
+          ...baseline,
+          alphaSearchModel: 'disk',
+          external: true,
+        }),
+      }
+      await click('Reload and keep changes')
+      expect(button('Save configuration').disabled).toBe(true)
+      expect(container.textContent).toContain('alphaSearchModel')
+      await click(choice)
+      expect(field('alphaSearchModel').value).toBe(expected)
+      await click('Save configuration')
+      expect(JSON.parse(save.mock.calls[1][0].content)).toEqual({
+        alphaSearchModel: expected,
+        useMessagesApi: false,
+        external: true,
+      })
+      expect(save.mock.calls[1][0].revision).toBe('latest')
+    },
+  )
+
+  test('keeps a conflict draft when loading the latest file fails', async () => {
+    await render()
+    await act(async () => field('useMessagesApi').click())
+    save.mockResolvedValueOnce({ error: { code: 'conflict' } })
+    await click('Save configuration')
+    read.mockResolvedValueOnce({ error: { code: 'readFailed' } })
+    await click('Reload and keep changes')
+    expect(container.textContent).toContain('Could not read the configuration')
+    expect(field('useMessagesApi').checked).toBe(false)
+  })
+
+  test('warns about unchanged tolerated legacy fields without blocking unrelated edits', async () => {
+    documentFixture.content =
+      '{"auth":{"apiKeys":[""]},"opencodeModelContextWindow":0,"useMessagesApi":true}'
+    await render()
+    expect(container.textContent).toContain(
+      'Unchanged legacy values are preserved',
+    )
+    await act(async () => field('useMessagesApi').click())
+    expect(button('Save configuration').disabled).toBe(false)
+    await change(field('opencodeModelContextWindow'), '-1')
+    expect(button('Save configuration').disabled).toBe(true)
+    await change(field('opencodeModelContextWindow'), '0')
+    await click('Save configuration')
+    expect(
+      (JSON.parse(save.mock.calls[0][0].content) as AppConfig).auth?.apiKeys,
+    ).toEqual([''])
+  })
+
+  test('treats blank numbers as inherited and preserves JSON text while typing', async () => {
+    documentFixture.content = '{"opencodeModelContextWindow":320000}'
+    await render()
+    await change(field('opencodeModelContextWindow'), '')
+    expect(field('opencodeModelContextWindow').value).toBe('')
+    expect(button('Save configuration').disabled).toBe(false)
+    await act(async () =>
+      field('opencodeModelContextWindow').dispatchEvent(
+        new Event('focusout', { bubbles: true }),
+      ),
+    )
+    expect(field('opencodeModelContextWindow').value).toBe('400000')
+    await click('Model rules')
+    const prompts = container.querySelector<HTMLTextAreaElement>(
+      '#config-extraPrompts',
+    )!
+    const text = '{  "model" : "text"  }'
+    await change(prompts, text)
+    expect(prompts.value).toBe(text)
+    await act(async () =>
+      prompts.dispatchEvent(new Event('focusout', { bubbles: true })),
+    )
+    expect(prompts.value).toBe('{\n  "model": "text"\n}')
+    await click('Save configuration')
+    expect(JSON.parse(save.mock.calls[0][0].content)).toEqual({
+      extraPrompts: { model: 'text' },
+    })
+  })
+
+  test('clears a custom model to explicit disable on blur and allows selecting a new model', async () => {
+    documentFixture.content = '{"claudeAutoModel":"custom/old"}'
+    await render()
+    await click('Model rules')
+    const input = container.querySelector<HTMLInputElement>(
+      '[aria-label="Specify a model"]',
+    )!
+    await change(input, '')
+    await act(async () =>
+      input.dispatchEvent(new Event('focusout', { bubbles: true })),
+    )
+    expect(container.querySelector('[aria-label="Specify a model"]')).toBeNull()
+    expect(
+      container.querySelector<HTMLSelectElement>('#config-claudeAutoModel')!
+        .value,
+    ).toBe('off')
+    await click('Save configuration')
+    expect(
+      (JSON.parse(save.mock.calls[0][0].content) as AppConfig).claudeAutoModel,
+    ).toBe('')
+    const mode = container.querySelector<HTMLSelectElement>(
+      '#config-claudeAutoModel',
+    )!
+    await act(async () => {
+      mode.value = 'custom'
+      mode.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await change(
+      container.querySelector<HTMLInputElement>(
+        '[aria-label="Specify a model"]',
+      )!,
+      'custom/new',
+    )
+    await click('Save configuration')
+    expect(
+      (JSON.parse(save.mock.calls[1][0].content) as AppConfig).claudeAutoModel,
+    ).toBe('custom/new')
+  })
+
+  test('shows validation details and localized generic errors without raw IPC prefixes', async () => {
+    await render()
+    await act(async () => field('useMessagesApi').click())
+    save.mockResolvedValueOnce({
+      error: { code: 'validation', message: 'test field is invalid' },
+    })
+    await click('Save configuration')
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+      'Invalid configuration: test field is invalid',
+    )
+    save.mockRejectedValueOnce(
+      new Error('Error invoking remote method: test-internal-detail'),
+    )
+    await click('Save configuration')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'Could not save the configuration',
+    )
+    expect(container.textContent).not.toContain('test-internal-detail')
   })
 })

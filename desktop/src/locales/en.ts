@@ -361,6 +361,24 @@ const en: Locale = {
     explicit: 'Explicit value',
     reload: 'Reload',
     reloadDiscard: 'Reload and discard changes',
+    mergeLatest: 'Reload and keep changes',
+    mergeConflicts:
+      'Both the draft and file changed these fields: {{fields}}. Choose which values to keep for these fields; other edits will be preserved.',
+    keepMine: 'Use my values for conflicts',
+    keepDisk: 'Use file values for conflicts',
+    merged: 'Merged with the latest file. Review the draft before saving.',
+    legacyWarning:
+      'Unchanged legacy values are preserved: {{fields}}. The service will use its existing normalization rules.',
+    errors: {
+      conflict:
+        'Configuration changed on disk. Reload and keep your changes, or discard them.',
+      validation: 'Check the configuration values and try again.',
+      readFailed:
+        'Could not read the configuration. Check file access and try again.',
+      saveFailed:
+        'Could not save the configuration. Check file access and try again.',
+      applyFailed: 'Could not apply the configuration. Try again.',
+    },
     discard: 'Discard changes',
     review: 'Review changes',
     close: 'Close',

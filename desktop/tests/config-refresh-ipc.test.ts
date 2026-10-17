@@ -38,8 +38,9 @@ const rendererOff = mock((channel: string, listener: RendererListener) => {
   listeners?.delete(listener)
   if (listeners?.size === 0) rendererListeners.delete(channel)
 })
-const rendererInvoke = mock((_channel: string, ..._args: unknown[]) =>
-  Promise.resolve(),
+const rendererInvoke = mock(
+  (_channel: string, ..._args: unknown[]): Promise<unknown> =>
+    Promise.resolve(),
 )
 let running = true
 let activeAdminApiKey = 'old-admin'
@@ -964,6 +965,53 @@ describe('desktop token usage sessions', () => {
 })
 
 describe('desktop configuration editor bridge', () => {
+  test('returns structured conflict, validation and read errors from the main process', async () => {
+    const originalPath = PATHS.CONFIG_PATH
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'desktop-config-errors-'),
+    )
+    PATHS.CONFIG_PATH = path.join(directory, 'config.json')
+    try {
+      running = false
+      const document = (await invoke(
+        'config:get-document',
+      )) as AppConfigDocument
+      fs.writeFileSync(PATHS.CONFIG_PATH, '{}')
+      expect(
+        await invoke('config:save-document', {
+          revision: document.revision,
+          content: '{}',
+        }),
+      ).toEqual({ error: { code: 'conflict' } })
+      const current = (await invoke('config:get-document')) as AppConfigDocument
+      expect(
+        await invoke('config:save-document', {
+          revision: current.revision,
+          content: '[]',
+        }),
+      ).toEqual({
+        error: { code: 'validation', message: 'Config must be a JSON object.' },
+      })
+      fs.rmSync(PATHS.CONFIG_PATH)
+      fs.mkdirSync(PATHS.CONFIG_PATH)
+      expect(await invoke('config:get-document')).toEqual({
+        error: { code: 'readFailed' },
+      })
+    } finally {
+      PATHS.CONFIG_PATH = originalPath
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  test('passes error codes through the preload as plain data', async () => {
+    await import('../electron/preload')
+    if (!preloadApi) throw new Error('Preload bridge was not exposed')
+    const failure = { error: { code: 'conflict' as const } }
+    rendererInvoke.mockResolvedValueOnce(failure)
+    expect(
+      await preloadApi.saveAppConfig({ revision: 'old', content: '{}' }),
+    ).toEqual(failure)
+  })
   test('reads, saves offline, and applies the document through main-process handlers', async () => {
     const originalPath = PATHS.CONFIG_PATH
     const directory = fs.mkdtempSync(

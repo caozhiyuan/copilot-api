@@ -1,4 +1,5 @@
 import type { LangPreference } from '../locales'
+import type { ConfigEditorReply } from '../lib/config-editor-errors'
 import type {
   XaiAuthInfo,
   OAuthAccountSummary,
@@ -345,9 +346,13 @@ declare global {
       ) => () => void
       saveSettings: (settings: DesktopSettings) => Promise<void>
       getModelMappingsConfig: () => Promise<ModelMappingsConfig>
-      getAppConfig: () => Promise<AppConfigDocument>
-      saveAppConfig: (input: AppConfigUpdate) => Promise<AppConfigSaveResult>
-      applyAppConfig: (revision: string) => Promise<AppConfigSaveResult>
+      getAppConfig: () => Promise<ConfigEditorReply<AppConfigDocument>>
+      saveAppConfig: (
+        input: AppConfigUpdate,
+      ) => Promise<ConfigEditorReply<AppConfigSaveResult>>
+      applyAppConfig: (
+        revision: string,
+      ) => Promise<ConfigEditorReply<AppConfigSaveResult>>
       getProviderManagementConfig: () => Promise<ProviderManagementConfig>
       saveProviderManagementConfig: (
         input: ProviderManagementUpdate,

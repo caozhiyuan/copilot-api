@@ -106,9 +106,10 @@ Edit this file to customize prompts or swap in your own fast model. Restart the 
 
 Open **Advanced config** to edit `config.json` through grouped visual fields or the full JSON editor. Both modes share one draft; switching main tabs preserves unsaved edits. The displayed file path follows the active `--api-home` / `COPILOT_API_HOME` setting.
 
-- Use **Use default** to remove an explicit override. Empty strings retain their documented disable/default-route meaning.
+- Use **Use default** to remove an explicit override. Group resets preserve secret fields; remove those explicitly when needed. Clearing a numeric field inherits its default. Empty strings retain their documented disable/default-route meaning; clearing a custom Claude auto model disables that replacement.
 - JSON is masked and read-only until **Show sensitive values and edit** is enabled. Change previews also mask credentials.
-- Saves validate known fields, preserve extension fields, and reject changes if the file was edited externally. **Reload and discard changes** explicitly reads the new disk version.
+- Saves validate known fields, preserve extension fields, and reject changes if the file was edited externally. With no unsaved edits, returning to this tab reads the latest file. After a conflict, **Reload and keep changes** merges independent edits; overlapping fields require choosing draft or file values before saving. **Reload and discard changes** discards the draft explicitly.
+- Unchanged legacy values that the service already normalizes, such as empty API key entries or an invalid context limit, show a warning without blocking unrelated edits. New invalid values remain blocked. Saving rewrites the entire JSON file with two-space indentation and a trailing newline.
 - While running, **Save and apply** refreshes the service. A refresh failure is reported separately from the successful save and can be retried with **Retry apply**. While stopped, saving takes effect on the next start.
 - Provider management and API key settings keep their existing entry points. Desktop runtime, proxy, and appearance preferences remain in `desktop-config.json`.
 

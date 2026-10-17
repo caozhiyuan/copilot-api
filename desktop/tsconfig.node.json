@@ -80,6 +80,7 @@
     "../src/lib/electron-fetch.ts",
     "../tests/fixtures/models-dev-catalog.ts",
     "src/lib/config-editor.ts",
+    "src/lib/config-editor-errors.ts",
     "src/lib/config-fields.ts",
     "src/components/ConfigFieldEditor.tsx",
     "src/pages/AdvancedConfigPage.tsx"
