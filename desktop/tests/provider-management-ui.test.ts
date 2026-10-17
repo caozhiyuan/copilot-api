@@ -769,7 +769,7 @@ describe('provider management UI', () => {
     expect(container.textContent).toContain('stop failed')
   })
 
-  test.each(['Logs', 'Token usage', 'Model mappings'])(
+  test.each(['Logs', 'Token usage', 'Advanced config'])(
     'keeps the %s tab during an automatic restart',
     async (tabLabel) => {
       let notify: ((status: ServerStatus) => void) | undefined
@@ -777,8 +777,13 @@ describe('provider management UI', () => {
         getServerStatus: () =>
           Promise.resolve({ running: true, port: 4141, host: '127.0.0.1' }),
         getServerAuthInfo: () => Promise.resolve({ enabled: false }),
-        getModelMappingsConfig: () =>
-          Promise.resolve({ configPath: 'config.json', modelMappings: {} }),
+        getAppConfig: () =>
+          Promise.resolve({
+            configPath: 'config.json',
+            content: '{}',
+            revision: 'revision',
+            defaultContent: '{}',
+          }),
         onServerStatus: (callback: (status: ServerStatus) => void) => {
           notify = callback
           return () => {
@@ -799,7 +804,8 @@ describe('provider management UI', () => {
         )
       })
       await act(async () => button(tabLabel).click())
-      if (tabLabel === 'Model mappings') {
+      if (tabLabel === 'Advanced config') {
+        await act(async () => button('Model mappings').click())
         await act(async () => button('Add mapping').click())
         await changeText(
           container.querySelector<HTMLInputElement>('input')!,
@@ -828,7 +834,7 @@ describe('provider management UI', () => {
       expect(button('Restart').disabled).toBe(false)
       expect(button('Stop').disabled).toBe(false)
       expect(fetchModels).toHaveBeenCalledTimes(modelFetchCount + 1)
-      if (tabLabel === 'Model mappings') {
+      if (tabLabel === 'Advanced config') {
         expect(container.querySelector<HTMLInputElement>('input')?.value).toBe(
           'draft-model',
         )
@@ -1008,7 +1014,7 @@ describe('provider management UI', () => {
     expect(container.textContent).toContain('copilot_pro')
   })
 
-  test('places the Providers tab before Model Mappings and allows management while stopped', async () => {
+  test('allows provider management and advanced configuration while stopped', async () => {
     await act(async () => {
       root.render(
         createElement(LanguageProvider, {
@@ -1026,8 +1032,8 @@ describe('provider management UI', () => {
     ]
     expect(tabs[2].textContent).toBe('Providers')
     expect(tabs[2].disabled).toBe(false)
-    expect(tabs[3].textContent?.toLowerCase()).toContain('model mappings')
-    expect(tabs[3].disabled).toBe(true)
+    expect(tabs[3].textContent?.toLowerCase()).toContain('advanced config')
+    expect(tabs[3].disabled).toBe(false)
     await act(async () => {
       tabs[2].click()
     })

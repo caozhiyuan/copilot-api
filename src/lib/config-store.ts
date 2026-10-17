@@ -385,6 +385,13 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
         ...modelMappings,
       },
       contextManagement: {
+        ...((
+          config.contextManagement
+          && typeof config.contextManagement === "object"
+          && !Array.isArray(config.contextManagement)
+        ) ?
+          config.contextManagement
+        : {}),
         ...defaultContextManagementConfig,
         ...contextManagement,
       },
@@ -401,7 +408,10 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
         ...defaultModelReasoningEfforts,
         ...modelReasoningEfforts,
       },
-      upstreamTransport,
+      upstreamTransport: {
+        ...migratedUpstreamTransport,
+        ...upstreamTransport,
+      },
     },
     changed: true,
   }

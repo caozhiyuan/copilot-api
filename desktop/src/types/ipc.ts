@@ -110,6 +110,24 @@ export interface ModelMappingsConfig {
   modelMappings: Record<string, string>
 }
 
+export interface AppConfigDocument {
+  configPath: string
+  content: string
+  revision: string
+  defaultContent: string
+}
+
+export interface AppConfigUpdate {
+  content: string
+  revision: string
+}
+
+export interface AppConfigSaveResult extends AppConfigDocument {
+  saved: true
+  applied: boolean
+  refreshError?: string
+}
+
 export type TokenUsagePeriod =
   | 'today'
   | 'this_week'
@@ -327,6 +345,9 @@ declare global {
       ) => () => void
       saveSettings: (settings: DesktopSettings) => Promise<void>
       getModelMappingsConfig: () => Promise<ModelMappingsConfig>
+      getAppConfig: () => Promise<AppConfigDocument>
+      saveAppConfig: (input: AppConfigUpdate) => Promise<AppConfigSaveResult>
+      applyAppConfig: (revision: string) => Promise<AppConfigSaveResult>
       getProviderManagementConfig: () => Promise<ProviderManagementConfig>
       saveProviderManagementConfig: (
         input: ProviderManagementUpdate,
