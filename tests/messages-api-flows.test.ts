@@ -166,7 +166,7 @@ test("Messages flow passes the inbound anthropic-version to the Copilot request"
   )
 })
 
-test("messages Chat Completions flow groups dispatch-provided subagents", async () => {
+test("messages Chat Completions flow shares the main cache key with dispatched subagents", async () => {
   const response = await handleWithChatCompletions(
     createContext(),
     {
@@ -187,7 +187,7 @@ test("messages Chat Completions flow groups dispatch-provided subagents", async 
   )
 
   expect(response.status).toBe(200)
-  expect(capturedPayload?.prompt_cache_key).toBe("root:agent")
+  expect(capturedPayload?.prompt_cache_key).toBe("root")
 })
 
 test.each(["catalog", "live"])(

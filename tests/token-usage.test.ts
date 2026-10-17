@@ -130,9 +130,7 @@ describe("token usage storage", () => {
                 }),
               },
             }
-            expect(translateToOpenAI(payload).prompt_cache_key).toBe(
-              "root:agent",
-            )
+            expect(translateToOpenAI(payload).prompt_cache_key).toBe("root")
             recordTokenUsageEvent({
               source,
               endpoint: "messages",
@@ -177,7 +175,7 @@ describe("token usage storage", () => {
                 { user_id: JSON.stringify({ session_id: "metadata-child" }) }
               : undefined,
           }
-          expect(translateToOpenAI(payload).prompt_cache_key).toBe("root:agent")
+          expect(translateToOpenAI(payload).prompt_cache_key).toBe("root")
           recordTokenUsageEvent({
             source: "copilot",
             endpoint: "messages",

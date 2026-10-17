@@ -80,8 +80,6 @@ const emptySessionUserId = JSON.stringify({
   session_id: "",
 })
 
-const subagentAgentId = "agent-123"
-
 const translateThinking = (thinking: string): ResponseInputReasoning => {
   const result = translateAnthropicMessagesToResponsesPayload({
     ...samplePayload,
@@ -467,43 +465,31 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result.prompt_cache_key).toBe("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752")
   })
 
-  it("detects subagent markers for provider Responses translation", () => {
-    const result = translateAnthropicMessagesToResponsesPayload({
-      ...samplePayload,
-      metadata: { user_id: JSON.stringify({ session_id: "root" }) },
-      tools: sampleTools,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"child","agent_id":"agent-a","agent_type":"Explore"}</system-reminder>',
-            },
-          ],
-        },
-      ],
-    })
-
-    expect(result.prompt_cache_key).toBe("root:agent")
-  })
-
-  it.each([` ${subagentAgentId} `, "agent-456"])(
-    "uses a shared subagent cache key for metadata session with agent %s",
+  it.each([undefined, "agent-a", "agent-b"])(
+    "shares the metadata cache key between main and subagents (%s)",
     (agentId) => {
-      const result = translateAnthropicMessagesToResponsesPayload(
-        {
-          ...samplePayload,
-          metadata: {
-            user_id: jsonStyleUserId,
+      const result = translateAnthropicMessagesToResponsesPayload({
+        ...samplePayload,
+        metadata: { user_id: jsonStyleUserId },
+        tools: sampleTools,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text:
+                  agentId ?
+                    `<system-reminder>__SUBAGENT_MARKER__${JSON.stringify({ session_id: "child", agent_id: agentId, agent_type: "Explore" })}</system-reminder>`
+                  : "hello",
+              },
+            ],
           },
-          tools: sampleTools,
-        },
-        agentId,
-      )
+        ],
+      })
 
       expect(result.prompt_cache_key).toBe(
-        "2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752:agent",
+        "2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752",
       )
     },
   )
@@ -541,34 +527,6 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
 
     expect(result.prompt_cache_key).toBe("opencode-session")
   })
-
-  it.each([` ${subagentAgentId} `, "agent-456"])(
-    "uses a shared subagent cache key for session affinity with agent %s",
-    (agentId) => {
-      const result = requestContext.run(
-        {
-          parentSessionId: undefined,
-          sessionAffinity: "opencode-session",
-          startTime: Date.now(),
-          traceId: "trace-123",
-          userAgent: "test",
-        },
-        () =>
-          translateAnthropicMessagesToResponsesPayload(
-            {
-              ...samplePayload,
-              metadata: {
-                user_id: emptySessionUserId,
-              },
-              tools: sampleTools,
-            },
-            agentId,
-          ),
-      )
-
-      expect(result.prompt_cache_key).toBe("opencode-session:agent")
-    },
-  )
 
   it("keeps unrelated system prompt text unchanged", () => {
     const payload = {
@@ -633,29 +591,11 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     ])
   })
 
-  it("ignores blank subagent agent_id", () => {
-    const result = translateAnthropicMessagesToResponsesPayload(
-      {
-        ...samplePayload,
-        metadata: {
-          user_id: jsonStyleUserId,
-        },
-        tools: sampleTools,
-      },
-      "   ",
-    )
-
-    expect(result.prompt_cache_key).toBe("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752")
-  })
-
-  it("keeps prompt_cache_key null when only subagent agent_id is provided", () => {
-    const result = translateAnthropicMessagesToResponsesPayload(
-      {
-        ...samplePayload,
-        tools: sampleTools,
-      },
-      subagentAgentId,
-    )
+  it("keeps prompt_cache_key null when no session id is provided", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      tools: sampleTools,
+    })
 
     expect(result.prompt_cache_key).toBeNull()
   })
@@ -663,16 +603,13 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
   it.each([{ tools: undefined }, { tools: [] }])(
     "omits prompt_cache_key when tools are %j",
     ({ tools }) => {
-      const result = translateAnthropicMessagesToResponsesPayload(
-        {
-          ...samplePayload,
-          metadata: {
-            user_id: jsonStyleUserId,
-          },
-          tools,
+      const result = translateAnthropicMessagesToResponsesPayload({
+        ...samplePayload,
+        metadata: {
+          user_id: jsonStyleUserId,
         },
-        subagentAgentId,
-      )
+        tools,
+      })
 
       expect(result).not.toHaveProperty("prompt_cache_key")
     },

@@ -75,17 +75,12 @@ export const parseUserIdMetadata = (
 
 export const getPromptCacheKey = (
   payload: Pick<AnthropicMessagesPayload, "metadata">,
-  subagentAgentId?: string | null,
 ): string | null => {
   const { sessionId } = parseUserIdMetadata(payload.metadata?.user_id)
   const store = requestContext.getStore()
   const rootSessionId = store?.rootSessionId?.trim() || null
   const sessionAffinity = store?.sessionAffinity?.trim() || null
-  const baseKey = rootSessionId ?? sessionId ?? sessionAffinity
-  if (!baseKey) return null
-
-  const isSubagent = subagentAgentId?.trim() || store?.parentSessionId?.trim()
-  return isSubagent ? `${baseKey}:agent` : baseKey
+  return rootSessionId ?? sessionId ?? sessionAffinity
 }
 
 const findLastUserContent = (

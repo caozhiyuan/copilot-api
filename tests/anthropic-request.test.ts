@@ -110,7 +110,7 @@ function createThinkingModel(): Model {
 }
 
 describe("Anthropic to OpenAI translation logic", () => {
-  test("shares metadata cache keys across marked subagents", () => {
+  test("shares the main agent metadata cache key with marked subagents", () => {
     for (const agentId of ["agent-a", "agent-b"]) {
       const payload: AnthropicMessagesPayload = {
         model: "qwen-plus",
@@ -129,7 +129,7 @@ describe("Anthropic to OpenAI translation logic", () => {
         ],
       }
 
-      expect(translateToOpenAI(payload).prompt_cache_key).toBe("root:agent")
+      expect(translateToOpenAI(payload).prompt_cache_key).toBe("root")
     }
   })
 

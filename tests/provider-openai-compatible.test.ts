@@ -145,19 +145,19 @@ describe("openai-compatible provider messages", () => {
       session: "child-a",
       root: "root",
       parent: "root",
-      expected: "root:agent",
+      expected: "root",
     },
     {
       session: "child-b",
       root: "root",
       parent: "root",
-      expected: "root:agent",
+      expected: "root",
     },
     {
       session: "other-child",
       root: "other-root",
       parent: "parent",
-      expected: "other-root:agent",
+      expected: "other-root",
     },
   ])(
     "uses root cache groups for session $session",

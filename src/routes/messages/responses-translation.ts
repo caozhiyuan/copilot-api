@@ -66,7 +66,6 @@ import {
   type AnthropicUserMessage,
 } from "~/lib/types/anthropic"
 import { normalizeToolSchema, THINKING_TEXT } from "./non-stream-translation"
-import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 
 const MESSAGE_TYPE = "message"
 const COMPACTION_SIGNATURE_PREFIX = "cm1#"
@@ -81,7 +80,6 @@ const resolveReasoningEffort = (payload: AnthropicMessagesPayload) =>
 
 export const translateAnthropicMessagesToResponsesPayload = (
   payload: AnthropicMessagesPayload,
-  subagentAgentId?: string | null,
 ): ResponsesPayload => {
   const input: Array<ResponseInputItem> = []
   const applyPhase = shouldApplyPhase(payload.model)
@@ -113,10 +111,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
   )
 
   // Remove safetyIdentifier to align with vscode copilot
-  const promptCacheKey = getPromptCacheKey(
-    payload,
-    subagentAgentId ?? parseSubagentMarkerFromFirstUser(payload)?.agent_id,
-  )
+  const promptCacheKey = getPromptCacheKey(payload)
 
   const responsesPayload: ResponsesPayload = {
     model: payload.model,

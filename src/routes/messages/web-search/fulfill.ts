@@ -232,7 +232,6 @@ export const prepareWebSearchResponsesPayload = (
   payload: AnthropicMessagesPayload,
   options: {
     model?: string
-    subagentAgentId?: string | null
   } = {},
 ): ResponsesPayload => {
   const config = extractWebSearchConfig(payload)
@@ -243,10 +242,8 @@ export const prepareWebSearchResponsesPayload = (
     stream: true,
   }
 
-  const responsesPayload = translateAnthropicMessagesToResponsesPayload(
-    switchedPayload,
-    options.subagentAgentId,
-  )
+  const responsesPayload =
+    translateAnthropicMessagesToResponsesPayload(switchedPayload)
   responsesPayload.tools = [
     buildResponsesWebSearchTool({ ...config, searchContextSize: "low" }),
   ]
@@ -387,7 +384,6 @@ export const handleWebSearchViaResponses = async (
   // Responses web_search tool is attached to the translated payload instead.
   const responsesPayload = prepareWebSearchResponsesPayload(payload, {
     model: webSearchModel,
-    subagentAgentId: options.subagentMarker?.agent_id,
   })
 
   const selectedModel: Model | undefined = findEndpointModel(webSearchModel)

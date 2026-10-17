@@ -30,7 +30,6 @@ import {
 } from "~/lib/types/anthropic"
 import { mapOpenAIStopReasonToAnthropic } from "./utils"
 import { getPromptCacheKey } from "~/lib/utils"
-import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 
 // Compatible with opencode, it will filter out blocks where the thinking text is empty, so we need add a default thinking text
 export const THINKING_TEXT = "Thinking..."
@@ -54,7 +53,6 @@ interface ToolResultMessages {
 }
 
 interface TranslateToOpenAIOptions {
-  subagentAgentId?: string | null
   supportPdf?: boolean
   toolContentSupportType?: Array<ToolContentSupportType>
   validateReasoningEffort?: boolean
@@ -75,11 +73,7 @@ export function translateToOpenAI(
   const model = state.models?.data.find((m) => m.id === modelId)
   const thinkingBudget = getThinkingBudget(payload, model)
   const reasoningEffort = getReasoningEffort(payload, options)
-  const promptCacheKey = getPromptCacheKey(
-    payload,
-    options.subagentAgentId
-      ?? parseSubagentMarkerFromFirstUser(payload)?.agent_id,
-  )
+  const promptCacheKey = getPromptCacheKey(payload)
   const capabilities = {
     supportPdf: options.supportPdf ?? false,
     toolContentSupportType: options.toolContentSupportType ?? [],
