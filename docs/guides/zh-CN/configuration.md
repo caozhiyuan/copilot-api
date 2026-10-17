@@ -97,7 +97,7 @@
 
 **Codex 目录：** 普通 JSON 响应不超过 1 MiB，不限制模型数量。显式 provider 名单优先；候选超过 20 个时，未配置 `agentsModels` 的来源应用默认排除名单。完整本地导出绕过大小及默认排除限制，仍遵守启停状态和显式名单。
 
-**Provider 管理：** 桌面端“模型映射”前的“Provider 管理”标签页可启停已配置的 provider、编辑“Coding Agent 展示模型”名单，服务停止时也可使用；授权页也保留管理入口。CLI 命令为 `copilot-api provider enable <name>` 和 `copilot-api provider disable <name>`，支持 `--api-home`。`enabled` 控制所有客户端的 Provider 路由，`agentsModels` 筛选 Codex 模型目录和 Claude Code 网关发现列表。停用保留凭据和模型配置；Copilot 继续使用独立授权方式。
+**Provider 管理：** 桌面端“高级配置”前的“Provider 管理”标签页可启停已配置的 provider、编辑“Coding Agent 展示模型”名单，服务停止时也可使用；授权页也保留管理入口。CLI 命令为 `copilot-api provider enable <name>` 和 `copilot-api provider disable <name>`，支持 `--api-home`。`enabled` 控制所有客户端的 Provider 路由，`agentsModels` 筛选 Codex 模型目录和 Claude Code 网关发现列表。停用保留凭据和模型配置；Copilot 继续使用独立授权方式。
 
 ![Provider 管理界面](../../screenshots/provider-management.png)
 
@@ -105,6 +105,19 @@
 
 内置 GitHub Copilot 也支持统一管理：`providers["github-copilot"]` 只需配置 `enabled`，可选 `agentsModels`，无需 URL、API Key 或协议类型。旧配置没有这一项时默认启用，继续使用已有 GitHub 登录凭据。使用 `copilot-api provider disable github-copilot` / `copilot-api provider enable github-copilot`，或在 Providers 页面切换后保存并重启网关。禁用会跳过 Copilot 初始化，从所有客户端的模型列表移除其模型并拒绝 Copilot 请求，其他启用的 provider 可继续使用。
 
+
+### 桌面端配置编辑器
+
+打开**高级配置**，可以通过分组表单或完整 JSON 编辑 `config.json`。两种模式共用一份草稿，切换主标签页时保留未保存的修改。页面显示的实际文件路径遵循当前 `--api-home` / `COPILOT_API_HOME` 设置。
+
+- **使用默认值**会删除显式覆盖；本组恢复默认会保留密钥，密钥需要单独明确移除。数字框清空表示继承默认值；空字符串仍遵循各字段已有的禁用或默认路由语义，自定义 Claude 自动模型清空表示禁用该替换。
+- JSON 默认脱敏且只读，开启**显示敏感值并编辑**后才能完整编辑；变更预览也会隐藏密钥。
+- 保存时校验已知字段、保留扩展字段，并检查文件是否被外部修改。没有未保存更改时，返回此页面会读取最新文件。发生冲突后可选择**加载最新并保留草稿**，独立修改会合并，同一字段被双方修改时需要明确选择草稿值或磁盘值后再保存；也可选择**重新加载并放弃更改**。
+- 服务本身能归一化处理、且本次未修改的旧值（如空 API Key 条目、无效上下文上限）只显示提示，不阻止修改其他字段；新输入的无效值仍会拦截。保存会将整个 JSON 文件统一为两个空格缩进，并在末尾补一个换行。
+- 服务运行时，**保存并应用**会刷新配置；刷新失败与保存成功分别显示，可通过**重试应用**再次刷新。服务停止时仍可保存，下次启动生效。
+- 供应商和 API Key 保留现有管理入口；运行环境、代理、外观等桌面设置继续保存在 `desktop-config.json`。
+
+![桌面端配置编辑器](../../screenshots/desktop-config-editor.png)
 
 ## Google Gemini 上游
 

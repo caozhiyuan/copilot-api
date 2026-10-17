@@ -39,4 +39,4 @@ macOS 版本未签名，发现新版本后提供下载入口，需要手动安�
 
 桌面发布流程会一并上传 `latest.yml`、Windows `.blockmap` 和 `latest-linux.yml`，先上传安装包，再上传更新元数据。v2.6.29 等现有 release 没有这些文件；用户需要先手动安装一次包含此功能的新版本，后续版本才可自动更新。用户电脑无需配置 GitHub Token。
 
-桌面应用里的高级配置页会通过 `GET/POST /admin/config/model-mappings` 读写这份共享的模型映射。同一份映射会统一作用于 `POST /v1/messages`、`POST /v1/messages/count_tokens`、`POST /v1/responses` 和 `POST /v1/chat/completions`，不再按接口区分。它使用的是 `auth.adminApiKey`，不是普通的 `auth.apiKeys`；应用会在服务启动并自动生成该 key 后，直接从 `config.json` 读取它来发起请求。
+桌面应用里的**高级配置**通过分组表单与共用的完整 JSON 草稿编辑 `config.json`，包括模型映射。文件读写通过 Electron IPC 完成，服务停止时也可以使用；运行中的服务通过 `/admin/config/reload` 刷新，使用 `auth.adminApiKey` 认证。校验、外部修改冲突、密钥脱敏和应用重试的说明见[桌面端配置编辑器](configuration.md#桌面端配置编辑器)。

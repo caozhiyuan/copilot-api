@@ -61,6 +61,7 @@ import {
 import { readSettings, writeSettings } from './settings-store'
 import { runSettingsTransaction } from './settings-transaction'
 import { createConfigRefresher } from './config-refresh'
+import { configEditorReply, createAppConfigEditor } from './config-editor'
 import { shouldRestartServerForSettings } from './settings-runtime'
 import { detectBunRuntime } from './bun-runtime'
 import {
@@ -250,6 +251,10 @@ function saveCredentialsAndRefresh(save: () => Promise<void>): Promise<void> {
     },
   })
 }
+
+const appConfigEditor = createAppConfigEditor({
+  saveAndRefresh: saveAndRefreshConfig,
+})
 
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
@@ -566,6 +571,15 @@ export function registerIpcHandlers(
   })
   ipcMain.handle('config:get-model-mappings', async () =>
     fetchModelMappingsConfig(),
+  )
+  ipcMain.handle('config:get-document', () =>
+    configEditorReply(() => appConfigEditor.read(), 'readFailed'),
+  )
+  ipcMain.handle('config:save-document', (_event, input: unknown) =>
+    configEditorReply(() => appConfigEditor.save(input), 'saveFailed'),
+  )
+  ipcMain.handle('config:apply-document', (_event, revision: unknown) =>
+    configEditorReply(() => appConfigEditor.apply(revision), 'applyFailed'),
   )
   ipcMain.handle('config:get-provider-management', () => {
     invalidateConfigCache()

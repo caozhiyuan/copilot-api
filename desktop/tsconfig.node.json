@@ -78,7 +78,12 @@
     "../src/services/responses-websocket.ts",
     "../src/services/upstream-http.ts",
     "../src/lib/electron-fetch.ts",
-    "../tests/fixtures/models-dev-catalog.ts"
+    "../tests/fixtures/models-dev-catalog.ts",
+    "src/lib/config-editor.ts",
+    "src/lib/config-editor-errors.ts",
+    "src/lib/config-fields.ts",
+    "src/components/ConfigFieldEditor.tsx",
+    "src/pages/AdvancedConfigPage.tsx"
   ],
   "compilerOptions": {
     "composite": true,

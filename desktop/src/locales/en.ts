@@ -219,7 +219,7 @@ const en: Locale = {
     logout: 'Log out',
     settings: 'Settings',
     appSettings: 'App settings',
-    advancedConfig: 'Model mappings',
+    advancedConfig: 'Advanced config',
     changeAuth: 'Auth config',
     restart: 'Restart',
     restarting: 'Restarting…',
@@ -348,6 +348,169 @@ const en: Locale = {
     cancel: 'Cancel',
     save: 'Save',
     saving: 'Saving…',
+  },
+  configEditor: {
+    title: 'Service configuration',
+    editMode: 'Configuration editor mode',
+    form: 'Visual',
+    json: 'JSON',
+    groupsLabel: 'Configuration groups',
+    resetGroup: 'Reset group to defaults',
+    useDefault: 'Use default',
+    inherited: 'Inherit default',
+    explicit: 'Explicit value',
+    reload: 'Reload',
+    reloadDiscard: 'Reload and discard changes',
+    mergeLatest: 'Reload and keep changes',
+    mergeConflicts:
+      'Both the draft and file changed these fields: {{fields}}. Choose which values to keep for these fields; other edits will be preserved.',
+    keepMine: 'Use my values for conflicts',
+    keepDisk: 'Use file values for conflicts',
+    merged: 'Merged with the latest file. Review the draft before saving.',
+    legacyWarning:
+      'Unchanged legacy values are preserved: {{fields}}. The service will use its existing normalization rules.',
+    errors: {
+      conflict:
+        'Configuration changed on disk. Reload and keep your changes, or discard them.',
+      validation: 'Check the configuration values and try again.',
+      readFailed:
+        'Could not read the configuration. Check file access and try again.',
+      saveFailed:
+        'Could not save the configuration. Check file access and try again.',
+      applyFailed: 'Could not apply the configuration. Try again.',
+    },
+    discard: 'Discard changes',
+    review: 'Review changes',
+    close: 'Close',
+    saveApply: 'Save and apply',
+    save: 'Save configuration',
+    synced: 'Configuration synchronized',
+    unsaved: '{{count}} unsaved changes',
+    unsavedOther: 'Unsaved changes',
+    offline:
+      'The service is stopped. You can edit and save configuration for the next start.',
+    invalid: 'Invalid configuration',
+    savedApplied: 'Configuration saved and applied to subsequent requests.',
+    savedOffline:
+      'Configuration saved; it will apply on the next service start.',
+    savedNotApplied: 'Configuration saved, but applying it failed',
+    retryApply: 'Retry apply',
+    showSecrets: 'Show sensitive values and edit',
+    format: 'Format',
+    jsonContent: 'Full config.json content',
+    sharedDraft: 'Shares the visual editor draft; validated before saving.',
+    maskedReadOnly: 'Sensitive values are hidden; the preview is read-only.',
+    maskedUnavailable:
+      'Invalid JSON. Enable “Show sensitive values and edit” to repair it.',
+    mappingDefaults:
+      'Built-in mappings are restored automatically; map a model to itself to disable its default rewrite.',
+    autoModelDefault: 'Inherit default (automatic)',
+    autoModelOff: 'Disable model replacement',
+    autoModelCustom: 'Specify a model',
+    groups: {
+      general: 'Request settings',
+      mappings: 'Model mappings',
+      models: 'Model rules',
+      search: 'Search and images',
+      transport: 'Upstream transport',
+    },
+    fields: {
+      useMessagesApi: {
+        label: 'Messages API',
+        description:
+          'Prefer the native Messages endpoint declared by the model.',
+      },
+      useResponsesApiWebSocket: {
+        label: 'Responses WebSocket',
+        description:
+          'Use WebSocket for supported streaming Responses requests.',
+      },
+      opencodeModelContextWindow: {
+        label: 'OpenCode context limit',
+        description:
+          'Limit context tokens shown in the OpenCode model catalog.',
+      },
+      claudeTokenMultiplier: {
+        label: 'Claude token multiplier',
+        description: 'Used only for local Claude count_tokens estimation.',
+      },
+      anthropicApiKey: {
+        label: 'Anthropic token-counting key',
+        description:
+          'Enable exact counting; the default can use ANTHROPIC_API_KEY from the environment.',
+      },
+      smallModels: {
+        label: 'Title and warm-up models',
+        description:
+          'Set a model per provider; an empty string disables switching.',
+      },
+      claudeAutoModel: {
+        label: 'Claude Code review model',
+        description:
+          'Inherit the dynamic default, disable replacement, or specify a model.',
+      },
+      modelReasoningEfforts: {
+        label: 'Default reasoning effort',
+        description:
+          'Override effort per model; an explicit request value takes precedence.',
+      },
+      extraPrompts: {
+        label: 'Extra model prompts',
+        description: 'Append system prompts per model using a JSON object.',
+      },
+      useResponsesApiWebSearch: {
+        label: 'Responses web search',
+        description: 'Keep and forward web_search tools.',
+      },
+      alphaSearchCodexPriority: {
+        label: 'Prefer Codex search',
+        description: 'Control the routing priority for alpha-search.',
+      },
+      alphaSearchModel: {
+        label: 'Alpha Search fallback model',
+        description: 'An empty string disables the fallback search model.',
+      },
+      messageApiWebSearchModel: {
+        label: 'Messages web-search model',
+        description:
+          'Used for search-only Messages requests; an empty string disables it.',
+      },
+      imageGenerationModel: {
+        label: 'Image generation model',
+        description: 'Leave empty for the default route, or use xai/model.',
+      },
+      imageEditModel: {
+        label: 'Image edit model',
+        description: 'Leave empty for the default route, or use xai/model.',
+      },
+      headersTimeoutMs: {
+        label: 'Response headers timeout',
+        description:
+          'Time from connection establishment to response headers, in milliseconds.',
+      },
+      streamInactivityTimeoutMs: {
+        label: 'Stream inactivity timeout',
+        description: 'Reset whenever data arrives, in milliseconds.',
+      },
+      websocketOpenTimeoutMs: {
+        label: 'WebSocket handshake timeout',
+        description: 'Wait for the upstream handshake, in milliseconds.',
+      },
+      websocketPoolIdleTimeoutMs: {
+        label: 'WebSocket idle timeout',
+        description:
+          'Recycle completed, idle reusable connections, in milliseconds.',
+      },
+      websocketMaxBufferedBytes: {
+        label: 'WebSocket buffered bytes',
+        description:
+          'Applied together with the message limit; exceeding it terminates the stream.',
+      },
+      websocketMaxBufferedMessages: {
+        label: 'WebSocket buffered messages',
+        description: 'Applied together with the byte limit.',
+      },
+    },
   },
   advancedConfig: {
     title: 'Model mappings',

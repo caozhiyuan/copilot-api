@@ -12,6 +12,7 @@ export interface SaveAndRefreshOptions {
   // server through onRefreshError instead of rejecting.
   ignoreRefreshFailure?: boolean
   onRefreshError?: (error: Error) => void
+  onRefreshSuccess?: () => void
 }
 
 export function createConfigRefresher(dependencies: ConfigRefreshDependencies) {
@@ -50,6 +51,7 @@ export function createConfigRefresher(dependencies: ConfigRefreshDependencies) {
           return result
         }
         activeAdminApiKey = await dependencies.readAdminApiKey()
+        options.onRefreshSuccess?.()
       }
       return result
     })

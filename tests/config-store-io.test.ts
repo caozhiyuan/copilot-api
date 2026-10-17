@@ -477,3 +477,40 @@ test("setConfiguredApiKeys can clear all keys", () => {
   expect(config.auth.apiKeys).toEqual([])
   expect(config.auth.adminApiKey).toBe("admin-key")
 })
+
+test("reloadConfig preserves extension fields when persisting normalized defaults", () => {
+  const configPath = useTempConfigPath()
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify({
+      auth: { adminApiKey: "test-admin" },
+      futureRoot: { keep: true },
+      contextManagement: { messages: false, futureContext: { keep: true } },
+      upstreamTransport: {
+        headersTimeoutMs: 1234,
+        futureTransport: { keep: true },
+      },
+    }),
+  )
+  reloadConfig()
+  const persisted = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
+    futureRoot: { keep: boolean }
+    contextManagement: {
+      messages: boolean
+      responses: boolean
+      futureContext: { keep: boolean }
+    }
+    upstreamTransport: {
+      headersTimeoutMs: number
+      futureTransport: { keep: boolean }
+    }
+  }
+  expect(persisted.futureRoot).toEqual({ keep: true })
+  expect(persisted.contextManagement).toEqual({
+    messages: false,
+    responses: false,
+    futureContext: { keep: true },
+  })
+  expect(persisted.upstreamTransport.headersTimeoutMs).toBe(1234)
+  expect(persisted.upstreamTransport.futureTransport).toEqual({ keep: true })
+})

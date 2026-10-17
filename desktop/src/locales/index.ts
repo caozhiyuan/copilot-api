@@ -1,3 +1,4 @@
+import type { ConfigFieldId, ConfigSection } from '../lib/config-fields'
 import en from './en'
 import zh from './zh'
 
@@ -308,6 +309,58 @@ export interface Locale {
     cancel: string
     save: string
     saving: string
+  }
+  configEditor: {
+    title: string
+    editMode: string
+    form: string
+    json: string
+    groupsLabel: string
+    resetGroup: string
+    useDefault: string
+    inherited: string
+    explicit: string
+    reload: string
+    reloadDiscard: string
+    mergeLatest: string
+    mergeConflicts: string
+    keepMine: string
+    keepDisk: string
+    merged: string
+    legacyWarning: string
+    errors: {
+      conflict: string
+      validation: string
+      readFailed: string
+      saveFailed: string
+      applyFailed: string
+    }
+    discard: string
+    review: string
+    close: string
+    saveApply: string
+    save: string
+    synced: string
+    unsaved: string
+    unsavedOther: string
+    offline: string
+    invalid: string
+    savedApplied: string
+    savedOffline: string
+    savedNotApplied: string
+    retryApply: string
+    showSecrets: string
+    format: string
+    jsonContent: string
+    sharedDraft: string
+    maskedReadOnly: string
+    maskedUnavailable: string
+    mappingDefaults: string
+    autoModelDefault: string
+    autoModelOff: string
+    autoModelCustom: string
+    groups: Record<ConfigSection, string>
+    fields: Record<ConfigFieldId, { label: string; description: string }>
   }
   advancedConfig: {
     title: string

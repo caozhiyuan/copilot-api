@@ -8,6 +8,10 @@ import {
   test,
 } from 'bun:test'
 import type { BrowserWindow } from 'electron'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { PATHS } from '../../src/lib/paths'
 
 import * as serverAuth from '../electron/server-auth-config'
 import * as settingsStore from '../electron/settings-store'
@@ -16,6 +20,8 @@ import { CodexOAuthError } from '../../src/lib/oauth/codex'
 import { XaiOAuthError } from '../../src/lib/oauth/xai'
 import * as xaiToken from '../../src/lib/xai-token'
 import type {
+  AppConfigDocument,
+  AppConfigSaveResult,
   DesktopSettings,
   ServerKeysConfigUpdate,
   XaiAuthInfo,
@@ -32,8 +38,9 @@ const rendererOff = mock((channel: string, listener: RendererListener) => {
   listeners?.delete(listener)
   if (listeners?.size === 0) rendererListeners.delete(channel)
 })
-const rendererInvoke = mock((_channel: string, ..._args: unknown[]) =>
-  Promise.resolve(),
+const rendererInvoke = mock(
+  (_channel: string, ..._args: unknown[]): Promise<unknown> =>
+    Promise.resolve(),
 )
 let running = true
 let activeAdminApiKey = 'old-admin'
@@ -954,5 +961,108 @@ describe('desktop token usage sessions', () => {
       2,
       5,
     )
+  })
+})
+
+describe('desktop configuration editor bridge', () => {
+  test('returns structured conflict, validation and read errors from the main process', async () => {
+    const originalPath = PATHS.CONFIG_PATH
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'desktop-config-errors-'),
+    )
+    PATHS.CONFIG_PATH = path.join(directory, 'config.json')
+    try {
+      running = false
+      const document = (await invoke(
+        'config:get-document',
+      )) as AppConfigDocument
+      fs.writeFileSync(PATHS.CONFIG_PATH, '{}')
+      expect(
+        await invoke('config:save-document', {
+          revision: document.revision,
+          content: '{}',
+        }),
+      ).toEqual({ error: { code: 'conflict' } })
+      const current = (await invoke('config:get-document')) as AppConfigDocument
+      expect(
+        await invoke('config:save-document', {
+          revision: current.revision,
+          content: '[]',
+        }),
+      ).toEqual({
+        error: { code: 'validation', message: 'Config must be a JSON object.' },
+      })
+      fs.rmSync(PATHS.CONFIG_PATH)
+      fs.mkdirSync(PATHS.CONFIG_PATH)
+      expect(await invoke('config:get-document')).toEqual({
+        error: { code: 'readFailed' },
+      })
+    } finally {
+      PATHS.CONFIG_PATH = originalPath
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  test('passes error codes through the preload as plain data', async () => {
+    await import('../electron/preload')
+    if (!preloadApi) throw new Error('Preload bridge was not exposed')
+    const failure = { error: { code: 'conflict' as const } }
+    rendererInvoke.mockResolvedValueOnce(failure)
+    expect(
+      await preloadApi.saveAppConfig({ revision: 'old', content: '{}' }),
+    ).toEqual(failure)
+  })
+  test('reads, saves offline, and applies the document through main-process handlers', async () => {
+    const originalPath = PATHS.CONFIG_PATH
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'desktop-config-ipc-'),
+    )
+    PATHS.CONFIG_PATH = path.join(directory, 'config.json')
+    try {
+      running = false
+      const document = (await invoke(
+        'config:get-document',
+      )) as AppConfigDocument
+      const saved = (await invoke('config:save-document', {
+        revision: document.revision,
+        content: JSON.stringify({
+          auth: { adminApiKey: 'old-admin' },
+          useMessagesApi: false,
+        }),
+      })) as AppConfigSaveResult
+      expect(saved.saved).toBe(true)
+      expect(saved.applied).toBe(false)
+      expect(saved.configPath).toBe(PATHS.CONFIG_PATH)
+      running = true
+      const applied = (await invoke(
+        'config:apply-document',
+        saved.revision,
+      )) as AppConfigSaveResult
+      expect(applied.applied).toBe(true)
+      expect(JSON.parse(applied.content)).toEqual({
+        auth: { adminApiKey: 'old-admin' },
+        useMessagesApi: false,
+      })
+    } finally {
+      PATHS.CONFIG_PATH = originalPath
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+  test('exposes document read, save and apply through the typed preload bridge', async () => {
+    await import('../electron/preload')
+    if (!preloadApi) throw new Error('Preload bridge was not exposed')
+    const update = { revision: 'revision', content: '{}' }
+    await preloadApi.getAppConfig()
+    await preloadApi.saveAppConfig(update)
+    await preloadApi.applyAppConfig('revision')
+    expect(rendererInvoke).toHaveBeenCalledWith('config:get-document')
+    expect(rendererInvoke).toHaveBeenCalledWith('config:save-document', update)
+    expect(rendererInvoke).toHaveBeenCalledWith(
+      'config:apply-document',
+      'revision',
+    )
+    expect(handlers.has('config:get-document')).toBe(true)
+    expect(handlers.has('config:save-document')).toBe(true)
+    expect(handlers.has('config:apply-document')).toBe(true)
   })
 })

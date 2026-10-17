@@ -71,6 +71,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveSettings: (settings: unknown) =>
     ipcRenderer.invoke('settings:save', settings),
   getModelMappingsConfig: () => ipcRenderer.invoke('config:get-model-mappings'),
+  getAppConfig: () => ipcRenderer.invoke('config:get-document'),
+  saveAppConfig: (input: unknown) =>
+    ipcRenderer.invoke('config:save-document', input),
+  applyAppConfig: (revision: string) =>
+    ipcRenderer.invoke('config:apply-document', revision),
   getProviderManagementConfig: () =>
     ipcRenderer.invoke('config:get-provider-management'),
   getProviderModelOptions: () =>

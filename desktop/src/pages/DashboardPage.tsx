@@ -22,7 +22,7 @@ import {
 } from '../lib/token-usage-format'
 import { getProviderTypeLabel } from '../lib/provider-type-labels'
 import { buildServerBaseUrl } from '../lib/server-url'
-import ModelMappingsPage from './ModelMappingsPage'
+import AdvancedConfigPage from './AdvancedConfigPage'
 import ProviderManagementPanel from '../components/ProviderManagementPanel'
 import type {
   DesktopAuthMode,
@@ -312,6 +312,10 @@ export default function DashboardPage({
   const [restarting, setRestarting] = useState(false)
 
   const [tab, setTab] = useState<DashboardTab>(initialTab)
+  const [advancedConfigOpened, setAdvancedConfigOpened] = useState(false)
+  useEffect(() => {
+    if (tab === 'advancedConfig') setAdvancedConfigOpened(true)
+  }, [tab])
   const [usage, setUsage] = useState<UsageInfo | null>(null)
   const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null)
   const [tokenUsageDaily, setTokenUsageDaily] =
@@ -346,7 +350,12 @@ export default function DashboardPage({
   const logEndRef = useRef<HTMLDivElement>(null)
   const intentionalStop = useRef(false)
   useEffect(() => {
-    if (!started && tab !== 'dashboard' && tab !== 'providers')
+    if (
+      !started
+      && tab !== 'dashboard'
+      && tab !== 'providers'
+      && tab !== 'advancedConfig'
+    )
       setTab('dashboard')
   }, [started, tab])
   const tokenUsageRequestId = useRef(0)
@@ -921,7 +930,7 @@ export default function DashboardPage({
         </div>
       )}
 
-      {/* Providers remain configurable while the server is stopped. */}
+      {/* Providers and config remain editable while the server is stopped. */}
       <div className="flex items-center justify-between gap-3 px-4 h-[52px] bg-surface border-b border-line-soft shrink-0">
         <div
           role="tablist"
@@ -936,6 +945,7 @@ export default function DashboardPage({
                 !started
                 && tabItem.key !== 'dashboard'
                 && tabItem.key !== 'providers'
+                && tabItem.key !== 'advancedConfig'
               }
               onClick={() => setTab(tabItem.key)}
               className={`inline-flex items-center gap-1.5 px-2 sm:px-3 text-[13px] whitespace-nowrap border-b-2 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
@@ -972,7 +982,7 @@ export default function DashboardPage({
         }
       >
         {/* Empty state: start form */}
-        {!started && tab !== 'providers' && (
+        {!started && tab !== 'providers' && tab !== 'advancedConfig' && (
           <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
             <div className="w-11 h-11 bg-sunken rounded-xl flex items-center justify-center text-ink-soft dark:bg-[#4f94f8] dark:text-white">
               <IconLaunch />
@@ -1312,9 +1322,14 @@ export default function DashboardPage({
           />
         )}
 
-        {/* Model mappings tab */}
-        {started && tab === 'advancedConfig' && (
-          <ModelMappingsPage serverRunning={started && !stopping} />
+        {/* Keep the editor mounted after opening it to preserve unsaved drafts. */}
+        {(tab === 'advancedConfig' || advancedConfigOpened) && (
+          <div className={tab === 'advancedConfig' ? 'h-full' : 'hidden'}>
+            <AdvancedConfigPage
+              active={tab === 'advancedConfig'}
+              serverRunning={started && !stopping && !restarting}
+            />
+          </div>
         )}
 
         {/* Logs tab */}

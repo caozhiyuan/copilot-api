@@ -95,12 +95,25 @@
 
 **Codex catalog:** Ordinary JSON responses are limited to 1 MiB, with no model-count limit. Explicit provider selections take priority. Above 20 candidates, sources without `agentsModels` use the default exclusion list. Full local export bypasses the size limit and default exclusions, while respecting provider selections.
 
-**Provider management:** Open the Providers tab before Model Mappings to enable/disable configured providers and edit the **Models shown in Coding Agent** selections, including while the service is stopped. The authorization screen also provides a management button. CLI commands are `copilot-api provider enable <name>` and `copilot-api provider disable <name>`; both support `--api-home`. The `enabled` switch controls provider routing for all clients; `agentsModels` filters the Codex catalog and Claude Code gateway discovery. Disabling preserves credentials and model settings. The builtin GitHub Copilot provider uses `providers["github-copilot"]` as a control entry with `enabled` and optional `agentsModels`; no URL, API key or type is needed. Missing entries preserve the legacy enabled behavior and existing GitHub authentication. Use `copilot-api provider disable github-copilot` or `copilot-api provider enable github-copilot`, then restart the gateway. Disabling skips Copilot startup and hides its models from every client; requests to Copilot are rejected while other enabled providers continue to work.
+**Provider management:** Open the Providers tab before Advanced Config to enable/disable configured providers and edit the **Models shown in Coding Agent** selections, including while the service is stopped. The authorization screen also provides a management button. CLI commands are `copilot-api provider enable <name>` and `copilot-api provider disable <name>`; both support `--api-home`. The `enabled` switch controls provider routing for all clients; `agentsModels` filters the Codex catalog and Claude Code gateway discovery. Disabling preserves credentials and model settings. The builtin GitHub Copilot provider uses `providers["github-copilot"]` as a control entry with `enabled` and optional `agentsModels`; no URL, API key or type is needed. Missing entries preserve the legacy enabled behavior and existing GitHub authentication. Use `copilot-api provider disable github-copilot` or `copilot-api provider enable github-copilot`, then restart the gateway. Disabling skips Copilot startup and hides its models from every client; requests to Copilot are rejected while other enabled providers continue to work.
 
 ![Provider management](../../screenshots/provider-management.png)
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
 
+
+### Desktop configuration editor
+
+Open **Advanced config** to edit `config.json` through grouped visual fields or the full JSON editor. Both modes share one draft; switching main tabs preserves unsaved edits. The displayed file path follows the active `--api-home` / `COPILOT_API_HOME` setting.
+
+- Use **Use default** to remove an explicit override. Group resets preserve secret fields; remove those explicitly when needed. Clearing a numeric field inherits its default. Empty strings retain their documented disable/default-route meaning; clearing a custom Claude auto model disables that replacement.
+- JSON is masked and read-only until **Show sensitive values and edit** is enabled. Change previews also mask credentials.
+- Saves validate known fields, preserve extension fields, and reject changes if the file was edited externally. With no unsaved edits, returning to this tab reads the latest file. After a conflict, **Reload and keep changes** merges independent edits; overlapping fields require choosing draft or file values before saving. **Reload and discard changes** discards the draft explicitly.
+- Unchanged legacy values that the service already normalizes, such as empty API key entries or an invalid context limit, show a warning without blocking unrelated edits. New invalid values remain blocked. Saving rewrites the entire JSON file with two-space indentation and a trailing newline.
+- While running, **Save and apply** refreshes the service. A refresh failure is reported separately from the successful save and can be retried with **Retry apply**. While stopped, saving takes effect on the next start.
+- Provider management and API key settings keep their existing entry points. Desktop runtime, proxy, and appearance preferences remain in `desktop-config.json`.
+
+![Desktop configuration editor](../../screenshots/desktop-config-editor.png)
 
 ## Google Gemini upstream
 

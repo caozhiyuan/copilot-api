@@ -1,4 +1,5 @@
 import type { LangPreference } from '../locales'
+import type { ConfigEditorReply } from '../lib/config-editor-errors'
 import type {
   XaiAuthInfo,
   OAuthAccountSummary,
@@ -108,6 +109,24 @@ export interface ServerKeysConfigUpdate {
 export interface ModelMappingsConfig {
   configPath: string
   modelMappings: Record<string, string>
+}
+
+export interface AppConfigDocument {
+  configPath: string
+  content: string
+  revision: string
+  defaultContent: string
+}
+
+export interface AppConfigUpdate {
+  content: string
+  revision: string
+}
+
+export interface AppConfigSaveResult extends AppConfigDocument {
+  saved: true
+  applied: boolean
+  refreshError?: string
 }
 
 export type TokenUsagePeriod =
@@ -327,6 +346,13 @@ declare global {
       ) => () => void
       saveSettings: (settings: DesktopSettings) => Promise<void>
       getModelMappingsConfig: () => Promise<ModelMappingsConfig>
+      getAppConfig: () => Promise<ConfigEditorReply<AppConfigDocument>>
+      saveAppConfig: (
+        input: AppConfigUpdate,
+      ) => Promise<ConfigEditorReply<AppConfigSaveResult>>
+      applyAppConfig: (
+        revision: string,
+      ) => Promise<ConfigEditorReply<AppConfigSaveResult>>
       getProviderManagementConfig: () => Promise<ProviderManagementConfig>
       saveProviderManagementConfig: (
         input: ProviderManagementUpdate,
