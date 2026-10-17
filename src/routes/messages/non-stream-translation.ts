@@ -1,7 +1,6 @@
 import type { ToolContentSupportType } from "~/lib/config"
 import type { Model } from "~/lib/types/models"
 
-import { requestContext } from "~/lib/request-context"
 import { state } from "~/lib/state"
 import {
   type ChatCompletionResponse,
@@ -30,7 +29,8 @@ import {
   type AnthropicUserMessage,
 } from "~/lib/types/anthropic"
 import { mapOpenAIStopReasonToAnthropic } from "./utils"
-import { parseUserIdMetadata } from "~/lib/utils"
+import { getPromptCacheKey } from "~/lib/utils"
+import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 
 // Compatible with opencode, it will filter out blocks where the thinking text is empty, so we need add a default thinking text
 export const THINKING_TEXT = "Thinking..."
@@ -54,6 +54,7 @@ interface ToolResultMessages {
 }
 
 interface TranslateToOpenAIOptions {
+  subagentAgentId?: string | null
   supportPdf?: boolean
   toolContentSupportType?: Array<ToolContentSupportType>
   validateReasoningEffort?: boolean
@@ -74,12 +75,11 @@ export function translateToOpenAI(
   const model = state.models?.data.find((m) => m.id === modelId)
   const thinkingBudget = getThinkingBudget(payload, model)
   const reasoningEffort = getReasoningEffort(payload, options)
-  const { sessionId: metadataPromptCacheKey } = parseUserIdMetadata(
-    payload.metadata?.user_id,
+  const promptCacheKey = getPromptCacheKey(
+    payload,
+    options.subagentAgentId
+      ?? parseSubagentMarkerFromFirstUser(payload)?.agent_id,
   )
-  const requestStore = requestContext.getStore()
-  const sessionAffinity = requestStore?.sessionAffinity?.trim() || null
-  const promptCacheKey = metadataPromptCacheKey ?? sessionAffinity
   const capabilities = {
     supportPdf: options.supportPdf ?? false,
     toolContentSupportType: options.toolContentSupportType ?? [],

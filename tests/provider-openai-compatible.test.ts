@@ -3,6 +3,7 @@ import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+import { traceIdMiddleware } from "~/lib/trace"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
 
@@ -72,6 +73,7 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
 
 const createApp = () => {
   const app = new Hono()
+  app.use(traceIdMiddleware)
   app.route("/:provider/v1/messages", providerMessageRoutes)
   return app
 }
@@ -137,6 +139,54 @@ afterEach(() => {
 })
 
 describe("openai-compatible provider messages", () => {
+  test.each([
+    { session: "root", root: "root", parent: undefined, expected: "root" },
+    {
+      session: "child-a",
+      root: "root",
+      parent: "root",
+      expected: "root:agent",
+    },
+    {
+      session: "child-b",
+      root: "root",
+      parent: "root",
+      expected: "root:agent",
+    },
+    {
+      session: "other-child",
+      root: "other-root",
+      parent: "parent",
+      expected: "other-root:agent",
+    },
+  ])(
+    "uses root cache groups for session $session",
+    async ({ session, root, parent, expected }) => {
+      const headers = new Headers({
+        "content-type": "application/json",
+        "x-root-session-id": root,
+        "x-opencode-session-id": session,
+      })
+      if (parent) headers.set("x-parent-session-id", parent)
+      const response = await createApp().request("/dash/v1/messages", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "qwen-plus",
+          max_tokens: 128,
+          metadata: { user_id: JSON.stringify({ session_id: session }) },
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      const init = fetchMock.mock.calls[0][1] as RequestInit
+      expect(JSON.parse(init.body as string)).toMatchObject({
+        prompt_cache_key: expected,
+      })
+    },
+  )
+
   test("merges message-level system prompts before OpenAI-compatible translation", async () => {
     providerConfig = {
       ...providerConfig,

@@ -467,22 +467,46 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result.prompt_cache_key).toBe("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752")
   })
 
-  it("appends subagent agent_id to metadata prompt cache key", () => {
-    const result = translateAnthropicMessagesToResponsesPayload(
-      {
-        ...samplePayload,
-        metadata: {
-          user_id: jsonStyleUserId,
+  it("detects subagent markers for provider Responses translation", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      metadata: { user_id: JSON.stringify({ session_id: "root" }) },
+      tools: sampleTools,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"child","agent_id":"agent-a","agent_type":"Explore"}</system-reminder>',
+            },
+          ],
         },
-        tools: sampleTools,
-      },
-      ` ${subagentAgentId} `,
-    )
+      ],
+    })
 
-    expect(result.prompt_cache_key).toBe(
-      "2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752:agent:agent-123",
-    )
+    expect(result.prompt_cache_key).toBe("root:agent")
   })
+
+  it.each([` ${subagentAgentId} `, "agent-456"])(
+    "uses a shared subagent cache key for metadata session with agent %s",
+    (agentId) => {
+      const result = translateAnthropicMessagesToResponsesPayload(
+        {
+          ...samplePayload,
+          metadata: {
+            user_id: jsonStyleUserId,
+          },
+          tools: sampleTools,
+        },
+        agentId,
+      )
+
+      expect(result.prompt_cache_key).toBe(
+        "2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752:agent",
+      )
+    },
+  )
 
   it("keeps legacy user_id parsing before JSON fallback", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
@@ -518,30 +542,33 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result.prompt_cache_key).toBe("opencode-session")
   })
 
-  it("appends subagent agent_id to session affinity fallback", () => {
-    const result = requestContext.run(
-      {
-        parentSessionId: undefined,
-        sessionAffinity: "opencode-session",
-        startTime: Date.now(),
-        traceId: "trace-123",
-        userAgent: "test",
-      },
-      () =>
-        translateAnthropicMessagesToResponsesPayload(
-          {
-            ...samplePayload,
-            metadata: {
-              user_id: emptySessionUserId,
+  it.each([` ${subagentAgentId} `, "agent-456"])(
+    "uses a shared subagent cache key for session affinity with agent %s",
+    (agentId) => {
+      const result = requestContext.run(
+        {
+          parentSessionId: undefined,
+          sessionAffinity: "opencode-session",
+          startTime: Date.now(),
+          traceId: "trace-123",
+          userAgent: "test",
+        },
+        () =>
+          translateAnthropicMessagesToResponsesPayload(
+            {
+              ...samplePayload,
+              metadata: {
+                user_id: emptySessionUserId,
+              },
+              tools: sampleTools,
             },
-            tools: sampleTools,
-          },
-          ` ${subagentAgentId} `,
-        ),
-    )
+            agentId,
+          ),
+      )
 
-    expect(result.prompt_cache_key).toBe("opencode-session:agent:agent-123")
-  })
+      expect(result.prompt_cache_key).toBe("opencode-session:agent")
+    },
+  )
 
   it("keeps unrelated system prompt text unchanged", () => {
     const payload = {

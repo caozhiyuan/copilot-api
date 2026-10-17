@@ -5,6 +5,7 @@ export interface RequestContext {
   startTime: number
   userAgent: string
   sessionAffinity: string | undefined
+  rootSessionId?: string
   parentSessionId: string | undefined
 }
 

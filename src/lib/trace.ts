@@ -15,7 +15,13 @@ export const traceIdMiddleware: MiddlewareHandler = async (c, next) => {
       c.req.header("x-opencode-session-id")
       ?? c.req.header("x-session-affinity")
       ?? c.req.header("x-client-request-id"),
-    parentSessionId: c.req.header("x-parent-session-id"),
+    rootSessionId:
+      c.req.header("session-id")?.trim()
+      || c.req.header("x-root-session-id")?.trim()
+      || c.req.header("x-session-id")?.trim(),
+    parentSessionId:
+      c.req.header("x-parent-session-id")?.trim()
+      || c.req.header("x-codex-parent-thread-id")?.trim(),
   }
 
   await requestContext.run(context, async () => {

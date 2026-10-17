@@ -110,6 +110,29 @@ function createThinkingModel(): Model {
 }
 
 describe("Anthropic to OpenAI translation logic", () => {
+  test("shares metadata cache keys across marked subagents", () => {
+    for (const agentId of ["agent-a", "agent-b"]) {
+      const payload: AnthropicMessagesPayload = {
+        model: "qwen-plus",
+        max_tokens: 128,
+        metadata: { user_id: JSON.stringify({ session_id: "root" }) },
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `<system-reminder>__SUBAGENT_MARKER__${JSON.stringify({ session_id: "child", agent_id: agentId, agent_type: "Explore" })}</system-reminder>`,
+              },
+            ],
+          },
+        ],
+      }
+
+      expect(translateToOpenAI(payload).prompt_cache_key).toBe("root:agent")
+    }
+  })
+
   test("maps request session affinity to prompt_cache_key", () => {
     const anthropicPayload: AnthropicMessagesPayload = {
       model: "gpt-4o",

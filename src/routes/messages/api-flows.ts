@@ -118,6 +118,7 @@ export const handleWithChatCompletions = async (
     compactType,
   } = options
   const openAIPayload = translateToOpenAI(anthropicPayload, {
+    subagentAgentId: subagentMarker?.agent_id,
     supportPdf: getProviderModelPdfSupport(
       anthropicPayload.model,
       {
