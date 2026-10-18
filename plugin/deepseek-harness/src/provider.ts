@@ -1,20 +1,25 @@
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai"
+import type { ProviderStreams, StreamOptions } from "@earendil-works/pi-ai"
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy"
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy"
 import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai"
+import type { PiAiAdapterOptions, ResolvedPiAiProviderProfile } from "@deepseek-ai/dsh-llm-pi-ai"
 import { LlmError, resolveRetryPolicy } from "@deepseek-ai/dsh-llm"
-import { gatewayFetch } from "./transport.js"
+import type { GenerateOptions, LlmModelInfo, LlmProviderInfo, LlmResolvedModelInfo, PreparedAdapterCall, ResolvedRetryPolicy, RetryPolicyConfig, StreamChunk } from "@deepseek-ai/dsh-llm"
+import { gatewayFetch } from "./transport.ts"
+import type { Settings } from "./config.ts"
+import type { DiscoveredModel } from "./models.ts"
+import type { CopilotModelCatalog } from "./catalog.ts"
 
 /**
  * Build a public pi-ai Provider; both protocol converters are used unchanged.
- * @returns {import("@deepseek-ai/dsh-llm-pi-ai").ResolvedPiAiProviderProfile}
  */
-export function createProfile(config, baseURL, models) {
-  const api = config.protocol === "openai-responses" ? openAIResponsesApi() : anthropicMessagesApi()
+export function createProfile(config: Settings, baseURL: string, models: readonly DiscoveredModel[]): ResolvedPiAiProviderProfile {
+  const api: ProviderStreams = config.protocol === "openai-responses" ? openAIResponsesApi() : anthropicMessagesApi()
   // Anthropic's SDK appends /v1/messages; OpenAI's appends /responses.
   const baseUrl = config.protocol === "anthropic-messages" ? baseURL.slice(0, -3) : baseURL
   const descriptors = models.map(model => ({ ...model, baseUrl }))
-  const transport = options => {
+  const transport = <T extends StreamOptions>(options: T | undefined): T & Pick<StreamOptions, "fetch"> => {
     if (typeof options?.apiKey !== "string" || options.apiKey.length === 0) {
       throw new LlmError("copilot-api-provider: missing gateway credential", "MISSING_CREDENTIAL")
     }
@@ -48,7 +53,10 @@ export function createProfile(config, baseURL, models) {
 
 /** The only adapter extension is admission through the dynamically discovered catalog. */
 export class CopilotApiAdapter extends PiAiAdapter {
-  constructor(catalog, options, retryPolicy) {
+  private readonly catalog: CopilotModelCatalog
+  private readonly retryPolicy: ResolvedRetryPolicy
+
+  constructor(catalog: CopilotModelCatalog, options: Omit<PiAiAdapterOptions, "profiles" | "auth">, retryPolicy?: RetryPolicyConfig) {
     super({
       ...options,
       profiles: () => catalog.profiles,
@@ -62,21 +70,21 @@ export class CopilotApiAdapter extends PiAiAdapter {
     this.retryPolicy = resolveRetryPolicy(retryPolicy, "copilot-api-provider retryPolicy")
   }
 
-  providerInfo(provider) { return { id: provider, name: "Copilot API" } }
-  providerRetryPolicy() { return this.retryPolicy }
-  async listModels(provider) {
+  override providerInfo(provider: string): LlmProviderInfo { return { id: provider, name: "Copilot API" } }
+  override providerRetryPolicy(): ResolvedRetryPolicy { return this.retryPolicy }
+  override async listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     await this.catalog.ensure()
     return this.catalog.models?.length === 0 ? [] : super.listModels(provider)
   }
-  async resolveModel(provider, model, signal) {
+  override async resolveModel(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo> {
     await this.catalog.ensure(signal)
     return super.resolveModel(provider, model, signal)
   }
-  async prepareCall(provider, model, signal) {
+  override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
     await this.catalog.ensure(signal)
     return super.prepareCall(provider, model, signal)
   }
-  async *stream(options) {
+  override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     await this.catalog.ensure(options.signal)
     yield* super.stream(options)
   }

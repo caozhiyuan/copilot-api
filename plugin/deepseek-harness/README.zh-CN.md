@@ -2,15 +2,20 @@
 
 [English](README.md)
 
-独立的**纯 JavaScript** 插件包，复用 Harness 的 `PiAiAdapter`、LLM Runtime 和 pi-ai 的 Responses/Messages 实现。无需编译，无需修改 Harness 或 copilot-api 服务端。验证版本为 Harness `0.2.1-rc.2`（`687f282e8625`）和其使用的 pi-ai `1.1.0`。
+独立插件包，采用**严格 TypeScript 源码，构建为 JavaScript 交付**，复用 Harness 的 `PiAiAdapter`、LLM Runtime 和 pi-ai 的 Responses/Messages 实现。Harness 加载普通 JS，不需要 TypeScript loader。无需修改 Harness 或 copilot-api 服务端。验证版本为 Harness `0.2.1-rc.2`（`687f282e8625`）和其使用的 pi-ai `1.1.0`。
 
 ## 安装与配置
 
-克隆本仓库，在已有 Harness profile 中安装插件目录：
+从源码安装时，先安装开发依赖并构建一次，再将目录加入已有 Harness profile：
 
 ```sh
+cd /absolute/path/copilot-api/plugin/deepseek-harness
+bun install
+bun run build
 dsh plugin --profile web add /absolute/path/copilot-api/plugin/deepseek-harness
 ```
+
+构建会分别检查 Host 与浏览器类型，将 Host JS 和类型声明输出到 `dist/`，并将浏览器入口打包为 Harness 要求的模块工厂，继续使用其共享 React。构建产物不提交到仓库。`npm pack` 自动执行构建，包内包含构建后的 JS、类型声明和展示资源；使用该分发包时无需安装 TypeScript。
 
 插件包会插入 `copilot-api-provider` 条目。在该 profile 的 `cordis.patch.yml` 中添加覆盖配置；保留此条目 ID，供模型设置插槽识别：
 
@@ -83,7 +88,7 @@ Messages 复用 pi-ai 的 adaptive thinking 和 `output_config.effort`，仅展�
 
 ## 开发与验证
 
-`index.js` 注册 Adapter、Provider 目录、模型发现及生命周期；`catalog.js` 发布不可变的模型代际；`models.js` 只解析目录元数据；`provider.js` 用公开 pi-ai Provider 接口向原有 `PiAiAdapter` 提供模型，并委托公开 lazy API 实现处理协议；`transport.js` 只处理请求 Header；`client.js` 使用公开模型卡片插槽、资源和凭据接口。运行时代码不导入 Harness 私有文件。
+`src/index.ts` 注册 Adapter、Provider 目录、模型发现及生命周期；`src/catalog.ts` 发布不可变的模型代际；`src/models.ts` 只解析目录元数据；`src/provider.ts` 用有类型约束的公开 pi-ai Provider 接口向原有 `PiAiAdapter` 提供模型，并委托公开 lazy API 实现处理协议；`src/transport.ts` 只处理请求 Header；`src/client/index.ts` 使用公开模型卡片插槽、资源和凭据接口。运行时代码不导入 Harness 私有文件。
 
 测试使用 Node 24，需要已安装依赖、已构建库产物的最新 Harness 源码目录：
 
@@ -95,4 +100,4 @@ bun test --coverage tests/models.bun.test.ts
 bun run typecheck
 ```
 
-所有 Harness peer 包应来自同一安装或源码目录，保证 Cordis/Runtime 单例一致。集成测试复用其 testkit、源码测试辅助函数和标准 decorator 转换。使用本地 HTTP/SSE 服务，不需要上游账号或真实密钥；JS 类型检查不生成文件。检查结果及覆盖率见 PR。浏览器组件在 jsdom 中验证，未将运行中的桌面/浏览器部署作为测试条件。
+`bun run test` 会先构建分发产物。所有 Harness peer 包应来自同一安装或源码目录，保证 Cordis/Runtime 单例一致。集成测试复用其 testkit、源码测试辅助函数和标准 decorator 转换。使用本地 HTTP/SSE 服务，不需要上游账号或真实密钥。`bun run typecheck` 分别严格检查 Host/浏览器源码，不生成文件，开启隐式 any 检查、override 检查和索引访问检查。另有构建测试确认普通 Node 可加载 Host JS，浏览器工厂可使用共享 React。检查结果及覆盖率见 PR。浏览器组件在 jsdom 中验证，未将运行中的桌面/浏览器部署作为测试条件。

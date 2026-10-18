@@ -1,18 +1,27 @@
 {
   "name": "copilot-api-provider",
   "version": "0.1.0",
-  "description": "Pure JavaScript DeepSeek Harness provider for copilot-api, using the native pi-ai adapter",
+  "description": "DeepSeek Harness provider for copilot-api, written in TypeScript and distributed as JavaScript",
   "type": "module",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./index.js",
-    "./client": "./client.js",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client.js"
+    },
     "./icon": "./icon.svg",
     "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-ui-settings-models",
@@ -24,7 +33,13 @@
     }
   },
   "license": "MIT",
-  "files": ["*.js", "!vitest.config.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README*.md"],
+  "files": [
+    "dist/",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README*.md"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/caozhiyuan/copilot-api.git",
@@ -39,8 +54,20 @@
     "@earendil-works/pi-ai": "1.1.0"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "4.1.11",
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/cordis-plugin-loader": "^1.0.6",
+    "@deepseek-ai/dsh-api-remotes": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-locale": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-resources": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-models": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-fs": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-typert-protocol": "^0.2.1-rc.2",
     "@types/node": "^24.0.0",
+    "@types/react": "^18.3.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "esbuild": "^0.28.2",
     "jsdom": "^26.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -48,8 +75,12 @@
     "vitest": "4.1.11"
   },
   "scripts": {
-    "test": "vitest run --config vitest.config.js",
-    "typecheck": "tsc --project tsconfig.json"
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build",
+    "test": "npm run build && vitest run --config vitest.config.js",
+    "typecheck": "tsc --project tsconfig.json --noEmit && tsc --project tsconfig.client.json"
   },
-  "engines": { "node": ">=22.13.0" }
+  "engines": {
+    "node": ">=22.13.0"
+  }
 }

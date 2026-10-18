@@ -1,6 +1,6 @@
-import { Options as Config, connectionOf } from "../config.js"
-import { parseModels, reasoningEfforts } from "../models.js"
-import { gatewayHeaders } from "../transport.js"
+import { Options as Config, connectionOf } from "../src/config.ts"
+import { parseModels, reasoningEfforts } from "../src/models.ts"
+import { gatewayHeaders } from "../src/transport.ts"
 import { MODEL_ID, MODEL_LIST } from "./fixtures.ts"
 import { userAgent } from "@deepseek-ai/dsh-llm"
 

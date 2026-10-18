@@ -10,7 +10,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-async function browser() {
+async function browser(built = false) {
   let plugin
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
   window.__ModuleLoader__ = { load(module) { plugin = module.factory(id => {
@@ -18,7 +18,8 @@ async function browser() {
     return React
   }) } }
   vi.resetModules()
-  await import("../client.js")
+  if (built) await import("../dist/client.js")
+  else plugin = await import("../src/client/index.ts")
   let resource, seat, Component, dictionaries
   const dispose = []
   const listeners = new Map()
@@ -55,6 +56,17 @@ async function browser() {
     emit: event => { for (const listener of listeners.get(event) ?? []) listener() },
   }
 }
+
+it("loads the compiled Harness browser factory using only shared React", async () => {
+  const { resource, seat, Component } = await browser(true)
+  expect(seat).toMatchObject({ name: "settings.models.provider-card", key: "copilot-api-provider" })
+  expect(typeof Component).toBe("function")
+  const controller = new AbortController()
+  const stream = resource.open("dsh-resource://copilot-api-models/copilot-api-provider", { signal: controller.signal })
+  expect((await stream.next()).value).toMatchObject({ ok: true, value: [{ efforts: ["high", "max"] }] })
+  controller.abort()
+  expect((await stream.next()).done).toBe(true)
+})
 
 it("registers a normal provider-card slot and displays the actual selector efforts and image capability", async () => {
   const { resource, seat, Component, dictionaries, ctx } = await browser()

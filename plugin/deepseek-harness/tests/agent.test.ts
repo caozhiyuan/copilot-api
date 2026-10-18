@@ -6,7 +6,7 @@ import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as Retry from '@deepseek-ai/dsh-llm-retry'
 import { buildModelCatalog } from 'harness-test/catalog'
-import * as Copilot from '../index.js'
+import * as Copilot from '../src/index.ts'
 import { gateway, MODEL_ID } from './fixtures.ts'
 import type { Gateway } from './fixtures.ts'
 

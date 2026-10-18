@@ -1,19 +1,24 @@
+import type {} from "@deepseek-ai/cordis-plugin-loader"
+import type {} from "@deepseek-ai/dsh-fs"
+import type { Context } from "@deepseek-ai/cordis"
 import { launchEnvironmentOf } from "@deepseek-ai/dsh-launch-environment"
 import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from "@deepseek-ai/dsh-llm"
-import { Config, connectionOf } from "./config.js"
-import { CopilotModelCatalog } from "./catalog.js"
-import { CopilotApiAdapter } from "./provider.js"
+import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from "@deepseek-ai/dsh-llm"
+import { Config, connectionOf } from "./config.ts"
+import { CopilotModelCatalog } from "./catalog.ts"
+import { CopilotApiAdapter } from "./provider.ts"
 
 export { Config }
+export type { ModelOverride, Protocol, Settings } from "./config.ts"
 export const name = "copilot-api-provider"
 export const inject = ["llm"]
 
 /** Independent Cordis plugin, reusing the existing Harness runtime and PiAiAdapter. */
-export function apply(ctx, references) {
+export function apply(ctx: Context, references: Config): void {
   const config = { ...references, get modelOverrides() { return references.modelOverrides.get() } }
   const { baseURL, keyRef } = connectionOf(config)
   const settingsNs = ctx.fiber.entry?.options.id ?? name
-  const resolveKey = async () => {
+  const resolveKey = async (): Promise<string> => {
     const credentials = ctx.get("credentials")
     const value = credentials === undefined
       ? launchEnvironmentOf(ctx).get(keyRef)?.value
@@ -23,9 +28,9 @@ export function apply(ctx, references) {
     }
     return assertUsableApiKey(value, name, keyRef)
   }
-  let registration
-  let directory
-  const directoryEntries = error => [{
+  let registration: AdapterRegistrationHandle | undefined
+  let directory: DirectoryRegistrationHandle | undefined
+  const directoryEntries = (error?: string): LlmConfigurableProvider[] => [{
     provider: "copilot-api", displayName: "Copilot API", settingsNs, settingsPath: [],
     defaultBaseURL: baseURL, nativeAuth: { env: [keyRef], oauth: false },
     ...error === undefined ? {} : { error },

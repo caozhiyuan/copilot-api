@@ -2,15 +2,20 @@
 
 [中文](README.zh-CN.md)
 
-An independent, **plain JavaScript** Harness bundle. No build step, Harness fork, gateway patch, or duplicated Responses/Messages converter is required. Tested against Harness `0.2.1-rc.2` (`687f282e8625`) and its pi-ai `1.1.0`.
+An independent Harness bundle with **strict TypeScript source and built JavaScript distribution**. Harness loads ordinary JS, with no TypeScript loader required. No Harness fork, gateway patch, or duplicated Responses/Messages converter is required. Tested against Harness `0.2.1-rc.2` (`687f282e8625`) and its pi-ai `1.1.0`.
 
 ## Install and configure
 
-Clone this repository, then install its plugin directory into your existing Harness profile:
+For a source checkout, install the development dependencies and build once before adding the directory to your existing Harness profile:
 
 ```sh
+cd /absolute/path/copilot-api/plugin/deepseek-harness
+bun install
+bun run build
 dsh plugin --profile web add /absolute/path/copilot-api/plugin/deepseek-harness
 ```
+
+`bun run build` checks Host and browser types separately, emits Host JS and declarations into `dist/`, and bundles the browser entry into Harness's module-factory format using its shared React. Generated files are not committed. `npm pack` runs the build automatically and includes the built JS/declarations and display resources; users of that package do not need TypeScript installed.
 
 The bundle inserts the `copilot-api-provider` entry. Add this override to that profile's `cordis.patch.yml` (keep this entry ID for the companion Models card):
 
@@ -83,7 +88,7 @@ Each inference attempt carries `x-deepseek-harness-session-id` from its actual H
 
 ## Architecture and verification
 
-`index.js` registers the adapter, configurable-provider directory, discovery callback and owned lifecycle. `catalog.js` publishes complete immutable model generations. `models.js` translates directory metadata only. `provider.js` supplies public pi-ai Provider descriptors to the existing `PiAiAdapter`, delegates both streams to pi-ai's public lazy API implementations, and injects a header-only fetch wrapper from `transport.js`. `client.js` uses the public `settings.models.provider-card` slot, resource and credential APIs. No Harness internals are imported by runtime files.
+`src/index.ts` registers the adapter, configurable-provider directory, discovery callback and owned lifecycle. `src/catalog.ts` publishes complete immutable model generations. `src/models.ts` translates directory metadata only. `src/provider.ts` supplies typed public pi-ai Provider descriptors to the existing `PiAiAdapter`, delegates both streams to pi-ai's public lazy API implementations, and injects a header-only fetch wrapper from `src/transport.ts`. `src/client/index.ts` uses the public `settings.models.provider-card` slot, resource and credential APIs. No Harness internals are imported by runtime files.
 
 For development, use Node 24, install this plugin's test dependencies, and use a current, dependency-installed Harness source checkout for its testkit and standard decorator transform:
 
@@ -95,4 +100,4 @@ bun test --coverage tests/models.bun.test.ts
 bun run typecheck
 ```
 
-Harness must have its library artifacts built for JS peer resolution. The integration configuration also resolves its source test helpers. Use the same Harness installation/checkout for all peer packages to preserve Cordis and runtime singleton identity. Tests use local HTTP/SSE fixtures and real Harness/pi-ai; no live upstream provider key is needed. The JS TypeScript check emits no files. See the PR for exact checks and coverage. Browser UI behavior is tested in jsdom; a running desktop/browser deployment is not part of that test.
+`bun run test` first builds the distribution. Harness must have its library artifacts built for peer resolution. The integration configuration also resolves its source test helpers. Use the same Harness installation/checkout for all peer packages to preserve Cordis and runtime singleton identity. Tests use local HTTP/SSE fixtures and real Harness/pi-ai; no live upstream provider key is needed. `bun run typecheck` checks strict Host/browser TypeScript without emitting files; it enables implicit-any errors, override checks and checked indexed access. Build tests additionally load the generated Host entry in plain Node and the generated browser factory with shared React. See the PR for exact checks and coverage. Browser UI behavior is tested in jsdom; a running desktop/browser deployment is not part of that test.

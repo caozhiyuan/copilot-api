@@ -13,7 +13,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { profileComposition } from 'harness-test/profile-composition'
 import { buildModelCatalog } from 'harness-test/catalog'
 import { assemble } from './assemble.ts'
-import * as Copilot from '../index.js'
+import * as SourcePlugin from '../src/index.ts'
+import * as BuiltPlugin from '../dist/index.js'
 import { gateway, MODEL_ID } from './fixtures.ts'
 import type { Gateway } from './fixtures.ts'
 
@@ -26,7 +27,7 @@ afterEach(async () => {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
 })
 
-it('loads a configured plugin through cordis.yml with a credentials-store key', async () => {
+it.each([['TypeScript source', SourcePlugin], ['built JavaScript', BuiltPlugin]] as const)('loads %s through cordis.yml with a credentials-store key', async (_label, Copilot) => {
   root = await mkdtemp(join(tmpdir(), 'copilot-loader-'))
   server = await gateway('openai-responses')
   const credentialPath = join(root, 'credentials.yaml')

@@ -36,6 +36,6 @@ export default defineConfig({
     exclude: ["tests/*.bun.test.ts"],
     setupFiles: ["tests/setup.ts"],
     pool: "forks", maxWorkers: 2, execArgv: vitestExecArgv,
-    coverage: { provider: "v8", include: ["*.js"], exclude: ["vitest.config.js"], reporter: ["text"], thresholds: { lines: 80, functions: 80, statements: 80 } },
+    coverage: { provider: "v8", include: ["src/**/*.ts"], reporter: ["text"], thresholds: { lines: 80, functions: 80, statements: 80 } },
   },
 })

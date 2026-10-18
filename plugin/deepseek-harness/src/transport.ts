@@ -1,4 +1,6 @@
 import { attributionHeaders } from "@deepseek-ai/dsh-llm"
+import type { SimpleStreamOptions } from "@earendil-works/pi-ai"
+import type { Settings } from "./config.ts"
 
 const reserved = new Set([
   "authorization", "x-api-key", "anthropic-version", "content-type", "accept",
@@ -6,7 +8,7 @@ const reserved = new Set([
 ])
 
 /** Merge names case-insensitively while preserving SDK beta and streaming headers. */
-export function gatewayHeaders(config, apiKey, sdkHeaders, options) {
+export function gatewayHeaders(config: Settings, apiKey: string, sdkHeaders?: HeadersInit, options?: Pick<SimpleStreamOptions, "sessionId">): Headers {
   const headers = new Headers(sdkHeaders)
   for (const [name, value] of Object.entries(config.headers)) {
     const lower = name.toLowerCase()
@@ -40,7 +42,7 @@ export function gatewayHeaders(config, apiKey, sdkHeaders, options) {
 }
 
 /** Transport only: leave URLs, bodies, prompt_cache_key, SSE and signals with pi-ai. */
-export function gatewayFetch(config, apiKey, options) {
+export function gatewayFetch(config: Settings, apiKey: string, options: Pick<SimpleStreamOptions, "sessionId">): typeof fetch {
   return (input, init) => {
     const request = new Request(input, init)
     return globalThis.fetch(request, {
