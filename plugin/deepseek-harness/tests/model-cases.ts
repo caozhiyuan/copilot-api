@@ -62,11 +62,12 @@ export function modelCases({ describe, expect, it }) {
         "Content-Type": "text/plain", "X-Session-Affinity": "wrong", "x-deepseek-harness-session-id": "wrong",
         "X-Custom-Header": "custom", "Anthropic-Beta": "custom-beta,required-beta",
       } })
-      const headers = gatewayHeaders(config, "real-key", new Headers({ "anthropic-beta": "required-beta", accept: "text/event-stream" }), { sessionId: "current-session" })
+      const headers = gatewayHeaders(config, "real-key", new Headers({ "anthropic-beta": "required-beta", accept: "text/event-stream", "x-client-request-id": "current-session" }), { sessionId: "current-session" })
       expect(Object.fromEntries(headers)).toMatchObject({
         "x-api-key": "real-key", "anthropic-version": "2023-06-01", "user-agent": userAgent(),
         "content-type": "application/json", "x-custom-header": "custom", accept: "text/event-stream",
         "x-deepseek-harness-session-id": "current-session", "x-session-affinity": "current-session", "anthropic-beta": "required-beta,custom-beta",
+        "x-client-request-id": "current-session",
       })
       expect(headers.has("authorization")).toBe(false)
       const discovery = gatewayHeaders(config, "real-key")

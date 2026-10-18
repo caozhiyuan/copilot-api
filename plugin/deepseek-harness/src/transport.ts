@@ -34,9 +34,6 @@ export function gatewayHeaders(config: Settings, apiKey: string, sdkHeaders?: He
     const sessionId = String(options.sessionId)
     headers.set("x-deepseek-harness-session-id", sessionId)
     if (config.sessionAffinity) headers.set("x-session-affinity", sessionId)
-    // pi-ai reuses sessionId for this header even on custom Responses routes.
-    // A cache/session identity is not a unique request identity.
-    if (headers.get("x-client-request-id") === sessionId) headers.delete("x-client-request-id")
   }
   return headers
 }

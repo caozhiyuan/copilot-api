@@ -82,7 +82,7 @@ Messages 复用 pi-ai 的 adaptive thinking 和 `output_config.effort`，仅展�
 
 静态 Header 大小写不敏感。认证、协议版本与 Content-Type、SDK Accept、Harness User-Agent、Host/Content-Length、动态 Session Header 优先于静态配置。Anthropic Beta 按 token 合并，保留 SDK 必需项。User-Agent 使用 Harness 的真实版本，避免触发 Claude CLI 专用模型目录格式。
 
-每次实际推理发送当前 `GenerateOptions.sessionId` 对应的 `x-deepseek-harness-session-id`。`sessionAffinity: true` 时再发送同值的 `x-session-affinity`，默认关闭。该接口没有可靠 Root Session ID，子 Agent 保留自己的 Session ID。模型发现不合成会话。插件不改变日志、追踪、Token Usage 的会话归属，也不发送用户敏感信息。仅当 pi-ai 将会话 ID 填入 `x-client-request-id` 时移除该 Header，避免把会话标识当作单次请求 ID。
+每次实际推理发送当前 `GenerateOptions.sessionId` 对应的 `x-deepseek-harness-session-id`。`sessionAffinity: true` 时再发送同值的 `x-session-affinity`，默认关闭。该接口没有可靠 Root Session ID，子 Agent 保留自己的 Session ID。模型发现不合成会话。插件不改变日志、追踪、Token Usage 的会话归属，也不发送用户敏感信息。保留 pi-ai/SDK 原有的 `x-client-request-id`，即使其值与 Session ID 相同也不移除。
 
 `prompt_cache_key` 始终由 pi-ai 在请求体中管理。开启 Session Header 或 affinity 不改变其值，也不另建缓存键。SSE、工具调用、多轮回放、thinking、用量、AbortSignal 和 Harness 重试继续由原生适配器处理。
 

@@ -53,6 +53,7 @@ it.each(['openai-responses', 'anthropic-messages'] as const)('keeps %s retry hea
   expect(sent.map(row => row.headers['x-deepseek-harness-session-id'])).toEqual(['parent-session', 'parent-session', 'child-session', 'other-session'])
   for (const row of sent) {
     expect(row.headers['x-session-affinity']).toBe(row.headers['x-deepseek-harness-session-id'])
+    if (protocol === 'openai-responses') expect(row.headers['x-client-request-id']).toBe(row.headers['x-deepseek-harness-session-id'])
     expect(row.headers['x-custom-header']).toBe('agent-custom')
     expect(row.headers[protocol === 'openai-responses' ? 'authorization' : 'x-api-key']).toBe(protocol === 'openai-responses' ? 'Bearer agent-secret' : 'agent-secret')
   }
