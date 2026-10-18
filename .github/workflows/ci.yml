@@ -41,7 +41,7 @@ jobs:
         run: bun run typecheck
 
       - name: Run tests
-        run: bun test
+        run: bun test ./tests ./desktop/tests
 
       - name: Build
         run: bun run build
