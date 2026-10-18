@@ -1,6 +1,6 @@
 export const configSections = [
-  'general',
   'mappings',
+  'general',
   'models',
   'search',
   'transport',

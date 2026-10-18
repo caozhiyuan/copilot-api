@@ -3,7 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext'
 import type { ConfigField } from '../lib/config-fields'
 
 const inputClass =
-  'w-full min-w-0 rounded-md border border-line bg-sunken px-2.5 py-1.5 text-[13px] text-ink focus:ring-2 focus:ring-accent/40 disabled:opacity-50'
+  'w-full min-w-0 rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-[13px] text-ink transition-colors hover:border-blue-200 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/15 disabled:opacity-50 dark:hover:border-blue-500/30'
 
 export default function ConfigFieldEditor({
   field,
@@ -20,6 +20,7 @@ export default function ConfigFieldEditor({
 }) {
   const { t } = useLanguage()
   const inherited = value === undefined
+  const sourceClass = `inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${inherited ? 'bg-sunken text-ink-soft ring-line' : 'bg-slate-100 text-slate-600 ring-slate-200/80 dark:bg-slate-500/10 dark:text-slate-300 dark:ring-slate-500/20'}`
   const effective = inherited ? defaultValue : value
   const [editing, setEditing] = useState<string | null>(null)
   const emitted = useRef<string>()
@@ -40,7 +41,7 @@ export default function ConfigFieldEditor({
       effective
     : '')
   return (
-    <div className="grid gap-3 border-b border-line-soft px-4 py-3 last:border-0 sm:grid-cols-[minmax(0,1fr)_minmax(150px,240px)] sm:items-center">
+    <div className="grid gap-3 border-b border-line-soft px-4 py-3 transition-colors last:border-0 hover:bg-sunken/50 sm:grid-cols-[minmax(0,1fr)_minmax(150px,240px)] sm:items-center">
       <div className="min-w-0">
         <label htmlFor={id} className="text-[13px] font-medium text-ink">
           {label}
@@ -48,14 +49,14 @@ export default function ConfigFieldEditor({
         <p className="mt-0.5 text-[12px] leading-relaxed text-ink-soft">
           {t(`configEditor.fields.${field.id}.description`)}
         </p>
-        <div className="mt-1 break-all font-mono text-[11px] text-ink-soft">
+        <div className="mt-1 inline-block max-w-full break-all rounded bg-sunken px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">
           {field.path}
         </div>
       </div>
       <div className="min-w-0">
         {field.type === 'boolean' ?
           <div className="flex items-center justify-between gap-2 sm:justify-end">
-            <span className="text-[11px] text-ink-soft">
+            <span className={sourceClass}>
               {inherited ?
                 t('configEditor.inherited')
               : t('configEditor.explicit')}
@@ -70,7 +71,7 @@ export default function ConfigFieldEditor({
                 onChange={(e) => onChange(e.target.checked)}
                 className="peer sr-only"
               />
-              <span className="absolute inset-0 rounded-full bg-line peer-checked:bg-accent-strong peer-focus-visible:ring-2 peer-focus-visible:ring-accent/40 peer-disabled:opacity-50 dark:peer-checked:bg-blue-500" />
+              <span className="absolute inset-0 rounded-full bg-line transition-colors peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/25 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface peer-disabled:opacity-50" />
               <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4 peer-disabled:opacity-50" />
             </label>
           </div>
@@ -175,10 +176,12 @@ export default function ConfigFieldEditor({
           </div>
         }
         {field.type !== 'boolean' && (
-          <div className="mt-1 text-[11px] text-ink-soft">
-            {inherited ?
-              t('configEditor.inherited')
-            : t('configEditor.explicit')}
+          <div className="mt-1.5">
+            <span className={sourceClass}>
+              {inherited ?
+                t('configEditor.inherited')
+              : t('configEditor.explicit')}
+            </span>
           </div>
         )}
         {!inherited && (
@@ -189,7 +192,7 @@ export default function ConfigFieldEditor({
               setEditing(null)
               onChange(undefined)
             }}
-            className="mt-1 text-[11px] text-ink-soft underline decoration-line underline-offset-2 hover:text-ink disabled:opacity-50"
+            className="mt-1 text-[11px] text-blue-600 underline decoration-blue-200 underline-offset-2 hover:text-blue-700 disabled:opacity-50 dark:text-blue-400 dark:decoration-blue-500/30 dark:hover:text-blue-300"
           >
             {t('configEditor.useDefault')}
           </button>

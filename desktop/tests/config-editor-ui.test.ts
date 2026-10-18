@@ -149,9 +149,9 @@ async function reveal() {
 }
 
 describe('Desktop config editor', () => {
-  test('loads the active path and saves while offline, preserving hidden credentials and unknown fields', async () => {
+  test('saves while offline, preserving hidden credentials and unknown fields without displaying the config path', async () => {
     await render()
-    expect(container.textContent).toContain('/custom-api-home/config.json')
+    expect(container.textContent).not.toContain('/custom-api-home/config.json')
     expect(container.textContent).toContain('The service is stopped')
     expect(container.textContent).not.toContain('contextManagement')
     expect(container.textContent).not.toContain(

@@ -32,9 +32,35 @@ import type { AppConfigDocument, AppConfigSaveResult } from '../types/ipc'
 import ModelMappingsPage from './ModelMappingsPage'
 
 const buttonClass =
-  'rounded-md border border-line bg-surface px-3 py-1.5 text-[13px] text-ink-soft transition-colors hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-40'
+  'rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] text-ink-soft transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40'
 const primaryClass =
-  'rounded-md bg-accent-strong px-4 py-1.5 text-[13px] font-medium text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-blue-500'
+  'inline-flex h-8 items-center rounded-lg bg-accent-strong px-4 text-[13px] font-semibold text-white shadow-sm transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none dark:bg-blue-500'
+
+const sectionIconPaths: Record<ConfigSection, string> = {
+  mappings: 'M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4',
+  general: 'M4 7h16M4 17h16M8 4v6M16 14v6',
+  models: 'm12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5m-18 5 9 5 9-5',
+  search: 'm21 21-4.35-4.35M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0',
+  transport: 'M12 8v4M6 16v-4h12v4M8 3h8v5H8zM3 16h6v5H3zm12 0h6v5h-6z',
+}
+
+function ConfigSectionIcon({ section }: { section: ConfigSection }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={sectionIconPaths[section]} />
+    </svg>
+  )
+}
 
 function inspect(content: string, baselineContent?: string) {
   let config: ConfigObject | null = null
@@ -277,16 +303,23 @@ export default function AdvancedConfigPage({
       className="flex min-h-full flex-col bg-canvas p-4"
       aria-label={t('configEditor.title')}
     >
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[16px] font-semibold text-ink">
+      <div className="mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="mr-auto inline-flex items-center gap-2.5 text-[16px] font-semibold text-ink">
+            <span className="text-ink-soft">
+              <ConfigSectionIcon section="general" />
+            </span>
             {t('configEditor.title')}
           </h2>
-          <p className="mt-1 break-all font-mono text-[11px] text-ink-soft">
-            {document?.configPath ?? t('advancedConfig.configPath')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+          <span
+            aria-live="polite"
+            className="text-[12px] text-amber-700 dark:text-amber-300"
+          >
+            {dirty
+              && (changes.length ?
+                t('configEditor.unsaved', { count: changes.length })
+              : t('configEditor.unsavedOther'))}
+          </span>
           <button
             type="button"
             onClick={() => void load()}
@@ -296,7 +329,7 @@ export default function AdvancedConfigPage({
             {dirty ? t('configEditor.reloadDiscard') : t('configEditor.reload')}
           </button>
           <div
-            className="flex rounded-md border border-line bg-sunken p-0.5"
+            className="flex rounded-lg border border-line bg-sunken p-0.5"
             role="tablist"
             aria-label={t('configEditor.editMode')}
           >
@@ -319,12 +352,48 @@ export default function AdvancedConfigPage({
                     setRows(mappingRows(draft.config, defaults))
                   setMode(item)
                 }}
-                className={`rounded px-3 py-1 text-[13px] disabled:opacity-40 ${mode === item ? 'bg-surface text-ink shadow-sm' : 'text-ink-soft'}`}
+                className={`rounded-md px-3 py-1 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-40 ${mode === item ? 'bg-surface font-medium text-ink shadow-sm' : 'text-ink-soft hover:text-ink'}`}
               >
                 {t(item === 'form' ? 'configEditor.form' : 'configEditor.json')}
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            disabled={busy || !dirty || !document}
+            onClick={() => {
+              if (document) {
+                acceptDocument(document)
+                setError('')
+                setSaveResult(null)
+              }
+            }}
+            className={buttonClass}
+          >
+            {t('configEditor.discard')}
+          </button>
+          <button
+            type="button"
+            disabled={busy || !changes.length || !!validationError}
+            onClick={() => setShowChanges(!showChanges)}
+            className={buttonClass}
+          >
+            {t('configEditor.review')}
+          </button>
+          <button
+            type="button"
+            disabled={
+              busy || !dirty || !document || !!validationError || !!pendingMerge
+            }
+            onClick={() => void save()}
+            className={primaryClass}
+          >
+            {busy && document ?
+              t('settings.saving')
+            : serverRunning ?
+              t('configEditor.saveApply')
+            : t('configEditor.save')}
+          </button>
         </div>
       </div>
       {!serverRunning && (
@@ -427,11 +496,11 @@ export default function AdvancedConfigPage({
         role="tabpanel"
         aria-labelledby="config-mode-form"
         hidden={mode !== 'form'}
-        className="grid min-w-0 gap-4 md:grid-cols-[156px_minmax(0,1fr)]"
+        className="grid min-w-0 items-start gap-4 md:grid-cols-[200px_minmax(0,1fr)]"
       >
         <nav
           aria-label={t('configEditor.groupsLabel')}
-          className="flex flex-wrap content-start gap-1 md:flex-col md:border-r md:border-line md:pr-3"
+          className="flex min-w-0 flex-wrap content-start gap-1 rounded-xl border border-line-soft bg-surface p-2 md:flex-col"
         >
           {configSections.map((item) => (
             <button
@@ -440,22 +509,30 @@ export default function AdvancedConfigPage({
               disabled={busy}
               aria-current={section === item ? 'page' : undefined}
               onClick={() => setSection(item)}
-              className={`rounded-md px-3 py-2 text-left text-[13px] ${section === item ? 'bg-accent-soft font-medium text-ink' : 'text-ink-soft hover:bg-sunken'}`}
+              className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40 ${section === item ? 'bg-sunken font-semibold text-ink' : 'text-ink-soft hover:bg-sunken/60'}`}
             >
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${section === item ? 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-400' : 'border-line bg-canvas text-ink-faint'}`}
+              >
+                <ConfigSectionIcon section={item} />
+              </span>
               {t(`configEditor.groups.${item}`)}
             </button>
           ))}
         </nav>
-        <section className="min-w-0 rounded-lg border border-line bg-surface">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
-            <h3 className="text-[14px] font-medium text-ink">
+        <section className="min-w-0 overflow-hidden rounded-xl border border-line-soft bg-surface shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft px-4 py-3">
+            <h3 className="inline-flex items-center gap-2.5 text-[14px] font-semibold text-ink">
+              <span className="text-ink-soft">
+                <ConfigSectionIcon section={section} />
+              </span>
               {t(`configEditor.groups.${section}`)}
             </h3>
             <button
               type="button"
               disabled={busy || !document || !draft.config}
               onClick={resetGroup}
-              className="text-[11px] text-ink-soft hover:text-ink disabled:opacity-40"
+              className="rounded-md px-2 py-1 text-[11px] text-ink-soft transition-colors hover:bg-surface hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:opacity-40 dark:hover:text-blue-300"
             >
               {t('configEditor.resetGroup')}
             </button>
@@ -494,16 +571,16 @@ export default function AdvancedConfigPage({
         role="tabpanel"
         aria-labelledby="config-mode-json"
         hidden={mode !== 'json'}
-        className="min-w-0 overflow-hidden rounded-lg border border-line bg-surface"
+        className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-sm"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-sunken px-4 py-2">
           <label className="flex items-center gap-2 text-[12px] text-ink-soft">
             <input
               type="checkbox"
               checked={showSecrets}
               disabled={busy}
               onChange={(e) => setShowSecrets(e.target.checked)}
-              className="accent-accent-strong"
+              className="accent-blue-600"
             />
             {t('configEditor.showSecrets')}
           </label>
@@ -525,7 +602,7 @@ export default function AdvancedConfigPage({
           spellCheck={false}
           rows={21}
           onChange={(e) => updateContent(e.target.value)}
-          className="block w-full resize-y whitespace-pre-wrap break-all border-0 bg-sunken p-4 font-mono text-[12px] leading-relaxed text-ink focus:ring-2 focus:ring-inset focus:ring-accent/40"
+          className="block w-full resize-y whitespace-pre-wrap break-all border-0 bg-sunken p-4 font-mono text-[12px] leading-relaxed text-ink focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500/25"
         />
         <p className="border-t border-line px-4 py-2 text-[11px] text-ink-soft">
           {showSecrets ?
@@ -571,54 +648,6 @@ export default function AdvancedConfigPage({
           ))}
         </section>
       )}
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-        <span
-          aria-live="polite"
-          className={`mr-auto text-[12px] ${dirty ? 'text-amber-700 dark:text-amber-300' : 'text-ink-soft'}`}
-        >
-          {dirty && changes.length ?
-            t('configEditor.unsaved', { count: changes.length })
-          : dirty ?
-            t('configEditor.unsavedOther')
-          : t('configEditor.synced')}
-        </span>
-        <button
-          type="button"
-          disabled={busy || !dirty || !document}
-          onClick={() => {
-            if (document) {
-              acceptDocument(document)
-              setError('')
-              setSaveResult(null)
-            }
-          }}
-          className={buttonClass}
-        >
-          {t('configEditor.discard')}
-        </button>
-        <button
-          type="button"
-          disabled={busy || !changes.length || !!validationError}
-          onClick={() => setShowChanges(!showChanges)}
-          className={buttonClass}
-        >
-          {t('configEditor.review')}
-        </button>
-        <button
-          type="button"
-          disabled={
-            busy || !dirty || !document || !!validationError || !!pendingMerge
-          }
-          onClick={() => void save()}
-          className={primaryClass}
-        >
-          {busy && document ?
-            t('settings.saving')
-          : serverRunning ?
-            t('configEditor.saveApply')
-          : t('configEditor.save')}
-        </button>
-      </div>
     </div>
   )
 }
