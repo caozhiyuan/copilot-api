@@ -23,7 +23,7 @@ The bundle inserts the `copilot-api-provider` entry. Add this override to that p
 - id: copilot-api-provider
   config:
     baseURL: http://localhost:4141
-    apiKey: COPILOT_API_KEY
+    apiKey: GITHUB_COPILOT_API_KEY
     protocol: openai-responses
     headers:
       X-Custom-Header: custom-value
@@ -31,7 +31,7 @@ The bundle inserts the `copilot-api-provider` entry. Add this override to that p
     sessionAffinity: true
 ```
 
-`apiKey` is a **Harness credential reference**, not the literal key. Store the literal through the Models card's **Save API key** action, Harness's existing credential management, or the launch environment named `COPILOT_API_KEY`. `apiKeyEnv` is an equivalent spelling; if both are supplied, they must agree. With neither specified, the reference is `COPILOT_API_KEY`. The key is resolved again for every inference attempt, including Harness retries. It is never printed by this plugin.
+`apiKey` is a **Harness credential reference**, not the literal key. Store the literal through the Models card's **Save API key** action, Harness's existing credential management, or the launch environment named `GITHUB_COPILOT_API_KEY`. `apiKeyEnv` is an equivalent spelling; if both are supplied, they must agree. With neither specified, the reference is `GITHUB_COPILOT_API_KEY`. The key is resolved again for every inference attempt, including Harness retries. It is never printed by this plugin.
 
 For Messages, change only `protocol` to `anthropic-messages`. Both `http://localhost:4141` and `http://localhost:4141/v1` work. A deployment prefix such as `/gateway` is retained. Discovery uses `/v1/models`; inference uses `/v1/responses` or `/v1/messages`. The Anthropic SDK itself appends `/v1/messages`, so the plugin gives it the parent base URL. URLs containing embedded credentials, query strings, or fragments are rejected.
 
@@ -62,7 +62,7 @@ Override individual metadata without changing model identity:
 - id: copilot-api-provider
   config:
     baseURL: http://localhost:4141
-    apiKey: COPILOT_API_KEY
+    apiKey: GITHUB_COPILOT_API_KEY
     protocol: openai-responses
     modelOverrides:
       codex/gpt-5.4:

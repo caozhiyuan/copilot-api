@@ -100,8 +100,8 @@ export function connectionOf(config: Settings): { baseURL: string; keyRef: Crede
     throw new LlmError("copilot-api-provider: apiKey and apiKeyEnv must name the same credential reference", "INVALID_CONFIG")
   }
   let keyRef: CredentialRef
-  try { keyRef = credentialRef(config.apiKeyEnv ?? config.apiKey ?? "COPILOT_API_KEY") }
-  catch { throw new LlmError("copilot-api-provider: apiKey must name a credential reference such as COPILOT_API_KEY", "INVALID_CONFIG") }
+  try { keyRef = credentialRef(config.apiKeyEnv ?? config.apiKey ?? "GITHUB_COPILOT_API_KEY") }
+  catch { throw new LlmError("copilot-api-provider: apiKey must name a credential reference such as GITHUB_COPILOT_API_KEY", "INVALID_CONFIG") }
   const prefix = url.href.replace(/\/+$/u, "")
   return { baseURL: prefix.endsWith("/v1") ? prefix : `${prefix}/v1`, keyRef }
 }

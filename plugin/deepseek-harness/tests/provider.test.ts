@@ -52,6 +52,19 @@ function request(sessionId = 'main-session') {
 }
 
 describe.each(['openai-responses', 'anthropic-messages'] as const)('copilot-api %s inference', (protocol) => {
+  it('uses the shared Codex credential by default for discovery and inference', async () => {
+    vi.stubEnv('GITHUB_COPILOT_API_KEY', 'shared-gateway-secret')
+    const { ctx, server } = await host(protocol, { apiKey: undefined })
+    expect(ctx.llm.listConfigurableProviders()).toMatchObject([{
+      nativeAuth: { env: ['GITHUB_COPILOT_API_KEY'] },
+    }])
+    expect((await assemble(ctx, request())).finish).toEqual({ kind: 'stop' })
+    expect(server.requests.map(row => row.method)).toEqual(['GET', 'POST'])
+    for (const row of server.requests) {
+      if (protocol === 'openai-responses') expect(row.headers.authorization).toBe('Bearer shared-gateway-secret')
+      else expect(row.headers['x-api-key']).toBe('shared-gateway-secret')
+    }
+  })
   it('sends every selectable effort without promoting or inventing levels', async () => {
     const { ctx, server } = await host(protocol)
     const info = await ctx.llm.resolveModelInfo('copilot-api', MODEL_ID)

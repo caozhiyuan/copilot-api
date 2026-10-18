@@ -23,7 +23,7 @@ dsh plugin --profile web add /absolute/path/copilot-api/plugin/deepseek-harness
 - id: copilot-api-provider
   config:
     baseURL: http://localhost:4141
-    apiKey: COPILOT_API_KEY
+    apiKey: GITHUB_COPILOT_API_KEY
     protocol: openai-responses
     headers:
       X-Custom-Header: custom-value
@@ -31,7 +31,7 @@ dsh plugin --profile web add /absolute/path/copilot-api/plugin/deepseek-harness
     sessionAffinity: true
 ```
 
-`apiKey` 填 **Harness 凭据引用名**，不能填密钥明文。在模型设置的 Copilot API 卡片中点击“保存 API 密钥”，或使用已有凭据管理、启动环境变量 `COPILOT_API_KEY` 保存实际密钥。也支持 `apiKeyEnv`；两者同时配置时必须相同。未配置时默认引用 `COPILOT_API_KEY`。每次推理尝试（包括 Harness 重试）重新解析凭据，轮换密钥无需重启。插件不会打印密钥。
+`apiKey` 填 **Harness 凭据引用名**，不能填密钥明文。在模型设置的 Copilot API 卡片中点击“保存 API 密钥”，或使用已有凭据管理、启动环境变量 `GITHUB_COPILOT_API_KEY` 保存实际密钥。也支持 `apiKeyEnv`；两者同时配置时必须相同。未配置时默认引用 `GITHUB_COPILOT_API_KEY`。每次推理尝试（包括 Harness 重试）重新解析凭据，轮换密钥无需重启。插件不会打印密钥。
 
 使用 Messages 只需将 `protocol` 改为 `anthropic-messages`。地址**带或不带 `/v1` 都可以**，`/gateway` 等部署前缀会保留。模型发现使用 `/v1/models`，推理使用 `/v1/responses` 或 `/v1/messages`。Anthropic SDK 自己拼接 `/v1/messages`，插件会提供对应的上级地址，不会产生双重 `/v1`。地址不能包含内嵌用户名/密码、查询参数或 fragment。
 
@@ -62,7 +62,7 @@ Messages 复用 pi-ai 的 adaptive thinking 和 `output_config.effort`，仅展�
 - id: copilot-api-provider
   config:
     baseURL: http://localhost:4141
-    apiKey: COPILOT_API_KEY
+    apiKey: GITHUB_COPILOT_API_KEY
     protocol: openai-responses
     modelOverrides:
       codex/gpt-5.4:

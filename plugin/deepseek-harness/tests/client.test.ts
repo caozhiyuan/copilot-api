@@ -150,7 +150,7 @@ it("saves keys only through Harness credentials and clears the password field", 
   const node = document.createElement("div")
   root = createRoot(node)
   await act(async () => root?.render(React.createElement(Component, {
-    ...seat.inject(), provider: { settingsNs: "copilot-api-provider", nativeAuth: { env: ["COPILOT_API_KEY"] } },
+    ...seat.inject(), provider: { settingsNs: "copilot-api-provider", nativeAuth: { env: ["GITHUB_COPILOT_API_KEY"] } },
     useResource: () => ({ status: "live", value: [] }),
   })))
   const input = node.querySelector("input")!
@@ -160,9 +160,9 @@ it("saves keys only through Harness credentials and clears the password field", 
     input.dispatchEvent(new Event("input", { bubbles: true }))
   })
   await act(async () => node.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })))
-  expect(ctx.remote.credentials.set).toHaveBeenCalledWith("COPILOT_API_KEY", "test-secret")
+  expect(ctx.remote.credentials.set).toHaveBeenCalledWith("GITHUB_COPILOT_API_KEY", "test-secret")
   expect(input.value).toBe("")
   expect(node.textContent).toContain("API key saved securely")
   ctx.remote.credentials.set.mockResolvedValueOnce({ ok: false, error: { message: "Read-only credentials" } })
-  expect(await seat.inject().storeKey("COPILOT_API_KEY", "test-secret")).toBe("Read-only credentials")
+  expect(await seat.inject().storeKey("GITHUB_COPILOT_API_KEY", "test-secret")).toBe("Read-only credentials")
 })
