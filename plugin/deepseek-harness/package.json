@@ -1,0 +1,55 @@
+{
+  "name": "copilot-api-provider",
+  "version": "0.1.0",
+  "description": "Pure JavaScript DeepSeek Harness provider for copilot-api, using the native pi-ai adapter",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings-models",
+        "@deepseek-ai/dsh-client-resources",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "files": ["*.js", "!vitest.config.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README*.md"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/caozhiyuan/copilot-api.git",
+    "directory": "plugin/deepseek-harness"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-credentials": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-launch-environment": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-llm": "^0.2.1-rc.2",
+    "@deepseek-ai/dsh-llm-pi-ai": "^0.2.1-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.5",
+    "@earendil-works/pi-ai": "1.1.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "4.1.11",
+    "@types/node": "^24.0.0",
+    "jsdom": "^26.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.11"
+  },
+  "scripts": {
+    "test": "vitest run --config vitest.config.js",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "engines": { "node": ">=22.13.0" }
+}

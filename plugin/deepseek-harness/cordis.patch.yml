@@ -1,0 +1,3 @@
+- insert:
+    - id: copilot-api-provider
+      name: copilot-api-provider
