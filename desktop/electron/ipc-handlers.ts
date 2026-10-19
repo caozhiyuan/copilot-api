@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 
-import { ipcMain, shell, BrowserWindow, dialog } from 'electron'
+import { ipcMain, shell, BrowserWindow, dialog, nativeImage } from 'electron'
 
 import {
   createMediaStudioClient,
@@ -8,6 +8,7 @@ import {
   saveMediaFile,
   validateMediaUrl,
 } from './media-studio'
+import { compressVideoImage } from './compress-video-image'
 import type {
   ImageCreationInput,
   SaveMediaInput,
@@ -289,7 +290,17 @@ export function registerIpcHandlers(
   ipcMain.handle(
     'media:create-video',
     (_event, id: string, input: VideoCreationInput) =>
-      mediaClient.createVideo(id, input),
+      mediaClient.createVideo(
+        id,
+        input.image ?
+          {
+            ...input,
+            image: compressVideoImage(input.image, (bytes) =>
+              nativeImage.createFromBuffer(Buffer.from(bytes)),
+            ),
+          }
+        : input,
+      ),
   )
   ipcMain.handle('media:get-video', (_event, id: string, requestId: string) =>
     mediaClient.getVideo(id, requestId),

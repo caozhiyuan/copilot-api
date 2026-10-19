@@ -12,6 +12,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { PATHS } from '../../src/lib/paths'
+import { VIDEO_IMAGE_MAX_BYTES } from '../electron/compress-video-image'
 
 import * as serverAuth from '../electron/server-auth-config'
 import * as settingsStore from '../electron/settings-store'
@@ -84,6 +85,18 @@ await mock.module('electron', () => ({
   shell: { openExternal },
   dialog: { showSaveDialog },
   BrowserWindow: class {},
+  nativeImage: {
+    createFromBuffer: () => ({
+      isEmpty: () => false,
+      getSize: () => ({ width: 8, height: 8 }),
+      resize: () => ({
+        isEmpty: () => false,
+        getSize: () => ({ width: 8, height: 8 }),
+        toJPEG: () => Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+      }),
+      toJPEG: () => Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+    }),
+  },
   app: {
     getAppPath: () => process.cwd(),
     getPath: () => process.cwd(),
@@ -273,6 +286,22 @@ describe('desktop media IPC', () => {
         generateAudio: true,
       }),
     ).toMatchObject({ requestId: 'video-job', status: 'pending' })
+    fetchMock.mockResolvedValueOnce(Response.json({ request_id: 'compressed' }))
+    await invoke('media:create-video', 'large-video', {
+      prompt: 'A boat',
+      duration: 8,
+      aspectRatio: '16:9',
+      resolution: '720p',
+      generateAudio: true,
+      image: {
+        name: 'frame.png',
+        type: 'image/png',
+        bytes: new Uint8Array(VIDEO_IMAGE_MAX_BYTES + 1),
+      },
+    })
+    expect(
+      JSON.parse(fetchMock.mock.calls.at(-1)?.[1]?.body as string),
+    ).toHaveProperty('image.url', 'data:image/jpeg;base64,/9j/2Q==')
     fetchMock.mockResolvedValueOnce(
       Response.json({
         status: 'done',
