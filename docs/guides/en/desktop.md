@@ -2,6 +2,14 @@
 
 [Home](../../../README.md) · [Documentation](README.md) · [简体中文](../zh-CN/desktop.md)
 
+## Image and video creation
+
+Start the local service and open **Create** to generate images from prompts, edit uploaded images, or generate videos. Images support the default gateway route, Codex, or xAI, with editable model, size, quality, and output count (1–4). The default route uses `imageGenerationModel`, `imageEditModel`, and model mappings; explicit Codex or xAI selections use the corresponding enabled provider directly. Image edits accept up to 5 PNG, JPEG, or WebP files, at most 20 MiB each and 40 MiB total.
+
+Video creation uses `xai/grok-imagine-video-1.5` and requires an enabled xAI provider. Use text or one first-frame image, choose 1–15 seconds, 480p/720p/1080p, and audio. The page checks progress every 5 seconds and offers pause, resume, and stop tracking. Switching tabs preserves drafts, results, and tasks; closing or reloading the app clears this temporary state. **Stop waiting** and **Stop tracking** only stop local waiting or polling; they do not cancel an upstream generation task.
+
+Preview results in the page and save them through the system file dialog. Video URLs are temporary, so save finished videos promptly.
+
 ## Electron Desktop App
 
 If you prefer a GUI, this repository also includes an Electron desktop app in `desktop/`. It supports GitHub Copilot sign-in, OpenAI Codex OAuth with manual switching among up to 3 Codex accounts and removal of accounts that are not in use, and API-key configuration for Kimi, DeepSeek, DashScope, OpenRouter, or a custom provider. Provider configuration, server API keys, and account changes automatically refresh the running service; new requests use the updated configuration. After authorization or provider configuration, it can start and stop the local proxy with one click and shows the local endpoint, auth header, available models, usage, and logs in the app.

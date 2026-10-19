@@ -1,6 +1,63 @@
 import type { Locale } from './index'
 
 const en: Locale = {
+  studio: {
+    title: 'Create',
+    description: 'Turn a prompt or an image into something new.',
+    generate: 'Generate image',
+    edit: 'Edit image',
+    video: 'Generate video',
+    provider: 'Provider',
+    gateway: 'Gateway default',
+    model: 'Model',
+    prompt: 'Prompt',
+    imagePrompt: 'Describe the image, style, lighting and composition…',
+    editPrompt: 'Describe what you want to change in the uploaded images…',
+    videoPrompt: 'Describe the scene, movement and camera…',
+    size: 'Image size',
+    quality: 'Quality',
+    count: 'Images',
+    auto: 'Auto',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    upload: 'Add images',
+    uploadHint:
+      'PNG, JPEG or WebP · up to 5 images · 20 MiB each, 40 MiB total',
+    uploadError:
+      'Choose PNG, JPEG or WebP images. Maximum 20 MiB per image, 40 MiB total; 5 images for editing or 1 first frame.',
+    remove: 'Remove',
+    firstFrame: 'First frame (optional)',
+    firstFrameHint:
+      'Add one image to animate. The video follows the image’s aspect ratio.',
+    duration: 'Duration (seconds)',
+    ratio: 'Aspect ratio',
+    resolution: 'Resolution',
+    audio: 'Generate audio',
+    create: 'Create',
+    creating: 'Creating…',
+    cancel: 'Stop waiting',
+    cancelled: 'Stopped waiting for this request.',
+    results: 'Results',
+    empty: 'Your images and videos will appear here.',
+    save: 'Save',
+    saving: 'Saving…',
+    saved: 'Saved',
+    useAsInput: 'Edit this image',
+    failed: 'Request failed. Try again.',
+    videoFailed: 'Video generation failed or expired.',
+    pending: 'Generating video. Checking every 5 seconds…',
+    paused: 'Progress checks paused. You can resume without submitting again.',
+    pause: 'Pause checks',
+    discard: 'Stop tracking',
+    resume: 'Resume checks',
+    requestId: 'Task ID',
+    stopped: 'Start the server to create media or check progress.',
+    gatewayHint:
+      'Uses image route settings and model mappings. An explicit provider must be enabled.',
+    videoHint:
+      'Requires an enabled xAI provider. Video links are temporary; save completed videos promptly.',
+  },
   updates: {
     title: 'Updates',
     description:

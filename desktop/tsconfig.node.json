@@ -5,6 +5,8 @@
     "electron/**/*",
     "tests/**/*",
     "src/App.tsx",
+    "src/pages/MediaStudioPage.tsx",
+    "../src/services/xai/images.ts",
     "src/lib/auto-start-server.ts",
     "src/lib/server-url.ts",
     "src/locales/**/*",

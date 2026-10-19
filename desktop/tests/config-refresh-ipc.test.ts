@@ -30,6 +30,10 @@ import type {
 type IpcHandler = (event: unknown, ...parameters: unknown[]) => unknown
 const handlers = new Map<string, IpcHandler>()
 const openExternal = mock(() => Promise.resolve())
+let saveDialogResult: { canceled: boolean; filePath?: string } = {
+  canceled: true,
+}
+const showSaveDialog = mock(() => Promise.resolve(saveDialogResult))
 let preloadApi: Window['electronAPI'] | undefined
 type RendererListener = (event: unknown, payload: unknown) => void
 const rendererListeners = new Map<string, Set<RendererListener>>()
@@ -78,6 +82,7 @@ await mock.module('electron', () => ({
     on: () => {},
   },
   shell: { openExternal },
+  dialog: { showSaveDialog },
   BrowserWindow: class {},
   app: {
     getAppPath: () => process.cwd(),
@@ -116,6 +121,8 @@ async function invoke(
 beforeEach(async () => {
   handlers.clear()
   openExternal.mockClear()
+  showSaveDialog.mockClear()
+  saveDialogResult = { canceled: true }
   rendererListeners.clear()
   rendererOff.mockClear()
   rendererInvoke.mockClear()
@@ -205,6 +212,105 @@ beforeEach(async () => {
 })
 
 afterEach(() => mock.restore())
+
+describe('desktop media IPC', () => {
+  const imageInput = {
+    mode: 'generate',
+    provider: 'default',
+    model: 'gpt-image-2',
+    prompt: 'A boat',
+    size: 'auto',
+    quality: 'auto',
+    n: 1,
+    images: [],
+  }
+  test('exposes image, video, cancel and save calls through the preload', async () => {
+    await import('../electron/preload')
+    if (!preloadApi) throw new Error('Preload bridge was not exposed')
+    await preloadApi.createImages('image-call', {
+      ...imageInput,
+      mode: 'generate',
+      provider: 'default',
+      size: 'auto',
+      quality: 'auto',
+    })
+    await preloadApi.createVideo('video-call', {
+      prompt: 'A boat',
+      duration: 8,
+      aspectRatio: '16:9',
+      resolution: '720p',
+      generateAudio: true,
+    })
+    await preloadApi.getVideo('poll-call', 'video-job')
+    await preloadApi.cancelMediaRequest('image-call')
+    await preloadApi.saveMedia({
+      kind: 'image',
+      url: 'data:image/png;base64,iVBORw==',
+    })
+    expect(rendererInvoke.mock.calls.map((call) => call[0])).toEqual([
+      'media:create-images',
+      'media:create-video',
+      'media:get-video',
+      'media:cancel',
+      'media:save',
+    ])
+  })
+  test('runs image and video requests through the main-process client', async () => {
+    const fetchMock = spyOn(globalThis, 'fetch')
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ data: [{ b64_json: 'iVBORw==' }] }),
+    )
+    expect(
+      await invoke('media:create-images', 'image-call', imageInput),
+    ).toEqual([{ url: 'data:image/png;base64,iVBORw==' }])
+    fetchMock.mockResolvedValueOnce(Response.json({ request_id: 'video-job' }))
+    expect(
+      await invoke('media:create-video', 'video-call', {
+        prompt: 'A boat',
+        duration: 8,
+        aspectRatio: '16:9',
+        resolution: '720p',
+        generateAudio: true,
+      }),
+    ).toMatchObject({ requestId: 'video-job', status: 'pending' })
+    fetchMock.mockResolvedValueOnce(
+      Response.json({
+        status: 'done',
+        video: { url: 'https://vidgen.x.ai/a.mp4' },
+      }),
+    )
+    expect(
+      await invoke('media:get-video', 'poll-call', 'video-job'),
+    ).toMatchObject({ status: 'done' })
+    await invoke('media:cancel', 'already-finished')
+    running = false
+    await expect(
+      invoke('media:create-images', 'stopped-call', imageInput),
+    ).rejects.toThrow('Start the server')
+  })
+  test('honors cancelled save dialogs and saves base64 images without a network fetch', async () => {
+    const input = { kind: 'image', url: 'data:image/png;base64,iVBORw==' }
+    expect(await invoke('media:save', input)).toBe(false)
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'media-ipc-'))
+    try {
+      saveDialogResult = {
+        canceled: false,
+        filePath: path.join(directory, 'image.png'),
+      }
+      expect(await invoke('media:save', input)).toBe(true)
+      expect(Array.from(fs.readFileSync(saveDialogResult.filePath!))).toEqual([
+        137, 80, 78, 71,
+      ])
+      expect(showSaveDialog).toHaveBeenCalledTimes(2)
+      await expect(
+        invoke('media:save', { kind: 'image', url: 'file:///etc/passwd' }),
+      ).rejects.toThrow()
+      expect(showSaveDialog).toHaveBeenCalledTimes(2)
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('desktop Codex login controls', () => {
   test('exposes cancellation and URL subscription through the preload bridge', async () => {

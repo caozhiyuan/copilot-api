@@ -1030,12 +1030,27 @@ describe('provider management UI', () => {
     const tabs = [
       ...container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
     ]
-    expect(tabs[2].textContent).toBe('Providers')
-    expect(tabs[2].disabled).toBe(false)
-    expect(tabs[3].textContent?.toLowerCase()).toContain('advanced config')
-    expect(tabs[3].disabled).toBe(false)
+    const providersTab = tabs.find((tab) => tab.textContent === 'Providers')!
+    const configTab = tabs.find((tab) =>
+      tab.textContent?.toLowerCase().includes('advanced config'),
+    )!
+    const studioTab = tabs.find((tab) => tab.textContent === 'Create')!
+    expect(providersTab.disabled).toBe(false)
+    expect(configTab.disabled).toBe(false)
+    expect(studioTab.disabled).toBe(false)
     await act(async () => {
-      tabs[2].click()
+      studioTab.click()
+    })
+    expect(container.querySelector('h1')?.textContent).toBe('Create')
+    expect(container.textContent).toContain('Start the server to create media')
+    const prompt = container.querySelector('textarea')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        win.HTMLTextAreaElement.prototype,
+        'value',
+      )!.set!.call(prompt, 'Keep this draft')
+      prompt.dispatchEvent(new Event('input', { bubbles: true }))
+      providersTab.click()
     })
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(container.querySelectorAll('nav button')).toHaveLength(2)
@@ -1046,6 +1061,8 @@ describe('provider management UI', () => {
         (node) => node.textContent === 'Providers',
       ),
     ).toHaveLength(1)
+    await act(async () => studioTab.click())
+    expect(container.querySelector('textarea')?.value).toBe('Keep this draft')
   })
   test('renders as a page and preserves edits when switching between providers', async () => {
     await act(async () => {

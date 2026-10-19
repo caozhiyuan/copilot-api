@@ -1,6 +1,18 @@
 import fs from 'node:fs/promises'
 
-import { ipcMain, shell, BrowserWindow } from 'electron'
+import { ipcMain, shell, BrowserWindow, dialog } from 'electron'
+
+import {
+  createMediaStudioClient,
+  mediaFileExtension,
+  saveMediaFile,
+  validateMediaUrl,
+} from './media-studio'
+import type {
+  ImageCreationInput,
+  SaveMediaInput,
+  VideoCreationInput,
+} from '../src/types/media'
 
 import { normalizeApiKeys } from '../../src/lib/request-auth'
 import { CodexOAuthError } from '../../src/lib/oauth/codex'
@@ -260,6 +272,48 @@ export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   options: IpcHandlersOptions = {},
 ): void {
+  const mediaClient = createMediaStudioClient({
+    getBaseUrl: () => {
+      if (!isRunning())
+        throw new Error('Start the server before creating media')
+      return getServerBaseUrl()
+    },
+    getHeaders: () => getServerRequestHeaders(),
+  })
+  mainWindow.once?.('closed', () => mediaClient.cancelAll())
+  ipcMain.handle(
+    'media:create-images',
+    (_event, id: string, input: ImageCreationInput) =>
+      mediaClient.createImages(id, input),
+  )
+  ipcMain.handle(
+    'media:create-video',
+    (_event, id: string, input: VideoCreationInput) =>
+      mediaClient.createVideo(id, input),
+  )
+  ipcMain.handle('media:get-video', (_event, id: string, requestId: string) =>
+    mediaClient.getVideo(id, requestId),
+  )
+  ipcMain.handle('media:cancel', (_event, id: string) => mediaClient.cancel(id))
+  ipcMain.handle('media:save', async (_event, input: SaveMediaInput) => {
+    validateMediaUrl(input.url, input.kind)
+    const extension = mediaFileExtension(input)
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `copilot-${Date.now()}.${extension}`,
+      filters: [
+        {
+          name: input.kind === 'video' ? 'Video' : 'Image',
+          extensions:
+            input.kind === 'video' ?
+              ['mp4']
+            : ['png', 'jpg', 'jpeg', 'webp', 'gif'],
+        },
+      ],
+    })
+    if (result.canceled || !result.filePath) return false
+    await saveMediaFile(input, result.filePath)
+    return true
+  })
   ipcMain.handle('auth:get-status', async () => getDesktopAuthStatus())
 
   // Auth: Start the OAuth device flow. The token is polled in the background

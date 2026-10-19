@@ -3,6 +3,58 @@ import en from './en'
 import zh from './zh'
 
 export interface Locale {
+  studio: {
+    title: string
+    description: string
+    generate: string
+    edit: string
+    video: string
+    provider: string
+    gateway: string
+    model: string
+    prompt: string
+    imagePrompt: string
+    editPrompt: string
+    videoPrompt: string
+    size: string
+    quality: string
+    count: string
+    auto: string
+    low: string
+    medium: string
+    high: string
+    upload: string
+    uploadHint: string
+    uploadError: string
+    remove: string
+    firstFrame: string
+    firstFrameHint: string
+    duration: string
+    ratio: string
+    resolution: string
+    audio: string
+    create: string
+    creating: string
+    cancel: string
+    cancelled: string
+    results: string
+    empty: string
+    save: string
+    saving: string
+    saved: string
+    useAsInput: string
+    failed: string
+    videoFailed: string
+    pending: string
+    paused: string
+    pause: string
+    discard: string
+    resume: string
+    requestId: string
+    stopped: string
+    gatewayHint: string
+    videoHint: string
+  }
   updates: {
     title: string
     description: string
