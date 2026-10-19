@@ -24,13 +24,13 @@ import {
 
 type Mode = 'generate' | 'edit' | 'video'
 const fieldClass =
-  'w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50'
+  'w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50'
 const buttonClass =
   'rounded-lg border border-line px-3 py-2 text-[13px] text-ink-soft hover:bg-sunken disabled:opacity-40'
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-ink-soft">
+    <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-ink-soft">
       {label}
       {children}
     </label>
@@ -273,25 +273,27 @@ export default function MediaStudioPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl p-4 md:p-6">
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-ink">{t('studio.title')}</h1>
-        <p className="mt-1 text-[13px] text-ink-soft">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-5 pb-5 pt-3 sm:px-6 sm:pb-6">
+      <div className="mb-5 shrink-0">
+        <h1 className="text-xl font-semibold tracking-tight text-ink">
+          {t('studio.title')}
+        </h1>
+        <p className="mt-1 text-[13px] leading-5 text-ink-faint">
           {t('studio.description')}
         </p>
       </div>
       {!serverRunning && (
         <p
           role="status"
-          className="mb-4 rounded-lg border border-amber-300/40 bg-amber-500/10 p-3 text-[13px] text-ink"
+          className="mb-4 shrink-0 rounded-lg border border-amber-300/40 bg-amber-500/10 p-3 text-[13px] text-ink"
         >
           {t('studio.stopped')}
         </p>
       )}
-      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 gap-5 md:grid-cols-[340px_minmax(0,1fr)]">
         <form
           onSubmit={submit}
-          className="h-fit space-y-4 rounded-xl border border-line bg-surface p-4"
+          className="min-h-0 space-y-2 overflow-y-auto rounded-2xl border border-line-soft bg-surface p-3 shadow-sm"
         >
           <div
             className="flex gap-1 rounded-lg bg-sunken p-1"
@@ -310,15 +312,15 @@ export default function MediaStudioPage({
                   setError('')
                   setNotice('')
                 }}
-                className={`flex-1 rounded-md px-1 py-2 text-xs transition-colors ${mode === item ? 'bg-surface font-semibold text-ink shadow-sm' : 'text-ink-soft'}`}
+                className={`flex-1 rounded-md px-1 py-1.5 text-xs transition-colors ${mode === item ? 'bg-surface font-semibold text-ink shadow-sm' : 'text-ink-soft'}`}
               >
                 {t(`studio.${item}`)}
               </button>
             ))}
           </div>
-          <fieldset disabled={busy} className="space-y-4 disabled:opacity-70">
+          <fieldset disabled={busy} className="space-y-2 disabled:opacity-70">
             {mode !== 'video' ?
-              <>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
                 <Field label={t('studio.provider')}>
                   <select
                     aria-label={t('studio.provider')}
@@ -348,7 +350,7 @@ export default function MediaStudioPage({
                     onChange={(e) => setModel(e.target.value)}
                   />
                 </Field>
-              </>
+              </div>
             : <p className="break-all rounded-lg bg-sunken px-3 py-2 font-mono text-xs text-ink-soft">
                 {VIDEO_MODEL}
               </p>
@@ -356,7 +358,7 @@ export default function MediaStudioPage({
             <Field label={t('studio.prompt')}>
               <textarea
                 required
-                rows={5}
+                rows={3}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder={t(
@@ -426,7 +428,7 @@ export default function MediaStudioPage({
               </div>
             )}
             {mode !== 'video' ?
-              <>
+              <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)] gap-2">
                 <Field label={t('studio.size')}>
                   <select
                     className={fieldClass}
@@ -442,37 +444,35 @@ export default function MediaStudioPage({
                     ))}
                   </select>
                 </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={t('studio.quality')}>
-                    <select
-                      className={fieldClass}
-                      value={quality}
-                      onChange={(e) =>
-                        setQuality(
-                          e.target.value as ImageCreationInput['quality'],
-                        )
-                      }
-                    >
-                      {IMAGE_QUALITIES.map((item) => (
-                        <option key={item} value={item}>
-                          {t(`studio.${item}`)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label={t('studio.count')}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={4}
-                      value={count}
-                      required
-                      onChange={(e) => setCount(Number(e.target.value))}
-                      className={fieldClass}
-                    />
-                  </Field>
-                </div>
-              </>
+                <Field label={t('studio.quality')}>
+                  <select
+                    className={fieldClass}
+                    value={quality}
+                    onChange={(e) =>
+                      setQuality(
+                        e.target.value as ImageCreationInput['quality'],
+                      )
+                    }
+                  >
+                    {IMAGE_QUALITIES.map((item) => (
+                      <option key={item} value={item}>
+                        {t(`studio.${item}`)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('studio.count')}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={4}
+                    value={count}
+                    required
+                    onChange={(e) => setCount(Number(e.target.value))}
+                    className={fieldClass}
+                  />
+                </Field>
+              </div>
             : <>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label={t('studio.duration')}>
@@ -530,7 +530,7 @@ export default function MediaStudioPage({
               </>
             }
           </fieldset>
-          <p className="text-[11px] leading-relaxed text-ink-faint">
+          <p className="text-[11px] leading-4 text-ink-faint">
             {t(mode === 'video' ? 'studio.videoHint' : 'studio.gatewayHint')}
           </p>
           {error && (
@@ -576,14 +576,14 @@ export default function MediaStudioPage({
           </div>
         </form>
         <section
-          className="min-w-0 rounded-xl border border-line bg-surface p-4"
+          className="flex min-h-0 min-w-0 flex-col overflow-y-auto rounded-2xl border border-line-soft bg-surface p-4 shadow-sm"
           aria-label={t('studio.results')}
         >
-          <h2 className="mb-4 text-sm font-semibold text-ink">
+          <h2 className="mb-4 shrink-0 text-sm font-semibold text-ink">
             {t('studio.results')}
           </h2>
           {!images.length && !video && (
-            <div className="flex min-h-80 flex-col items-center justify-center gap-3 rounded-lg bg-sunken p-8 text-center text-[13px] text-ink-faint">
+            <div className="flex min-h-40 flex-1 flex-col items-center justify-center gap-3 rounded-lg bg-sunken p-8 text-center text-[13px] text-ink-faint">
               <svg
                 width="40"
                 height="40"
@@ -601,7 +601,7 @@ export default function MediaStudioPage({
             </div>
           )}
           {video && (
-            <div className="mb-4 space-y-3 rounded-lg border border-line bg-sunken p-3">
+            <div className="mb-4 shrink-0 space-y-3 rounded-lg border border-line bg-sunken p-3">
               {video.requestId && (
                 <p className="break-all font-mono text-[11px] text-ink-soft">
                   {t('studio.requestId')}: {video.requestId}
@@ -670,7 +670,7 @@ export default function MediaStudioPage({
               )}
             </div>
           )}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+        <div className="grid shrink-0 gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             {images.map((image, index) => (
               <figure
                 key={index}

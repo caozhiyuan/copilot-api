@@ -904,12 +904,12 @@ export default function DashboardPage({
       key: 'tokenUsage',
       label: t('dashboard.tabTokenUsage'),
     },
-    { icon: <IconLaunch />, key: 'studio', label: t('studio.title') },
     {
       icon: <IconProviders />,
       key: 'providers',
       label: t('providers.title'),
     },
+    { icon: <IconLaunch />, key: 'studio', label: t('studio.title') },
     {
       icon: <IconAdvancedConfig />,
       key: 'advancedConfig',
@@ -988,7 +988,7 @@ export default function DashboardPage({
       {/* Content area */}
       <div
         className={
-          tab === 'providers' ?
+          tab === 'providers' || tab === 'studio' ?
             'min-h-0 flex-1 overflow-hidden'
           : 'min-h-0 flex-1 overflow-auto'
         }
@@ -1335,7 +1335,7 @@ export default function DashboardPage({
         )}
 
         {(tab === 'studio' || studioOpened) && (
-          <div className={tab === 'studio' ? 'min-h-full' : 'hidden'}>
+          <div className={tab === 'studio' ? 'h-full' : 'hidden'}>
             <MediaStudioPage
               serverRunning={started && !stopping && !restarting}
             />
