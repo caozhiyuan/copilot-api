@@ -29,6 +29,7 @@ const initialSettings: DesktopSettings = {
   accountType: 'individual',
   verbose: false,
   showToken: false,
+  showCreate: false,
   language: 'en',
   theme: 'light',
   proxy: {
@@ -312,6 +313,22 @@ describe('settings modal partial saves', () => {
     expect(container.querySelector('[role="status"]')?.textContent).toContain(
       'Bun >= 1.4.0 was not found',
     )
+  })
+
+  test('saves show create from general settings', async () => {
+    await render()
+    const toggle = [...container.querySelectorAll('button')].find(
+      (node) =>
+        node.getAttribute('role') === 'switch'
+        && node.parentElement?.textContent?.includes('Show create'),
+    )
+    if (!toggle) throw new Error('Missing show create switch')
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    await act(async () => {
+      toggle.click()
+    })
+    await click('Save')
+    expect(settings.showCreate).toBe(true)
   })
 
   test('saves desktop preferences when persisted keys fail to refresh', async () => {

@@ -85,6 +85,7 @@ beforeEach(async () => {
       fetchModels,
       getAuthStatus: () => Promise.resolve({ success: true, mode: 'provider' }),
       getServerStatus: () => Promise.resolve({ running: false }),
+      getSettings: () => Promise.resolve({ showCreate: false, host: '' }),
       getLogs: () => Promise.resolve([]),
       onServerStatus: () => () => {},
       onServerLog: () => () => {},
@@ -1015,6 +1016,10 @@ describe('provider management UI', () => {
   })
 
   test('allows provider management and advanced configuration while stopped', async () => {
+    Object.assign(window.electronAPI, {
+      getSettings: () =>
+        Promise.resolve({ showCreate: true, host: '127.0.0.1' }),
+    })
     await act(async () => {
       root.render(
         createElement(LanguageProvider, {

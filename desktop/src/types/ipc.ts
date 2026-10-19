@@ -306,6 +306,7 @@ export interface DesktopSettings {
   accountType: 'individual' | 'business' | 'enterprise'
   verbose: boolean
   showToken: boolean
+  showCreate: boolean
   language: LangPreference
   theme: ThemePreference
   proxy: DesktopProxySettings

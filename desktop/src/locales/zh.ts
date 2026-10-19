@@ -313,6 +313,8 @@ const zh: Locale = {
     autoStartServerDesc: '授权信息加载完成后，使用上次的端口自动启动 API 服务',
     minimizeToTray: '最小化到托盘',
     minimizeToTrayDesc: '关闭窗口时隐藏到系统托盘，不退出程序',
+    showCreate: '显示创作',
+    showCreateDesc: '在标签栏显示图片和视频创作',
     sectionSecurity: '安全',
     serverKeysNote:
       'API Keys 和 Admin Key 保存在 config.json 中，保存后会自动刷新运行中的服务。',

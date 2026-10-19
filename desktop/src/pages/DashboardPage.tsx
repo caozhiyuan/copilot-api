@@ -320,10 +320,29 @@ export default function DashboardPage({
   const [tab, setTab] = useState<DashboardTab>(initialTab)
   const [advancedConfigOpened, setAdvancedConfigOpened] = useState(false)
   const [studioOpened, setStudioOpened] = useState(false)
+  const [showCreate, setShowCreate] = useState(false)
   useEffect(() => {
     if (tab === 'advancedConfig') setAdvancedConfigOpened(true)
     if (tab === 'studio') setStudioOpened(true)
   }, [tab])
+  useEffect(() => {
+    let active = true
+    void window.electronAPI
+      .getSettings()
+      .then((saved) => {
+        if (active) setShowCreate(saved.showCreate === true)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+  useEffect(() => {
+    if (!showCreate) {
+      if (tab === 'studio') setTab('dashboard')
+      setStudioOpened(false)
+    }
+  }, [showCreate, tab])
   const [usage, setUsage] = useState<UsageInfo | null>(null)
   const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null)
   const [tokenUsageDaily, setTokenUsageDaily] =
@@ -617,6 +636,7 @@ export default function DashboardPage({
       .getSettings()
       .then((saved) => {
         if (saved.host !== undefined) setHost(saved.host)
+        setShowCreate(saved.showCreate === true)
       })
       .catch(() => {})
   }
@@ -917,6 +937,9 @@ export default function DashboardPage({
     },
     { icon: <IconLogs />, key: 'logs', label: t('dashboard.tabLogs') },
   ]
+  const visibleTabs = dashboardTabs.filter(
+    (tabItem) => showCreate || tabItem.key !== 'studio',
+  )
   const showRefreshButton =
     started && (tab === 'dashboard' || tab === 'tokenUsage')
   const showStartForm =
@@ -947,7 +970,7 @@ export default function DashboardPage({
           role="tablist"
           className="flex min-w-0 h-full items-stretch gap-1 overflow-x-auto sm:gap-3"
         >
-          {dashboardTabs.map((tabItem) => (
+          {visibleTabs.map((tabItem) => (
             <button
               key={tabItem.key}
               role="tab"
@@ -1334,7 +1357,7 @@ export default function DashboardPage({
           />
         )}
 
-        {(tab === 'studio' || studioOpened) && (
+        {showCreate && (tab === 'studio' || studioOpened) && (
           <div className={tab === 'studio' ? 'h-full' : 'hidden'}>
             <MediaStudioPage
               serverRunning={started && !stopping && !restarting}

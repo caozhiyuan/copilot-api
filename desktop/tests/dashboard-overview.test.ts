@@ -261,6 +261,11 @@ async function clickButton(label: string) {
 describe('dashboard overview', () => {
   test('places providers at the top of the dashboard and keeps models in the sidebar', async () => {
     await render('provider')
+    expect(
+      [...container.querySelectorAll('[role="tab"]')].map(
+        (tab) => tab.textContent,
+      ),
+    ).not.toContain('Create')
 
     const providerCard = cardByTitle('Providers')
     expect(providerCard.textContent).toContain('2 / 3 enabled')

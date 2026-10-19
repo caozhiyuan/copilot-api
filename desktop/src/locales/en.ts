@@ -335,6 +335,8 @@ const en: Locale = {
       'Automatically start the API server on the last used port after authorization loads',
     minimizeToTray: 'Minimize to tray',
     minimizeToTrayDesc: "Hide to system tray when closing, don't quit",
+    showCreate: 'Show create',
+    showCreateDesc: 'Show the Create tab for image and video generation',
     sectionSecurity: 'Security',
     serverKeysNote:
       'API Keys and Admin Key are stored in config.json. Saving automatically refreshes the running service.',

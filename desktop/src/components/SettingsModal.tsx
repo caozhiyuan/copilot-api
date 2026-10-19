@@ -257,6 +257,7 @@ export default function SettingsModal({
     accountType: 'individual',
     verbose: false,
     showToken: false,
+    showCreate: false,
     language: 'auto',
     theme: 'auto',
     proxy: {
@@ -600,6 +601,18 @@ export default function SettingsModal({
                     checked={settings.minimizeToTray}
                     onChange={(v) =>
                       setSettings((s) => ({ ...s, minimizeToTray: v }))
+                    }
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  label={t('settings.showCreate')}
+                  description={t('settings.showCreateDesc')}
+                >
+                  <Toggle
+                    checked={settings.showCreate}
+                    onChange={(v) =>
+                      setSettings((s) => ({ ...s, showCreate: v }))
                     }
                   />
                 </SettingRow>

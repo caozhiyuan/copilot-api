@@ -305,6 +305,8 @@ export interface Locale {
     autoStartServerDesc: string
     minimizeToTray: string
     minimizeToTrayDesc: string
+    showCreate: string
+    showCreateDesc: string
     sectionSecurity: string
     serverKeysNote: string
     serverKeysSaveFailed: string

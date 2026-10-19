@@ -27,6 +27,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   accountType: 'individual',
   verbose: false,
   showToken: false,
+  showCreate: false,
   language: 'auto',
   theme: 'auto',
   proxy: {
@@ -134,6 +135,10 @@ export function normalizeSettings(
       typeof settings?.showToken === 'boolean' ?
         settings.showToken
       : DEFAULT_SETTINGS.showToken,
+    showCreate:
+      typeof settings?.showCreate === 'boolean' ?
+        settings.showCreate
+      : DEFAULT_SETTINGS.showCreate,
     language:
       (
         settings?.language === 'en'
