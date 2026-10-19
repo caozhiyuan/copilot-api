@@ -175,6 +175,39 @@ const file = (name = 'source.png') =>
   new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' })
 
 describe('media creation page', () => {
+  test('keeps separate prompt drafts and submits the active mode from the workspace editor', async () => {
+    await render()
+    const form = container.querySelector('form')!
+    const editor = container.querySelector('textarea')!
+    expect(editor.closest('form')).toBeNull()
+    expect(editor.form).toBe(form)
+    await prompt('Generate a boat')
+    await click('Edit image')
+    expect(container.querySelector('textarea')?.value).toBe('')
+    await prompt('Replace the background')
+    await upload([file()])
+    await click('Create')
+    expect(createImages.mock.calls[0][1]).toMatchObject({
+      mode: 'edit',
+      prompt: 'Replace the background',
+    })
+    await click('Generate video')
+    expect(container.querySelector('textarea')?.value).toBe('')
+    await prompt('Animate the boat')
+    await click('Generate image')
+    expect(container.querySelector('textarea')?.value).toBe('Generate a boat')
+    await click('Create')
+    expect(createImages.mock.calls[1][1]).toMatchObject({
+      mode: 'generate',
+      prompt: 'Generate a boat',
+    })
+    await click('Edit image')
+    expect(container.querySelector('textarea')?.value).toBe(
+      'Replace the background',
+    )
+    await click('Generate video')
+    expect(container.querySelector('textarea')?.value).toBe('Animate the boat')
+  })
   test('requires the service and a prompt', async () => {
     await render(false)
     expect(container.textContent).toContain('Start the server')
