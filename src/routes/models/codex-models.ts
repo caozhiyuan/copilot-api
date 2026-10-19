@@ -84,6 +84,7 @@ export function isCodexUserAgent(userAgent: string | undefined): boolean {
 /**
  * Proxies a models request to the fixed Codex upstream models endpoint.
  * Returns a 404 JSON response when the codex provider is unavailable.
+ * Falls back to the bundled catalog when the upstream request or body times out.
  * Pass `resolvedProviderConfig` when the caller already resolved the codex
  * provider to avoid a second resolve.
  */
@@ -105,12 +106,23 @@ export async function handleCodexModelsProxy(
     )
   }
 
-  const upstreamResponse = await forwardCodexModels(
-    c.req.url,
-    c.req.raw.headers,
-  )
-  if (!upstreamResponse.ok) return createProviderProxyResponse(upstreamResponse)
-  const catalog: unknown = await upstreamResponse.json().catch(() => null)
+  let catalog: unknown
+  try {
+    const upstreamResponse = await forwardCodexModels(
+      c.req.url,
+      c.req.raw.headers,
+    )
+    if (!upstreamResponse.ok)
+      return createProviderProxyResponse(upstreamResponse)
+    catalog = await upstreamResponse.json().catch((error: unknown) => {
+      if (isCodexCatalogTimeout(error)) throw error
+      return null
+    })
+  } catch (error) {
+    if (!isCodexCatalogTimeout(error)) throw error
+    logger.warn("models.codex.catalog_timeout", { error })
+    catalog = { models: FALLBACK_CODEX_MODELS }
+  }
   if (!isCodexModelsResponse(catalog)) {
     return c.json(
       { error: { message: "Invalid Codex model catalog", type: "api_error" } },
@@ -388,6 +400,13 @@ export function createSyntheticCodexModel(
         template.base_instructions
       : FALLBACK_BASE_INSTRUCTIONS,
   }
+}
+
+function isCodexCatalogTimeout(error: unknown): boolean {
+  return (
+    error instanceof Error
+    && (error.name === "TimeoutError" || error.name === "AbortError")
+  )
 }
 
 async function tryGetCodexCatalog(

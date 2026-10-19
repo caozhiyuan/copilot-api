@@ -133,7 +133,7 @@ export interface CodexServiceTier {
 
 export interface CodexModelMessages {
   instructions_template: string
-  instructions_variables: CodexInstructionsVariables | null
+  instructions_variables?: CodexInstructionsVariables | null
   approvals: unknown
   auto_review: unknown
   permissions: unknown

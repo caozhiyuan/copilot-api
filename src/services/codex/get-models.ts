@@ -81,7 +81,7 @@ const CODEX_MODELS: Array<CodexModelDefinition> = [
 ]
 
 const CODEX_MODELS_URL = `${CODEX_API_BASE_URL}/codex/models`
-const CODEX_MODELS_TIMEOUT_MS = 15_000
+const CODEX_MODELS_TIMEOUT_MS = 3_000
 
 export function resolveCodexModelsUrl(requestUrl: string): string {
   const upstreamUrl = new URL(CODEX_MODELS_URL)

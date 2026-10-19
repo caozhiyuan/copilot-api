@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test"
 import { Hono } from "hono"
 import fs from "node:fs"
 import os from "node:os"
@@ -2805,6 +2813,78 @@ describe("model routes", () => {
     )
   })
 
+  test.each([
+    ["/v1/models", "headers"],
+    ["/v1/models", "body"],
+    ["/codex/v1/models", "headers"],
+    ["/codex/v1/models", "body"],
+  ])(
+    "%s falls back to the bundled Codex catalog after 3 seconds waiting for %s",
+    async (endpoint, phase) => {
+      enableCodexCatalog()
+      const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
+      copilotModels.data[0].supported_endpoints = ["/v1/messages"]
+      copilotModels.data[0].capabilities.supports.tool_calls = true
+      state.models = copilotModels
+
+      let receivedHeaders = false
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: () => {
+          if (phase === "headers") return new Promise<Response>(() => {})
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{"models":['))
+              },
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          )
+        },
+      })
+      const timeoutSpy = spyOn(AbortSignal, "timeout")
+      fetchMock.mockImplementationOnce(async (_url, init) => {
+        const response = await originalFetch(server.url, init)
+        receivedHeaders = true
+        return response
+      })
+
+      try {
+        const response = await createApp().request(
+          `${endpoint}?client_version=0.160.0`,
+          { headers: { "user-agent": "codex-tui/0.160.0" } },
+        )
+
+        expect(response.status).toBe(200)
+        expect(receivedHeaders).toBe(phase === "body")
+        expect(timeoutSpy).toHaveBeenCalledWith(3_000)
+        expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
+        const body = (await response.json()) as CodexModelsResponse
+        const slugs = body.models.map((model) => model.slug)
+        if (endpoint === "/codex/v1/models") {
+          expect(slugs).toEqual(bundledCodexModels.map((model) => model.slug))
+        } else {
+          for (const slug of bundledCodexSlugs) expect(slugs).toContain(slug)
+          expect(slugs).toContain("codex/gpt-6.1-sol")
+          expect(slugs).toContain("claude-sonnet-4-6")
+        }
+        expect(slugs).not.toContain("gpt-native")
+        expect(
+          body.models.find((model) => model.slug === "gpt-6.1-sol")
+            ?.model_messages,
+        ).toEqual(
+          bundledCodexModels.find((model) => model.slug === "gpt-6.1-sol")
+            ?.model_messages,
+        )
+      } finally {
+        timeoutSpy.mockRestore()
+        await server.stop(true)
+      }
+    },
+    5_000,
+  )
+
   test("copies matching Codex catalog models with provider suffixes", async () => {
     const solCatalogModel = {
       slug: "gpt-5.6-sol",
@@ -3247,6 +3327,53 @@ describe("model routes", () => {
     const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
     expect(headers.get("authorization")).toBe("Bearer codex-access-token")
     expect(headers.get("chatgpt-account-id")).toBe("account-123")
+  })
+
+  test.each([401, 502])(
+    "preserves upstream HTTP %s errors on the scoped Codex catalog route",
+    async (status) => {
+      enableCodexCatalog()
+      const error = { error: { message: "upstream error" } }
+      fetchMock.mockImplementationOnce(() =>
+        Promise.resolve(Response.json(error, { status })),
+      )
+
+      const response = await createApp().request("/codex/v1/models", {
+        headers: { "user-agent": "codex-tui/0.160.0" },
+      })
+
+      expect(response.status).toBe(status)
+      expect(await response.json()).toEqual(error)
+    },
+  )
+
+  test("rejects malformed JSON on the scoped Codex catalog route", async () => {
+    enableCodexCatalog()
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(new Response("invalid JSON")),
+    )
+
+    const response = await createApp().request("/codex/v1/models", {
+      headers: { "user-agent": "codex-tui/0.160.0" },
+    })
+
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({
+      error: { message: "Invalid Codex model catalog", type: "api_error" },
+    })
+  })
+
+  test("preserves non-timeout failures on the scoped Codex catalog route", async () => {
+    enableCodexCatalog()
+    fetchMock.mockImplementationOnce(() =>
+      Promise.reject(new Error("connection refused")),
+    )
+
+    const response = await createApp().request("/codex/v1/models", {
+      headers: { "user-agent": "codex-tui/0.160.0" },
+    })
+
+    expect(response.status).toBe(500)
   })
 
   test("returns built-in Codex models on the provider route without Codex UA", async () => {
