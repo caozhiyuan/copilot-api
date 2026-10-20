@@ -2,6 +2,8 @@ import type { ConsolaInstance } from "consola"
 import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
+import { HTTPException } from "hono/http-exception"
+import { randomUUID } from "node:crypto"
 
 import type { CompactType } from "~/lib/compact"
 import type { SubagentMarker } from "~/lib/subagent"
@@ -40,6 +42,7 @@ import type {
   ResponsesStream,
 } from "~/lib/types/responses"
 import { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
+import { searchParallelWeb } from "~/services/parallel/search"
 
 import type {
   AnthropicContentBlockStartEvent,
@@ -133,12 +136,14 @@ export const stripWebSearchServerTool = (
  *   provider is actually configured and whose message API supports websearch
  *   natively — pass the tool straight through.
  * - `responses`: a Copilot GPT model — run it via the /responses web_search.
+ * - `parallel`: anonymous MCP search, returning source excerpts directly.
  * - `strip`: mixing with other tools, no model configured, or web search off —
  *   drop the tool and continue normally. An alias pointing at an unconfigured
  *   provider also strips: routing it would 404, and the "provider/model"
  *   string is not a usable Copilot model id for the responses path.
  */
 export type WebSearchRoute =
+  | { kind: "parallel" }
   | { kind: "provider"; alias: ProviderModelAlias }
   | { kind: "responses"; model: string }
   | { kind: "strip" }
@@ -154,6 +159,17 @@ export const resolveWebSearchRoute = async (
   const { webSearchModel, responsesWebSearchEnabled } = options
   if (!webSearchModel || !isWebSearchOnlyRequest(payload)) {
     return { kind: "strip" }
+  }
+  if (webSearchModel === "parallel") {
+    const tool = payload.tools?.find(isWebSearchServerTool)
+    const denied =
+      payload.tool_choice?.type === "none"
+      || (payload.tool_choice?.type === "tool"
+        && payload.tool_choice.name !== "web_search")
+      || (tool?.max_uses !== undefined && tool.max_uses < 1)
+    return responsesWebSearchEnabled && !denied ?
+        { kind: "parallel" }
+      : { kind: "strip" }
   }
   const alias = parseProviderModelAlias(webSearchModel)
   if (alias) {
@@ -342,6 +358,68 @@ export const tryHandleWebSearch = async (
   if (route.kind === "provider") {
     payload.model = route.alias.model
     return await options.forwardToProvider(c, payload, route.alias.provider)
+  }
+
+  if (route.kind === "parallel") {
+    const latest = payload.messages.findLast(
+      (message) => message.role === "user",
+    )
+    const query =
+      typeof latest?.content === "string" ? latest.content.trim()
+      : Array.isArray(latest?.content) ?
+        latest.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n")
+          .trim()
+      : ""
+    const config = extractWebSearchConfig(payload)
+    if (!query || config.userLocation) {
+      throw new HTTPException(400, {
+        message:
+          "Parallel web search requires a text query and does not support user_location. Configure messageApiWebSearchModel with a native search model for location-aware searches.",
+      })
+    }
+    let extract: WebSearchExtract
+    try {
+      extract = await searchParallelWeb({
+        query,
+        conversationId: getRootSessionId(payload, c),
+        signal: c.req.raw.signal,
+        ...config,
+      })
+    } catch (error) {
+      if (c.req.raw.signal.aborted) throw error
+      throw new HTTPException(502, {
+        message: "Parallel web search unavailable",
+        cause: error,
+      })
+    }
+    const response: AnthropicResponse<
+      AnthropicTextBlock | AnthropicWebSearchContentBlock
+    > = {
+      id: `msg_${randomUUID()}`,
+      type: "message",
+      role: "assistant",
+      model: payload.model,
+      content: buildResponseContent(randomUUID(), extract),
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        server_tool_use: { web_search_requests: 1 },
+      },
+    }
+    if (!payload.stream) return c.json(response)
+    return streamSSE(c, async (stream) => {
+      for (const event of buildSyntheticStreamEvents(response)) {
+        await writeSSEIfConnected(stream, {
+          event: event.type,
+          data: JSON.stringify(event),
+        })
+      }
+    })
   }
 
   if (route.kind === "responses") {

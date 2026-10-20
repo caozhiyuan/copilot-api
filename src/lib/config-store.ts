@@ -35,7 +35,8 @@ export interface AppConfig {
   // Claude request that only asks for web search is switched to this model.
   // A `provider/model` alias is passed straight through to that provider's
   // (websearch-capable) message API, while a plain GPT model runs the search
-  // via /responses. Leave unset to disable (the tool is then stripped).
+  // via /responses. An empty string disables search (the tool is stripped).
+  // Defaults to `parallel`: anonymous Parallel MCP source excerpts.
   // Mixing web_search with other tools is not supported.
   messageApiWebSearchModel?: string
   // Top-level image routes stay on the OpenAI/Codex path until these are set
@@ -179,7 +180,7 @@ export const defaultConfig: AppConfig = {
   useResponsesApiWebSearch: true,
   alphaSearchCodexPriority: true,
   alphaSearchModel: "gpt-6-luna",
-  messageApiWebSearchModel: "gpt-6-luna",
+  messageApiWebSearchModel: "parallel",
 }
 
 let cachedConfig: AppConfig | null = null
@@ -652,7 +653,7 @@ export function getAlphaSearchModel(): string | undefined {
 
 export function getMessageApiWebSearchModel(): string | undefined {
   const config = getConfig()
-  const model = config.messageApiWebSearchModel ?? "gpt-6-luna"
+  const model = config.messageApiWebSearchModel ?? "parallel"
   return model && model.trim().length > 0 ? model : undefined
 }
 

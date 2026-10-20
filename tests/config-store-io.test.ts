@@ -101,7 +101,7 @@ test("reloadConfig creates a default config when it is missing", () => {
     copilot: "gpt-6-luna",
   })
   expect(config.alphaSearchModel).toBe("gpt-6-luna")
-  expect(config.messageApiWebSearchModel).toBe("gpt-6-luna")
+  expect(config.messageApiWebSearchModel).toBe("parallel")
   expect(config.opencodeModelContextWindow).toBe(400_000)
   expect(getOpencodeModelContextWindow()).toBe(400_000)
   expect(config.extraPrompts).toBeUndefined()
@@ -182,7 +182,7 @@ test("reloadConfig refreshes an explicitly configured OpenCode context ceiling",
   }
 })
 
-test("small and search model getters use gpt-6-luna when config fields are absent", () => {
+test("model getters preserve inference defaults and use Parallel for unconfigured Messages search", () => {
   const configPath = useTempConfigPath()
   fs.writeFileSync(
     configPath,
@@ -197,7 +197,7 @@ test("small and search model getters use gpt-6-luna when config fields are absen
   expect(getSmallModelForProvider("copilot")).toBe("gpt-6-luna")
   expect(getSmallModelForProvider("other-provider")).toBeUndefined()
   expect(getAlphaSearchModel()).toBe("gpt-6-luna")
-  expect(getMessageApiWebSearchModel()).toBe("gpt-6-luna")
+  expect(getMessageApiWebSearchModel()).toBe("parallel")
   expect(getClaudeAutoModel()).toBeUndefined()
 })
 

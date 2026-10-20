@@ -42,7 +42,7 @@
     "useResponsesApiWebSearch": true,
     "alphaSearchCodexPriority": true,
     "alphaSearchModel": "gpt-6-luna",
-    "messageApiWebSearchModel": "gpt-6-luna"
+    "messageApiWebSearchModel": "parallel"
   }
   ```
 - **auth.apiKeys：** 用于普通非 admin 路由的 API key。支持多个 key 轮换使用。请求可通过 `x-api-key: <key>` 或 `Authorization: Bearer <key>` 进行认证。若为空或省略，仅回环监听会禁用普通路由认证；非回环监听会拒绝启动。
@@ -90,7 +90,7 @@
 - **useResponsesApiWebSearch：** 当为 `true` 时，服务端会保留 Responses API 中 `type: "web_search"` 的工具并透传到上游。设为 `false` 则会从 `/responses` payload 中移除这些工具。默认值为 `true`。
 - **alphaSearchCodexPriority：** 默认值为 `true`。顶层 alpha-search 请求优先使用 Codex alpha-search 端点，因为它不会消耗 provider 配额。若 Codex 不可用，或该配置设为 `false`，使用非 `codex/model` 的 `provider/model` 别名的请求会调用目标 provider 的 `/v1/responses` 端点，没有 provider 前缀的请求使用 GitHub Copilot Responses web search。该适配器会识别当前所有 Codex search command；不受支持的 `image_query` 和 `screenshot` 会返回成功且明确要求不要重试的 tool output。
 - **alphaSearchModel：** Messages-backed 的 Responses Lite 模型不能直接执行 Responses web search 时使用的原生 Responses 搜索模型，默认值为 `gpt-6-luna`。可以配置普通 Copilot 模型或 `openai-responses` 类型的 `provider/model`；设为空字符串可禁用，此时这类模型的 alpha-search 请求会返回参数错误。
-- **messageApiWebSearchModel：** 顶层 Copilot `/v1/messages` 请求只包含服务端 `web_search` 工具时使用的全局模型，默认值为 `gpt-6-luna`。如果该值是 `provider/model` 别名，请求会进入对应 provider 的 Messages API 路径，并在转发前移除 provider 前缀。对于 Copilot GPT 模型，web search 会通过 `/responses` 执行。混合 `web_search` 与自定义工具的场景暂不支持，服务端会移除 server-side `web_search`。
+- **messageApiWebSearchModel：** 顶层 `/v1/messages` 请求只包含服务端 `web_search` 工具时使用的后端。全新或未配置的安装默认使用 `parallel`：[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) 通过 Fast 模式提供免费的匿名搜索，无需账号或 API key。它搜索最后一条用户文本并返回来源 URL 和摘录，不再调用单独的模型生成答案。已有的模型选择保持不变；设置为空字符串可禁用搜索。使用 `parallel` 时，`useResponsesApiWebSearch: false`、`tool_choice: none` 和 `max_uses: 0` 也会阻止外部搜索。域名过滤应用于返回的 URL；不支持 `user_location`，此时返回错误，可选择原生模型执行位置相关的搜索。请求在 30 秒后超时，失败不会回退到其他后端。客户端元数据或根会话请求头中的会话 ID 在网关进程生命周期内保持稳定且不透明；未提供会话元数据的请求视为独立搜索。免费服务有使用限额。如果该值是 `provider/model` 别名，请求会进入对应 provider 的 Messages API 路径，并在转发前移除 provider 前缀。对于 Copilot GPT 模型，web search 会通过 `/responses` 执行。混合 `web_search` 与自定义工具的场景暂不支持，服务端会移除 server-side `web_search`。
 - **claudeAutoModel：** 用于 Claude Code 后台 security-monitor 请求的模型，作用于 `/v1/messages` 和 provider Messages 路由。当请求不带任何工具、`stop_sequences` 为 `["</block>"]`，且 system 文本块以 `You are a security monitor for autonomous AI coding agents.` 开头时，会被识别为 security-monitor 请求，其模型会被替换为该配置值。用户显式配置对两类路由均生效，且优先于默认值。未配置时，只有顶层 `/v1/messages` 使用动态默认值：已启用的 `codex` provider 默认使用 `codex-auto-review`，否则只有 `github-copilot` 开关允许且运行时 GitHub token 与 Copilot token 均已加载时，才默认使用 `gpt-6-luna`（未配置 Copilot 开关时视为启用）。Codex 优先；不满足任何默认条件时不替换模型，未授权的 Copilot 不会触发默认切换。显式设为空字符串可禁用。默认值随 provider 配置和 Copilot 凭据状态动态选择，不写回 `claudeAutoModel`。对于顶层请求，替换后的模型会应用 `modelMappings`，默认将 `codex-auto-review` 转发到 `codex/codex-auto-review`；`provider/model` 别名会转发到对应 provider 的 Messages API。provider 专属路由（如 `/dashscope/v1/messages`）仅使用显式配置的非空 `claudeAutoModel`；未配置时保留请求中的模型。显式配置生效时保持当前 provider，直接使用配置值，不应用 `modelMappings`。
 - **claudeTokenMultiplier：** 用于 Claude `/v1/messages/count_tokens` 请求在本地走 GPT tokenizer 估算时的乘数。默认值为 `1.15`。如果你的客户端仍然过晚触发上下文压缩，可以适当调大。这个配置只会在代理本地估算 Claude token 时生效；如果已经配置 `anthropicApiKey` 且 Anthropic token counting 调用成功，则会直接返回 Anthropic 的精确计数，不会使用这个乘数。
 - **anthropicApiKey：** 用于把 Claude `/v1/messages/count_tokens` 请求转发到 Anthropic 真实 token counting 端点的 API key，这样会返回精确计数，而不是 GPT tokenizer 估算值。也可通过环境变量 `ANTHROPIC_API_KEY` 设置。若未配置，或上游调用失败，则回退到由 `claudeTokenMultiplier` 控制的本地 GPT tokenizer 估算。
