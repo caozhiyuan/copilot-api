@@ -14,7 +14,7 @@ import {
 } from "~/lib/config"
 import { PATHS } from "~/lib/paths"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
-import { handleCompletionPayload } from "~/routes/messages/handler"
+import { messageRoutes } from "~/routes/messages/route"
 import {
   resolveWebSearchRoute,
   tryHandleWebSearch,
@@ -58,9 +58,7 @@ function saveConfig(config: AppConfig = {}) {
   reloadConfig()
 }
 
-const app = new Hono().post("/v1/messages", async (c) =>
-  handleCompletionPayload(c, await c.req.json<AnthropicMessagesPayload>()),
-)
+const app = new Hono().route("/v1/messages", messageRoutes)
 const request = (body = payload(), session?: string, signal?: AbortSignal) =>
   app.request("/v1/messages", {
     method: "POST",

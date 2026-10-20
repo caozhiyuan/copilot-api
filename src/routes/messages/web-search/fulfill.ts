@@ -2,7 +2,6 @@ import type { ConsolaInstance } from "consola"
 import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
-import { HTTPException } from "hono/http-exception"
 import { randomUUID } from "node:crypto"
 
 import type { CompactType } from "~/lib/compact"
@@ -14,6 +13,7 @@ import {
   isResponsesApiWebSearchEnabled,
 } from "~/lib/config"
 import { findEndpointModel } from "~/lib/models"
+import { HTTPError } from "~/lib/error"
 import { writeSSEIfConnected } from "~/lib/sse"
 import {
   parseProviderModelAlias,
@@ -375,10 +375,9 @@ export const tryHandleWebSearch = async (
       : ""
     const config = extractWebSearchConfig(payload)
     if (!query || config.userLocation) {
-      throw new HTTPException(400, {
-        message:
-          "Parallel web search requires a text query and does not support user_location. Configure messageApiWebSearchModel with a native search model for location-aware searches.",
-      })
+      const message =
+        "Parallel web search requires a text query and does not support user_location. Configure messageApiWebSearchModel with a native search model for location-aware searches."
+      throw new HTTPError(message, new Response(message, { status: 400 }))
     }
     let extract: WebSearchExtract
     try {
@@ -390,10 +389,10 @@ export const tryHandleWebSearch = async (
       })
     } catch (error) {
       if (c.req.raw.signal.aborted) throw error
-      throw new HTTPException(502, {
-        message: "Parallel web search unavailable",
-        cause: error,
-      })
+      throw new HTTPError(
+        "Parallel web search unavailable",
+        new Response("Parallel web search unavailable", { status: 502 }),
+      )
     }
     const response: AnthropicResponse<
       AnthropicTextBlock | AnthropicWebSearchContentBlock
