@@ -46,7 +46,8 @@ function record(value: unknown): Record<string, unknown> {
 function errorMessage(value: unknown): string | undefined {
   const error = record(value).error
   if (typeof error === 'string') return error
-  const message = record(error).message ?? record(value).message
+  const message =
+    record(error).message ?? record(value).message ?? record(value).detail
   return typeof message === 'string' ? message : undefined
 }
 
@@ -253,7 +254,7 @@ export function createMediaStudioClient(options: MediaClientOptions) {
       }
       const operation = input.mode === 'edit' ? 'edits' : 'generations'
       const prefix = input.provider === 'default' ? '' : `/${input.provider}`
-      let body: string | FormData
+      let body: string
       if (input.provider === 'xai') {
         body = JSON.stringify(
           input.mode === 'edit' ?
@@ -271,24 +272,18 @@ export function createMediaStudioClient(options: MediaClientOptions) {
             ),
         )
       } else if (input.mode === 'edit') {
-        body = new FormData()
-        for (const [key, value] of Object.entries(payload))
-          body.set(key, String(value))
-        for (const image of input.images)
-          body.append(
-            'image[]',
-            new Blob([new Uint8Array(image.bytes)], { type: image.type }),
-            image.name,
-          )
+        body = JSON.stringify({
+          ...payload,
+          images: input.images.map((image) => ({
+            image_url: uploadUrl(image),
+          })),
+        })
       } else body = JSON.stringify(payload)
       return parseCreatedImages(
         await request(id, `${prefix}/v1/images/${operation}`, {
           method: 'POST',
           body,
-          headers:
-            typeof body === 'string' ?
-              { 'content-type': 'application/json' }
-            : undefined,
+          headers: { 'content-type': 'application/json' },
         }),
       )
     },

@@ -35,6 +35,26 @@ export interface ParsedImagesRequest {
   originalRequest?: Request
 }
 
+export function imageEditContentTypeErrorResponse(c: Context): Response | null {
+  const mediaType = c.req
+    .header("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase()
+  if (mediaType === "application/json") return null
+
+  return c.json(
+    {
+      error: {
+        message:
+          "Image edits require application/json with images: [{ image_url }] or [{ file_id }]; multipart uploads are not supported",
+        type: "invalid_request_error",
+      },
+    },
+    415,
+  )
+}
+
 function getContentMetadata(headers: Headers) {
   return {
     contentType: headers.get("content-type"),
@@ -43,8 +63,7 @@ function getContentMetadata(headers: Headers) {
 }
 
 /**
- * Snapshots request headers before the body is consumed: Bun drops
- * auto-generated body headers (like the multipart boundary) afterwards.
+ * Snapshots generated request headers before consuming the body.
  */
 export function snapshotRequestHeaders(request: Request): Headers {
   return new Headers(request.headers)
@@ -69,6 +88,65 @@ export function createForwardRequest(
     signal: request.signal,
   }
   return new Request(request.url, init)
+}
+
+function createJsonImagesRequest(
+  request: Request,
+  requestHeaders: Headers,
+  payload: Record<string, unknown>,
+  model: string,
+): Request {
+  const headers = new Headers(requestHeaders)
+  headers.delete("content-length")
+
+  return createForwardRequest(
+    request,
+    headers,
+    new TextEncoder().encode(JSON.stringify({ ...payload, model })),
+  )
+}
+
+/**
+ * Parses an image request body as JSON, retaining the original bytes for
+ * unchanged forwarding while allowing model mapping to rebuild the payload.
+ * Rebuilt bodies stay binary so Node does not synthesize a text/plain content type.
+ */
+export async function parseJsonImagesRequest(
+  request: Request,
+): Promise<ParsedImagesRequest | Request> {
+  const requestHeaders = snapshotRequestHeaders(request)
+  const body = new Uint8Array(await request.arrayBuffer())
+  const originalRequest = createForwardRequest(request, requestHeaders, body)
+
+  let payload: unknown
+  try {
+    const bodyText = new TextDecoder("utf-8", { fatal: true }).decode(body)
+    payload = JSON.parse(bodyText)
+  } catch {
+    return originalRequest
+  }
+
+  if (
+    payload === null
+    || typeof payload !== "object"
+    || Array.isArray(payload)
+    || typeof (payload as { model?: unknown }).model !== "string"
+  ) {
+    return originalRequest
+  }
+
+  const model = (payload as { model: string }).model
+  return {
+    createRequest: (mappedModel) =>
+      createJsonImagesRequest(
+        request,
+        requestHeaders,
+        payload as Record<string, unknown>,
+        mappedModel,
+      ),
+    model,
+    originalRequest,
+  }
 }
 
 /**

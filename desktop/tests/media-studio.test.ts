@@ -80,24 +80,44 @@ describe('media requests', () => {
       'http://[::1]:5151/codex/v1/images/generations',
     )
   })
-  test('uploads multiple edit files as multipart without a manual boundary', async () => {
-    await client().createImages('one', {
-      ...imageInput,
-      mode: 'edit',
-      images: [image, { ...image, name: 'two.png' }],
-    })
-    const init = fetchMock.mock.calls[0][1]!
-    expect(fetchMock.mock.calls[0][0]).toBe('http://[::1]:5151/v1/images/edits')
-    expect(init.headers).toEqual({ 'x-api-key': 'gateway-key' })
-    const form = init.body as FormData
-    expect(form.get('prompt')).toBe('A boat')
-    expect(form.getAll('image[]')).toHaveLength(2)
-    expect(
-      Array.from(
-        new Uint8Array(await (form.get('image[]') as File).arrayBuffer()),
-      ),
-    ).toEqual(Array.from(image.bytes))
-  })
+  test.each(['default', 'codex'] as const)(
+    'sends multiple edit images as JSON to %s',
+    async (provider) => {
+      await client().createImages('one', {
+        ...imageInput,
+        provider,
+        mode: 'edit',
+        images: [
+          image,
+          {
+            ...image,
+            name: 'two.webp',
+            type: 'image/webp',
+            bytes: new Uint8Array([1, 2, 3]),
+          },
+        ],
+      })
+      const init = fetchMock.mock.calls[0][1]!
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `http://[::1]:5151${provider === 'codex' ? '/codex' : ''}/v1/images/edits`,
+      )
+      expect(init.headers).toEqual({
+        'x-api-key': 'gateway-key',
+        'content-type': 'application/json',
+      })
+      expect(JSON.parse(init.body as string)).toEqual({
+        model: 'gpt-image-2',
+        prompt: 'A boat',
+        n: 2,
+        size: '1024x1024',
+        quality: 'high',
+        images: [
+          { image_url: 'data:image/png;base64,iVBORw==' },
+          { image_url: 'data:image/webp;base64,AQID' },
+        ],
+      })
+    },
+  )
   test.each(['generate', 'edit'] as const)(
     'translates explicit xAI %s to its native JSON protocol',
     async (mode) => {
@@ -248,19 +268,25 @@ describe('media requests', () => {
     )
   })
   test.each([
-    { error: { message: 'Provider disabled' } },
-    { error: 'Quota exhausted' },
-    {},
-  ])('surfaces structured upstream errors %#', async (body) => {
-    response = () => Response.json(body, { status: 400 })
-    await expect(client().createImages('one', imageInput)).rejects.toThrow(
-      'error' in body ?
-        typeof body.error === 'string' ?
-          body.error
-        : (body.error?.message ?? 'HTTP 400')
-      : 'HTTP 400',
-    )
-  })
+    [{ error: { message: 'Provider disabled' } }, 'Provider disabled'],
+    [{ error: 'Quota exhausted' }, 'Quota exhausted'],
+    [{ message: 'Invalid options' }, 'Invalid options'],
+    [{ detail: 'Unsupported content type' }, 'Unsupported content type'],
+    [{ detail: { message: 'Invalid detail type' } }, 'HTTP 400'],
+    [
+      { error: { message: 'Primary error' }, detail: 'Other detail' },
+      'Primary error',
+    ],
+    [{}, 'HTTP 400'],
+  ] as const)(
+    'surfaces structured upstream errors %#',
+    async (body, expected) => {
+      response = () => Response.json(body, { status: 400 })
+      await expect(client().createImages('one', imageInput)).rejects.toThrow(
+        expected,
+      )
+    },
+  )
   test('cancels active calls, rejects duplicate IDs and releases the ID afterward', async () => {
     const api = client()
     let entered!: () => void

@@ -12,7 +12,6 @@ import {
 } from "~/lib/xai-image-model"
 import {
   ensureImageResponseB64Json,
-  translateXaiImageEditForm,
   translateXaiImageEditJson,
   translateXaiImageGeneration,
   XaiImagesRequestError,
@@ -182,72 +181,41 @@ describe("xAI image request translation", () => {
     ).toBe("url")
   })
 
-  test("converts one uploaded edit image to a data URL", async () => {
-    const form = new FormData()
-    form.set("model", "gpt-image-1")
-    form.set("prompt", "make it blue")
-    form.set("size", "1024x1024")
-    form.set("image", new File([png], "dot.png", { type: "image/png" }))
-
-    const payload = await translateXaiImageEditForm(form, "grok-imagine-image")
-
-    expect(payload.model).toBe("grok-imagine-image")
-    expect(payload.prompt).toBe("make it blue")
-    expect(payload.aspect_ratio).toBe("1:1")
-    expect(payload.resolution).toBe("1k")
-    expect(payload.images).toBeUndefined()
-    expect(payload.image).toEqual({
-      type: "image_url",
-      url: "data:image/png;base64," + png.toString("base64"),
-    })
-  })
-
-  test("sends multiple references and rejects a mask or too many images", async () => {
-    const form = new FormData()
-    form.set("prompt", "combine them")
-    form.append("image", "https://example.com/a.png")
-    form.append(
-      "image",
-      new File([Uint8Array.from([0xff, 0xd8, 0xff, 0x00])], "photo.jpg", {
-        type: "",
-      }),
-    )
-
-    const payload = await translateXaiImageEditForm(
-      form,
+  test("sends multiple JSON references and rejects masks or too many images", () => {
+    const images = [
+      { image_url: "https://example.com/a.png" },
+      { image_url: "data:image/jpeg;base64,/9j/AA==" },
+    ]
+    const payload = translateXaiImageEditJson(
+      { prompt: "combine them", images },
       "grok-imagine-image-2.0",
     )
     expect(payload.image).toBeUndefined()
     expect(payload.images).toEqual([
       { type: "image_url", url: "https://example.com/a.png" },
-      {
-        type: "image_url",
-        url:
-          "data:image/jpeg;base64,"
-          + Buffer.from([0xff, 0xd8, 0xff, 0x00]).toString("base64"),
-      },
+      { type: "image_url", url: "data:image/jpeg;base64,/9j/AA==" },
     ])
-
-    const masked = new FormData()
-    masked.set("prompt", "cut it")
-    masked.set("image", "https://example.com/a.png")
-    masked.set("mask", new File([png], "mask.png", { type: "image/png" }))
-    await Promise.resolve(
-      expect(translateXaiImageEditForm(masked, "model")).rejects.toThrow(
-        "xAI image edits do not support mask",
+    expect(() =>
+      translateXaiImageEditJson(
+        {
+          prompt: "cut it",
+          images,
+          mask: { image_url: "https://example.com/mask.png" },
+        },
+        "model",
       ),
-    )
-
-    const tooMany = new FormData()
-    tooMany.set("prompt", "too many")
-    for (let index = 0; index < 6; index += 1) {
-      tooMany.append("image", "https://example.com/" + index + ".png")
-    }
-    await Promise.resolve(
-      expect(translateXaiImageEditForm(tooMany, "model")).rejects.toThrow(
-        "xAI image edits accept at most 5 images",
+    ).toThrow("xAI image edits do not support mask")
+    expect(() =>
+      translateXaiImageEditJson(
+        {
+          prompt: "too many",
+          images: Array.from({ length: 6 }, (_, index) => ({
+            image_url: `https://example.com/${index}.png`,
+          })),
+        },
+        "model",
       ),
-    )
+    ).toThrow("xAI image edits accept at most 5 images")
   })
 
   test("translates a JSON edit image", () => {

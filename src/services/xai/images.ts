@@ -21,7 +21,6 @@ const XAI_ASPECT_RATIO_LABELS = new Set<string>([
 
 const XAI_RESPONSE_FORMATS = new Set(["url", "b64_json"])
 const XAI_RESOLUTIONS = new Set(["1k", "2k"])
-const IMAGE_FIELD_NAMES = new Set(["image", "image[]", "images", "images[]"])
 const MAX_EDIT_IMAGES = 5
 const MAX_IMAGE_COUNT = 10
 const HIGH_RESOLUTION_EDGE = 1536
@@ -278,74 +277,6 @@ function readImageReference(value: unknown): XaiImageReference {
   )
 }
 
-function detectImageMime(bytes: Uint8Array, fileName?: string): string {
-  if (
-    bytes.length >= 8
-    && bytes[0] === 0x89
-    && bytes[1] === 0x50
-    && bytes[2] === 0x4e
-    && bytes[3] === 0x47
-  ) {
-    return "image/png"
-  }
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8) {
-    return "image/jpeg"
-  }
-  if (
-    bytes.length >= 12
-    && bytes[0] === 0x52
-    && bytes[1] === 0x49
-    && bytes[2] === 0x46
-    && bytes[3] === 0x46
-    && bytes[8] === 0x57
-    && bytes[9] === 0x45
-    && bytes[10] === 0x42
-    && bytes[11] === 0x50
-  ) {
-    return "image/webp"
-  }
-  if (
-    bytes.length >= 6
-    && bytes[0] === 0x47
-    && bytes[1] === 0x49
-    && bytes[2] === 0x46
-  ) {
-    return "image/gif"
-  }
-
-  const extension = fileName?.split(".").pop()?.toLowerCase()
-  if (extension === "jpg" || extension === "jpeg") return "image/jpeg"
-  if (extension === "webp") return "image/webp"
-  if (extension === "gif") return "image/gif"
-  return "image/png"
-}
-
-async function blobToImageReference(blob: Blob): Promise<XaiImageReference> {
-  const bytes = new Uint8Array(await blob.arrayBuffer())
-  if (bytes.byteLength === 0) {
-    throw new XaiImagesRequestError("image is empty")
-  }
-
-  const fileName = blob instanceof File ? blob.name : undefined
-  const declared = blob.type.trim().toLowerCase()
-  const mime =
-    declared.startsWith("image/") ? declared : detectImageMime(bytes, fileName)
-  return {
-    type: "image_url",
-    url: `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`,
-  }
-}
-
-async function formValueToImageReference(
-  value: Exclude<ReturnType<FormData["get"]>, null>,
-): Promise<XaiImageReference> {
-  if (typeof value === "string") return readImageReference(value)
-  if (!(value instanceof Blob)) {
-    throw new XaiImagesRequestError("image must be a file or a URL")
-  }
-  return await blobToImageReference(value)
-}
-
 function collectJsonImages(payload: Record<string, unknown>): Array<unknown> {
   const values: Array<unknown> = []
   if (isUnknownArray(payload.image)) values.push(...payload.image)
@@ -382,27 +313,6 @@ function buildEditPayload(
   if (images.length === 1) payload.image = images[0]
   else payload.images = images
   return payload
-}
-
-function formOptions(formData: FormData): Record<string, unknown> {
-  const source: Record<string, unknown> = {}
-  for (const key of [
-    "n",
-    "quality",
-    "response_format",
-    "aspect_ratio",
-    "resolution",
-    "size",
-    "stream",
-    "mask",
-  ]) {
-    const value = formData.get(key)
-    if (typeof value === "string") source[key] = value
-  }
-  if (formData.get("mask") !== null || formData.get("mask[]") !== null) {
-    source.mask = true
-  }
-  return source
 }
 
 /**
@@ -443,29 +353,6 @@ export function translateXaiImageEditJson(
     readPrompt(payload.prompt),
     collectJsonImages(payload).map((image) => readImageReference(image)),
     payload,
-  )
-}
-
-/**
- * Translates an OpenAI multipart image edit into an xAI Imagine edit request.
- * File parts become base64 data URLs. A mask cannot be represented and is
- * rejected.
- */
-export async function translateXaiImageEditForm(
-  formData: FormData,
-  model: string,
-): Promise<Record<string, unknown>> {
-  const images: Array<XaiImageReference> = []
-  for (const [name, value] of formData.entries()) {
-    if (!IMAGE_FIELD_NAMES.has(name)) continue
-    images.push(await formValueToImageReference(value))
-  }
-
-  return buildEditPayload(
-    model,
-    readPrompt(formData.get("prompt")),
-    images,
-    formOptions(formData),
   )
 }
 

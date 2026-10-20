@@ -1,9 +1,6 @@
 import { Hono } from "hono"
 
-import {
-  handleImagesEdits,
-  imageEditsRouteDependencies,
-} from "~/routes/images/edits-handler"
+import { handleImagesEdits } from "~/routes/images/edits-handler"
 import { handleImagesGenerations } from "~/routes/images/generations-handler"
 
 export const imageRoutes = new Hono()
@@ -13,7 +10,6 @@ export {
   handleCodexImages,
   imageRouteDependencies,
 } from "~/routes/images/shared"
-export { imageEditsRouteDependencies }
 
 imageRoutes.post("/generations", handleImagesGenerations)
 imageRoutes.post("/edits", handleImagesEdits)

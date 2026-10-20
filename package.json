@@ -56,7 +56,6 @@
   "dependencies": {
     "@azure/identity": "^4.13.2",
     "@clack/prompts": "^1.7.0",
-    "@fastify/busboy": "^3.2.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "citty": "^0.1.6",
     "consola": "^3.4.2",

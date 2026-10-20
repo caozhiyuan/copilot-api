@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
-import { existsSync } from "node:fs"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { MultipartBodyTooLargeError } from "~/routes/images/temp-form-data"
 
 const actualConfigModule = await import("~/lib/config")
 const actualTokenModule = await import("~/lib/token")
@@ -37,10 +35,14 @@ const { state } = await import("~/lib/state")
 const { forwardCodexImages, resolveCodexImagesUrl } = await import(
   "~/services/codex/images"
 )
-const { imageEditsRouteDependencies, imageRouteDependencies, imageRoutes } =
-  await import("~/routes/images/route")
+const { imageRouteDependencies, imageRoutes } = await import(
+  "~/routes/images/route"
+)
 const { providerImageRoutes } = await import("~/routes/provider/images/route")
 const { server } = await import("~/server")
+const { createMediaStudioClient } = await import(
+  "../desktop/electron/media-studio"
+)
 
 const originalDebugJsonAsync = imageRouteDependencies.debugJsonAsync
 const originalResolveMappedModel = imageRouteDependencies.resolveMappedModel
@@ -49,9 +51,6 @@ const originalResolveProviderConfig =
 const originalGetImageEditModel = imageRouteDependencies.getImageEditModel
 const originalGetImageGenerationModel =
   imageRouteDependencies.getImageGenerationModel
-const originalStageMultipartBodyToDisk =
-  imageEditsRouteDependencies.stageMultipartBodyToDisk
-let stagedCleanupTasks: Array<() => Promise<void>> = []
 let debugValues: Array<unknown> = []
 const debugJsonAsyncMock = mock(
   async (
@@ -139,21 +138,11 @@ beforeEach(() => {
   imageRouteDependencies.getImageGenerationModel = () => ({
     status: "disabled" as const,
   })
-  stagedCleanupTasks = []
-  imageEditsRouteDependencies.stageMultipartBodyToDisk = async (
-    body,
-    contentType,
-  ) => {
-    const staged = await originalStageMultipartBodyToDisk(body, contentType)
-    stagedCleanupTasks.push(staged.cleanup)
-    return staged
-  }
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
     fetchMock as unknown as typeof fetch
 })
 
-afterEach(async () => {
-  await Promise.all(stagedCleanupTasks.map((cleanup) => cleanup()))
+afterEach(() => {
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   state.codexAccessToken = undefined
   state.codexAccountId = undefined
@@ -165,8 +154,6 @@ afterEach(async () => {
   imageRouteDependencies.getImageEditModel = originalGetImageEditModel
   imageRouteDependencies.getImageGenerationModel =
     originalGetImageGenerationModel
-  imageEditsRouteDependencies.stageMultipartBodyToDisk =
-    originalStageMultipartBodyToDisk
 })
 
 describe("Codex images URL", () => {
@@ -189,6 +176,63 @@ describe("Codex images URL", () => {
 })
 
 describe("Codex images forwarding", () => {
+  test.each(["default", "codex"] as const)(
+    "sends desktop %s image edits through an HTTP gateway as JSON",
+    async (provider) => {
+      const app = createApp()
+      const gateway = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: (request) => app.fetch(request),
+      })
+      try {
+        let upstreamPayload: unknown
+        fetchMock.mockImplementationOnce(async (_url, init) => {
+          upstreamPayload = await new Response(init?.body).json()
+          return Response.json({ data: [{ b64_json: "iVBORw==" }] })
+        })
+        const client = createMediaStudioClient({
+          getBaseUrl: () => gateway.url.origin,
+          getHeaders: () => Promise.resolve({ "x-api-key": "gateway-key" }),
+          fetch: originalFetch,
+        })
+        const result = await client.createImages("desktop-edit", {
+          provider,
+          mode: "edit",
+          model: "gpt-image-2",
+          prompt: "make the sky purple",
+          n: 1,
+          size: "auto",
+          quality: "auto",
+          images: [
+            {
+              name: "source.png",
+              type: "image/png",
+              bytes: new Uint8Array([137, 80, 78, 71]),
+            },
+          ],
+        })
+        expect(result[0]?.url).toBe("data:image/png;base64,iVBORw==")
+        const [url, init] = fetchMock.mock.calls[0] ?? []
+        expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
+        expect(new Headers(init?.headers).get("content-type")).toBe(
+          "application/json",
+        )
+        expect(new Headers(init?.headers).get("x-api-key")).toBeNull()
+        expect(upstreamPayload).toEqual({
+          model: "gpt-image-2",
+          prompt: "make the sky purple",
+          n: 1,
+          size: "auto",
+          quality: "auto",
+          images: [{ image_url: "data:image/png;base64,iVBORw==" }],
+        })
+      } finally {
+        await gateway.stop(true)
+      }
+    },
+  )
+
   test("forwards a JSON generation request and Codex auth headers", async () => {
     const payload = {
       model: "gpt-image-2",
@@ -322,67 +366,142 @@ describe("Codex images forwarding", () => {
     })
   })
 
-  test("preserves multipart fields and file bytes for image edits", async () => {
-    state.verbose = true
-    const formData = new FormData()
-    formData.set("model", "gpt-image-2")
-    formData.set("prompt", "Make the background transparent")
-    formData.set(
-      "image",
-      new Blob(["source-image-bytes"], { type: "image/png" }),
-      "source.png",
-    )
+  test.each(["/images/edits", "/v1/images/edits", "/codex/v1/images/edits"])(
+    "forwards desktop JSON image edits unchanged on %s",
+    async (path) => {
+      state.verbose = true
+      const payload = {
+        model: "gpt-image-2",
+        prompt: "make the sky purple",
+        n: 1,
+        size: "auto",
+        quality: "auto",
+        images: [{ image_url: "data:image/png;base64,cG5n" }],
+      }
+      const body = JSON.stringify(payload, null, 2)
+      const response = await createApp().request(`${path}?output=base64`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-client-request-id": "edit-request",
+        },
+        body,
+      })
 
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      body: formData,
-    })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        data: [{ b64_json: "generated-image" }],
+      })
+      const [url, init] = fetchMock.mock.calls[0] ?? []
+      expect(url).toBe(
+        "https://chatgpt.com/backend-api/codex/images/edits?output=base64",
+      )
+      const headers = new Headers(init?.headers)
+      expect(headers.get("content-type")).toBe("application/json")
+      expect(headers.get("x-client-request-id")).toBe("edit-request")
+      expect(await new Response(init?.body).text()).toBe(body)
+      expect(debugJsonAsyncMock).not.toHaveBeenCalled()
+    },
+  )
 
-    expect(response.status).toBe(200)
-    const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
+  test.each([
+    { requested: "edit-model", mapped: "gpt-image-2", expected: "gpt-image-2" },
+    {
+      requested: "edit-model",
+      mapped: "codex/gpt-image-2",
+      expected: "gpt-image-2",
+    },
+    {
+      requested: "codex/gpt-image-2",
+      mapped: "codex/gpt-image-2",
+      expected: "gpt-image-2",
+    },
+    {
+      requested: "edit-model",
+      mapped: "missing/gpt-image-2",
+      expected: "edit-model",
+    },
+  ])(
+    "applies JSON edit model mappings and provider aliases %j",
+    async ({ requested, mapped, expected }) => {
+      modelMappings = { [requested]: mapped }
+      const payload = {
+        model: requested,
+        prompt: "mapped edit",
+        images: [{ image_url: "https://example.com/source.png" }],
+        mask: { file_id: "file-mask" },
+        stream: true,
+      }
+      const response = await createApp().request("/v1/images/edits", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(JSON.stringify(payload).length),
+        },
+        body: JSON.stringify(payload),
+      })
 
-    const headers = new Headers(init?.headers)
-    expect(headers.get("content-type")).toStartWith(
-      "multipart/form-data; boundary=",
-    )
-    const forwardedResponse = new Response(init?.body, {
-      headers,
-    })
-    const forwardedFormData = await forwardedResponse.formData()
-    expect(forwardedFormData.get("model")).toBe("gpt-image-2")
-    expect(forwardedFormData.get("prompt")).toBe(
-      "Make the background transparent",
-    )
+      expect(response.status).toBe(200)
+      const [url, init] = fetchMock.mock.calls[0] ?? []
+      expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
+      expect(new Headers(init?.headers).get("content-type")).toBe(
+        "application/json",
+      )
+      expect(new Headers(init?.headers).get("content-length")).toBeNull()
+      expect(await new Response(init?.body).json()).toEqual({
+        ...payload,
+        model: expected,
+      })
+    },
+  )
 
-    const image = forwardedFormData.get("image")
-    expect(image).not.toBeNull()
-    expect(typeof image).not.toBe("string")
-    if (image === null || typeof image === "string") {
-      throw new Error("Expected the forwarded image to be a file")
-    }
-    expect(image.name).toBe("source.png")
-    expect(image.type).toBe("image/png")
-    expect(await image.text()).toBe("source-image-bytes")
-    expect(debugJsonAsyncMock).not.toHaveBeenCalled()
-  })
+  test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
+    "preserves image ordering, masks and typed JSON options on %s",
+    async (path) => {
+      const payload = {
+        model: "gpt-image-2",
+        prompt: "combine images",
+        images: [
+          { image_url: "data:image/png;base64,Zmlyc3Q=" },
+          { image_url: "https://example.com/second.png" },
+          { file_id: "file-third" },
+        ],
+        mask: { image_url: "data:image/png;base64,bWFzaw==" },
+        n: 2,
+        stream: true,
+        partial_images: 1,
+        output_compression: 85,
+        output_format: "webp",
+        input_fidelity: "high",
+        response_format: "b64_json",
+        background: "transparent",
+        safety_identifier: "safety-id",
+        user: "user-id",
+      }
+      const response = await createApp().request(path, {
+        method: "POST",
+        headers: { "content-type": "Application/JSON; charset=UTF-8" },
+        body: JSON.stringify(payload),
+      })
+      expect(response.status).toBe(200)
+      const [, init] = fetchMock.mock.calls[0] ?? []
+      expect(await new Response(init?.body).json()).toEqual(payload)
+    },
+  )
 
-  test("routes a mapped multipart edit model to its configured provider", async () => {
+  test("routes a mapped JSON edit model to its configured provider", async () => {
     modelMappings = {
       "edit-model": "openrouter/black-forest-labs/flux-kontext-pro",
     }
-    const formData = new FormData()
-    formData.set("model", "edit-model")
-    formData.set("prompt", "mapped provider edit")
-    formData.set(
-      "image",
-      new Blob(["mapped-source-image"], { type: "image/png" }),
-      "mapped-source.png",
-    )
-
+    const payload = {
+      model: "edit-model",
+      prompt: "mapped provider edit",
+      images: [{ image_url: "data:image/png;base64,cG5n" }],
+    }
     const response = await createApp().request("/v1/images/edits", {
       method: "POST",
-      body: formData,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
     })
 
     expect(response.status).toBe(200)
@@ -390,88 +509,134 @@ describe("Codex images forwarding", () => {
     expect(url).toBe("https://openrouter.example/v1/images/edits")
     const headers = new Headers(init?.headers)
     expect(headers.get("authorization")).toBe("Bearer openrouter-key")
-    expect(headers.get("content-type")).toStartWith(
-      "multipart/form-data; boundary=",
-    )
-
-    const forwardedFormData = await new Response(init?.body, {
-      headers,
-    }).formData()
-    expect(forwardedFormData.get("model")).toBe(
-      "black-forest-labs/flux-kontext-pro",
-    )
-    expect(forwardedFormData.get("prompt")).toBe("mapped provider edit")
-    const image = forwardedFormData.get("image")
-    expect(image).not.toBeNull()
-    expect(typeof image).not.toBe("string")
-    if (image === null || typeof image === "string") {
-      throw new Error("Expected the forwarded image to be a file")
-    }
-    expect(image.name).toBe("mapped-source.png")
-    expect(image.type).toBe("image/png")
-    expect(await image.text()).toBe("mapped-source-image")
+    expect(headers.get("content-type")).toBe("application/json")
+    expect(await new Response(init?.body).json()).toEqual({
+      ...payload,
+      model: "black-forest-labs/flux-kontext-pro",
+    })
   })
 
-  test("forwards a multipart edit without a model field to Codex", async () => {
-    const formData = new FormData()
-    formData.set("prompt", "no model field")
-    formData.set(
-      "image",
-      new Blob(["raw-image-bytes"], { type: "image/png" }),
-      "raw.png",
-    )
-
+  test("forwards a JSON edit without a model to Codex", async () => {
+    const payload = {
+      prompt: "no model field",
+      images: [{ file_id: "file-image" }],
+    }
     const response = await createApp().request("/v1/images/edits", {
       method: "POST",
-      body: formData,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
     })
-
     expect(response.status).toBe(200)
     const [url, init] = fetchMock.mock.calls[0] ?? []
     expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
-
-    const headers = new Headers(init?.headers)
-    const forwardedFormData = await new Response(init?.body, {
-      headers,
-    }).formData()
-    expect(forwardedFormData.get("prompt")).toBe("no model field")
-    const image = forwardedFormData.get("image")
-    if (image === null || typeof image === "string") {
-      throw new Error("Expected the forwarded image to be a file")
-    }
-    expect(image.name).toBe("raw.png")
-    expect(await image.text()).toBe("raw-image-bytes")
+    expect(await new Response(init?.body).json()).toEqual(payload)
   })
 
-  test("rejects a malformed multipart edit body without forwarding", async () => {
+  test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
+    "rejects multipart image edits without forwarding on %s",
+    async (path) => {
+      const form = new FormData()
+      form.set("model", "gpt-image-2")
+      form.set(
+        "image[]",
+        new File(["png"], "source.png", { type: "image/png" }),
+      )
+      const response = await createApp().request(path, {
+        method: "POST",
+        body: form,
+      })
+      expect(response.status).toBe(415)
+      expect(await response.json()).toMatchObject({
+        error: {
+          type: "invalid_request_error",
+          message:
+            "Image edits require application/json with images: [{ image_url }] or [{ file_id }]; multipart uploads are not supported",
+        },
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
+    "rejects non-JSON image edit content types on %s",
+    async (path) => {
+      const response = await createApp().request(path, {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream" },
+        body: "raw-bytes",
+      })
+      expect(response.status).toBe(415)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test("forwards invalid edit JSON for upstream validation", async () => {
     const response = await createApp().request("/v1/images/edits", {
       method: "POST",
-      headers: { "content-type": "multipart/form-data; boundary=broken" },
-      body: "this is not multipart",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
     })
+    expect(response.status).toBe(200)
+    const [, init] = fetchMock.mock.calls[0] ?? []
+    expect(await new Response(init?.body).text()).toBe("not-json")
+  })
 
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      error: {
-        message: "Invalid multipart form data body",
-        type: "invalid_request_error",
-      },
+  test("reports edit request body read failures", async () => {
+    const request = new Request("http://localhost/v1/images/edits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream({
+        start(controller) {
+          controller.error(new Error("upload interrupted"))
+        },
+      }),
+      duplex: "half",
+    } as StreamingRequestInit)
+    const response = await createApp().request(request)
+    expect(response.status).toBe(500)
+    expect(await response.json()).toMatchObject({
+      error: { message: "upload interrupted" },
     })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  test("streams a non-multipart edit body to Codex unchanged", async () => {
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      headers: { "content-type": "application/octet-stream" },
-      body: "raw-bytes",
-    })
+  test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
+    "preserves Codex JSON edit errors on %s",
+    async (path) => {
+      fetchMock.mockResolvedValueOnce(
+        Response.json({ detail: "Invalid image reference" }, { status: 400 }),
+      )
+      const response = await createApp().request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "gpt-image-2",
+          prompt: "edit",
+          images: [],
+        }),
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({
+        detail: "Invalid image reference",
+      })
+    },
+  )
 
-    expect(response.status).toBe(200)
-    const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
-    expect(await new Response(init?.body).text()).toBe("raw-bytes")
-  })
+  test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
+    "reports Codex edit network failures on %s",
+    async (path) => {
+      fetchMock.mockRejectedValueOnce(new Error("Codex unavailable"))
+      const response = await createApp().request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      })
+      expect(response.status).toBe(500)
+      expect(await response.json()).toMatchObject({
+        error: { message: "Codex unavailable" },
+      })
+    },
+  )
 
   test("forwards a non-JSON generation body as-is to Codex", async () => {
     const response = await createApp().request("/v1/images/generations", {
@@ -547,49 +712,6 @@ describe("Codex images forwarding", () => {
     })
   })
 
-  test("returns 413 when multipart staging exceeds its limits", async () => {
-    imageEditsRouteDependencies.stageMultipartBodyToDisk = () =>
-      Promise.reject(new MultipartBodyTooLargeError())
-    const formData = new FormData()
-    formData.set("image", new Blob(["image-bytes"]), "image.png")
-
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      body: formData,
-    })
-
-    expect(response.status).toBe(413)
-    expect(await response.json()).toEqual({
-      error: {
-        message:
-          "Multipart form data body exceeds the configured upload limits",
-        type: "invalid_request_error",
-      },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  test("reports temporary storage failures as server errors", async () => {
-    imageEditsRouteDependencies.stageMultipartBodyToDisk = () =>
-      Promise.reject(new Error("temporary storage unavailable"))
-    const formData = new FormData()
-    formData.set("image", new Blob(["image-bytes"]), "image.png")
-
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      body: formData,
-    })
-
-    expect(response.status).toBe(500)
-    expect(await response.json()).toEqual({
-      error: {
-        message: "temporary storage unavailable",
-        type: "error",
-      },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
   test("adds JSON defaults when request headers are absent", async () => {
     await forwardCodexImages(
       new Request("http://localhost/images/generations", {
@@ -652,6 +774,8 @@ describe("Codex images forwarding", () => {
 
     const response = await createApp().request("/images/edits", {
       method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
     })
 
     expect(response.status).toBe(404)
@@ -681,6 +805,23 @@ describe("Codex images forwarding", () => {
     expect(url).toBe(
       "https://chatgpt.com/backend-api/codex/images/generations?output=base64",
     )
+  })
+
+  test("returns 404 when the provider-scoped Codex provider is disabled", async () => {
+    codexProviderConfig = null
+    const response = await createApp().request("/codex/v1/images/edits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    })
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({
+      error: {
+        message: "Provider 'codex' not found or disabled",
+        type: "invalid_request_error",
+      },
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("proxies non-codex providers on the provider-scoped images route", async () => {
@@ -934,39 +1075,6 @@ describe("xAI image routes", () => {
     expect(upstreamSignal?.aborted).toBe(true)
   })
 
-  test("removes staged edit files before sending the translated JSON", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      model: "grok-imagine-image",
-      status: "xai",
-    })
-    let stagedDirectory: string | undefined
-    imageEditsRouteDependencies.stageMultipartBodyToDisk = async (
-      body,
-      contentType,
-    ) => {
-      const staged = await originalStageMultipartBodyToDisk(body, contentType)
-      stagedDirectory = staged.directory
-      stagedCleanupTasks.push(staged.cleanup)
-      return staged
-    }
-    const form = new FormData()
-    form.set("prompt", "ok")
-    form.set("image", new File([png], "image.png", { type: "image/png" }))
-    fetchMock.mockImplementationOnce(() => {
-      expect(stagedDirectory).toBeDefined()
-      expect(existsSync(stagedDirectory!)).toBe(false)
-      return Promise.resolve(
-        Response.json({ data: [{ b64_json: png.toString("base64") }] }),
-      )
-    })
-    const response = await createApp().request("/v1/images/edits", {
-      body: form,
-      method: "POST",
-    })
-    expect(response.status).toBe(200)
-    expect(existsSync(stagedDirectory!)).toBe(false)
-  })
-
   test("translates generation to the configured xAI model", async () => {
     imageRouteDependencies.getImageGenerationModel = () => ({
       model: "grok-imagine-image-2.0",
@@ -1076,41 +1184,45 @@ describe("xAI image routes", () => {
     })
   })
 
-  test("keeps edits on the OpenAI path when only generation is configured", async () => {
+  test("keeps JSON edits on Codex when only generation is configured", async () => {
     imageRouteDependencies.getImageGenerationModel = () => ({
       model: "grok-imagine-image-2.0",
       status: "xai",
     })
-    const formData = new FormData()
-    formData.set("model", "gpt-image-2")
-    formData.set("prompt", "unchanged edit")
-    formData.set("image", new File([png], "source.png", { type: "image/png" }))
-
+    const payload = {
+      model: "gpt-image-2",
+      prompt: "unchanged edit",
+      images: [
+        { image_url: "data:image/png;base64," + png.toString("base64") },
+      ],
+    }
     const response = await createApp().request("/v1/images/edits", {
       method: "POST",
-      body: formData,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
     })
-
     expect(response.status).toBe(200)
-    const [url] = fetchMock.mock.calls[0] ?? []
+    const [url, init] = fetchMock.mock.calls[0] ?? []
     expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
+    expect(await new Response(init?.body).json()).toEqual(payload)
   })
 
-  test("translates a multipart edit into an xAI JSON edit", async () => {
+  test("translates a JSON edit into the configured xAI protocol", async () => {
     imageRouteDependencies.getImageEditModel = () => ({
       model: "grok-imagine-image",
       status: "xai",
     })
-    const formData = new FormData()
-    formData.set("model", "gpt-image-1")
-    formData.set("prompt", "make it blue")
-    formData.set("image", new File([png], "dot.png", { type: "image/png" }))
-
+    modelMappings = { "gpt-image-2": "codex/ignored" }
+    const imageUrl = "data:image/png;base64," + png.toString("base64")
     const response = await createApp().request("/v1/images/edits", {
       method: "POST",
-      body: formData,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-image-2",
+        prompt: "make it blue",
+        images: [{ image_url: imageUrl }],
+      }),
     })
-
     expect(response.status).toBe(200)
     const [url, init] = fetchMock.mock.calls[0] ?? []
     expect(url).toBe("https://api.x.ai/v1/images/edits")
@@ -1118,14 +1230,46 @@ describe("xAI image routes", () => {
     expect(headers.get("authorization")).toBe("Bearer xai-key")
     expect(headers.get("content-type")).toBe("application/json")
     expect(await new Response(init?.body).json()).toEqual({
-      image: {
-        type: "image_url",
-        url: "data:image/png;base64," + png.toString("base64"),
-      },
+      image: { type: "image_url", url: imageUrl },
       model: "grok-imagine-image",
       prompt: "make it blue",
       response_format: "b64_json",
     })
+  })
+
+  test("rejects multipart edits when an xAI edit model is configured", async () => {
+    imageRouteDependencies.getImageEditModel = () => ({
+      model: "grok-imagine-image",
+      status: "xai",
+    })
+    const form = new FormData()
+    form.set("image", "https://example.com/source.png")
+    const response = await createApp().request("/v1/images/edits", {
+      method: "POST",
+      body: form,
+    })
+    expect(response.status).toBe(415)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test("rejects invalid image edit model configuration", async () => {
+    imageRouteDependencies.getImageEditModel = () => ({
+      message: "Invalid image edit model",
+      status: "invalid",
+    })
+    const response = await createApp().request("/v1/images/edits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    })
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({
+      error: {
+        message: "Invalid image edit model",
+        type: "invalid_request_error",
+      },
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("translates a JSON edit and rejects a mask", async () => {
@@ -1153,13 +1297,14 @@ describe("xAI image routes", () => {
     })
 
     fetchMock.mockClear()
-    const formData = new FormData()
-    formData.set("prompt", "cut it")
-    formData.set("image", new File([png], "dot.png", { type: "image/png" }))
-    formData.set("mask", new File([png], "mask.png", { type: "image/png" }))
     const maskResponse = await createApp().request("/v1/images/edits", {
       method: "POST",
-      body: formData,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt: "cut it",
+        images: [{ image_url: "https://example.com/cat.png" }],
+        mask: { image_url: "https://example.com/mask.png" },
+      }),
     })
     expect(maskResponse.status).toBe(400)
     expect(await maskResponse.json()).toEqual({

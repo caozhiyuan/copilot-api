@@ -4,6 +4,7 @@ import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { handleCodexImages } from "~/routes/images/route"
+import { imageEditContentTypeErrorResponse } from "~/routes/images/shared"
 import type { CodexImagesOperation } from "~/services/codex/images"
 import { forwardProviderImagesWithLogging } from "~/routes/images/forward-provider-images"
 
@@ -32,6 +33,10 @@ async function handleProviderImages(
     }
 
     if (providerConfig.name === "codex") {
+      if (operation === "edits") {
+        const contentTypeError = imageEditContentTypeErrorResponse(c)
+        if (contentTypeError) return contentTypeError
+      }
       return await handleCodexImages(c, operation, providerConfig)
     }
 

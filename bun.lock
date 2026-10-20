@@ -7,7 +7,6 @@
       "dependencies": {
         "@azure/identity": "^4.13.2",
         "@clack/prompts": "^1.7.0",
-        "@fastify/busboy": "^3.2.2",
         "@modelcontextprotocol/sdk": "^1.29.0",
         "citty": "^0.1.6",
         "consola": "^3.4.2",
@@ -98,8 +97,6 @@
     "@eslint/object-schema": ["@eslint/object-schema@2.1.6", "", {}, ""],
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.4.0", "", { "dependencies": { "@eslint/core": "^0.16.0", "levn": "^0.4.1" } }, ""],
-
-    "@fastify/busboy": ["@fastify/busboy@3.2.2", "", {}, "sha512-yXSS27qPExaXeuLvMRMXOLtpipzfQYNjG3FkunDWKGfMYjKuhFXko9CVzqxm8jcF+lmtS9Fd89QNdh9XDjnbNg=="],
 
     "@hono/node-server": ["@hono/node-server@1.19.17", "", { "peerDependencies": { "hono": "^4" } }, "sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ=="],
 

@@ -3,11 +3,9 @@ import type { Context } from "hono"
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { forwardProviderImagesWithLogging } from "~/routes/images/forward-provider-images"
 import { imageRouteDependencies, logger } from "~/routes/images/shared"
-import type { StagedMultipartBody } from "~/routes/images/temp-form-data"
 import type { CodexImagesOperation } from "~/services/codex/images"
 import {
   ensureImageResponseB64Json,
-  translateXaiImageEditForm,
   translateXaiImageEditJson,
   translateXaiImageGeneration,
   XaiImagesRequestError,
@@ -110,24 +108,10 @@ export async function handleXaiImageGeneration(
 export async function handleXaiImageEdit(
   c: Context,
   model: string,
-  parsed: Request | { staged: StagedMultipartBody },
 ): Promise<Response> {
-  if (parsed instanceof Request) {
-    const payload = translateXaiImageEditJson(
-      await readJsonBody(parsed, "Image edit body must be JSON"),
-      model,
-    )
-    return await forwardTranslatedXaiImages(c, "edits", payload)
-  }
-
-  const { staged } = parsed
-  let payload: Record<string, unknown>
-  try {
-    payload = await translateXaiImageEditForm(staged.formData, model)
-  } finally {
-    // All image bytes are now in the JSON payload; no forwarding stream
-    // depends on the staged files anymore.
-    await staged.cleanup()
-  }
+  const payload = translateXaiImageEditJson(
+    await readJsonBody(c.req.raw, "Image edit body must be JSON"),
+    model,
+  )
   return await forwardTranslatedXaiImages(c, "edits", payload)
 }
