@@ -35,6 +35,14 @@ const DEFAULT_PROVIDER_APIS = new Map([
   ["google", "https://generativelanguage.googleapis.com/v1beta"],
 ])
 const MIN_RELEASE_DATE = Date.parse("2026-05-01")
+const MINIMAX_MODEL_ORDER: Readonly<Record<string, readonly string[]>> = {
+  minimax: ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+  "minimax-cn": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+  "minimax-coding-plan": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+  "minimax-cn-coding-plan": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+  openrouter: ["minimax/minimax-m3.1-flash:free", "minimax/minimax-m3"],
+  "opencode-go": ["minimax-m3.1-flash-free", "minimax-m3"],
+}
 const REASONING_EFFORTS = new Set<CodexReasoningEffort>([
   "none",
   "minimal",
@@ -112,6 +120,43 @@ function isVisibleModel(model: unknown): model is ModelsDevModel {
       Date.parse(model.release_date)
     : NaN
   return !(releaseDate < MIN_RELEASE_DATE)
+}
+
+function getDiscoveryModelIds(
+  providerId: string,
+  models: Record<string, ModelsDevModel>,
+): Array<string> {
+  const modelIds = Object.keys(models).sort()
+  const preferredIds = MINIMAX_MODEL_ORDER[providerId]
+  if (!preferredIds) return modelIds
+
+  // Only ordinary MiniMax text choices change. Keep the source catalog intact
+  // so explicit legacy requests can still resolve their metadata and protocol.
+  const isMiniMaxText = (id: string) => {
+    const output = models[id]?.modalities?.output
+    return (
+      /^(?:minimax\/)?minimax-(?:m\d|01(?:$|:))/iu.test(id)
+      && (!Array.isArray(output)
+        || output.every((modality) => modality === "text"))
+    )
+  }
+  const preferred = preferredIds.filter(
+    (id) =>
+      modelIds.includes(id)
+      && isVisibleModel(models[id])
+      && models[id].id === id
+      && isMiniMaxText(id),
+  )
+  // An older cache must remain usable until a current model is advertised.
+  if (preferred.length === 0) return modelIds
+
+  let inserted = false
+  return modelIds.flatMap((id) => {
+    if (!isMiniMaxText(id)) return [id]
+    if (inserted) return []
+    inserted = true
+    return preferred
+  })
 }
 
 function getMetadataPath(cachePath: string): string {
@@ -466,7 +511,7 @@ export function installModelsDevCatalog(data: unknown): number {
 }
 
 export function getOpencodeGoModelIds(): Array<string> {
-  return snapshot?.records.map((model) => model.id) ?? []
+  return getOpencodeGoModelRecords().map((model) => model.id)
 }
 
 export function getOpencodeGoModelConfig(
@@ -488,7 +533,7 @@ export function getOpencodeGoModelProviderType(modelId: string): ProviderType {
 }
 
 export function getOpencodeGoModelRecords(): Array<ModelRecord> {
-  return snapshot?.records ?? []
+  return getModelsDevProviderModelRecords(OPENCODE_GO)
 }
 
 export function getModelsDevProviderModelRecords(
@@ -497,15 +542,13 @@ export function getModelsDevProviderModelRecords(
   const models = snapshot?.catalog[providerId]?.models
   if (!isRecord(models)) return []
 
-  return Object.keys(models)
-    .sort()
-    .flatMap((id) => {
-      const model = models[id]
-      if (!id.trim() || !isVisibleModel(model) || model.id !== id) {
-        return []
-      }
-      return [mapModelRecord(providerId, id, model)]
-    })
+  return getDiscoveryModelIds(providerId, models).flatMap((id) => {
+    const model = models[id]
+    if (!id.trim() || !isVisibleModel(model) || model.id !== id) {
+      return []
+    }
+    return [mapModelRecord(providerId, id, model)]
+  })
 }
 
 export function getModelsDevProviderOptions(): Array<ModelsDevProviderOption> {

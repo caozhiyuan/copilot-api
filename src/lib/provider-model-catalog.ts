@@ -2,6 +2,7 @@ import type { ProviderConfig } from "./config-store"
 import { builtinProviderModelRegistry } from "./builtin-provider-models"
 import {
   getModelsDevModelConfig,
+  getModelsDevProviderApi,
   getModelsDevProviderModelRecords,
   getOpencodeGoModelRecords,
   isModelsDevModelVisible,
@@ -13,6 +14,12 @@ const CATALOG_PROVIDERS = new Set([
   "deepseek",
   "kimi",
   "dashscope",
+])
+const MINIMAX_CATALOG_PROVIDERS = new Set([
+  "minimax",
+  "minimax-cn",
+  "minimax-coding-plan",
+  "minimax-cn-coding-plan",
 ])
 const CATALOG_ALIASES: Record<
   string,
@@ -82,6 +89,14 @@ export function getLocalProviderModelRecords(
   config?: CatalogProviderConfig | null,
 ): Array<Record<string, unknown>> | undefined {
   if (provider === "opencode-go") return getOpencodeGoModelRecords()
+  const catalogId = config?.modelsDevProviderId
+  if (
+    catalogId
+    && MINIMAX_CATALOG_PROVIDERS.has(catalogId)
+    && config.baseUrl === getModelsDevProviderApi(catalogId)
+  ) {
+    return getModelsDevProviderModelRecords(catalogId)
+  }
   if (!usesModelsDevModelCatalog(provider)) return undefined
   return getModelsDevProviderModelRecords(
     resolveProviderModelsDevId(provider, config),
