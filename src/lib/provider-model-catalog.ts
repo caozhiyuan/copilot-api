@@ -88,15 +88,13 @@ export function getLocalProviderModelRecords(
   provider: string,
   config?: CatalogProviderConfig | null,
 ): Array<Record<string, unknown>> | undefined {
-  if (provider === "opencode-go") return getOpencodeGoModelRecords()
   const catalogId = config?.modelsDevProviderId
-  if (
-    catalogId
-    && MINIMAX_CATALOG_PROVIDERS.has(catalogId)
-    && config.baseUrl === getModelsDevProviderApi(catalogId)
-  ) {
-    return getModelsDevProviderModelRecords(catalogId)
+  if (catalogId && MINIMAX_CATALOG_PROVIDERS.has(catalogId)) {
+    return config.baseUrl === getModelsDevProviderApi(catalogId) ?
+        getModelsDevProviderModelRecords(catalogId)
+      : undefined
   }
+  if (provider === "opencode-go") return getOpencodeGoModelRecords()
   if (!usesModelsDevModelCatalog(provider)) return undefined
   return getModelsDevProviderModelRecords(
     resolveProviderModelsDevId(provider, config),

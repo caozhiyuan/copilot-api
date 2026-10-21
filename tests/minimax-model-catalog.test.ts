@@ -33,6 +33,8 @@ const routes = [
   ["opencode-go", "minimax-m3.1-flash-free", "minimax-m3", "minimax-m2.7"],
 ] as const
 
+// Synthetic active entries isolate discovery ordering from the pre-existing
+// deprecation policy, which is exercised separately below.
 function catalog(provider: string, ids: readonly string[]) {
   return {
     ...modelsDevCatalogFixture,
@@ -91,6 +93,25 @@ describe("MiniMax model discovery", () => {
       }
     },
   )
+
+  test("keeps the existing visibility policy for deprecated legacy models", () => {
+    installModelsDevCatalog({
+      ...modelsDevCatalogFixture,
+      minimax: {
+        models: {
+          // The recorded models.dev snapshot marks direct M2.7 deprecated.
+          "MiniMax-M2.7": { id: "MiniMax-M2.7", status: "deprecated" },
+          "MiniMax-M3": { id: "MiniMax-M3" },
+          "MiniMax-M3.1-Flash": { id: "MiniMax-M3.1-Flash" },
+        },
+      },
+    })
+    expect(isProviderModelVisible("minimax", "MiniMax-M2.7")).toBe(false)
+    expect(getProviderModelConfig("minimax", "MiniMax-M2.7")).toBeUndefined()
+    expect(
+      getModelsDevProviderModelRecords("minimax").map((model) => model.id),
+    ).toEqual(["MiniMax-M3.1-Flash", "MiniMax-M3"])
+  })
 
   test("does not invent Flash or remove the only available legacy option", () => {
     installModelsDevCatalog(catalog("minimax", ["MiniMax-M2.7", "MiniMax-M3"]))
@@ -155,12 +176,24 @@ describe("MiniMax model discovery", () => {
       ),
     ).toEqual(["MiniMax-M3.1-Flash", "MiniMax-M3"])
     expect(getLocalProviderModelRecords("minimax")).toBeUndefined()
-    expect(
-      getLocalProviderModelRecords("my-minimax", {
-        ...config,
-        baseUrl: "https://custom.example/v1",
-      }),
-    ).toBeUndefined()
+    for (const provider of [
+      "my-minimax",
+      "openrouter",
+      "deepseek",
+      "opencode-go",
+    ]) {
+      expect(
+        getLocalProviderModelRecords(provider, {
+          ...config,
+          baseUrl: "https://custom.example/v1",
+        }),
+      ).toBeUndefined()
+      expect(
+        getLocalProviderModelRecords(provider, config)?.map(
+          (model) => model.id,
+        ),
+      ).toEqual(["MiniMax-M3.1-Flash", "MiniMax-M3"])
+    }
     expect(config).toEqual({
       modelsDevProviderId: "minimax",
       baseUrl: "https://api.minimax.io/anthropic/v1",
