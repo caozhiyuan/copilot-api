@@ -253,58 +253,6 @@ test.each([undefined, "existing-admin-key"])(
   },
 )
 
-test.each<{
-  smallModel: string
-  smallModels?: AppConfig["smallModels"]
-  expected: string
-}>([
-  { smallModel: "gpt-5-mini", expected: "gpt-6-luna" },
-  { smallModel: "gpt-6-luna", expected: "gpt-6-luna" },
-  {
-    smallModel: "custom-small",
-    smallModels: { codex: "codex-small" },
-    expected: "custom-small",
-  },
-  { smallModel: "", expected: "" },
-  {
-    smallModel: "gpt-5-mini",
-    smallModels: { copilot: "custom-small" },
-    expected: "custom-small",
-  },
-  {
-    smallModel: "gpt-5-mini",
-    smallModels: { copilot: "" },
-    expected: "",
-  },
-])(
-  "migrates the legacy smallModel setting %j",
-  ({ smallModel, smallModels, expected }) => {
-    const configPath = useTempConfigPath()
-    fs.writeFileSync(
-      configPath,
-      JSON.stringify({
-        auth: { adminApiKey: "existing-admin-key" },
-        smallModel,
-        smallModels,
-      }),
-      "utf8",
-    )
-
-    expect(reloadConfig().smallModels).toEqual({
-      ...smallModels,
-      copilot: expected,
-    })
-    const storedConfig = JSON.parse(
-      fs.readFileSync(configPath, "utf8"),
-    ) as AppConfig
-    expect(storedConfig.smallModels).toEqual({
-      ...smallModels,
-      copilot: expected,
-    })
-    expect(storedConfig).not.toHaveProperty("smallModel")
-  },
-)
-
 test.each(["", "custom/gpt-5-mini", "gpt-5-mini-custom", "gpt-6-luna"])(
   "startup preserves explicit role model setting %j without rewriting the file",
   (model) => {

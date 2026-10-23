@@ -455,31 +455,12 @@ function normalizeContextManagementConfig(
   }
 }
 
-// responsesTransport was renamed to upstreamTransport, and headersTimeoutMsV2
-// to headersTimeoutMs, when this block started applying to every upstream HTTP
-// transport. Legacy configs are migrated once during the startup merge and the
-// old keys are dropped from disk.
-interface LegacyAppConfig extends AppConfig {
-  smallModel?: string
-  responsesTransport?: LegacyUpstreamTransportConfig
-}
-
-function migrateLegacyModelConfig(config: AppConfig): {
+function migrateRetiredRoleModels(config: AppConfig): {
   mergedConfig: AppConfig
   changed: boolean
 } {
-  const { smallModel, ...mergedConfig } = config as LegacyAppConfig
-  let changed = Object.hasOwn(config, "smallModel")
-
-  if (
-    typeof smallModel === "string"
-    && !Object.hasOwn(mergedConfig.smallModels ?? {}, "copilot")
-  ) {
-    mergedConfig.smallModels = {
-      ...mergedConfig.smallModels,
-      copilot: smallModel,
-    }
-  }
+  const mergedConfig = { ...config }
+  let changed = false
 
   if (mergedConfig.smallModels?.copilot === "gpt-5-mini") {
     mergedConfig.smallModels = {
@@ -501,6 +482,14 @@ function migrateLegacyModelConfig(config: AppConfig): {
   }
 
   return { mergedConfig, changed }
+}
+
+// responsesTransport was renamed to upstreamTransport, and headersTimeoutMsV2
+// to headersTimeoutMs, when this block started applying to every upstream HTTP
+// transport. Legacy configs are migrated once during the startup merge and the
+// old keys are dropped from disk.
+interface LegacyAppConfig extends AppConfig {
+  responsesTransport?: LegacyUpstreamTransportConfig
 }
 
 interface LegacyUpstreamTransportConfig extends UpstreamTransportConfig {
@@ -577,13 +566,11 @@ export function mergeConfigWithDefaults(): AppConfig {
   } = ensureAdminApiKey(mergedConfig)
   // Admin key setup may reread the file, so migrate models after it completes.
   const { mergedConfig: migratedConfig, changed: modelsMigrated } =
-    migrateLegacyModelConfig(mergedConfigWithAdminApiKey)
+    migrateRetiredRoleModels(mergedConfigWithAdminApiKey)
   const shouldPersistConfig = changed || adminApiKeyChanged || modelsMigrated
 
   if (modelsMigrated) {
-    consola.info(
-      "Migrating legacy model config: smallModel -> smallModels.copilot, gpt-5-mini -> gpt-6-luna",
-    )
+    consola.info("Migrating retired role models: gpt-5-mini -> gpt-6-luna")
   }
 
   if (shouldPersistConfig) {
