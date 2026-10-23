@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { Hono } from "hono"
 
 import { requestTimingsMiddleware } from "~/lib/request-timings"
+import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
 
 interface TimingLine {
   t: number
@@ -39,29 +40,33 @@ describe("request timings", () => {
   test("records duration, model and port for a normal response", async () => {
     const dir = useDir()
     const app = new Hono()
-    app.use("*", requestTimingsMiddleware())
+    app.use("*", requestTimingsMiddleware({ port: 5000 }))
     app.post("/v1/messages", (c) => c.json({ ok: true }))
 
-    await app.request("/v1/messages", {
+    const res = await app.request("/v1/messages", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:4141" },
+      headers: {
+        "content-type": "application/json",
+        host: "gateway.example.com",
+      },
       body: JSON.stringify({ model: "gpt-6-luna" }),
     })
+    await res.text() // the body must finish before the record is written
 
     const [line] = lines(dir)
     expect(line).toBeDefined()
     expect(line.model).toBe("gpt-6-luna")
-    expect(line.port).toBe("4141")
+    expect(line.port).toBe("5000")
     expect(line.status).toBe(200)
     expect(line.ms).toBeGreaterThanOrEqual(0)
     expect(line.ttft_ms).toBeNull()
   })
 
-  test("records time to first chunk for a streamed response", async () => {
+  test("records time to first chunk only for SSE responses", async () => {
     const dir = useDir()
     const app = new Hono()
     app.use("*", requestTimingsMiddleware())
-    app.post("/v1/responses", () => {
+    app.post("/v1/messages", () => {
       const body = new ReadableStream<Uint8Array>({
         async start(controller) {
           await new Promise((resolve) => setTimeout(resolve, 20))
@@ -74,9 +79,9 @@ describe("request timings", () => {
       })
     })
 
-    const res = await app.request("/v1/responses", {
+    const res = await app.request("/v1/messages", {
       method: "POST",
-      headers: { "content-type": "application/json", host: "127.0.0.1:4141" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: "gpt-6-luna" }),
     })
     await res.text()
@@ -86,6 +91,89 @@ describe("request timings", () => {
     expect(line.ttft_ms).not.toBeNull()
     expect(line.ttft_ms!).toBeGreaterThanOrEqual(15)
     expect(line.ms).toBeGreaterThanOrEqual(line.ttft_ms!)
+  })
+
+  test("waits for a live JSON body before writing ms", async () => {
+    const dir = useDir()
+    const app = new Hono()
+    app.use("*", requestTimingsMiddleware())
+    app.post("/alpha/search", () => {
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          await new Promise((resolve) => setTimeout(resolve, 25))
+          controller.enqueue(new TextEncoder().encode('{"ok":true}'))
+          controller.close()
+        },
+      })
+      return new Response(body, {
+        headers: { "content-type": "application/json" },
+      })
+    })
+
+    const res = await app.request("/alpha/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-6-luna" }),
+    })
+    await res.text()
+
+    const [line] = lines(dir)
+    expect(line.ms).toBeGreaterThanOrEqual(20)
+    expect(line.ttft_ms).toBeNull()
+  })
+
+  test("reads the model after zstd decompression on responses routes", async () => {
+    const dir = useDir()
+    const app = new Hono()
+    app.use("/v1/responses", zstdDecompressionMiddleware)
+    app.use(
+      "/v1/responses",
+      requestTimingsMiddleware({ includeResponses: true, port: 5000 }),
+    )
+    app.post("/v1/responses", (c) => c.json({ ok: true }))
+
+    const compressed = Bun.zstdCompressSync(
+      new TextEncoder().encode(JSON.stringify({ model: "gpt-6-luna" })),
+    )
+    const res = await app.request("/v1/responses", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-encoding": "zstd",
+      },
+      body: compressed,
+    })
+    await res.text()
+
+    const [line] = lines(dir)
+    expect(line.model).toBe("gpt-6-luna")
+    expect(line.port).toBe("5000")
+  })
+
+  test("caps model inspection for chunked bodies without content-length", async () => {
+    const dir = useDir()
+    const app = new Hono()
+    app.use("*", requestTimingsMiddleware())
+    app.post("/v1/messages", (c) => c.json({ ok: true }))
+
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ model: "gpt-6-luna", pad: "x".repeat(9 * 1024 * 1024) }),
+    )
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(payload)
+        controller.close()
+      },
+    })
+    const res = await app.request("/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+    })
+    await res.text()
+
+    const [line] = lines(dir)
+    expect(line.model).toBe("unknown")
   })
 
   test("ignores non-generation routes", async () => {

@@ -11,10 +11,10 @@ import type { Context, MiddlewareHandler } from "hono"
 //   {"t": 1760000000, "port": "4141", "model": "<request model>",
 //    "ms": 1234, "ttft_ms": 456, "status": 200}
 //
-// `t` is epoch seconds, `ttft_ms` is when the first response body chunk
-// arrived (null for non-streaming answers), and the field names match the
-// LiteLLM usage callback so one monitor can read every gateway. Unset env
-// means the middleware only calls next().
+// `t` is epoch seconds, `ttft_ms` is when the first streamed chunk arrived
+// (null unless the response is SSE), and `ms` is measured when the response
+// body finishes. Field names match the LiteLLM usage callback so one monitor
+// can read every gateway. Unset env means the middleware only calls next().
 const ENV_DIR = "COPILOT_API_TIMINGS_DIR"
 const MAX_BODY_BYTES = 8 * 1024 * 1024
 const TRACKED = /\/(chat\/completions|responses|messages|alpha\/search)$/
@@ -28,16 +28,60 @@ interface TimingRecord {
   status: number
 }
 
+export interface RequestTimingsOptions {
+  /**
+   * Responses routes register this after their zstd middleware, so the model
+   * is read from the decompressed body. The global registration skips them.
+   */
+  includeResponses?: boolean
+  /** Actual listener port; avoids trusting a client-supplied Host header. */
+  port?: number
+}
+
 export function timingsDir(): string | null {
   const dir = process.env[ENV_DIR]?.trim()
   return dir ? dir : null
 }
 
+// Content-Length is absent for chunked uploads, so read the clone with a hard
+// byte cap instead of letting json() buffer the whole payload.
+async function readCappedClone(c: Context): Promise<string | null> {
+  const body = c.req.raw.clone().body
+  if (!body) return null
+  const reader = (body as ReadableStream<Uint8Array>).getReader()
+  const chunks: Array<Uint8Array> = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > MAX_BODY_BYTES) {
+        // Never await cancellation: the handler still needs the original body.
+        void reader.cancel().catch(() => undefined)
+        return null
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(merged)
+}
+
 async function readModel(c: Context): Promise<string> {
   const length = Number(c.req.header("content-length") ?? 0)
-  if (length > MAX_BODY_BYTES) return "unknown"
+  if (Number.isFinite(length) && length > MAX_BODY_BYTES) return "unknown"
+  const text = await readCappedClone(c)
+  if (text === null) return "unknown"
   try {
-    const body = (await c.req.raw.clone().json()) as { model?: unknown }
+    const body = JSON.parse(text) as { model?: unknown }
     return typeof body?.model === "string" && body.model ?
         body.model
       : "unknown"
@@ -62,12 +106,21 @@ function appendTiming(dir: string, record: TimingRecord): void {
   }
 }
 
-export function requestTimingsMiddleware(): MiddlewareHandler {
+export function requestTimingsMiddleware(
+  options: RequestTimingsOptions = {},
+): MiddlewareHandler {
   const dir = timingsDir()
   if (!dir) return async (_c, next) => await next()
+  const port = String(options.port ?? process.env.PORT ?? 4141)
+  const responsesHere = options.includeResponses ?? false
 
   return async (c, next) => {
-    if (c.req.method !== "POST" || !TRACKED.test(new URL(c.req.url).pathname)) {
+    const pathname = new URL(c.req.url).pathname
+    if (
+      c.req.method !== "POST"
+      || !TRACKED.test(pathname)
+      || /\/responses$/.test(pathname) !== responsesHere
+    ) {
       await next()
       return
     }
@@ -82,8 +135,6 @@ export function requestTimingsMiddleware(): MiddlewareHandler {
     const record = (): void => {
       if (recorded) return
       recorded = true
-      const host = c.req.header("host") ?? ""
-      const port = host.match(/:(\d+)$/)?.[1] ?? process.env.PORT ?? "4141"
       appendTiming(dir, {
         t: Date.now() / 1000,
         port,
@@ -94,14 +145,16 @@ export function requestTimingsMiddleware(): MiddlewareHandler {
       })
     }
 
-    const streaming =
-      res?.body
-      && (res.headers.get("content-type") ?? "").includes("text/event-stream")
-    if (streaming && res) {
+    // Every body is wrapped so `ms` ends when the response actually completes,
+    // not when the handler returns. TTFT only applies to SSE streams.
+    if (res?.body) {
+      const sse = (res.headers.get("content-type") ?? "").includes(
+        "text/event-stream",
+      )
       let first = true
       const transform = new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
-          if (first) {
+          if (sse && first) {
             first = false
             ttftMs = performance.now() - started
           }
@@ -110,10 +163,12 @@ export function requestTimingsMiddleware(): MiddlewareHandler {
         flush: record,
       })
       void res.body.pipeTo(transform.writable).then(record, record)
+      const headers = new Headers(res.headers)
+      headers.delete("content-length") // streamed through a transform
       c.res = new Response(transform.readable, {
         status: res.status,
         statusText: res.statusText,
-        headers: res.headers,
+        headers,
       })
       return
     }

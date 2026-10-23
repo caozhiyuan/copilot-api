@@ -28,6 +28,7 @@ import { videoRoutes } from "./routes/videos/route"
 export interface CreateServerOptions {
   networkExposed?: boolean
   getApiKeys?: () => Array<string>
+  port?: number
 }
 
 function resolveSameOriginCorsOrigin(
@@ -72,7 +73,11 @@ export function createServer(options: CreateServerOptions = {}): Hono {
     }),
   )
   // After auth, so rejected requests are never timed or body-inspected.
-  server.use("*", requestTimingsMiddleware())
+  // Responses routes register their own copy after zstd decompression.
+  server.use(
+    "*",
+    requestTimingsMiddleware({ includeResponses: false, port: options.port }),
+  )
 
   server.get("/", (c) => c.text("Server running"))
   server.get("/usage-viewer", (c) => {

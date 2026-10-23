@@ -159,7 +159,10 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   )
 
   const { createServer } = await import("./server")
-  const server = createServer({ networkExposed: binding.networkExposed })
+  const server = createServer({
+    networkExposed: binding.networkExposed,
+    port: options.port,
+  })
 
   serve({
     fetch: server.fetch as ServerHandler,
