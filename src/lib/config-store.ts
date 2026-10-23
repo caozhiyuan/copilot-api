@@ -460,7 +460,47 @@ function normalizeContextManagementConfig(
 // transport. Legacy configs are migrated once during the startup merge and the
 // old keys are dropped from disk.
 interface LegacyAppConfig extends AppConfig {
+  smallModel?: string
   responsesTransport?: LegacyUpstreamTransportConfig
+}
+
+function migrateLegacyModelConfig(config: AppConfig): {
+  mergedConfig: AppConfig
+  changed: boolean
+} {
+  const { smallModel, ...mergedConfig } = config as LegacyAppConfig
+  let changed = Object.hasOwn(config, "smallModel")
+
+  if (
+    typeof smallModel === "string"
+    && !Object.hasOwn(mergedConfig.smallModels ?? {}, "copilot")
+  ) {
+    mergedConfig.smallModels = {
+      ...mergedConfig.smallModels,
+      copilot: smallModel,
+    }
+  }
+
+  if (mergedConfig.smallModels?.copilot === "gpt-5-mini") {
+    mergedConfig.smallModels = {
+      ...mergedConfig.smallModels,
+      copilot: "gpt-6-luna",
+    }
+    changed = true
+  }
+
+  for (const key of [
+    "alphaSearchModel",
+    "messageApiWebSearchModel",
+    "claudeAutoModel",
+  ] as const) {
+    if (mergedConfig[key] === "gpt-5-mini") {
+      mergedConfig[key] = "gpt-6-luna"
+      changed = true
+    }
+  }
+
+  return { mergedConfig, changed }
 }
 
 interface LegacyUpstreamTransportConfig extends UpstreamTransportConfig {
@@ -535,11 +575,20 @@ export function mergeConfigWithDefaults(): AppConfig {
     mergedConfig: mergedConfigWithAdminApiKey,
     changed: adminApiKeyChanged,
   } = ensureAdminApiKey(mergedConfig)
-  const shouldPersistConfig = changed || adminApiKeyChanged
+  // Admin key setup may reread the file, so migrate models after it completes.
+  const { mergedConfig: migratedConfig, changed: modelsMigrated } =
+    migrateLegacyModelConfig(mergedConfigWithAdminApiKey)
+  const shouldPersistConfig = changed || adminApiKeyChanged || modelsMigrated
+
+  if (modelsMigrated) {
+    consola.info(
+      "Migrating legacy model config: smallModel -> smallModels.copilot, gpt-5-mini -> gpt-6-luna",
+    )
+  }
 
   if (shouldPersistConfig) {
     try {
-      writeConfigToDisk(mergedConfigWithAdminApiKey)
+      writeConfigToDisk(migratedConfig)
     } catch (writeError) {
       if (adminApiKeyChanged) {
         throw writeError
@@ -552,8 +601,8 @@ export function mergeConfigWithDefaults(): AppConfig {
     }
   }
 
-  cachedConfig = mergedConfigWithAdminApiKey
-  return mergedConfigWithAdminApiKey
+  cachedConfig = migratedConfig
+  return migratedConfig
 }
 
 export function getConfig(): AppConfig {
