@@ -8,6 +8,7 @@ import {
   getConfiguredAdminApiKeys,
 } from "./lib/request-auth"
 import { traceIdMiddleware } from "./lib/trace"
+import { requestTimingsMiddleware } from "./lib/request-timings"
 import { alphaSearchRoutes } from "./routes/alpha-search/route"
 import { completionRoutes } from "./routes/chat-completions/route"
 import { configRoutes } from "./routes/admin/config/route"
@@ -70,6 +71,8 @@ export function createServer(options: CreateServerOptions = {}): Hono {
       allowWhenNoApiKeys: false,
     }),
   )
+  // After auth, so rejected requests are never timed or body-inspected.
+  server.use("*", requestTimingsMiddleware())
 
   server.get("/", (c) => c.text("Server running"))
   server.get("/usage-viewer", (c) => {
