@@ -7,6 +7,7 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
+import { markInflightModel } from "~/lib/inflight"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
 import { requestContext } from "~/lib/request-context"
@@ -64,6 +65,7 @@ export const responsesHandlerDependencies = {
 
 export const handleResponses = async (c: Context) => {
   const payload = await c.req.json<ResponsesPayload>()
+  markInflightModel(c, payload.model)
   const requestedModel = payload.model
   payload.model = responsesHandlerDependencies.resolveMappedModel(payload.model)
   if (payload.model !== requestedModel) {

@@ -10,6 +10,7 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
+import { markInflightModel } from "~/lib/inflight"
 import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
@@ -59,6 +60,7 @@ export const messagesFlowHandlers = {
 
 export async function handleCompletion(c: Context) {
   const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
+  markInflightModel(c, anthropicPayload.model)
   anthropicPayload.model = fromClaudeDiscoveryModelId(anthropicPayload.model)
   applyClaudeNoToolsEffort(anthropicPayload, c.req.header("user-agent"))
 

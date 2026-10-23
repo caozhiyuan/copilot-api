@@ -5,6 +5,7 @@ import { streamSSE, type SSEMessage } from "hono/streaming"
 
 import { resolveMappedModel } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
+import { markInflightModel } from "~/lib/inflight"
 import { findEndpointModel } from "~/lib/models"
 import { writeSSEIfConnected } from "~/lib/sse"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
@@ -27,6 +28,7 @@ const logger = createHandlerLogger("chat-completions-handler")
 
 export async function handleCompletion(c: Context) {
   let payload = await c.req.json<ChatCompletionsPayload>()
+  markInflightModel(c, payload.model)
   const requestedModel = payload.model
   payload.model = resolveMappedModel(payload.model)
   if (payload.model !== requestedModel) {

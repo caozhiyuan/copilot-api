@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -9,6 +9,7 @@ import {
   inflightDir,
   inflightFilePath,
   inflightMiddleware,
+  markInflightModel,
 } from "~/lib/inflight"
 import { createServer } from "~/server"
 
@@ -42,7 +43,9 @@ describe("in-flight reporter", () => {
     const app = new Hono()
     app.use("*", inflightMiddleware(4141))
     let during: Snapshot | null = null
-    app.post("/v1/messages", (c) => {
+    app.post("/v1/messages", async (c) => {
+      const payload = await c.req.json<{ model: string }>()
+      markInflightModel(c, payload.model)
       during = snapshot(path)
       return c.json({ ok: true })
     })
@@ -105,12 +108,50 @@ describe("in-flight reporter", () => {
     expect(Object.keys(snapshot(path).requests)).toHaveLength(0)
   })
 
-  test("extracts the model from a chunked body without Content-Length", async () => {
+  test("keeps a live request listed past the old 15 minute cutoff", async () => {
+    const { path } = useDir()
+    const app = new Hono()
+    app.use("*", inflightMiddleware(4141))
+    let release: (() => void) | null = null
+    app.post("/v1/messages", () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("data: {}\n\n"))
+          release = () => controller.close()
+        },
+      })
+      return new Response(body, {
+        headers: { "content-type": "text/event-stream" },
+      })
+    })
+    app.post("/v1/chat/completions", (c) => c.json({ ok: true }))
+
+    const res = await app.request("/v1/messages", { method: "POST" })
+    const reader = res.body!.getReader()
+    await reader.read()
+    expect(Object.keys(snapshot(path).requests)).toHaveLength(1)
+
+    try {
+      setSystemTime(new Date(Date.now() + 901_000))
+      // A second request rewrites the snapshot while the stream is still open.
+      await app.request("/v1/chat/completions", { method: "POST" })
+      expect(Object.keys(snapshot(path).requests)).toHaveLength(1)
+    } finally {
+      setSystemTime()
+      release!()
+      await reader.read()
+    }
+    expect(Object.keys(snapshot(path).requests)).toHaveLength(0)
+  })
+
+  test("takes the model from the handler after it parses the body", async () => {
     const { path } = useDir()
     const app = new Hono()
     app.use("*", inflightMiddleware(4141))
     let during: Snapshot | null = null
-    app.post("/v1/messages", (c) => {
+    app.post("/v1/messages", async (c) => {
+      const payload = await c.req.json<{ model: string }>()
+      markInflightModel(c, payload.model)
       during = snapshot(path)
       return c.json({ ok: true })
     })
@@ -136,20 +177,25 @@ describe("in-flight reporter", () => {
     expect(Object.keys(snapshot(path).requests)).toHaveLength(0)
   })
 
-  test("caps a chunked body past the limit and leaves the original readable", async () => {
+  test("does not read the body itself; a chunked upload reaches the handler intact", async () => {
     const { path } = useDir()
     const app = new Hono()
     app.use("*", inflightMiddleware(4141))
     let during: Snapshot | null = null
     let received = 0
     app.post("/v1/messages", async (c) => {
-      during = snapshot(path)
       const reader = (c.req.raw.body as ReadableStream<Uint8Array>).getReader()
+      const decoder = new TextDecoder()
+      let text = ""
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
         received += value.byteLength
+        text += decoder.decode(value, { stream: true })
       }
+      text += decoder.decode()
+      markInflightModel(c, (JSON.parse(text) as { model: string }).model)
+      during = snapshot(path)
       return c.json({ ok: true })
     })
 
@@ -172,8 +218,7 @@ describe("in-flight reporter", () => {
     })
 
     expect(res.status).toBe(200)
-    // The handler still receives the full original upload even though
-    // the reporter stopped reading its clone at the 8 MB cap.
+    // The reporter never reads the body, so the handler receives it whole.
     expect(received).toBe(
       encoder.encode(prefix).byteLength
         + 9 * encoder.encode(chunk).byteLength
@@ -181,7 +226,7 @@ describe("in-flight reporter", () => {
     )
     const entries = Object.values(during!.requests)
     expect(entries).toHaveLength(1)
-    expect(entries[0].model).toBe("unknown")
+    expect(entries[0].model).toBe("gpt-6-luna")
     expect(Object.keys(snapshot(path).requests)).toHaveLength(0)
   })
 

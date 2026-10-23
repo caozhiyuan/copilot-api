@@ -17,19 +17,24 @@ import type { Context, MiddlewareHandler } from "hono"
 //   kill(pid, 0) and ignore snapshots left by a crash
 // - `updated` and `t` are epoch seconds (POSIX time)
 // - write to a temp file then rename: readers never see a partial document
-// - mode 0600, removed on exit, entries older than STALE_S ignored
+// - mode 0600, removed on exit
+// - a request stays listed until it completes, fails, or is cancelled; the
+//   reporter never prunes by age, so long streams do not disappear
+// - the model is supplied by the handler after it parses the request, so the
+//   reporter never reads or parses the body a second time
 // - any OpenAI-compatible gateway can emit the same contract, so one monitor
 //   reads them all; nothing here depends on a specific collector
 // Unset -> the middleware only calls next(), so nothing is written.
 const ENV_DIR = "COPILOT_API_INFLIGHT_DIR"
-const STALE_S = 900
-const MAX_BODY_BYTES = 8 * 1024 * 1024
 const TRACKED = /\/(chat\/completions|responses|messages|alpha\/search)$/
 
 interface Entry {
   t: number
   model: string
 }
+
+// The middleware and the route handler share the same Context instance.
+const modelSetters = new WeakMap<object, (model: string) => void>()
 
 export function inflightDir(): string | null {
   const dir = process.env[ENV_DIR]?.trim()
@@ -40,54 +45,15 @@ export function inflightFilePath(dir: string, port: string | number): string {
   return join(dir, `inflight-${port}-${process.pid}.json`)
 }
 
-// Read the cloned body with a hard byte cap. Content-Length alone cannot
-// enforce the limit: chunked uploads omit it, and clone().json() would
-// buffer the entire payload. Returns null when the cap is exceeded.
-async function readCappedClone(c: Context): Promise<string | null> {
-  const body = c.req.raw.clone().body
-  if (!body) return null
-  const reader = (body as ReadableStream<Uint8Array>).getReader()
-  const chunks: Array<Uint8Array> = []
-  let total = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      total += value.byteLength
-      if (total > MAX_BODY_BYTES) {
-        // Stop consuming the clone, but never await its cancellation:
-        // the handler must stay free to read the original request body.
-        void reader.cancel().catch(() => undefined)
-        return null
-      }
-      chunks.push(value)
-    }
-  } finally {
-    reader.releaseLock()
-  }
-  const merged = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    merged.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return new TextDecoder().decode(merged)
-}
-
-async function readModel(c: Context): Promise<string> {
-  const length = Number(c.req.header("content-length") ?? 0)
-  // Image payloads can be large; cloning them just to read one field is waste.
-  if (length > MAX_BODY_BYTES) return "unknown"
-  try {
-    const text = await readCappedClone(c)
-    if (text === null) return "unknown"
-    const body = JSON.parse(text) as { model?: unknown }
-    return typeof body?.model === "string" && body.model ?
-        body.model
-      : "unknown"
-  } catch {
-    return "unknown"
-  }
+/**
+ * Handlers call this right after parsing the request body. Reusing their parse
+ * avoids a second body read, and works for decompressed bodies too.
+ */
+export function markInflightModel(
+  c: Context,
+  model: string | undefined | null,
+): void {
+  if (typeof model === "string" && model) modelSetters.get(c)?.(model)
 }
 
 export function inflightMiddleware(
@@ -101,9 +67,6 @@ export function inflightMiddleware(
 
   const flush = (): void => {
     const now = Date.now() / 1000
-    for (const [id, entry] of active) {
-      if (now - entry.t > STALE_S) active.delete(id)
-    }
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 })
       const tmp = `${path}.tmp`
@@ -141,10 +104,16 @@ export function inflightMiddleware(
     }
 
     const id = randomUUID()
-    active.set(id, { t: Date.now() / 1000, model: await readModel(c) })
+    const entry: Entry = { t: Date.now() / 1000, model: "unknown" }
+    active.set(id, entry)
+    modelSetters.set(c, (model) => {
+      entry.model = model
+      flush()
+    })
     flush()
 
     const done = (): void => {
+      modelSetters.delete(c)
       if (active.delete(id)) flush()
     }
 

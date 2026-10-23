@@ -9,6 +9,7 @@ import {
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import { forwardError } from "~/lib/error"
+import { markInflightModel } from "~/lib/inflight"
 import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
 import { parseProviderModelAlias } from "~/lib/provider-model"
@@ -133,6 +134,7 @@ async function parseAlphaSearchBody(
       "Invalid alpha search request: model must be a string",
     )
   }
+  markInflightModel(c, model)
   return body as AlphaSearchRequest
 }
 
