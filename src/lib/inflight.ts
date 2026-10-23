@@ -6,11 +6,20 @@ import type { Context, MiddlewareHandler } from "hono"
 
 // Opt-in in-flight request reporter for external usage monitors.
 //
-// Set COPILOT_API_INFLIGHT_DIR to a directory to publish
-// inflight-<port>-<pid>.json there: one entry per active generation request,
-// rewritten atomically with mode 0600 and removed on exit. The file shape
-// matches litellm_usage_log.py so one monitor can read every gateway:
-// {pid, port, updated, requests: {<id>: {t, model}}} with seconds timestamps.
+// Set COPILOT_API_INFLIGHT_DIR to a directory to publish one
+// inflight-<port>-<pid>.json snapshot per process:
+//
+//   {"pid": 1234, "port": "4141", "updated": 1760000000,
+//    "requests": {"<id>": {"t": 1760000000, "model": "<request model>"}}}
+//
+// Contract:
+// - one file per process, so a reader can liveness-check `pid` with
+//   kill(pid, 0) and ignore snapshots left by a crash
+// - `updated` and `t` are epoch seconds (POSIX time)
+// - write to a temp file then rename: readers never see a partial document
+// - mode 0600, removed on exit, entries older than STALE_S ignored
+// - any OpenAI-compatible gateway can emit the same contract, so one monitor
+//   reads them all; nothing here depends on a specific collector
 // Unset -> the middleware only calls next(), so nothing is written.
 const ENV_DIR = "COPILOT_API_INFLIGHT_DIR"
 const STALE_S = 900
