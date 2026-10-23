@@ -31,12 +31,48 @@ export function inflightFilePath(dir: string, port: string | number): string {
   return join(dir, `inflight-${port}-${process.pid}.json`)
 }
 
+// Read the cloned body with a hard byte cap. Content-Length alone cannot
+// enforce the limit: chunked uploads omit it, and clone().json() would
+// buffer the entire payload. Returns null when the cap is exceeded.
+async function readCappedClone(c: Context): Promise<string | null> {
+  const body = c.req.raw.clone().body
+  if (!body) return null
+  const reader = (body as ReadableStream<Uint8Array>).getReader()
+  const chunks: Array<Uint8Array> = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > MAX_BODY_BYTES) {
+        // Stop consuming the clone, but never await its cancellation:
+        // the handler must stay free to read the original request body.
+        void reader.cancel().catch(() => undefined)
+        return null
+      }
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(merged)
+}
+
 async function readModel(c: Context): Promise<string> {
   const length = Number(c.req.header("content-length") ?? 0)
   // Image payloads can be large; cloning them just to read one field is waste.
   if (length > MAX_BODY_BYTES) return "unknown"
   try {
-    const body = (await c.req.raw.clone().json()) as { model?: unknown }
+    const text = await readCappedClone(c)
+    if (text === null) return "unknown"
+    const body = JSON.parse(text) as { model?: unknown }
     return typeof body?.model === "string" && body.model ?
         body.model
       : "unknown"
@@ -110,11 +146,16 @@ export function inflightMiddleware(
         res?.body
         && (res.headers.get("content-type") ?? "").includes("text/event-stream")
       if (streaming && res) {
-        // Keep the entry until the stream ends, not when headers arrive.
-        const body = res.body.pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>({ flush: done }),
-        )
-        c.res = new Response(body, {
+        // Keep the entry until the stream terminates, not when headers
+        // arrive. TransformStream.flush only runs on a clean close, so
+        // also observe the pipe itself: a reader cancellation or a
+        // source error settles it without ever invoking flush, and this
+        // middleware has already returned by then.
+        const transform = new TransformStream<Uint8Array, Uint8Array>({
+          flush: done,
+        })
+        void res.body.pipeTo(transform.writable).then(done, done)
+        c.res = new Response(transform.readable, {
           status: res.status,
           statusText: res.statusText,
           headers: res.headers,

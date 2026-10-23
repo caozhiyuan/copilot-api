@@ -51,10 +51,6 @@ export function createServer(options: CreateServerOptions = {}): Hono {
   const networkExposed = options.networkExposed ?? false
 
   server.use(traceIdMiddleware)
-  server.use(
-    "*",
-    inflightMiddleware(options.port ?? (Number(process.env.PORT) || 4141)),
-  )
   server.use(logger())
   server.use(
     networkExposed ? cors({ origin: resolveSameOriginCorsOrigin }) : cors(),
@@ -75,6 +71,12 @@ export function createServer(options: CreateServerOptions = {}): Hono {
       allowUnauthenticatedPaths: [],
       allowWhenNoApiKeys: false,
     }),
+  )
+  // Registered after both auth middlewares so credential-rejected
+  // requests never trigger body inspection or snapshot updates.
+  server.use(
+    "*",
+    inflightMiddleware(options.port ?? (Number(process.env.PORT) || 4141)),
   )
 
   server.get("/", (c) => c.text("Server running"))
@@ -121,5 +123,3 @@ export function createServer(options: CreateServerOptions = {}): Hono {
 
   return server
 }
-
-export const server = createServer()

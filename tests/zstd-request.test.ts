@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 
 import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
-import { server } from "~/server"
+import { createServer } from "~/server"
+
+const server = createServer()
 
 const createApp = () => {
   const app = new Hono()

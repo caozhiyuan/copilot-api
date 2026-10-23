@@ -39,7 +39,8 @@ const { imageRouteDependencies, imageRoutes } = await import(
   "~/routes/images/route"
 )
 const { providerImageRoutes } = await import("~/routes/provider/images/route")
-const { server } = await import("~/server")
+const { createServer } = await import("~/server")
+const server = createServer()
 const { createMediaStudioClient } = await import(
   "../desktop/electron/media-studio"
 )
