@@ -209,11 +209,6 @@ test.each([undefined, "existing-admin-key"])(
     const legacyConfig: AppConfig = {
       ...defaultConfig,
       auth: { apiKeys: ["existing-api-key"], adminApiKey },
-      smallModels: {
-        copilot: "gpt-5-mini",
-        codex: "gpt-5-mini",
-        custom: "gpt-5-mini",
-      },
       alphaSearchModel: "gpt-5-mini",
       messageApiWebSearchModel: "gpt-5-mini",
       claudeAutoModel: "gpt-5-mini",
@@ -232,7 +227,6 @@ test.each([undefined, "existing-admin-key"])(
         apiKeys: ["existing-api-key"],
         ...(adminApiKey ? { adminApiKey } : {}),
       },
-      smallModels: { ...legacyConfig.smallModels, copilot: "gpt-6-luna" },
       alphaSearchModel: "gpt-6-luna",
       messageApiWebSearchModel: "gpt-6-luna",
       claudeAutoModel: "gpt-6-luna",
@@ -240,7 +234,6 @@ test.each([undefined, "existing-admin-key"])(
     expect(config.auth?.adminApiKey).toBeTruthy()
     const storedConfig = fs.readFileSync(configPath, "utf8")
     expect(JSON.parse(storedConfig)).toEqual(config)
-    expect(getSmallModelForProvider("copilot")).toBe("gpt-6-luna")
     expect(getAlphaSearchModel()).toBe("gpt-6-luna")
     expect(getMessageApiWebSearchModel()).toBe("gpt-6-luna")
     expect(getClaudeAutoModel()).toBe("gpt-6-luna")
@@ -260,7 +253,6 @@ test.each(["", "custom/gpt-5-mini", "gpt-5-mini-custom", "gpt-6-luna"])(
     const config: AppConfig = {
       ...defaultConfig,
       auth: { adminApiKey: "existing-admin-key" },
-      smallModels: { copilot: model },
       alphaSearchModel: model,
       messageApiWebSearchModel: model,
       claudeAutoModel: model,

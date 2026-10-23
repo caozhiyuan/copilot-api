@@ -462,14 +462,6 @@ function migrateRetiredRoleModels(config: AppConfig): {
   const mergedConfig = { ...config }
   let changed = false
 
-  if (mergedConfig.smallModels?.copilot === "gpt-5-mini") {
-    mergedConfig.smallModels = {
-      ...mergedConfig.smallModels,
-      copilot: "gpt-6-luna",
-    }
-    changed = true
-  }
-
   for (const key of [
     "alphaSearchModel",
     "messageApiWebSearchModel",
