@@ -8,6 +8,7 @@ import {
   getConfiguredAdminApiKeys,
 } from "./lib/request-auth"
 import { traceIdMiddleware } from "./lib/trace"
+import { inflightMiddleware } from "./lib/inflight"
 import { alphaSearchRoutes } from "./routes/alpha-search/route"
 import { completionRoutes } from "./routes/chat-completions/route"
 import { configRoutes } from "./routes/admin/config/route"
@@ -27,6 +28,7 @@ import { videoRoutes } from "./routes/videos/route"
 export interface CreateServerOptions {
   networkExposed?: boolean
   getApiKeys?: () => Array<string>
+  port?: number
 }
 
 function resolveSameOriginCorsOrigin(
@@ -49,6 +51,10 @@ export function createServer(options: CreateServerOptions = {}): Hono {
   const networkExposed = options.networkExposed ?? false
 
   server.use(traceIdMiddleware)
+  server.use(
+    "*",
+    inflightMiddleware(options.port ?? (Number(process.env.PORT) || 4141)),
+  )
   server.use(logger())
   server.use(
     networkExposed ? cors({ origin: resolveSameOriginCorsOrigin }) : cors(),
