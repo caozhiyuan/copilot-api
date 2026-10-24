@@ -232,7 +232,6 @@ const en: Locale = {
     tokenUsageCacheHitRate: 'Cache hit rate',
     tokenUsageCost: 'Cost',
     tokenUsageEndpoint: 'Endpoint',
-    tokenUsageFirstToken: 'TTFT',
     tokenUsageAverageFirstToken: 'Avg. TTFT',
     tokenUsageOutputSpeed: 'Output speed',
     tokenUsageDuration: 'Duration',

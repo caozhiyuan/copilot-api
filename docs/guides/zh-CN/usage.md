@@ -43,7 +43,7 @@
 
 ### 请求计时
 
-Desktop 的 **Token 使用 → 事件明细** 和 Web 的 **Request Events** 在 Output 后展示首 token 延迟和输出速度。悬停首 token 单元格可查看总耗时。**模型明细 / Model Breakdown** 展示所选周期的平均首 token 延迟和输出速度。历史记录等缺失数据展示 `—`。
+Desktop 的 **Token 使用 → 模型明细** 和 Web 的 **Model Breakdown** 在 Total Tokens 前展示所选周期的平均首 token 延迟和输出速度。Request Events 也在 Total Tokens 前展示请求总耗时。历史记录等缺失数据展示 `—`。
 
 首 token 延迟从鉴权后、读取请求体和解压前开始计时，首次观察到思考开始标记或有效输出时结束。思考开始就计入，不需要暴露思考文本。总耗时持续到响应体结束，二者都采用单调时钟。计时复用已经解析的流事件，不需要启用 `COPILOT_API_PLUGINS`。
 

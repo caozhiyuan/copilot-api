@@ -31,6 +31,35 @@ let now = 100
 let clock: ReturnType<typeof spyOn<typeof performance, "now">>
 let directory: string | undefined
 const plugins: GatewayPlugins[] = []
+
+async function removeTestDirectory(path: string): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      await rm(path, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 20,
+      })
+      return
+    } catch (error) {
+      lastError = error
+      if (
+        typeof error !== "object"
+        || error === null
+        || !("code" in error)
+        || error.code !== "EBUSY"
+      ) {
+        throw error
+      }
+      Bun.gc(true)
+      await Bun.sleep(10)
+    }
+  }
+  throw lastError
+}
+
 const events = () =>
   getTokenUsageEventsPage({ period: "today", page: 1, pageSize: 100 })
 const summary = () => getTokenUsageSummary("today")
@@ -59,14 +88,15 @@ beforeEach(async () => {
   clock = spyOn(performance, "now").mockImplementation(() => now)
 })
 afterEach(async () => {
+  const directoryToRemove = directory
+  directory = undefined
   clock.mockRestore()
   setSystemTime()
   await Promise.all(plugins.splice(0).map((plugin) => plugin.close()))
   await closeUsageStore()
   if (previousDb === undefined) delete process.env.COPILOT_API_SQLITE_DB_PATH
   else process.env.COPILOT_API_SQLITE_DB_PATH = previousDb
-  if (directory) await rm(directory, { recursive: true, force: true })
-  directory = undefined
+  if (directoryToRemove) await removeTestDirectory(directoryToRemove)
 })
 
 function app(plugin?: GatewayPlugins) {

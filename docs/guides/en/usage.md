@@ -41,10 +41,10 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 
 ### Request timing
 
-Desktop **Token usage → Event details** and Web **Request Events** display TTFT
-and output speed after Output. Hover over TTFT to see total request duration.
-**Model Breakdown** displays average TTFT and output speed for the selected period.
-Missing measurements, including historical rows, display `—`.
+Desktop **Token usage → Model breakdown** and Web **Model Breakdown** display
+average TTFT and output speed immediately before Total Tokens for the selected
+period. Request Events display total duration immediately before Total Tokens. Missing
+measurements, including historical rows, display `—`.
 
 TTFT starts after authentication, before upload/decompression, and ends on the
 first observable thinking-start marker or eligible output. Thinking starts count

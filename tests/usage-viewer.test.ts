@@ -237,17 +237,24 @@ describe("usage viewer model cache hit rate", () => {
         "Requests",
         "Input",
         "Output",
-        "Avg. TTFT",
-        "Output speed",
         "Cache Read",
         "Cache Write",
         "Cache Hit Rate",
+        "Avg. TTFT",
+        "Output speed",
         "Total Tokens",
         "Total Cost",
       ])
+      expect(win.document.querySelector("th")?.className).toContain("w-[200px]")
+      for (const label of ["Cache Hit Rate", "Output speed"]) {
+        const header = [...win.document.querySelectorAll("th")].find(
+          (node) => node.textContent?.trim() === label,
+        )
+        expect(header?.className).toContain("whitespace-nowrap")
+      }
       const rows = [...win.document.querySelectorAll("tbody tr")]
       expect(
-        rows.map((row) => row.querySelectorAll("td")[8].textContent),
+        rows.map((row) => row.querySelectorAll("td")[6].textContent),
       ).toEqual(examples.map((example) => example.expected))
       expect(
         rows.every((row) => row.querySelectorAll("td").length === 11),
@@ -1333,7 +1340,7 @@ describe("usage viewer collapsible sections", () => {
 })
 
 describe("usage viewer request/model timing", () => {
-  test("renders valid timing, missing historical fields, duration tooltips and preserves session columns", async () => {
+  test("renders model timing, request duration, missing fields and session columns", async () => {
     const html = await readUsageViewerPage()
     const source = [
       extractInlineFunctionRange(
@@ -1391,21 +1398,42 @@ describe("usage viewer request/model timing", () => {
       const old = win.document
         .querySelectorAll("tbody tr")[1]
         .querySelectorAll("td")
-      expect(old[4].textContent).toBe("—")
-      expect(old[5].textContent).toBe("—")
+      expect(old[7].textContent).toBe("—")
+      expect(old[8].textContent).toBe("—")
       win.document.body.innerHTML = viewer.renderTokenUsageModelBreakdown(
         { bySession: [row] },
         "session",
       )
       expect(win.document.querySelectorAll("th").length).toBe(9)
-      win.document.body.innerHTML = viewer.renderTokenUsageEventsTable({
+      const eventsHtml = viewer.renderTokenUsageEventsTable({
         items: [row, {}],
       })
-      expect(win.document.querySelectorAll("th").length).toBe(13)
+      expect(eventsHtml).toContain("min-w-[1140px]")
+      expect(eventsHtml).not.toContain("min-w-[1060px]")
+      win.document.body.innerHTML = eventsHtml
+      expect(win.document.querySelectorAll("th").length).toBe(12)
       expect(
-        win.document.querySelector('[title="Duration: 3.25 s"]')?.textContent,
-      ).toBe("1.25 s")
-      expect(win.document.body.textContent).toContain("42.6 tok/s")
+        [...win.document.querySelectorAll("th")].map((node) =>
+          node.textContent?.trim(),
+        ),
+      ).toEqual([
+        "Time",
+        "User",
+        "Model",
+        "Session",
+        "Trace",
+        "Input",
+        "Output",
+        "Cache Read",
+        "Cache Write",
+        "Duration",
+        "Total Tokens",
+        "Total Cost",
+      ])
+      expect(win.document.body.textContent).not.toContain("TTFT")
+      expect(win.document.body.textContent).not.toContain("Output speed")
+      expect(win.document.body.textContent).toContain("Duration")
+      expect(win.document.body.textContent).toContain("3.25 s")
       for (const value of [undefined, null, NaN, Infinity, -1, "100"]) {
         expect(viewer.formatLatency(value)).toBe("—")
         expect(viewer.formatOutputSpeed(value)).toBe("—")

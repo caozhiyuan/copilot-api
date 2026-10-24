@@ -122,6 +122,12 @@ per-process in-flight snapshot and monthly JSONL timing logs. Copy it to your AP
 home and configure `COPILOT_API_MONITOR_DIR` as its output directory. Timing records
 include `model`, `actual_model`, `user_agent`, `session_id`, and `ttft_ms`. Readers should check each
 snapshot's PID for liveness after crashes; live requests are not expired by age.
+The example batches snapshot changes and uses asynchronous file writes, so its
+file I/O does not block request handling. While a snapshot write is pending,
+changes are coalesced into the next snapshot of the latest state. Failed writes
+retry automatically with exponential backoff capped at five seconds. Shutdown
+cancels scheduled writes and retries, waits for the active write, then removes
+the snapshot and temporary file, within the plugin runtime's shutdown deadline.
 With `COPILOT_API_PLUGINS` unset, no plugins are imported or receive events.
 The shared response wrapper still measures SQLite request timing with one
 pull-through reader and no extra stream parsing. The gateway itself creates no

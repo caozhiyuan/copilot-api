@@ -547,7 +547,7 @@ describe('dashboard overview', () => {
 })
 
 describe('usage timing display', () => {
-  test('shows model averages and request timing after Output, with total duration on hover', async () => {
+  test('shows model timing before Total Tokens and only duration in request events', async () => {
     fetchUsageSummary.mockResolvedValue({
       ...summary,
       byModel: [
@@ -577,23 +577,45 @@ describe('usage timing display', () => {
     const details = tables.find((table) =>
       table.textContent?.includes('trace-0'),
     )!
+    expect(details.className).toContain('min-w-[1140px]')
     expect(
-      [...models.querySelectorAll('th')]
-        .map((cell) => cell.textContent)
-        .slice(3, 6),
-    ).toEqual(['Output', 'Avg. TTFT', 'Output speed'])
+      [...models.querySelectorAll('th')].map((cell) => cell.textContent),
+    ).toEqual([
+      'Model',
+      'Requests',
+      'Input',
+      'Output',
+      'Cache read',
+      'Cache write',
+      'Cache hit rate',
+      'Avg. TTFT',
+      'Output speed',
+      'Total Tokens',
+      'Total Cost',
+    ])
+    expect(models.querySelector('th')?.className).toContain('w-[220px]')
     expect(models.textContent).toContain('1.25 s')
     expect(models.textContent).toContain('42.6 tok/s')
     expect(
-      [...details.querySelectorAll('th')]
-        .map((cell) => cell.textContent)
-        .slice(6, 9),
-    ).toEqual(['Output', 'TTFT', 'Output speed'])
+      [...details.querySelectorAll('th')].map((cell) => cell.textContent),
+    ).toEqual([
+      'Time',
+      'User',
+      'Model',
+      'Session',
+      'Trace',
+      'Input',
+      'Output',
+      'Cache read',
+      'Cache write',
+      'Duration',
+      'Total Tokens',
+      'Total Cost',
+    ])
     const rows = details.querySelectorAll('tbody tr')
-    expect(rows[0].textContent).toContain('250 ms')
-    expect(rows[0].textContent).toContain('10.0 tok/s')
-    expect(rows[0].querySelector('[title="Duration: 2.25 s"]')).not.toBeNull()
-    expect(rows[1].querySelectorAll('td')[7].textContent).toBe('—')
-    expect(rows[1].querySelectorAll('td')[8].textContent).toBe('—')
+    expect(rows[0].textContent).not.toContain('250 ms')
+    expect(rows[0].textContent).not.toContain('10.0 tok/s')
+    expect(rows[0].textContent).toContain('2.25 s')
+    expect(rows[0].querySelectorAll('td')).toHaveLength(12)
   })
 })

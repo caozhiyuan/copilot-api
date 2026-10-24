@@ -371,17 +371,17 @@ describe('provider management UI', () => {
       'Requests',
       'Input',
       'Output',
-      'Avg. TTFT',
-      'Output speed',
       'Cache read',
       'Cache write',
       'Cache hit rate',
+      'Avg. TTFT',
+      'Output speed',
       'Total Tokens',
       'Total Cost',
     ])
     const rows = [...table!.querySelectorAll('tbody tr')]
     expect(
-      rows.map((row) => row.querySelectorAll('td')[8].textContent),
+      rows.map((row) => row.querySelectorAll('td')[6].textContent),
     ).toEqual(['60.0%', '0.0%', '—'])
     expect(rows.every((row) => row.querySelectorAll('td').length === 11)).toBe(
       true,

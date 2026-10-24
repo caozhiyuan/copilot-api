@@ -122,6 +122,20 @@ async function expectFailure(promise: Promise<unknown>, message: string) {
   expect((error as Error).message).toContain(message)
 }
 
+async function waitForSnapshot(
+  path: string,
+  predicate: (value: unknown) => boolean,
+): Promise<unknown> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (existsSync(path)) {
+      const value: unknown = JSON.parse(readFileSync(path, "utf8"))
+      if (predicate(value)) return value
+    }
+    await Bun.sleep(5)
+  }
+  throw new Error(`Timed out waiting for monitor snapshot: ${path}`)
+}
+
 describe("gateway plugin runtime", () => {
   test("preserves event order, snapshots and unsubscribe without awaiting plugin I/O", async () => {
     const plugins = runtime()
@@ -967,7 +981,14 @@ describe("request event lifecycle", () => {
     plugins!.publish("request.start", info)
     plugins!.publish("request.model", { ...info, model: "test-model" })
     await plugins!.flush()
-    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+    expect(
+      await waitForSnapshot(
+        path,
+        (value) =>
+          (value as { requests?: Record<string, { model?: string }> })
+            .requests?.["request-1"]?.model === "test-model",
+      ),
+    ).toMatchObject({
       requests: {
         "request-1": { model: "test-model", user_agent: "plugin-test/1.0" },
       },
@@ -978,7 +999,14 @@ describe("request event lifecycle", () => {
       actualModel: "resolved-model",
     })
     await plugins!.flush()
-    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+    expect(
+      await waitForSnapshot(
+        path,
+        (value) =>
+          (value as { requests?: Record<string, { actual_model?: string }> })
+            .requests?.["request-1"]?.actual_model === "resolved-model",
+      ),
+    ).toMatchObject({
       requests: {
         "request-1": { model: "test-model", actual_model: "resolved-model" },
       },
@@ -988,12 +1016,26 @@ describe("request event lifecycle", () => {
       sessionId: "existing-session",
     })
     await plugins!.flush()
-    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+    expect(
+      await waitForSnapshot(
+        path,
+        (value) =>
+          (value as { requests?: Record<string, { session_id?: string }> })
+            .requests?.["request-1"]?.session_id === "existing-session",
+      ),
+    ).toMatchObject({
       requests: { "request-1": { session_id: "existing-session" } },
     })
     plugins!.publish("request.first_token", { ...info, firstTokenMs: 2.4 })
     await plugins!.flush()
-    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+    expect(
+      await waitForSnapshot(
+        path,
+        (value) =>
+          (value as { requests?: Record<string, { ttft_ms?: number | null }> })
+            .requests?.["request-1"]?.ttft_ms === 2,
+      ),
+    ).toMatchObject({
       requests: { "request-1": { ttft_ms: 2 } },
     })
     plugins!.publish("request.end", {
@@ -1007,7 +1049,15 @@ describe("request event lifecycle", () => {
       outcome: "completed",
     })
     await plugins!.flush()
-    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+    expect(
+      await waitForSnapshot(
+        path,
+        (value) =>
+          Object.keys(
+            (value as { requests?: Record<string, unknown> }).requests ?? {},
+          ).length === 0,
+      ),
+    ).toMatchObject({
       requests: {},
     })
     const line = JSON.parse(
