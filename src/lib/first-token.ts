@@ -8,7 +8,8 @@ const nonempty = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0
 
 // Observe events already parsed by stream handlers. Never read or parse a stream
-// here, and never expose its content to plugins. Whitespace is valid output.
+// here, and never expose its content to plugins. Explicit thinking starts count
+// even before text is exposed. Whitespace is also valid output.
 export function recordChatCompletionFirstToken(
   chunk: ChatCompletionChunk | null,
 ): void {
@@ -37,6 +38,12 @@ export function recordResponsesFirstToken(
   const observer = requestContext.getStore()?.pluginRequest
   if (!observer || !event) return
   switch (event.type) {
+    case "response.output_item.added":
+      if (event.item?.type === "reasoning") observer.recordFirstToken()
+      break
+    case "response.reasoning_summary_part.added":
+      observer.recordFirstToken()
+      break
     case "response.output_text.delta":
     case "response.reasoning_summary_text.delta":
     case "response.function_call_arguments.delta":
@@ -63,7 +70,7 @@ export function recordAnthropicFirstToken(
     const block = event.content_block
     if (
       (block.type === "text" && nonempty(block.text))
-      || (block.type === "thinking" && nonempty(block.thinking))
+      || block.type === "thinking"
       || ((block.type === "tool_use" || block.type === "server_tool_use")
         && block.input
         && Object.keys(block.input).length > 0)
@@ -81,7 +88,10 @@ export function recordGoogleFirstToken(
   if (
     response.candidates?.some((candidate) =>
       candidate.content?.parts.some(
-        (part) => nonempty(part.text) || nonempty(part.functionCall?.name),
+        (part) =>
+          part.thought === true
+          || nonempty(part.text)
+          || nonempty(part.functionCall?.name),
       ),
     )
   ) {

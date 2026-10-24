@@ -91,7 +91,7 @@ unsubscribe()
 | `request.model` | handler 已解析出请求模型后 | 公共请求字段，`model` 为映射前的原始请求模型 |
 | `request.actual_model` | 网关准备调用上游，确定或切换实际目标模型时 | 公共字段，带 `actualModel` |
 | `request.session` | 请求进行中，现有会话解析逻辑确定或更新会话时 | 公共请求字段，带已确定的 `sessionId` |
-| `request.first_token` | 现有流解析逻辑观察到首个非空模型输出时 | 公共字段，加 `firstTokenMs` |
+| `request.first_token` | 现有流解析逻辑观察到思考开始或首个非空模型输出时 | 公共字段，加 `firstTokenMs` |
 | `request.end` | 响应体结束、出错、被取消，或客户端中断时 | 公共字段，加 `durationMs`、`firstTokenMs`、`status`、`outcome` |
 | `usage.recorded` | 现有用量记录逻辑生成有效用量事件时 | 现有用量字段，加 `requestId`、`userAgent`、`sessionId` 和 `actualModel` |
 
@@ -134,9 +134,11 @@ on("request.actual_model", (event) => {
 })
 ```
 
-`firstTokenMs` 表示首个可观察模型输出的耗时（TTFT），与 `durationMs` 一样从鉴权后的请求开始计时，包含上传、解压和等待上游的时间。复用现有流解析逻辑识别非空文本、推理文本、工具参数或输入增量；Anthropic 初始内容块已包含非空内容时也计入。Google 流中的非空文本或完整函数调用也计入。空白字符属于有效输出；心跳、角色声明、空增量、签名、用量和响应/工具开始的元数据不会触发。
+`firstTokenMs` 表示首次观察到思考开始或模型输出的耗时（TTFT），与 `durationMs` 一样从鉴权后的请求开始计时，包含上传、解压和等待上游的时间。思考开始就计入，不需要等思考文本：Anthropic 的 `content_block_start`（`type: "thinking"`）、Responses 的 `response.output_item.added`（reasoning item）及 `response.reasoning_summary_part.added`、Google 的 `thought: true` part 都会触发。
 
-`request.first_token` 每个请求只触发一次，不向插件传递输出内容，也不重复读取或解析流。GPT 在隐藏思考阶段没有内容增量时不会触发，TTFT 包含这段等待，直到首个可观察输出；无法据此得知内部第一个思考 token 的时间。非流式响应、由完整结果合成的流、原始透传路由，以及结束前没有可观察输出的流，`firstTokenMs` 为 `null`。监控示例将该值写入 `ttft_ms`。
+非空文本、公开推理、工具参数或输入增量，以及已有内容的 Anthropic 初始块、Google 文本和完整函数调用仍会计入；空白字符也属于有效输出。心跳、角色声明、空增量、签名、用量和通用响应/工具开始元数据不会触发。
+
+`request.first_token` 每个请求只触发一次，不向插件传递输出内容，也不重复读取或解析流。隐藏思考只要有开始标记就可以计时；如果上游既不发思考标记，也不发内容，则无法观察到内部开始时间，仍需等待首个符合条件的事件。记录的是网关收到该事件的时间，不是模型内部的时间戳。非流式响应、由完整结果合成的流、原始透传路由，以及结束前没有思考标记或有效输出的流，`firstTokenMs` 为 `null`。监控示例将该值写入 `ttft_ms`。
 
 `sessionId` 使用现有用量统计的解析顺序：请求上下文的 session affinity 优先，其次使用 handler 原先选出的显式或 fallback session。头部已有的会话在 `request.start` 中提供；需要解析 payload 或 handler fallback 才能确定的，在创建原有用量 recorder 时通过 `request.session` 补充，因此不需要等模型返回 token 才知道会话。未知时为 `null`；插件系统不额外生成会话 ID。
 

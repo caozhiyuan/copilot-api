@@ -15,7 +15,10 @@ import {
   setPluginRequestModel,
 } from "~/lib/request-events"
 import { traceIdMiddleware } from "~/lib/trace"
-import { recordResponsesFirstToken } from "~/lib/first-token"
+import {
+  recordResponsesFirstToken,
+  recordAnthropicFirstToken,
+} from "~/lib/first-token"
 import {
   requestContext,
   setPluginRequestActualModel,
@@ -423,76 +426,114 @@ describe("request event lifecycle", () => {
     expect(ends[0].firstTokenMs).toBeNull()
   })
 
-  test("times the first parsed model output once, excluding heartbeat, hidden reasoning metadata and empty deltas", async () => {
-    const { app, plugins, ends, tokens } = await appWithEvents()
-    let now = 100
-    const clock = spyOn(performance, "now").mockImplementation(() => now)
-    let release = () => {}
-    const gate = new Promise<void>((resolveGate) => {
-      release = resolveGate
-    })
-    const delta = {
-      type: "response.output_text.delta" as const,
-      content_index: 0,
-      delta: "",
-      item_id: "msg-1",
-      output_index: 0,
-      sequence_number: 1,
-    }
-    app.post("/v1/responses", (c) =>
-      streamSSE(c, async (stream) => {
-        recordResponsesFirstToken(delta)
-        recordResponsesFirstToken({
-          type: "response.output_item.added",
-          output_index: 0,
-          sequence_number: 0,
-          item: {
-            id: "reasoning-1",
-            type: "reasoning",
-            status: "in_progress",
-            summary: [],
-            encrypted_content: "hidden-reasoning",
-          },
-        })
-        await stream.writeSSE({ event: "ping", data: "{}" })
-        await gate
-        recordResponsesFirstToken({ ...delta, delta: "Hello" })
-        await stream.writeSSE({ data: "Hello" })
-        now = 900
-        recordResponsesFirstToken({ ...delta, delta: " world" })
-        await stream.writeSSE({ data: " world" })
-      }),
-    )
-    try {
-      const response = await app.request("/v1/responses", requestOptions)
-      const reader = (response.body! as ReadableStream<Uint8Array>).getReader()
-      expect(new TextDecoder().decode((await reader.read()).value)).toContain(
-        "ping",
-      )
-      await plugins.flush()
-      expect(tokens).toHaveLength(0)
-      now = 450
-      release()
-      while (!(await reader.read()).done) {
-        /* drain */
+  test.each(["Responses", "Anthropic"] as const)(
+    "%s thinking starts set TTFT before visible content and only once",
+    async (protocol) => {
+      const { app, plugins, ends, tokens } = await appWithEvents()
+      let now = 100
+      const clock = spyOn(performance, "now").mockImplementation(() => now)
+      let releaseThinking = () => {}
+      const thinkingGate = new Promise<void>((resolveGate) => {
+        releaseThinking = resolveGate
+      })
+      let releaseOutput = () => {}
+      const outputGate = new Promise<void>((resolveGate) => {
+        releaseOutput = resolveGate
+      })
+      const delta = {
+        type: "response.output_text.delta" as const,
+        content_index: 0,
+        delta: "",
+        item_id: "msg-1",
+        output_index: 0,
+        sequence_number: 1,
       }
-      await plugins.flush()
-      expect(tokens).toHaveLength(1)
-      expect(tokens[0]).toMatchObject({
-        firstTokenMs: 350,
-        userAgent: "plugin-test/1.0",
-      })
-      expect(tokens[0]).not.toHaveProperty("delta")
-      expect(ends[0]).toMatchObject({
-        firstTokenMs: 350,
-        durationMs: 800,
-        outcome: "completed",
-      })
-    } finally {
-      release()
-      clock.mockRestore()
-    }
-  })
+      const recordOutput = (text: string) => {
+        if (protocol === "Responses")
+          recordResponsesFirstToken({ ...delta, delta: text })
+        else
+          recordAnthropicFirstToken({
+            type: "content_block_delta",
+            index: 1,
+            delta: { type: "text_delta", text },
+          })
+      }
+      const path = protocol === "Responses" ? "/v1/responses" : "/v1/messages"
+      app.post(path, (c) =>
+        streamSSE(c, async (stream) => {
+          recordOutput("")
+          await stream.writeSSE({ event: "ping", data: "{}" })
+          await thinkingGate
+          if (protocol === "Responses") {
+            recordResponsesFirstToken({
+              type: "response.output_item.added",
+              output_index: 0,
+              sequence_number: 0,
+              item: {
+                id: "reasoning-1",
+                type: "reasoning",
+                status: "in_progress",
+                summary: [],
+              },
+            })
+          } else {
+            recordAnthropicFirstToken({
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "thinking", thinking: "" },
+            })
+          }
+          await stream.writeSSE({ event: "thinking-start", data: "{}" })
+          await outputGate
+          recordOutput("Hello")
+          await stream.writeSSE({ data: "Hello" })
+          now = 900
+          recordOutput(" world")
+          await stream.writeSSE({ data: " world" })
+        }),
+      )
+      try {
+        const response = await app.request(path, requestOptions)
+        const reader = (
+          response.body! as ReadableStream<Uint8Array>
+        ).getReader()
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+          "ping",
+        )
+        await plugins.flush()
+        expect(tokens).toHaveLength(0)
+        now = 250
+        releaseThinking()
+        expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+          "thinking-start",
+        )
+        await plugins.flush()
+        expect(tokens).toHaveLength(1)
+        expect(tokens[0]).toMatchObject({
+          firstTokenMs: 150,
+          userAgent: "plugin-test/1.0",
+        })
+        expect(ends).toHaveLength(0)
+        now = 450
+        releaseOutput()
+        while (!(await reader.read()).done) {
+          /* drain */
+        }
+        await plugins.flush()
+        expect(tokens).toHaveLength(1)
+        expect(tokens[0]).not.toHaveProperty("delta")
+        expect(ends[0]).toMatchObject({
+          firstTokenMs: 150,
+          durationMs: 800,
+          outcome: "completed",
+        })
+      } finally {
+        releaseThinking()
+        releaseOutput()
+        clock.mockRestore()
+      }
+    },
+  )
 
   test("ignores model output observed after client abort", async () => {
     const { app, plugins, ends, tokens } = await appWithEvents()

@@ -49,7 +49,7 @@ two-second total deadline. There is no durable delivery or hot reload.
 | `request.model` | A handler has already parsed the requested model | Common metadata with the original requested model |
 | `request.actual_model` | Upstream dispatch selects or changes the resolved target | Common metadata with `actualModel` |
 | `request.session` | Existing usage/session resolution identifies or updates the session while the request is active | Common metadata with `sessionId` |
-| `request.first_token` | Existing stream parsing observes the first nonempty model output | Common metadata plus `firstTokenMs` |
+| `request.first_token` | Existing stream parsing observes thinking start or the first nonempty model output | Common metadata plus `firstTokenMs` |
 | `request.end` | Body completes, errors, is cancelled, or the client aborts | Common metadata plus `durationMs`, `firstTokenMs`, HTTP `status`, and `outcome` |
 | `usage.recorded` | The existing token-usage recorder emits an event | Existing usage fields plus `requestId`, `userAgent`, `sessionId`, and `actualModel` |
 
@@ -81,17 +81,24 @@ This identifies the gateway's upstream target, not provider-internal routing.
 In `usage.recorded`, `actualModel` aliases that usage event's existing `model`,
 rather than a later target selected by another call. No SQLite column is added.
 
-`firstTokenMs` measures time to first observable model output (TTFT), from the same
+`firstTokenMs` measures time to the first observable thinking start or model output
+(TTFT), from the same
 post-authentication request start as `durationMs`. It includes upload/decompression
 and upstream wait time. Existing stream parsers detect nonempty text, reasoning
-text, or tool argument/input deltas; initial Anthropic blocks with nonempty content
-also count. Google streams count a nonempty text part or a complete function-call
-part. Whitespace counts as output. Heartbeats, role declarations, empty deltas,
-signatures, usage, and response/tool-start metadata do not trigger the event.
+text, or tool argument/input deltas. Explicit thinking starts count even without
+exposed thinking text: Anthropic `content_block_start` with `type: "thinking"`,
+Responses `response.output_item.added` with a reasoning item, and
+`response.reasoning_summary_part.added`. Google parts with `thought: true` also
+count. Initial Anthropic blocks with nonempty content, Google text parts, and
+complete Google function calls still count. Whitespace counts as output.
+Heartbeats, role declarations, empty deltas, signatures, usage, and generic
+response/tool-start metadata do not trigger the event.
 The event is emitted once, without forwarding output content to plugins or
-reparsing the stream. Hidden reasoning is not observable: if GPT emits no content
-during thinking, TTFT includes that wait and ends at the first observable output,
-not the model's internal first reasoning token. Non-streaming responses,
+reparsing the stream. Hidden thinking does not need to expose text if a start
+marker is available. If the upstream emits neither a thinking marker nor content,
+the gateway cannot observe when thinking began and waits for the first eligible
+event. This is the arrival time of that event, not an internal model timestamp.
+Non-streaming responses,
 synthetic streams built from complete results, raw passthrough routes, and streams
 that end without observable output keep `firstTokenMs: null`.
 

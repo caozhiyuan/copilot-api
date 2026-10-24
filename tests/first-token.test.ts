@@ -44,7 +44,7 @@ const chunk = (delta: Delta): ChatCompletionChunk => ({
   choices: [{ index: 0, delta, finish_reason: null, logprobs: null }],
 })
 
-describe("observable first token", () => {
+describe("first thinking start or model output", () => {
   test.each<Delta>([
     {},
     { role: "assistant" },
@@ -116,17 +116,6 @@ describe("observable first token", () => {
         ...responseDelta,
         type: "response.output_item.added",
         item: {
-          id: "reasoning-1",
-          type: "reasoning",
-          status: "in_progress",
-          summary: [],
-          encrypted_content: "hidden-reasoning",
-        },
-      },
-      {
-        ...responseDelta,
-        type: "response.output_item.added",
-        item: {
           type: "function_call",
           id: "fc-1",
           call_id: "tool-1",
@@ -162,11 +151,6 @@ describe("observable first token", () => {
       type: "content_block_start",
       index: 0,
       content_block: { type: "text", text: "" },
-    },
-    {
-      type: "content_block_start",
-      index: 0,
-      content_block: { type: "thinking", thinking: "" },
     },
     {
       type: "content_block_start",
@@ -209,6 +193,11 @@ describe("observable first token", () => {
   })
 
   test.each<AnthropicStreamEventData>([
+    {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "thinking", thinking: "" },
+    },
     {
       type: "content_block_delta",
       index: 0,
@@ -258,6 +247,33 @@ describe("observable first token", () => {
     expect(observed(() => recordAnthropicFirstToken(event))).toBe(1)
   })
 
+  test("counts Responses reasoning item/summary starts before any reasoning text", () => {
+    expect(
+      observed(() =>
+        recordResponsesFirstToken({
+          type: "response.output_item.added",
+          output_index: 0,
+          sequence_number: 0,
+          item: {
+            id: "reasoning-1",
+            type: "reasoning",
+            status: "in_progress",
+            summary: [],
+          },
+        }),
+      ),
+    ).toBe(1)
+    expect(
+      observed(() =>
+        recordResponsesFirstToken({
+          ...responseDelta,
+          type: "response.reasoning_summary_part.added",
+          part: { type: "summary_text", text: "" },
+        }),
+      ),
+    ).toBe(1)
+  })
+
   test("observes Google text, thoughts and complete calls, excluding metadata and signatures", () => {
     const google = (parts: Array<import("~/lib/types/google").GooglePart>) => ({
       candidates: [{ content: { parts } }],
@@ -278,6 +294,11 @@ describe("observable first token", () => {
     expect(
       observed(() =>
         recordGoogleFirstToken(google([{ text: "think", thought: true }])),
+      ),
+    ).toBe(1)
+    expect(
+      observed(() =>
+        recordGoogleFirstToken(google([{ thought: true, text: "" }])),
       ),
     ).toBe(1)
     expect(
