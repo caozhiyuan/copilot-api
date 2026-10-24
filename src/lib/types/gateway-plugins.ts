@@ -15,10 +15,10 @@ export interface GatewayPluginEvents {
   "request.start": PluginRequest
   "request.model": PluginRequest
   "request.session": PluginRequest
-  "request.first_chunk": PluginRequest & { firstChunkMs: number }
+  "request.first_token": PluginRequest & { firstTokenMs: number }
   "request.end": PluginRequest & {
     durationMs: number
-    firstChunkMs: number | null
+    firstTokenMs: number | null
     status: number
     outcome: "completed" | "cancelled" | "error"
   }
@@ -53,5 +53,6 @@ export interface RequestEventObserver {
   id: string
   setModel(model: string): void
   setSessionId(sessionId: string): void
+  recordFirstToken(): void
   recordUsage(event: PersistedTokenUsageEvent): void
 }

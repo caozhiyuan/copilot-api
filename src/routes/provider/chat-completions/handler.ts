@@ -14,6 +14,7 @@ import {
   isDashScopeAliyunProvider,
 } from "~/lib/dashscope"
 import { HTTPError } from "~/lib/error"
+import { recordChatCompletionFirstToken } from "~/lib/first-token"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { writeSSEIfConnected } from "~/lib/sse"
@@ -179,6 +180,7 @@ const streamProviderChatCompletions = (
         debugJson(logger, "provider.chat_completions.stream_chunk", chunk)
         if (chunk.data && chunk.data !== "[DONE]") {
           const parsedChunk = parseChatCompletionChunkData(chunk.data)
+          recordChatCompletionFirstToken(parsedChunk)
           if (parsedChunk?.usage) {
             usage = normalizeOpenAIUsage(parsedChunk.usage)
           }

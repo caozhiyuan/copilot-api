@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { Hono } from "hono"
+import { streamSSE } from "hono/streaming"
 
 import {
   GatewayPlugins,
@@ -14,6 +15,8 @@ import {
   setPluginRequestModel,
 } from "~/lib/request-events"
 import { traceIdMiddleware } from "~/lib/trace"
+import { recordResponsesFirstToken } from "~/lib/first-token"
+import { requestContext } from "~/lib/request-context"
 import { createAuthMiddleware } from "~/lib/request-auth"
 import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
 import {
@@ -47,7 +50,7 @@ async function appWithEvents(keys: Array<string> = []) {
   const plugins = runtime()
   const starts: Array<GatewayPluginEvents["request.start"]> = []
   const models: Array<GatewayPluginEvents["request.model"]> = []
-  const chunks: Array<GatewayPluginEvents["request.first_chunk"]> = []
+  const tokens: Array<GatewayPluginEvents["request.first_token"]> = []
   const sessions: Array<GatewayPluginEvents["request.session"]> = []
   const ends: Array<GatewayPluginEvents["request.end"]> = []
   await plugins.register("collector", ({ on }) => {
@@ -60,8 +63,8 @@ async function appWithEvents(keys: Array<string> = []) {
     on("request.session", (event) => {
       sessions.push(event)
     })
-    on("request.first_chunk", (event) => {
-      chunks.push(event)
+    on("request.first_token", (event) => {
+      tokens.push(event)
     })
     on("request.end", (event) => {
       ends.push(event)
@@ -76,7 +79,7 @@ async function appWithEvents(keys: Array<string> = []) {
     }),
   )
   app.use(requestEventsMiddleware(plugins, 5000))
-  return { app, plugins, starts, models, sessions, chunks, ends }
+  return { app, plugins, starts, models, sessions, tokens, ends }
 }
 
 const payload = JSON.stringify({ model: "original/model", input: "hello" })
@@ -257,7 +260,7 @@ describe("gateway plugin runtime", () => {
 
 describe("request event lifecycle", () => {
   test("reuses handler parsing, keeps metadata immutable and preserves response headers", async () => {
-    const { app, plugins, starts, models, ends, chunks } = await appWithEvents()
+    const { app, plugins, starts, models, ends, tokens } = await appWithEvents()
     app.post("/v1/messages", async (c) => {
       const body = await c.req.json<{ model: string }>()
       setPluginRequestModel(body.model)
@@ -291,10 +294,10 @@ describe("request event lifecycle", () => {
       port: 5000,
       status: 200,
       outcome: "completed",
-      firstChunkMs: null,
+      firstTokenMs: null,
       sessionId: null,
     })
-    expect(chunks).toHaveLength(0)
+    expect(tokens).toHaveLength(0)
   })
 
   test("starts before zstd upload and reports the model after existing decompression", async () => {
@@ -343,8 +346,8 @@ describe("request event lifecycle", () => {
     expect(ends[0].userAgent).toBe("")
   })
 
-  test("observes SSE completion and emits the first chunk only once", async () => {
-    const { app, plugins, ends, chunks } = await appWithEvents()
+  test("keeps TTFT unknown for heartbeat-only streams without reparsing the body", async () => {
+    const { app, plugins, ends, tokens } = await appWithEvents()
     let release = () => {}
     app.post(
       "/v1/responses",
@@ -369,16 +372,95 @@ describe("request event lifecycle", () => {
     await reader.read()
     await plugins.flush()
     expect(ends).toHaveLength(0)
-    expect(chunks).toHaveLength(1)
-    expect(chunks[0].userAgent).toBe("plugin-test/1.0")
+    expect(tokens).toHaveLength(0)
     release()
     while (!(await reader.read()).done) {
       /* drain */
     }
     await plugins.flush()
-    expect(chunks).toHaveLength(1)
-    expect(ends[0].firstChunkMs).not.toBeNull()
-    expect(ends[0].durationMs).toBeGreaterThanOrEqual(ends[0].firstChunkMs!)
+    expect(tokens).toHaveLength(0)
+    expect(ends[0].firstTokenMs).toBeNull()
+  })
+
+  test("times the first parsed model output once, excluding earlier heartbeat and empty deltas", async () => {
+    const { app, plugins, ends, tokens } = await appWithEvents()
+    let now = 100
+    const clock = spyOn(performance, "now").mockImplementation(() => now)
+    let release = () => {}
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate
+    })
+    const delta = {
+      type: "response.output_text.delta" as const,
+      content_index: 0,
+      delta: "",
+      item_id: "msg-1",
+      output_index: 0,
+      sequence_number: 1,
+    }
+    app.post("/v1/responses", (c) =>
+      streamSSE(c, async (stream) => {
+        recordResponsesFirstToken(delta)
+        await stream.writeSSE({ event: "ping", data: "{}" })
+        await gate
+        recordResponsesFirstToken({ ...delta, delta: "Hello" })
+        await stream.writeSSE({ data: "Hello" })
+        now = 900
+        recordResponsesFirstToken({ ...delta, delta: " world" })
+        await stream.writeSSE({ data: " world" })
+      }),
+    )
+    try {
+      const response = await app.request("/v1/responses", requestOptions)
+      const reader = (response.body! as ReadableStream<Uint8Array>).getReader()
+      expect(new TextDecoder().decode((await reader.read()).value)).toContain(
+        "ping",
+      )
+      await plugins.flush()
+      expect(tokens).toHaveLength(0)
+      now = 450
+      release()
+      while (!(await reader.read()).done) {
+        /* drain */
+      }
+      await plugins.flush()
+      expect(tokens).toHaveLength(1)
+      expect(tokens[0]).toMatchObject({
+        firstTokenMs: 350,
+        userAgent: "plugin-test/1.0",
+      })
+      expect(tokens[0]).not.toHaveProperty("delta")
+      expect(ends[0]).toMatchObject({
+        firstTokenMs: 350,
+        durationMs: 800,
+        outcome: "completed",
+      })
+    } finally {
+      release()
+      clock.mockRestore()
+    }
+  })
+
+  test("ignores model output observed after client abort", async () => {
+    const { app, plugins, ends, tokens } = await appWithEvents()
+    let recordFirstToken = () => {}
+    app.post("/v1/responses", (c) => {
+      const observer = requestContext.getStore()!.pluginRequest!
+      recordFirstToken = () => observer.recordFirstToken()
+      return c.text("aborted")
+    })
+    const controller = new AbortController()
+    controller.abort()
+    await (
+      await app.request("/v1/responses", {
+        ...requestOptions,
+        signal: controller.signal,
+      })
+    ).text()
+    recordFirstToken()
+    await plugins.flush()
+    expect(tokens).toHaveLength(0)
+    expect(ends[0]).toMatchObject({ firstTokenMs: null, outcome: "cancelled" })
   })
 
   test("propagates cancellation and clears the request once", async () => {
@@ -410,7 +492,7 @@ describe("request event lifecycle", () => {
   })
 
   test("preserves source errors and waits for live non-SSE bodies", async () => {
-    const { app, plugins, ends, chunks } = await appWithEvents()
+    const { app, plugins, ends, tokens } = await appWithEvents()
     let errorBody = () => {}
     app.post(
       "/alpha/search",
@@ -433,8 +515,8 @@ describe("request event lifecycle", () => {
     errorBody()
     await expectFailure(reader.read(), "upstream failed")
     await plugins.flush()
-    expect(chunks).toHaveLength(0)
-    expect(ends[0]).toMatchObject({ outcome: "error", firstChunkMs: null })
+    expect(tokens).toHaveLength(0)
+    expect(ends[0]).toMatchObject({ outcome: "error", firstTokenMs: null })
   })
 
   test("ignores rejected auth, non-generation routes and inactive plugins", async () => {
@@ -640,6 +722,104 @@ describe("request event lifecycle", () => {
     }
   })
 
+  test("captures TTFT through the actual Responses stream parser", async () => {
+    const { app, plugins, tokens, ends } = await appWithEvents()
+    const { handleResponses, responsesHandlerDependencies } = await import(
+      "~/routes/responses/handler"
+    )
+    const original = { ...responsesHandlerDependencies }
+    responsesHandlerDependencies.resolveMappedModel = (model) => model
+    responsesHandlerDependencies.findEndpointModel = (id) => ({
+      id,
+      name: id,
+      object: "model",
+      model_picker_enabled: true,
+      preview: false,
+      vendor: "test",
+      version: "1",
+      capabilities: {
+        family: "test",
+        limits: {},
+        object: "model_capabilities",
+        supports: {},
+        tokenizer: "test",
+        type: "chat",
+      },
+      supported_endpoints: ["/responses"],
+    })
+    let reads = 0
+    responsesHandlerDependencies.createResponses = () =>
+      Promise.resolve(
+        (async function* () {
+          await Promise.resolve()
+          for (const event of [
+            {
+              type: "response.output_item.added",
+              output_index: 0,
+              sequence_number: 0,
+              item: {
+                type: "message",
+                id: "msg-1",
+                role: "assistant",
+                status: "in_progress",
+                content: [],
+              },
+            },
+            {
+              type: "response.output_text.delta",
+              item_id: "msg-1",
+              output_index: 0,
+              content_index: 0,
+              sequence_number: 1,
+              delta: "",
+            },
+            {
+              type: "response.output_text.delta",
+              item_id: "msg-1",
+              output_index: 0,
+              content_index: 0,
+              sequence_number: 2,
+              delta: "Hello",
+            },
+            {
+              type: "response.output_text.done",
+              item_id: "msg-1",
+              output_index: 0,
+              content_index: 0,
+              sequence_number: 3,
+              text: "Hello",
+            },
+          ]) {
+            reads++
+            yield { event: event.type, data: JSON.stringify(event) }
+          }
+        })(),
+      )
+    app.post("/v1/responses", handleResponses)
+    try {
+      const response = await app.request("/v1/responses", {
+        ...requestOptions,
+        body: JSON.stringify({
+          model: "gpt-plugin-test",
+          input: "hello",
+          stream: true,
+        }),
+      })
+      const text = await response.text()
+      await plugins.flush()
+      expect(text).toContain('"delta":"Hello"')
+      expect(reads).toBe(4)
+      expect(tokens).toHaveLength(1)
+      expect(tokens[0].firstTokenMs).toBeGreaterThanOrEqual(0)
+      expect(ends[0]).toMatchObject({
+        firstTokenMs: tokens[0].firstTokenMs,
+        outcome: "completed",
+      })
+    } finally {
+      Object.assign(responsesHandlerDependencies, original)
+    }
+  })
+
   test("example plugin writes snapshots and timings entirely outside core", async () => {
     const dir = mkdtempSync(join(tmpdir(), "gateway-monitor-"))
     process.env.COPILOT_API_MONITOR_DIR = dir
@@ -666,12 +846,17 @@ describe("request event lifecycle", () => {
     expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
       requests: { "request-1": { session_id: "existing-session" } },
     })
+    plugins!.publish("request.first_token", { ...info, firstTokenMs: 2.4 })
+    await plugins!.flush()
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+      requests: { "request-1": { ttft_ms: 2 } },
+    })
     plugins!.publish("request.end", {
       ...info,
       model: "test-model",
       sessionId: "existing-session",
       durationMs: 5,
-      firstChunkMs: null,
+      firstTokenMs: 2.4,
       status: 200,
       outcome: "completed",
     })
@@ -687,6 +872,7 @@ describe("request event lifecycle", () => {
       ms: 5,
       user_agent: "plugin-test/1.0",
       session_id: "existing-session",
+      ttft_ms: 2,
     })
     await plugins!.close()
     expect(existsSync(path)).toBe(false)

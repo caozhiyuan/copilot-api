@@ -7,6 +7,7 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
+import { recordResponsesFirstToken } from "~/lib/first-token"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
 import { requestContext } from "~/lib/request-context"
@@ -253,6 +254,7 @@ export const handleResponses = async (c: Context) => {
         }) {
           debugJson(logger, "Responses stream chunk:", chunk)
           const parsedEvent = parseResponsesStreamEvent(chunk)
+          recordResponsesFirstToken(parsedEvent)
           if (
             parsedEvent?.type === "response.completed"
             || parsedEvent?.type === "response.failed"

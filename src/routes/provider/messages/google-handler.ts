@@ -5,6 +5,7 @@ import { streamSSE } from "hono/streaming"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
+import { recordGoogleFirstToken } from "~/lib/first-token"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { writeSSEIfConnected } from "~/lib/sse"
 import {
@@ -115,6 +116,7 @@ export async function handleGoogleProviderMessages(
           const response = JSON.parse(
             event.data,
           ) as GoogleGenerateContentResponse
+          recordGoogleFirstToken(response)
           debugJson(
             logger,
             "provider.messages.google.raw_stream_event:",

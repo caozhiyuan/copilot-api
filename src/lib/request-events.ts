@@ -42,7 +42,7 @@ export function requestEventsMiddleware(
     }
     let finished = false
     const signal = c.req.raw.signal
-    let firstChunkMs: number | null = null
+    let firstTokenMs: number | null = null
     let status = 0
     const finish = (outcome: GatewayPluginEvents["request.end"]["outcome"]) => {
       if (finished) return
@@ -50,7 +50,7 @@ export function requestEventsMiddleware(
       plugins.publish("request.end", {
         ...info,
         durationMs: performance.now() - started,
-        firstChunkMs,
+        firstTokenMs,
         status,
         outcome,
       })
@@ -75,6 +75,11 @@ export function requestEventsMiddleware(
         info.sessionId = sessionId
         if (!finished) plugins.publish("request.session", info)
       },
+      recordFirstToken: () => {
+        if (finished || firstTokenMs !== null) return
+        firstTokenMs = performance.now() - started
+        plugins.publish("request.first_token", { ...info, firstTokenMs })
+      },
       recordUsage: (event) =>
         plugins.publish("usage.recorded", {
           ...event,
@@ -95,9 +100,6 @@ export function requestEventsMiddleware(
         return
       }
       const reader = (response.body as ReadableStream<Uint8Array>).getReader()
-      const sse = (response.headers.get("content-type") ?? "").includes(
-        "text/event-stream",
-      )
       const body = new ReadableStream<Uint8Array>({
         async pull(controller) {
           try {
@@ -107,15 +109,6 @@ export function requestEventsMiddleware(
               controller.close()
               reader.releaseLock()
               return
-            }
-            if (
-              sse
-              && firstChunkMs === null
-              && result.value.byteLength > 0
-              && !finished
-            ) {
-              firstChunkMs = performance.now() - started
-              plugins.publish("request.first_chunk", { ...info, firstChunkMs })
             }
             controller.enqueue(result.value)
           } catch (error) {

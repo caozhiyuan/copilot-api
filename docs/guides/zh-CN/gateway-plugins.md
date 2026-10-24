@@ -20,7 +20,7 @@ export default function setup({ version, server, on, log }) {
       sessionId: event.sessionId,
       port: event.port,
       durationMs: event.durationMs,
-      firstChunkMs: event.firstChunkMs,
+      firstTokenMs: event.firstTokenMs,
       status: event.status,
       outcome: event.outcome,
     }))
@@ -88,8 +88,8 @@ unsubscribe()
 | `request.start` | 鉴权通过后、读取请求体前 | 公共请求字段，`model` 初始为 `null` |
 | `request.model` | handler 已解析出请求模型后 | 公共请求字段，`model` 为映射前的原始请求模型 |
 | `request.session` | 请求进行中，现有会话解析逻辑确定或更新会话时 | 公共请求字段，带已确定的 `sessionId` |
-| `request.first_chunk` | 首个非空 SSE 数据块经过时 | 公共字段，加 `firstChunkMs` |
-| `request.end` | 响应体结束、出错、被取消，或客户端中断时 | 公共字段，加 `durationMs`、`firstChunkMs`、`status`、`outcome` |
+| `request.first_token` | 现有流解析逻辑观察到首个非空模型输出时 | 公共字段，加 `firstTokenMs` |
+| `request.end` | 响应体结束、出错、被取消，或客户端中断时 | 公共字段，加 `durationMs`、`firstTokenMs`、`status`、`outcome` |
 | `usage.recorded` | 现有用量记录逻辑生成有效用量事件时 | 现有用量字段，加 `requestId`、`userAgent` 和 `sessionId` |
 
 公共请求字段：
@@ -112,7 +112,7 @@ unsubscribe()
 ```ts
 {
   durationMs: number
-  firstChunkMs: number | null
+  firstTokenMs: number | null
   status: number
   outcome: "completed" | "error" | "cancelled"
 }
@@ -120,7 +120,9 @@ unsubscribe()
 
 `durationMs` 从鉴权后的请求开始计时，持续到响应体结束，包含读取请求体、解压和生成过程。持续时间采用单调时钟，单位为毫秒。响应头返回前中断时，`status` 为 `0`。
 
-`firstChunkMs` 表示首个非空 SSE 数据块的耗时，可能对应心跳或元数据事件，不等于首个 token 耗时。非 SSE 或没有数据块时为 `null`。
+`firstTokenMs` 表示首个可观察模型输出的耗时（TTFT），与 `durationMs` 一样从鉴权后的请求开始计时，包含上传、解压和等待上游的时间。复用现有流解析逻辑识别非空文本、推理文本、工具参数或输入增量；Anthropic 初始内容块已包含非空内容时也计入。Google 流中的非空文本或完整函数调用也计入。空白字符属于有效输出；心跳、角色声明、空增量、签名、用量和响应/工具开始的元数据不会触发。
+
+`request.first_token` 每个请求只触发一次，不向插件传递输出内容，也不重复读取或解析流。模型内部未暴露的推理无法计时。非流式响应、由完整结果合成的流、原始透传路由，以及结束前没有可观察输出的流，`firstTokenMs` 为 `null`。监控示例将该值写入 `ttft_ms`。
 
 `sessionId` 使用现有用量统计的解析顺序：请求上下文的 session affinity 优先，其次使用 handler 原先选出的显式或 fallback session。头部已有的会话在 `request.start` 中提供；需要解析 payload 或 handler fallback 才能确定的，在创建原有用量 recorder 时通过 `request.session` 补充，因此不需要等模型返回 token 才知道会话。未知时为 `null`；插件系统不额外生成会话 ID。
 
@@ -149,7 +151,7 @@ bun run start start --port 5000
   "port": "5000",
   "updated": 1792780000,
   "requests": {
-    "request-uuid": { "t": 1792780000, "model": "gpt-6-luna", "user_agent": "client/1.0", "session_id": "existing-session" }
+    "request-uuid": { "t": 1792780000, "model": "gpt-6-luna", "user_agent": "client/1.0", "session_id": "existing-session", "ttft_ms": null }
   }
 }
 ```
@@ -157,7 +159,7 @@ bun run start start --port 5000
 耗时日志每行示例：
 
 ```json
-{"t":1792780000,"port":"5000","model":"gpt-6-luna","user_agent":"client/1.0","session_id":"existing-session","ms":1234,"first_chunk_ms":456,"status":200,"outcome":"completed"}
+{"t":1792780000,"port":"5000","model":"gpt-6-luna","user_agent":"client/1.0","session_id":"existing-session","ms":1234,"ttft_ms":456,"status":200,"outcome":"completed"}
 ```
 
 文件输出的 `t` 和 `updated` 使用秒，与事件接口的毫秒时间戳区分。快照通过临时文件加 rename 替换，正常退出时删除；异常退出后的读取方应检查 PID 是否存活。运行中的请求不按 15 分钟过期。

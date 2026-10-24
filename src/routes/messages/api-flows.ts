@@ -8,6 +8,11 @@ import type { SubagentMarker } from "~/lib/subagent"
 import type { Model } from "~/lib/types/models"
 
 import { getRawProviderConfig } from "~/lib/config"
+import {
+  recordAnthropicFirstToken,
+  recordChatCompletionFirstToken,
+  recordResponsesFirstToken,
+} from "~/lib/first-token"
 import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import { debugJson, debugJsonTail, debugLazy } from "~/lib/logger"
 import { getProviderModelPdfSupport } from "~/lib/model-pdf-support"
@@ -187,6 +192,7 @@ export const handleWithChatCompletions = async (
         }
 
         const chunk = JSON.parse(rawEvent.data) as ChatCompletionChunk
+        recordChatCompletionFirstToken(chunk)
         if (chunk.usage || chunk.copilot_usage) {
           usage = {
             ...normalizeOpenAIUsage(chunk.usage),
@@ -306,6 +312,7 @@ export const handleWithResponsesApi = async (
         debugLazy(logger, () => ["Responses raw stream event:", data])
 
         const responseEvent = JSON.parse(data) as ResponseStreamEvent
+        recordResponsesFirstToken(responseEvent)
         if (
           responseEvent.type === "response.completed"
           || responseEvent.type === "response.failed"
@@ -427,6 +434,7 @@ export const handleWithMessagesApi = async (
           }
           debugLazy(logger, () => ["Messages raw stream event:", data])
           const parsedEvent = parseAnthropicStreamEvent(data)
+          recordAnthropicFirstToken(parsedEvent)
           if (parsedEvent?.type === "message_start") {
             usage = mergeAnthropicUsage(usage, {
               ...normalizeAnthropicUsage(parsedEvent.message.usage),

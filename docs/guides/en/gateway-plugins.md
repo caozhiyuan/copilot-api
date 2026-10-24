@@ -45,8 +45,8 @@ two-second total deadline. There is no durable delivery or hot reload.
 | `request.start` | After authentication, before reading the body | Common request metadata, initially `model: null` |
 | `request.model` | A handler has already parsed the requested model | Common metadata with the original requested model |
 | `request.session` | Existing usage/session resolution identifies or updates the session while the request is active | Common metadata with `sessionId` |
-| `request.first_chunk` | The first nonempty SSE body chunk passes through | Common metadata plus `firstChunkMs` |
-| `request.end` | Body completes, errors, is cancelled, or the client aborts | Common metadata plus `durationMs`, `firstChunkMs`, HTTP `status`, and `outcome` |
+| `request.first_token` | Existing stream parsing observes the first nonempty model output | Common metadata plus `firstTokenMs` |
+| `request.end` | Body completes, errors, is cancelled, or the client aborts | Common metadata plus `durationMs`, `firstTokenMs`, HTTP `status`, and `outcome` |
 | `usage.recorded` | The existing token-usage recorder emits an event | Existing usage fields plus `requestId`, `userAgent`, and `sessionId` |
 
 Common metadata is `{ id, traceId, userAgent, sessionId, path, port, startedAt, model }`. `id` is a
@@ -64,8 +64,17 @@ system. In `usage.recorded`, `sessionId` mirrors the existing `session_id` field
 `startedAt` is epoch **milliseconds**; durations use
 the monotonic clock and are milliseconds. End outcomes are `completed`, `error`,
 and `cancelled`. A cancellation before response headers has `status: 0`.
-`firstChunkMs` is null for non-SSE/empty responses. It measures the first body
-chunk, which may be a heartbeat or metadata event, rather than the first token.
+`firstTokenMs` measures time to first observable model output (TTFT), from the same
+post-authentication request start as `durationMs`. It includes upload/decompression
+and upstream wait time. Existing stream parsers detect nonempty text, reasoning
+text, or tool argument/input deltas; initial Anthropic blocks with nonempty content
+also count. Google streams count a nonempty text part or a complete function-call
+part. Whitespace counts as output. Heartbeats, role declarations, empty deltas,
+signatures, usage, and response/tool-start metadata do not trigger the event.
+The event is emitted once, without forwarding output content to plugins or
+reparsing the stream. Hidden reasoning is not observable. Non-streaming responses,
+synthetic streams built from complete results, raw passthrough routes, and streams
+that end without observable output keep `firstTokenMs: null`.
 
 Tracked endpoints are POST Chat Completions, Messages, Responses, and alpha search,
 including existing provider-scoped and `/v1` variants. Authentication failures,
@@ -81,7 +90,7 @@ join it by `requestId`, rather than assuming it always precedes `request.end`.
 The example [monitor.mjs](../../../plugin/gateway/monitor.mjs) implements both a
 per-process in-flight snapshot and monthly JSONL timing logs. Copy it to your API
 home and configure `COPILOT_API_MONITOR_DIR` as its output directory. Timing records
-include `user_agent` and `session_id`, and use `first_chunk_ms` to make the metric explicit. Readers should check each
+include `user_agent`, `session_id`, and `ttft_ms`. Readers should check each
 snapshot's PID for liveness after crashes; live requests are not expired by age.
 With `COPILOT_API_PLUGINS` unset, no plugins are imported and no lifecycle body
 wrapper is installed. The gateway itself creates no telemetry output files.

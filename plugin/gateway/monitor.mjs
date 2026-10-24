@@ -24,6 +24,7 @@ export default function setup({ on, server }) {
       model: "unknown",
       user_agent: event.userAgent,
       session_id: event.sessionId,
+      ttft_ms: null,
     })
     flush()
   })
@@ -41,6 +42,13 @@ export default function setup({ on, server }) {
       flush()
     }
   })
+  on("request.first_token", (event) => {
+    const entry = requests.get(event.id)
+    if (entry) {
+      entry.ttft_ms = Math.round(event.firstTokenMs)
+      flush()
+    }
+  })
   on("request.end", (event) => {
     requests.delete(event.id)
     flush()
@@ -52,7 +60,7 @@ export default function setup({ on, server }) {
       user_agent: event.userAgent,
       session_id: event.sessionId,
       ms: Math.round(event.durationMs),
-      first_chunk_ms: event.firstChunkMs === null ? null : Math.round(event.firstChunkMs),
+      ttft_ms: event.firstTokenMs === null ? null : Math.round(event.firstTokenMs),
       status: event.status,
       outcome: event.outcome,
     }) + "\n", { mode: 0o600 })

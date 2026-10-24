@@ -9,6 +9,7 @@ import {
   resolveProviderConfigForModel,
 } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
+import { recordResponsesFirstToken } from "~/lib/first-token"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { requestContext } from "~/lib/request-context"
@@ -324,6 +325,7 @@ const streamProviderResponses = async (
         }
       }
 
+      recordResponsesFirstToken(event)
       if (event) {
         const nextUsage = getResponsesStreamEventUsage(event)
         if (nextUsage) {
