@@ -50,6 +50,7 @@ import {
   type UsageTokens,
 } from "~/lib/token-usage"
 import { isResponsesStream, parseUserIdMetadata } from "~/lib/utils"
+import { setPluginRequestModel } from "~/lib/request-events"
 import {
   translateToAnthropic,
   translateToOpenAI,
@@ -115,6 +116,7 @@ export async function handleProviderMessages(
 ): Promise<Response> {
   const provider = c.req.param("provider")
   const payload = await c.req.json<AnthropicMessagesPayload>()
+  setPluginRequestModel(payload.model)
   payload.model = fromClaudeDiscoveryModelId(payload.model)
   applyClaudeNoToolsEffort(payload, c.req.header("user-agent"))
 

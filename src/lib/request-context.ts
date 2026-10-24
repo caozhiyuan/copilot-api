@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import type { RequestEventObserver } from "./types/gateway-plugins"
 
 export interface RequestContext {
   traceId: string
@@ -7,6 +8,7 @@ export interface RequestContext {
   sessionAffinity: string | undefined
   rootSessionId?: string
   parentSessionId: string | undefined
+  pluginRequest?: RequestEventObserver
 }
 
 const TRACE_ID_MAX_LENGTH = 64

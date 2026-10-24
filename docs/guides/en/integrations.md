@@ -1,5 +1,7 @@
 # Plugins and Tool Search
 
+For server-side request lifecycle and usage hooks, see [Gateway event plugins](gateway-plugins.md).
+
 [Home](../../../README.md) · [Documentation](README.md) · [简体中文](../zh-CN/integrations.md)
 
 ## GPT Tool Search

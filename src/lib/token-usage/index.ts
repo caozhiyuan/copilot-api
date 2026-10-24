@@ -157,12 +157,20 @@ export function recordTokenUsageEvent(input: TokenUsageEventInput): void {
     return
   }
 
+  const observer = requestContext.getStore()?.pluginRequest
+  observer?.setSessionId(event.session_id)
+  observer?.recordUsage(event)
   tokenUsageEventBus.publish("token_usage.recorded", event)
 }
 
 export function createTokenUsageRecorder(
   options: TokenUsageRecorderOptions,
 ): (usage: UsageTokens) => void {
+  requestContext
+    .getStore()
+    ?.pluginRequest?.setSessionId(
+      resolveTokenUsageSessionId(options.sessionId, options.fallbackSessionId),
+    )
   return (usage) => {
     recordTokenUsageEvent({
       ...usage,

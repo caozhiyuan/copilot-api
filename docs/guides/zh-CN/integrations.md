@@ -1,5 +1,7 @@
 # 插件与工具搜索
 
+服务端请求生命周期和用量事件扩展见[网关事件插件](gateway-plugins.md)。
+
 [项目首页](../../../README.zh-CN.md) · [文档目录](README.md) · [English](../en/integrations.md)
 
 <a id="gpt-tool-search"></a>

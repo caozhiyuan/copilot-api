@@ -1,0 +1,172 @@
+# 网关事件插件
+
+本文对应 `feat/request-event-plugins` 开发分支，尚未发布到 npm。
+
+插件是一个本地 `.mjs` 文件，通过事件获取请求状态和用量。网关负责提供统一事件，插件负责输出 JSONL、运行中请求快照或对接其他监控系统。模型信息复用 handler 已经解析的 payload，插件接口不包含请求正文、响应内容和鉴权 Header。
+
+## 最简示例
+
+新建 `simple-monitor.mjs`：
+
+```js
+export default function setup({ version, server, on, log }) {
+  log(`插件 API v${version}，监听端口 ${server.port}`)
+
+  on("request.end", (event) => {
+    log(JSON.stringify({
+      requestId: event.id,
+      model: event.model,
+      userAgent: event.userAgent,
+      sessionId: event.sessionId,
+      port: event.port,
+      durationMs: event.durationMs,
+      firstChunkMs: event.firstChunkMs,
+      status: event.status,
+      outcome: event.outcome,
+    }))
+  })
+
+  on("usage.recorded", (event) => {
+    log(JSON.stringify({
+      requestId: event.requestId,
+      model: event.model,
+      inputTokens: event.input_tokens,
+      userAgent: event.userAgent,
+      sessionId: event.sessionId,
+      outputTokens: event.output_tokens,
+      totalTokens: event.total_tokens,
+    }))
+  })
+
+  return () => {
+    log("插件已停止")
+  }
+}
+```
+
+在这个开发分支的仓库根目录执行。Windows PowerShell：
+
+```powershell
+$env:COPILOT_API_PLUGINS = '["D:/copilot-plugins/simple-monitor.mjs"]'
+bun run start start --port 5000
+```
+
+macOS / Linux：
+
+```sh
+export COPILOT_API_PLUGINS='["/absolute/path/simple-monitor.mjs"]'
+bun run start start --port 5000
+```
+
+`COPILOT_API_PLUGINS` 是 JSON 数组，可以配置多个插件。绝对路径直接使用；相对路径按 API home 目录解析，即 `COPILOT_API_HOME`，未设置时使用现有应用数据目录，不按终端当前目录解析。修改插件列表或插件代码后需重启服务。配置不是合法 JSON 路径数组时启动会报错；单个插件导入或 setup 失败时会记录日志并跳过该插件。
+
+## 插件 API
+
+默认导出的 setup 函数可以是异步函数，也可以返回一个同步或异步的退出清理函数。
+
+| 参数 | 含义 |
+| --- | --- |
+| `version` | 插件 API 版本，当前为 `1` |
+| `server.pid` | 网关进程 PID |
+| `server.port` | 配置的监听端口，不从客户端 Host Header 推断 |
+| `on(name, handler)` | 订阅事件，返回取消订阅函数；handler 可返回 Promise |
+| `log(message)` | 输出带插件名称标记的日志 |
+
+```js
+const unsubscribe = on("request.end", (event) => {
+  log(`${event.model ?? "unknown"}: ${event.durationMs} ms`)
+})
+
+// 不再需要订阅时：
+unsubscribe()
+```
+
+## 六类事件
+
+| 事件 | 触发时机 | 主要数据 |
+| --- | --- | --- |
+| `request.start` | 鉴权通过后、读取请求体前 | 公共请求字段，`model` 初始为 `null` |
+| `request.model` | handler 已解析出请求模型后 | 公共请求字段，`model` 为映射前的原始请求模型 |
+| `request.session` | 请求进行中，现有会话解析逻辑确定或更新会话时 | 公共请求字段，带已确定的 `sessionId` |
+| `request.first_chunk` | 首个非空 SSE 数据块经过时 | 公共字段，加 `firstChunkMs` |
+| `request.end` | 响应体结束、出错、被取消，或客户端中断时 | 公共字段，加 `durationMs`、`firstChunkMs`、`status`、`outcome` |
+| `usage.recorded` | 现有用量记录逻辑生成有效用量事件时 | 现有用量字段，加 `requestId`、`userAgent` 和 `sessionId` |
+
+公共请求字段：
+
+```ts
+{
+  id: string           // 网关生成的请求 ID
+  traceId: string      // 现有 trace ID
+  userAgent: string    // 复用请求上下文中的 User-Agent，未提供时为空字符串
+  sessionId: string | null // 复用现有会话解析结果，未知时为 null
+  path: string         // 请求路径
+  port: number         // 配置的监听端口
+  startedAt: number    // Unix 时间戳，毫秒
+  model: string | null // 原始请求模型，尚未获取时为 null
+}
+```
+
+`request.end` 额外提供：
+
+```ts
+{
+  durationMs: number
+  firstChunkMs: number | null
+  status: number
+  outcome: "completed" | "error" | "cancelled"
+}
+```
+
+`durationMs` 从鉴权后的请求开始计时，持续到响应体结束，包含读取请求体、解压和生成过程。持续时间采用单调时钟，单位为毫秒。响应头返回前中断时，`status` 为 `0`。
+
+`firstChunkMs` 表示首个非空 SSE 数据块的耗时，可能对应心跳或元数据事件，不等于首个 token 耗时。非 SSE 或没有数据块时为 `null`。
+
+`sessionId` 使用现有用量统计的解析顺序：请求上下文的 session affinity 优先，其次使用 handler 原先选出的显式或 fallback session。头部已有的会话在 `request.start` 中提供；需要解析 payload 或 handler fallback 才能确定的，在创建原有用量 recorder 时通过 `request.session` 补充，因此不需要等模型返回 token 才知道会话。未知时为 `null`；插件系统不额外生成会话 ID。
+
+用 `request.end.id` 与 `usage.recorded.requestId` 关联两类事件。所有请求生命周期事件和用量事件都带 `userAgent`、`sessionId`。用量事件保留原来的 `model`、`trace_id`、`session_id`、token 和费用等字段；额外的 `sessionId` 与原有 `session_id` 对应，原值为空时为 `null`。这些是插件事件的额外元数据，不新增 SQLite 字段。原有 SQLite 记录逻辑、session 统计方式不变。没有有效用量时仍然不产生用量事件。用量可能在响应清理期间或之后到达，不保证总在 `request.end` 之前；请求结束后才出现的用量会话以该用量事件为准。
+
+## 完整监控插件示例
+
+仓库中的 [monitor.mjs](../../../plugin/gateway/monitor.mjs) 可以实现两个 PR 对应的文件输出：
+
+- `inflight-<port>-<pid>.json`：当前运行中的请求，包含开始时间和模型。
+- `timings-YYYY-MM.jsonl`：请求总耗时、首包耗时、HTTP 状态和结束原因。
+
+将这个文件保存到 `D:/copilot-plugins/monitor.mjs`，然后在开发分支仓库根目录运行：
+
+```powershell
+$env:COPILOT_API_PLUGINS = '["D:/copilot-plugins/monitor.mjs"]'
+$env:COPILOT_API_MONITOR_DIR = 'D:/copilot-monitor'
+bun run start start --port 5000
+```
+
+运行中快照示例：
+
+```json
+{
+  "pid": 1234,
+  "port": "5000",
+  "updated": 1792780000,
+  "requests": {
+    "request-uuid": { "t": 1792780000, "model": "gpt-6-luna", "user_agent": "client/1.0", "session_id": "existing-session" }
+  }
+}
+```
+
+耗时日志每行示例：
+
+```json
+{"t":1792780000,"port":"5000","model":"gpt-6-luna","user_agent":"client/1.0","session_id":"existing-session","ms":1234,"first_chunk_ms":456,"status":200,"outcome":"completed"}
+```
+
+文件输出的 `t` 和 `updated` 使用秒，与事件接口的毫秒时间戳区分。快照通过临时文件加 rename 替换，正常退出时删除；异常退出后的读取方应检查 PID 是否存活。运行中的请求不按 15 分钟过期。
+
+## 当前版本的范围
+
+- 覆盖现有 POST Chat Completions、Messages、Responses 和 alpha search 路由，包括对应的 `/v1` 与 provider 路径。鉴权失败、模型发现和 token 计数接口不产生这些生命周期事件。
+- 模型事件复用现有解析结果，zstd 请求在已有解压流程后获取模型。完全透传且不解析正文的 alpha search 请求可能始终为 `model: null`。
+- 同一插件内的事件按顺序执行；异步钩子不会被请求链路等待。每个插件最多积压 1024 次 handler 调用，满后会丢弃新事件并记录警告，因此这是尽力投递的监控接口，没有持久队列或自动重放。
+- 退出时最多等待 2 秒，用于排空队列和执行清理函数。
+- 同步代码仍与网关共享事件循环，插件中的同步耗时操作会阻塞网关。插件作为受信任的本地代码运行，没有沙箱。
+- 不配置 `COPILOT_API_PLUGINS` 时不加载用户插件，也不安装响应生命周期包装。核心本身不写上述监控文件。

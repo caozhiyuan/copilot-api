@@ -8,6 +8,8 @@ import {
   getConfiguredAdminApiKeys,
 } from "./lib/request-auth"
 import { traceIdMiddleware } from "./lib/trace"
+import type { GatewayPlugins } from "./lib/gateway-plugins"
+import { requestEventsMiddleware } from "./lib/request-events"
 import { alphaSearchRoutes } from "./routes/alpha-search/route"
 import { completionRoutes } from "./routes/chat-completions/route"
 import { configRoutes } from "./routes/admin/config/route"
@@ -27,6 +29,8 @@ import { videoRoutes } from "./routes/videos/route"
 export interface CreateServerOptions {
   networkExposed?: boolean
   getApiKeys?: () => Array<string>
+  port?: number
+  plugins?: GatewayPlugins
 }
 
 function resolveSameOriginCorsOrigin(
@@ -70,6 +74,13 @@ export function createServer(options: CreateServerOptions = {}): Hono {
       allowWhenNoApiKeys: false,
     }),
   )
+
+  if (options.plugins) {
+    server.use(
+      "*",
+      requestEventsMiddleware(options.plugins, options.port ?? 4141),
+    )
+  }
 
   server.get("/", (c) => c.text("Server running"))
   server.get("/usage-viewer", (c) => {
