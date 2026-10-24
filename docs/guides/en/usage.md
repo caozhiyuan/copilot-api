@@ -53,7 +53,10 @@ finishes. Both use a monotonic clock. Timing reuses the already-parsed stream
 and works without `COPILOT_API_PLUGINS`.
 
 SQLite automatically adds nullable `request_id`, `first_token_ms`, `duration_ms`,
-and `request_outcome` columns to existing usage databases. Request IDs are generated
+and `request_outcome` columns to existing usage databases. It also adds
+`user_agent TEXT NOT NULL DEFAULT ''`: each usage row stores the first 64
+characters of the incoming User-Agent, independently of plugin/timing activation.
+Missing headers and historical rows have an empty string. Request IDs are generated
 per HTTP request, independently of caller-supplied/reused trace IDs. Token, cost,
 and session accounting stay unchanged; zero-usage requests do not create rows.
 Usage is saved as soon as it arrives, then timing is completed when the response
@@ -85,7 +88,7 @@ classified as `completed`; it does not certify model success.
   duration. Zero-output or zero-generation-duration samples can contribute TTFT
   but do not contribute to speed. Missing timing never counts as zero.
 
-`/token-usage/events` exposes the four stored fields and nullable
+`/token-usage/events` exposes the four timing fields, `user_agent`, and nullable
 `output_tokens_per_second`. Model entries in `/token-usage` and
 `/token-usage/daily` expose nullable `average_first_token_ms` and
 `output_tokens_per_second`, including daily model buckets. Aggregation is by the

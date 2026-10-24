@@ -84,6 +84,7 @@ interface TokenUsageEventMap {
 }
 
 const tokenUsageEventBus = new EventBus<TokenUsageEventMap>()
+const USER_AGENT_MAX_LENGTH = 64
 
 function resolveTraceId(traceId: string | null | undefined): string {
   return (
@@ -150,6 +151,10 @@ function toPersistedEvent(
     total_cost_nanos: cost?.total_cost_nanos ?? null,
     total_tokens: resolveTotalTokens(input),
     trace_id: resolveTraceId(input.traceId),
+    user_agent: (requestContext.getStore()?.userAgent ?? "").slice(
+      0,
+      USER_AGENT_MAX_LENGTH,
+    ),
     user_id: resolveUserId(input),
   }
 }

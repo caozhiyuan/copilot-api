@@ -142,7 +142,7 @@ on("request.actual_model", (event) => {
 
 `sessionId` 使用现有用量统计的解析顺序：请求上下文的 session affinity 优先，其次使用 handler 原先选出的显式或 fallback session。头部已有的会话在 `request.start` 中提供；需要解析 payload 或 handler fallback 才能确定的，在创建原有用量 recorder 时通过 `request.session` 补充，因此不需要等模型返回 token 才知道会话。未知时为 `null`；插件系统不额外生成会话 ID。
 
-用 `request.end.id` 与 `usage.recorded.requestId` 关联两类事件。所有请求生命周期事件和用量事件都带 `userAgent`、`sessionId`。用量事件保留原来的 `model`、`trace_id`、`session_id`、token 和费用等字段；额外的 `sessionId` 与原有 `session_id` 对应，原值为空时为 `null`；`actualModel` 对应该条用量原有的 `model`，不取请求后来切换到的目标。这些模型和会话别名是插件事件的额外元数据，不新增对应的 SQLite 字段。SQLite 另行保存请求计时，与插件是否启用无关，见[请求计时](usage.md#request-timing)。原有 token、费用和 session 统计方式不变。没有有效用量时仍然不产生用量事件。用量可能在响应清理期间或之后到达，不保证总在 `request.end` 之前；请求结束后才出现的用量会话以该用量事件为准。
+用 `request.end.id` 与 `usage.recorded.requestId` 关联两类事件。所有请求生命周期事件和用量事件都带 `userAgent`、`sessionId`。用量事件保留原来的 `model`、`trace_id`、`session_id`、token 和费用等字段；额外的 `sessionId` 与原有 `session_id` 对应，原值为空时为 `null`；`actualModel` 对应该条用量原有的 `model`，不取请求后来切换到的目标。这些模型和会话别名是插件事件的额外元数据，不新增对应的 SQLite 字段。SQLite 和用量事件接口另行保存/返回 `user_agent`，截取传入 User-Agent 的前 64 个字符；插件原有的 `userAgent` 元数据保留原值。SQLite 另行保存请求计时，与插件是否启用无关，见[请求计时](usage.md#request-timing)。原有 token、费用和 session 统计方式不变。没有有效用量时仍然不产生用量事件。用量可能在响应清理期间或之后到达，不保证总在 `request.end` 之前；请求结束后才出现的用量会话以该用量事件为准。
 
 ## 完整监控插件示例
 

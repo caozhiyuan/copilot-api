@@ -177,6 +177,7 @@ function createEventsPage(count: number): TokenUsageEventsPage {
       created_at_ms: Date.UTC(2026, 9, 16, 3, 4, index),
       created_at_utc: '2026-10-16T03:04:00Z',
       trace_id: `trace-${index}`,
+      user_agent: '',
       session_id: 'session-1',
       user_id: 'user',
       source: 'provider',

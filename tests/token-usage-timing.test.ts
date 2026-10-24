@@ -104,6 +104,61 @@ function completed(
   )
 }
 
+describe("stored User-Agent", () => {
+  test.each([
+    { name: "missing", value: undefined },
+    { name: "empty", value: "" },
+    { name: "short", value: "copilot-client/1.0" },
+    { name: "63 chars", value: "a".repeat(63) },
+    { name: "64 chars", value: "b".repeat(64) },
+    { name: "65 chars", value: "c".repeat(65) },
+    { name: "very long", value: "long-client/".repeat(1000) },
+  ])(
+    "stores at most 64 User-Agent characters: $name",
+    async ({ value: userAgent }) => {
+      const server = app()
+      server.post("/v1/messages", (c) => {
+        usage()
+        return c.text("ok")
+      })
+      await (
+        await server.request("/v1/messages", {
+          method: "POST",
+          headers: userAgent === undefined ? {} : { "user-agent": userAgent },
+        })
+      ).text()
+      expect((await events()).items[0].user_agent).toBe(
+        (userAgent ?? "").slice(0, 64),
+      )
+    },
+  )
+
+  test("captures User-Agent without request timing or plugins, and defaults to empty outside a request", async () => {
+    const server = new Hono()
+    server.use(traceIdMiddleware)
+    server.post("/v1/embeddings", (c) => {
+      usage(1, "no-timing")
+      return c.text("ok")
+    })
+    const userAgent = "embedding-client/" + "z".repeat(100)
+    await (
+      await server.request("/v1/embeddings", {
+        method: "POST",
+        headers: { "user-agent": userAgent },
+      })
+    ).text()
+    usage(1, "outside-request")
+    const rows = (await events()).items
+    expect(rows.find((row) => row.model === "no-timing")).toMatchObject({
+      user_agent: userAgent.slice(0, 64),
+      request_id: null,
+    })
+    expect(
+      rows.find((row) => row.model === "outside-request")?.user_agent,
+    ).toBe("")
+  })
+})
+
 describe("persisted request timing", () => {
   test("createServer persists timing from the actual Responses parser with no plugins configured", async () => {
     const { createServer } = await import("~/server")
@@ -427,6 +482,7 @@ describe("persisted request timing", () => {
     expect(row).toMatchObject({
       trace_id: "old-trace",
       session_id: "old-session",
+      user_agent: "",
       output_tokens: 99,
       request_id: null,
       first_token_ms: null,

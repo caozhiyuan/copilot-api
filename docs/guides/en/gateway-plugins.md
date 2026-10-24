@@ -57,7 +57,9 @@ Common metadata is `{ id, traceId, userAgent, sessionId, path, port, startedAt, 
 gateway-generated request ID, independent of client-supplied trace IDs. `port` is
 the configured listening port. `userAgent` is copied from the existing request
 context and is an empty string when the header is absent. It is also included in
-`usage.recorded` as plugin metadata, without adding a SQLite column.
+`usage.recorded` as plugin metadata. SQLite and the usage events API additionally
+store/expose `user_agent`, truncated to the first 64 characters; the plugin
+`userAgent` metadata retains the original value.
 `sessionId` reuses existing usage/session resolution: session affinity first, then
 the explicit or fallback session already selected by the handler. It is null until
 known. Header-derived affinity is available at start; payload/fallback-derived

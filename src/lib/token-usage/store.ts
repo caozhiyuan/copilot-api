@@ -72,6 +72,7 @@ export interface PersistedTokenUsageEvent extends TokenUsageTiming {
   total_nano_aiu: number | null
   total_tokens: number
   trace_id: string
+  user_agent: string
   user_id: string
 }
 
@@ -114,6 +115,7 @@ export interface TokenUsageEventRecord extends TokenUsageTiming {
   total_nano_aiu: number | null
   total_tokens: number
   trace_id: string
+  user_agent: string
   user_id: string
 }
 
@@ -204,6 +206,7 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
       trace_id TEXT NOT NULL,
       session_id TEXT NOT NULL DEFAULT '',
       user_id TEXT NOT NULL DEFAULT '',
+      user_agent TEXT NOT NULL DEFAULT '',
       source TEXT NOT NULL,
       endpoint TEXT NOT NULL,
       provider_name TEXT,
@@ -220,6 +223,7 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
     )
   `)
   ensureColumn(db, "user_id", "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, "user_agent", "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, "total_tokens", "INTEGER NOT NULL DEFAULT 0")
   ensureColumn(db, "total_nano_aiu", "INTEGER")
   ensureColumn(db, "cost_currency", "TEXT")
@@ -336,8 +340,9 @@ async function writeTokenUsageEvent(
         request_id,
         first_token_ms,
         duration_ms,
-        request_outcome
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        request_outcome,
+        user_agent
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     event.created_at_ms,
@@ -362,6 +367,7 @@ async function writeTokenUsageEvent(
     event.first_token_ms,
     event.duration_ms,
     event.request_outcome,
+    event.user_agent,
   )
 }
 
@@ -800,6 +806,7 @@ function usageEventFromRow(
     total_tokens: numberFromRow(row, "total_tokens"),
     trace_id: stringFromRow(row, "trace_id"),
     user_id: stringFromRow(row, "user_id"),
+    user_agent: stringFromRow(row, "user_agent"),
   }
 }
 
@@ -1278,6 +1285,7 @@ export async function getTokenUsageEventsPage(input: {
       first_token_ms,
       duration_ms,
       request_outcome,
+      user_agent,
       (SELECT COUNT(*) FROM token_usage_events sibling
         WHERE sibling.request_id = token_usage_events.request_id) AS usage_event_count
     FROM token_usage_events

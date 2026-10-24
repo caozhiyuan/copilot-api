@@ -217,6 +217,7 @@ export interface TokenUsageEventRecord {
   created_at_ms: number
   created_at_utc: string
   trace_id: string
+  user_agent: string
   session_id: string
   user_id: string
   source: 'copilot' | 'provider'

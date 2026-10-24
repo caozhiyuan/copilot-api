@@ -701,10 +701,48 @@ describe("request event lifecycle", () => {
     expect(usages[0].userAgent).toBe("usage-client/1.0")
     expect(usages[0].actualModel).toBe("test-model")
     expect(persisted.items[0].session_id).toBe("original-session")
+    expect(persisted.items[0].user_agent).toBe("usage-client/1.0")
     expect(persisted.items[0]).not.toHaveProperty("userAgent")
     expect(persisted.items[0]).not.toHaveProperty("sessionId")
     expect(persisted.items[0]).not.toHaveProperty("actualModel")
     expect(persisted.items[0].total_tokens).toBe(5)
+  })
+
+  test("truncates stored User-Agent to 64 characters while retaining plugin request metadata", async () => {
+    process.env.COPILOT_API_SQLITE_DB_PATH = ":memory:"
+    const { app, plugins, starts } = await appWithEvents()
+    const usages: Array<GatewayPluginEvents["usage.recorded"]> = []
+    await plugins.register("usage-header", ({ on }) => {
+      on("usage.recorded", (event) => {
+        usages.push(event)
+      })
+    })
+    const userAgent = "custom-agent/" + "x".repeat(100)
+    app.post("/v1/messages", (c) => {
+      recordTokenUsageEvent({
+        source: "copilot",
+        endpoint: "messages",
+        model: "test",
+        output_tokens: 1,
+      })
+      return c.text("ok")
+    })
+    await (
+      await app.request("/v1/messages", {
+        method: "POST",
+        headers: { "user-agent": userAgent },
+      })
+    ).text()
+    await plugins.flush()
+    const persisted = await getTokenUsageEventsPage({
+      period: "today",
+      page: 1,
+      pageSize: 10,
+    })
+    expect(persisted.items[0].user_agent).toBe(userAgent.slice(0, 64))
+    expect(starts[0].userAgent).toBe(userAgent)
+    expect(usages[0].userAgent).toBe(userAgent)
+    expect(usages[0].user_agent).toBe(userAgent.slice(0, 64))
   })
 
   test("publishes a payload-derived session before response or usage is available", async () => {

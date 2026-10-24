@@ -47,7 +47,7 @@ Desktop 的 **Token 使用 → 事件明细** 和 Web 的 **Request Events** 在
 
 首 token 延迟从鉴权后、读取请求体和解压前开始计时，首次观察到思考开始标记或有效输出时结束。思考开始就计入，不需要暴露思考文本。总耗时持续到响应体结束，二者都采用单调时钟。计时复用已经解析的流事件，不需要启用 `COPILOT_API_PLUGINS`。
 
-已有 SQLite 用量库会自动增加四个可空字段：`request_id`、`first_token_ms`、`duration_ms`、`request_outcome`。请求 ID 为每次 HTTP 请求单独生成，不使用调用方可能重复传入的 trace ID。原有 token、费用、session 统计方式不变，没有有效用量的请求不新增记录。用量到达时照常保存，响应结束后补齐计时；结束后才到达的用量直接携带完整计时。通过现有刷新操作查看完成后的数据，历史记录不回填。
+已有 SQLite 用量库会自动增加四个可空计时字段：`request_id`、`first_token_ms`、`duration_ms`、`request_outcome`。另增加 `user_agent TEXT NOT NULL DEFAULT ''`，保存传入 User-Agent 的前 64 个字符，与插件或计时是否启用无关；缺失请求头和历史记录使用空字符串。请求 ID 为每次 HTTP 请求单独生成，不使用调用方可能重复传入的 trace ID。原有 token、费用、session 统计方式不变，没有有效用量的请求不新增记录。用量到达时照常保存，响应结束后补齐计时；结束后才到达的用量直接携带完整计时。通过现有刷新操作查看完成后的数据，历史记录不回填。
 
 ```text
 输出速度（tok/s）= output_tokens / ((duration_ms - first_token_ms) / 1000)
@@ -59,4 +59,4 @@ Desktop 的 **Token 使用 → 事件明细** 和 Web 的 **Request Events** 在
 - 模型平均首 token 延迟按有效的完整请求计算，每个请求计一次。模型速度为有效输出 token 总数除以对应生成耗时之和。同一请求的多条同模型 usage 合并输出量，耗时只计一次；单条事件无法分摊总耗时，因此其速度为空。
 - 同一请求切换过多个模型时，不纳入模型性能统计，token 和费用总量照常统计。usage 跨越所选周期或日边界的请求不纳入对应桶的计时，避免将部分用量除以完整耗时。零输出或生成耗时为零的有效请求仍可参与平均首 token 统计，但不参与速度统计。缺失值不按零处理。
 
-`/token-usage/events` 返回上述四个存储字段及可空的 `output_tokens_per_second`。`/token-usage` 和 `/token-usage/daily` 的模型条目（含每日模型数据）返回可空的 `average_first_token_ms` 和 `output_tokens_per_second`。沿用现有 usage 的模型字段聚合，即计费统计所用的实际上游目标模型。
+`/token-usage/events` 返回上述四个计时字段、`user_agent` 及可空的 `output_tokens_per_second`。`/token-usage` 和 `/token-usage/daily` 的模型条目（含每日模型数据）返回可空的 `average_first_token_ms` 和 `output_tokens_per_second`。沿用现有 usage 的模型字段聚合，即计费统计所用的实际上游目标模型。
