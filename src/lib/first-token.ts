@@ -13,7 +13,9 @@ const nonempty = (value: unknown): value is string =>
 export function recordChatCompletionFirstToken(
   chunk: ChatCompletionChunk | null,
 ): void {
-  const observer = requestContext.getStore()?.pluginRequest
+  const observer =
+    requestContext.getStore()?.requestTiming
+    ?? requestContext.getStore()?.pluginRequest
   if (!observer || !chunk) return
   if (
     chunk.choices?.some(
@@ -35,7 +37,9 @@ export function recordChatCompletionFirstToken(
 export function recordResponsesFirstToken(
   event: ResponseStreamEvent | null,
 ): void {
-  const observer = requestContext.getStore()?.pluginRequest
+  const observer =
+    requestContext.getStore()?.requestTiming
+    ?? requestContext.getStore()?.pluginRequest
   if (!observer || !event) return
   switch (event.type) {
     case "response.output_item.added":
@@ -55,7 +59,9 @@ export function recordResponsesFirstToken(
 export function recordAnthropicFirstToken(
   event: AnthropicStreamEventData | null,
 ): void {
-  const observer = requestContext.getStore()?.pluginRequest
+  const observer =
+    requestContext.getStore()?.requestTiming
+    ?? requestContext.getStore()?.pluginRequest
   if (!observer || !event) return
   if (event.type === "content_block_delta") {
     const { delta } = event
@@ -83,7 +89,9 @@ export function recordAnthropicFirstToken(
 export function recordGoogleFirstToken(
   response: GoogleGenerateContentResponse,
 ): void {
-  const observer = requestContext.getStore()?.pluginRequest
+  const observer =
+    requestContext.getStore()?.requestTiming
+    ?? requestContext.getStore()?.pluginRequest
   if (!observer) return
   if (
     response.candidates?.some((candidate) =>

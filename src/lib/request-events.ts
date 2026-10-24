@@ -6,7 +6,8 @@ import type {
   PluginRequest,
   GatewayPluginEvents,
 } from "./gateway-plugins"
-import { requestContext } from "./request-context"
+import { requestContext, type RequestTiming } from "./request-context"
+import { enqueueTokenUsageTiming } from "./token-usage/store"
 
 const TRACKED = /\/(chat\/completions|responses|messages|alpha\/search)$/
 
@@ -16,15 +17,11 @@ export function setPluginRequestModel(model: string): void {
 }
 
 export function requestEventsMiddleware(
-  plugins: GatewayPlugins,
+  plugins: GatewayPlugins | undefined,
   port: number,
 ): MiddlewareHandler {
   return async (c, next) => {
-    if (
-      !plugins.enabled
-      || c.req.method !== "POST"
-      || !TRACKED.test(c.req.path)
-    ) {
+    if (c.req.method !== "POST" || !TRACKED.test(c.req.path)) {
       return await next()
     }
     const store = requestContext.getStore()
@@ -43,65 +40,80 @@ export function requestEventsMiddleware(
     }
     let finished = false
     const signal = c.req.raw.signal
-    let firstTokenMs: number | null = null
+    const timing: RequestTiming = {
+      id: info.id,
+      firstTokenMs: null,
+      durationMs: null,
+      outcome: null,
+      hasUsage: false,
+      recordFirstToken: () => {
+        if (finished || timing.firstTokenMs !== null) return
+        timing.firstTokenMs = performance.now() - started
+        plugins?.publish("request.first_token", {
+          ...info,
+          firstTokenMs: timing.firstTokenMs,
+        })
+      },
+    }
+    store.requestTiming = timing
     let status = 0
     const finish = (outcome: GatewayPluginEvents["request.end"]["outcome"]) => {
       if (finished) return
       finished = true
-      plugins.publish("request.end", {
+      timing.durationMs = performance.now() - started
+      timing.outcome = outcome
+      if (timing.hasUsage) enqueueTokenUsageTiming(timing)
+      plugins?.publish("request.end", {
         ...info,
-        durationMs: performance.now() - started,
-        firstTokenMs,
+        durationMs: timing.durationMs,
+        firstTokenMs: timing.firstTokenMs,
         status,
         outcome,
       })
       signal.removeEventListener("abort", abort)
     }
     const abort = () => finish("cancelled")
-    store.pluginRequest = {
-      id: info.id,
-      setModel: (model) => {
-        if (
-          finished
-          || typeof model !== "string"
-          || !model
-          || info.model === model
-        )
-          return
-        info.model = model
-        plugins.publish("request.model", info)
-      },
-      setActualModel: (model) => {
-        if (
-          finished
-          || typeof model !== "string"
-          || !model
-          || info.actualModel === model
-        )
-          return
-        info.actualModel = model
-        plugins.publish("request.actual_model", info)
-      },
-      setSessionId: (sessionId) => {
-        if (!sessionId || info.sessionId === sessionId) return
-        info.sessionId = sessionId
-        if (!finished) plugins.publish("request.session", info)
-      },
-      recordFirstToken: () => {
-        if (finished || firstTokenMs !== null) return
-        firstTokenMs = performance.now() - started
-        plugins.publish("request.first_token", { ...info, firstTokenMs })
-      },
-      recordUsage: (event) =>
-        plugins.publish("usage.recorded", {
-          ...event,
-          requestId: info.id,
-          userAgent: info.userAgent,
-          sessionId: event.session_id || null,
-          actualModel: event.model,
-        }),
-    }
-    plugins.publish("request.start", info)
+    if (plugins?.enabled)
+      store.pluginRequest = {
+        id: info.id,
+        setModel: (model) => {
+          if (
+            finished
+            || typeof model !== "string"
+            || !model
+            || info.model === model
+          )
+            return
+          info.model = model
+          plugins.publish("request.model", info)
+        },
+        setActualModel: (model) => {
+          if (
+            finished
+            || typeof model !== "string"
+            || !model
+            || info.actualModel === model
+          )
+            return
+          info.actualModel = model
+          plugins.publish("request.actual_model", info)
+        },
+        setSessionId: (sessionId) => {
+          if (!sessionId || info.sessionId === sessionId) return
+          info.sessionId = sessionId
+          if (!finished) plugins.publish("request.session", info)
+        },
+        recordFirstToken: timing.recordFirstToken,
+        recordUsage: (event) =>
+          plugins.publish("usage.recorded", {
+            ...event,
+            requestId: info.id,
+            userAgent: info.userAgent,
+            sessionId: event.session_id || null,
+            actualModel: event.model,
+          }),
+      }
+    plugins?.publish("request.start", info)
     signal.addEventListener("abort", abort, { once: true })
     if (signal.aborted) abort()
     try {

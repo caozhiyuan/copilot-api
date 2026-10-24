@@ -109,7 +109,9 @@ handler's parsed payload, including after zstd decompression, before model mappi
 Passthrough alpha-search routes that do not parse the payload keep `model: null`.
 Request bodies, response content, and authentication headers are not event fields.
 
-Usage keeps existing SQLite recording, trace/session IDs, and accounting unchanged.
+Usage keeps existing trace/session IDs and token/cost accounting unchanged.
+SQLite additionally stores request timing independently of plugin activation; see
+[usage timing](usage.md#request-timing).
 Zero-usage events remain skipped. Usage may arrive during or after response cleanup;
 join it by `requestId`, rather than assuming it always precedes `request.end`.
 
@@ -118,5 +120,7 @@ per-process in-flight snapshot and monthly JSONL timing logs. Copy it to your AP
 home and configure `COPILOT_API_MONITOR_DIR` as its output directory. Timing records
 include `model`, `actual_model`, `user_agent`, `session_id`, and `ttft_ms`. Readers should check each
 snapshot's PID for liveness after crashes; live requests are not expired by age.
-With `COPILOT_API_PLUGINS` unset, no plugins are imported and no lifecycle body
-wrapper is installed. The gateway itself creates no telemetry output files.
+With `COPILOT_API_PLUGINS` unset, no plugins are imported or receive events.
+The shared response wrapper still measures SQLite request timing with one
+pull-through reader and no extra stream parsing. The gateway itself creates no
+plugin monitoring output files.

@@ -36,3 +36,57 @@ The dashboard provides a user-friendly interface to view your Copilot usage data
 <p align="center">
   <img src="../../screenshots/usage-viewer.png" alt="Copilot API usage viewer" width="900" />
 </p>
+
+<a id="request-timing"></a>
+
+### Request timing
+
+Desktop **Token usage → Event details** and Web **Request Events** display TTFT
+and output speed after Output. Hover over TTFT to see total request duration.
+**Model Breakdown** displays average TTFT and output speed for the selected period.
+Missing measurements, including historical rows, display `—`.
+
+TTFT starts after authentication, before upload/decompression, and ends on the
+first observable thinking-start marker or eligible output. Thinking starts count
+without exposed reasoning text. Total duration ends when the response body
+finishes. Both use a monotonic clock. Timing reuses the already-parsed stream
+and works without `COPILOT_API_PLUGINS`.
+
+SQLite automatically adds nullable `request_id`, `first_token_ms`, `duration_ms`,
+and `request_outcome` columns to existing usage databases. Request IDs are generated
+per HTTP request, independently of caller-supplied/reused trace IDs. Token, cost,
+and session accounting stay unchanged; zero-usage requests do not create rows.
+Usage is saved as soon as it arrives, then timing is completed when the response
+ends. Usage arriving after completion carries the final timing directly. Refresh
+the existing viewer to see completed timing; old rows are not backfilled.
+
+```text
+output_tokens_per_second = output_tokens / ((duration_ms - first_token_ms) / 1000)
+```
+
+This is a request-side estimate using upstream-reported output tokens, including
+whatever reasoning tokens the upstream counts. It includes thinking after the
+observed start, delivery, and client backpressure. `request_outcome` describes
+HTTP/body completion: an SSE protocol error may still close normally and be
+classified as `completed`; it does not certify model success.
+
+- Per-event speed requires a completed request with exactly one usage row,
+  positive output tokens, and positive generation duration. Non-streaming,
+  synthetic-from-complete-result, raw passthrough, and unobservable streams have
+  null TTFT/speed. Cancelled, errored, and unfinished requests have null speed.
+- Model average TTFT counts each valid completed request once. Model speed is
+  the sum of eligible output tokens divided by the sum of their generation
+  durations, rather than an average of individual rates. A request with multiple
+  same-model usage rows contributes its combined output and duration once;
+  per-event speeds remain null because time cannot be attributed to one row.
+- Mixed-model requests are excluded from model timing; their token/cost totals
+  remain included. Requests with usage spanning a period/day boundary are also
+  excluded from that bucket's timing to avoid using partial usage with a full
+  duration. Zero-output or zero-generation-duration samples can contribute TTFT
+  but do not contribute to speed. Missing timing never counts as zero.
+
+`/token-usage/events` exposes the four stored fields and nullable
+`output_tokens_per_second`. Model entries in `/token-usage` and
+`/token-usage/daily` expose nullable `average_first_token_ms` and
+`output_tokens_per_second`, including daily model buckets. Aggregation is by the
+existing usage model (the resolved upstream target used for accounting).

@@ -142,14 +142,14 @@ on("request.actual_model", (event) => {
 
 `sessionId` 使用现有用量统计的解析顺序：请求上下文的 session affinity 优先，其次使用 handler 原先选出的显式或 fallback session。头部已有的会话在 `request.start` 中提供；需要解析 payload 或 handler fallback 才能确定的，在创建原有用量 recorder 时通过 `request.session` 补充，因此不需要等模型返回 token 才知道会话。未知时为 `null`；插件系统不额外生成会话 ID。
 
-用 `request.end.id` 与 `usage.recorded.requestId` 关联两类事件。所有请求生命周期事件和用量事件都带 `userAgent`、`sessionId`。用量事件保留原来的 `model`、`trace_id`、`session_id`、token 和费用等字段；额外的 `sessionId` 与原有 `session_id` 对应，原值为空时为 `null`；`actualModel` 对应该条用量原有的 `model`，不取请求后来切换到的目标。这些是插件事件的额外元数据，不新增 SQLite 字段。原有 SQLite 记录逻辑、session 统计方式不变。没有有效用量时仍然不产生用量事件。用量可能在响应清理期间或之后到达，不保证总在 `request.end` 之前；请求结束后才出现的用量会话以该用量事件为准。
+用 `request.end.id` 与 `usage.recorded.requestId` 关联两类事件。所有请求生命周期事件和用量事件都带 `userAgent`、`sessionId`。用量事件保留原来的 `model`、`trace_id`、`session_id`、token 和费用等字段；额外的 `sessionId` 与原有 `session_id` 对应，原值为空时为 `null`；`actualModel` 对应该条用量原有的 `model`，不取请求后来切换到的目标。这些模型和会话别名是插件事件的额外元数据，不新增对应的 SQLite 字段。SQLite 另行保存请求计时，与插件是否启用无关，见[请求计时](usage.md#request-timing)。原有 token、费用和 session 统计方式不变。没有有效用量时仍然不产生用量事件。用量可能在响应清理期间或之后到达，不保证总在 `request.end` 之前；请求结束后才出现的用量会话以该用量事件为准。
 
 ## 完整监控插件示例
 
 仓库中的 [monitor.mjs](../../../plugin/gateway/monitor.mjs) 可以实现两个 PR 对应的文件输出：
 
 - `inflight-<port>-<pid>.json`：当前运行中的请求，包含开始时间和模型。
-- `timings-YYYY-MM.jsonl`：请求总耗时、首包耗时、HTTP 状态和结束原因。
+- `timings-YYYY-MM.jsonl`：请求总耗时、首 token 延迟、HTTP 状态和结束原因。
 
 将这个文件保存到 `D:/copilot-plugins/monitor.mjs`，然后在开发分支仓库根目录运行：
 
@@ -187,4 +187,4 @@ bun run start start --port 5000
 - 同一插件内的事件按顺序执行；异步钩子不会被请求链路等待。每个插件最多积压 1024 次 handler 调用，满后会丢弃新事件并记录警告，因此这是尽力投递的监控接口，没有持久队列或自动重放。
 - 退出时最多等待 2 秒，用于排空队列和执行清理函数。
 - 同步代码仍与网关共享事件循环，插件中的同步耗时操作会阻塞网关。插件作为受信任的本地代码运行，没有沙箱。
-- 不配置 `COPILOT_API_PLUGINS` 时不加载用户插件，也不安装响应生命周期包装。核心本身不写上述监控文件。
+- 不配置 `COPILOT_API_PLUGINS` 时不加载用户插件、不发送插件事件。共享响应包装仍用于 SQLite 请求计时，复用单个透传 reader，不重复解析流。核心本身不写上述插件监控文件。

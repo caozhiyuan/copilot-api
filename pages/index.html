@@ -1162,6 +1162,16 @@
           return costs.map((cost) => formatTokenUsageCost(cost));
         }
 
+        function formatLatency(value) {
+          if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "—";
+          return value < 1000 ? `${value.toFixed(0)} ms` : `${(value / 1000).toFixed(2)} s`;
+        }
+
+        function formatOutputSpeed(value) {
+          return typeof value === "number" && Number.isFinite(value) && value >= 0
+            ? `${value.toFixed(1)} tok/s` : "—";
+        }
+
         function formatDateTime(value) {
           if (!Number.isFinite(value)) {
             return "N/A";
@@ -2474,6 +2484,10 @@
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     model.output_tokens
                   )}</td>
+                  ${by === "model" ? `
+                    <td class="px-4 py-2 text-right whitespace-nowrap" style="color: var(--color-fg-dark);">${formatLatency(model.average_first_token_ms)}</td>
+                    <td class="px-4 py-2 text-right whitespace-nowrap" style="color: var(--color-fg-dark);">${formatOutputSpeed(model.output_tokens_per_second)}</td>
+                  ` : ""}
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     model.cache_read_input_tokens
                   )}</td>
@@ -2496,13 +2510,17 @@
 
           return `
             <div class="overflow-auto [scrollbar-gutter:stable] ${state.isTokenUsageLoading ? "opacity-60" : ""}">
-              <table class="data-table min-w-[960px] table-fixed text-left">
+              <table class="data-table ${by === "model" ? "min-w-[1160px]" : "min-w-[960px]"} table-fixed text-left">
                 <thead>
                   <tr>
                     <th class="w-[270px] px-4 py-2 font-semibold">${by === "session" ? "Session" : "Model"}</th>
                     <th class="px-4 py-2 text-right font-semibold">Requests</th>
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
+                    ${by === "model" ? `
+                      <th class="px-4 py-2 text-right font-semibold" title="Average over valid completed requests, timed from thinking start or first output">Avg. TTFT</th>
+                      <th class="px-4 py-2 text-right font-semibold" title="Output tokens divided by summed generation time of valid completed requests">Output speed</th>
+                    ` : ""}
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Hit Rate</th>
@@ -2555,6 +2573,8 @@
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     event.output_tokens
                   )}</td>
+                  <td class="px-4 py-2 text-right whitespace-nowrap" style="color: var(--color-fg-dark);" title="Duration: ${formatLatency(event.duration_ms)}">${formatLatency(event.first_token_ms)}</td>
+                  <td class="px-4 py-2 text-right whitespace-nowrap" style="color: var(--color-fg-dark);">${formatOutputSpeed(event.output_tokens_per_second)}</td>
                   <td class="px-4 py-2 text-right" style="color: var(--color-fg-dark);">${formatNumber(
                     event.cache_read_input_tokens
                   )}</td>
@@ -2576,7 +2596,7 @@
 
           return `
             <div class="overflow-auto ${state.isEventsLoading ? "opacity-60" : ""}">
-              <table class="data-table min-w-[1000px] text-left">
+              <table class="data-table min-w-[1240px] text-left">
                 <thead>
                   <tr>
                     <th class="px-4 py-2 font-semibold">Time</th>
@@ -2587,6 +2607,8 @@
                     <th class="px-4 py-2 font-semibold">Trace</th>
                     <th class="px-4 py-2 text-right font-semibold">Input</th>
                     <th class="px-4 py-2 text-right font-semibold">Output</th>
+                    <th class="px-4 py-2 text-right font-semibold" title="Time to thinking start or first output">TTFT</th>
+                    <th class="px-4 py-2 text-right font-semibold" title="Output tokens / (duration minus TTFT); estimated for completed single-usage requests">Output speed</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Read</th>
                     <th class="px-4 py-2 text-right font-semibold">Cache Write</th>
                     <th class="px-4 py-2 text-right font-semibold">Total Tokens</th>

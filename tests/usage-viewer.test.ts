@@ -173,6 +173,8 @@ describe("usage viewer model cache hit rate", () => {
       renderTokenUsageSection: () => string
     }
     const totals = {
+      average_first_token_ms: null,
+      output_tokens_per_second: null,
       request_count: 10,
       input_tokens: 200,
       output_tokens: 9000,
@@ -227,14 +229,16 @@ describe("usage viewer model cache hit rate", () => {
     try {
       win.document.body.innerHTML = rendered
       expect(
-        [...win.document.querySelectorAll("th")].map(
-          (node) => node.textContent,
+        [...win.document.querySelectorAll("th")].map((node) =>
+          node.textContent?.trim(),
         ),
       ).toEqual([
         "Model",
         "Requests",
         "Input",
         "Output",
+        "Avg. TTFT",
+        "Output speed",
         "Cache Read",
         "Cache Write",
         "Cache Hit Rate",
@@ -243,11 +247,11 @@ describe("usage viewer model cache hit rate", () => {
       ])
       const rows = [...win.document.querySelectorAll("tbody tr")]
       expect(
-        rows.map((row) => row.querySelectorAll("td")[6].textContent),
+        rows.map((row) => row.querySelectorAll("td")[8].textContent),
       ).toEqual(examples.map((example) => example.expected))
-      expect(rows.every((row) => row.querySelectorAll("td").length === 9)).toBe(
-        true,
-      )
+      expect(
+        rows.every((row) => row.querySelectorAll("td").length === 11),
+      ).toBe(true)
       expect(rows[0].querySelector("td")?.textContent).toBe("<cached-model>")
       expect(win.document.querySelector("cached-model")).toBeNull()
       for (const example of examples) {
@@ -1325,5 +1329,91 @@ describe("usage viewer collapsible sections", () => {
     expect(html).toContain("state.collapsedSections = readCollapsedSections();")
     expect(html).toContain('.collapse-toggle[aria-expanded="false"]')
     expect(html).toContain(".collapse-body[hidden]")
+  })
+})
+
+describe("usage viewer request/model timing", () => {
+  test("renders valid timing, missing historical fields, duration tooltips and preserves session columns", async () => {
+    const html = await readUsageViewerPage()
+    const source = [
+      extractInlineFunctionRange(
+        html,
+        "        function escapeHtml(value) {",
+        "        function getErrorMessage(error) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function formatNumber(value) {",
+        "        function formatDateTime(value) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function formatCellText(value) {",
+        "        function formatRangeDate(value) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function renderTokenUsageValueLines(value) {",
+        "        function renderPaginationButton(",
+      ),
+      "({ renderTokenUsageModelBreakdown, renderTokenUsageEventsTable, formatLatency, formatOutputSpeed })",
+    ].join("\n")
+    const viewer = runInNewContext(source, {
+      state: {},
+      formatDateTime: () => "now",
+      renderEmptyState: () => "empty",
+    }) as {
+      renderTokenUsageModelBreakdown: (summary: unknown, by?: string) => string
+      renderTokenUsageEventsTable: (page: unknown) => string
+      formatLatency: (value: unknown) => string
+      formatOutputSpeed: (value: unknown) => string
+    }
+    const row = {
+      model: "test",
+      session_id: "session",
+      first_token_ms: 1250,
+      duration_ms: 3250,
+      average_first_token_ms: 750,
+      output_tokens_per_second: 42.6,
+    }
+    const win = new Window()
+    try {
+      win.document.body.innerHTML = viewer.renderTokenUsageModelBreakdown({
+        byModel: [row, { model: "old" }],
+      })
+      expect(win.document.querySelectorAll("th").length).toBe(11)
+      expect(win.document.querySelector("tbody")?.textContent).toContain(
+        "750 ms",
+      )
+      expect(win.document.querySelector("tbody")?.textContent).toContain(
+        "42.6 tok/s",
+      )
+      const old = win.document
+        .querySelectorAll("tbody tr")[1]
+        .querySelectorAll("td")
+      expect(old[4].textContent).toBe("—")
+      expect(old[5].textContent).toBe("—")
+      win.document.body.innerHTML = viewer.renderTokenUsageModelBreakdown(
+        { bySession: [row] },
+        "session",
+      )
+      expect(win.document.querySelectorAll("th").length).toBe(9)
+      win.document.body.innerHTML = viewer.renderTokenUsageEventsTable({
+        items: [row, {}],
+      })
+      expect(win.document.querySelectorAll("th").length).toBe(13)
+      expect(
+        win.document.querySelector('[title="Duration: 3.25 s"]')?.textContent,
+      ).toBe("1.25 s")
+      expect(win.document.body.textContent).toContain("42.6 tok/s")
+      for (const value of [undefined, null, NaN, Infinity, -1, "100"]) {
+        expect(viewer.formatLatency(value)).toBe("—")
+        expect(viewer.formatOutputSpeed(value)).toBe("—")
+      }
+      expect(viewer.formatLatency(0)).toBe("0 ms")
+      expect(viewer.formatOutputSpeed(0)).toBe("0.0 tok/s")
+    } finally {
+      await win.happyDOM.close()
+    }
   })
 })

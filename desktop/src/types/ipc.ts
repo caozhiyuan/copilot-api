@@ -165,6 +165,8 @@ export interface TokenUsageTotals {
 }
 
 export interface TokenUsageModelSummary extends TokenUsageTotals {
+  average_first_token_ms: number | null
+  output_tokens_per_second: number | null
   model: string
 }
 
@@ -206,6 +208,11 @@ export interface TokenUsageDailySummary {
 }
 
 export interface TokenUsageEventRecord {
+  request_id: string | null
+  first_token_ms: number | null
+  duration_ms: number | null
+  request_outcome: 'completed' | 'cancelled' | 'error' | null
+  output_tokens_per_second: number | null
   id: number
   created_at_ms: number
   created_at_utc: string

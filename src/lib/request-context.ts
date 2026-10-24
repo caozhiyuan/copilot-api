@@ -1,6 +1,15 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import type { RequestEventObserver } from "./types/gateway-plugins"
 
+export interface RequestTiming {
+  id: string
+  firstTokenMs: number | null
+  durationMs: number | null
+  outcome: "completed" | "cancelled" | "error" | null
+  hasUsage: boolean
+  recordFirstToken: () => void
+}
+
 export interface RequestContext {
   traceId: string
   startTime: number
@@ -9,6 +18,7 @@ export interface RequestContext {
   rootSessionId?: string
   parentSessionId: string | undefined
   pluginRequest?: RequestEventObserver
+  requestTiming?: RequestTiming
 }
 
 const TRACE_ID_MAX_LENGTH = 64

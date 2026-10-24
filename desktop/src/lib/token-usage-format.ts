@@ -59,3 +59,17 @@ export function formatTokenCosts(
   if (!costs || costs.length === 0) return ['—']
   return costs.map((cost) => formatTokenCost(cost))
 }
+
+export function formatLatency(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
+    return '—'
+  return value < 1000 ?
+      `${value.toFixed(0)} ms`
+    : `${(value / 1000).toFixed(2)} s`
+}
+
+export function formatOutputSpeed(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ?
+      `${value.toFixed(1)} tok/s`
+    : '—'
+}

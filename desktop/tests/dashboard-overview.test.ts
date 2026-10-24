@@ -168,6 +168,11 @@ function createEventsPage(count: number): TokenUsageEventsPage {
   const items: TokenUsageEventRecord[] = Array.from(
     { length: count },
     (_, index) => ({
+      request_id: null,
+      first_token_ms: null,
+      duration_ms: null,
+      request_outcome: null,
+      output_tokens_per_second: null,
       id: count - index,
       created_at_ms: Date.UTC(2026, 9, 16, 3, 4, index),
       created_at_utc: '2026-10-16T03:04:00Z',
@@ -538,4 +543,56 @@ describe('dashboard overview', () => {
       }
     })
   }
+})
+
+describe('usage timing display', () => {
+  test('shows model averages and request timing after Output, with total duration on hover', async () => {
+    fetchUsageSummary.mockResolvedValue({
+      ...summary,
+      byModel: [
+        {
+          ...summary.totals,
+          model: 'timed-model',
+          average_first_token_ms: 1250,
+          output_tokens_per_second: 42.6,
+        },
+      ],
+    })
+    const events = createEventsPage(2)
+    Object.assign(events.items[0], {
+      first_token_ms: 250,
+      duration_ms: 2250,
+      output_tokens_per_second: 10,
+    })
+    window.electronAPI.fetchTokenUsageEvents = mock(() =>
+      Promise.resolve(events),
+    )
+    await render()
+    await clickButton('Token usage')
+    const tables = [...container.querySelectorAll('table')]
+    const models = tables.find((table) =>
+      table.textContent?.includes('timed-model'),
+    )!
+    const details = tables.find((table) =>
+      table.textContent?.includes('trace-0'),
+    )!
+    expect(
+      [...models.querySelectorAll('th')]
+        .map((cell) => cell.textContent)
+        .slice(3, 6),
+    ).toEqual(['Output', 'Avg. TTFT', 'Output speed'])
+    expect(models.textContent).toContain('1.25 s')
+    expect(models.textContent).toContain('42.6 tok/s')
+    expect(
+      [...details.querySelectorAll('th')]
+        .map((cell) => cell.textContent)
+        .slice(6, 9),
+    ).toEqual(['Output', 'TTFT', 'Output speed'])
+    const rows = details.querySelectorAll('tbody tr')
+    expect(rows[0].textContent).toContain('250 ms')
+    expect(rows[0].textContent).toContain('10.0 tok/s')
+    expect(rows[0].querySelector('[title="Duration: 2.25 s"]')).not.toBeNull()
+    expect(rows[1].querySelectorAll('td')[7].textContent).toBe('—')
+    expect(rows[1].querySelectorAll('td')[8].textContent).toBe('—')
+  })
 })

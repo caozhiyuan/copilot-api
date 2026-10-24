@@ -75,12 +75,10 @@ export function createServer(options: CreateServerOptions = {}): Hono {
     }),
   )
 
-  if (options.plugins) {
-    server.use(
-      "*",
-      requestEventsMiddleware(options.plugins, options.port ?? 4141),
-    )
-  }
+  server.use(
+    "*",
+    requestEventsMiddleware(options.plugins, options.port ?? 4141),
+  )
 
   server.get("/", (c) => c.text("Server running"))
   server.get("/usage-viewer", (c) => {

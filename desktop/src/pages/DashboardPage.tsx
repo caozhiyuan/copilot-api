@@ -17,6 +17,8 @@ import {
 } from '../lib/copilot-usage-display'
 import {
   formatCacheHitRate,
+  formatLatency,
+  formatOutputSpeed,
   formatTokenCost,
   formatTokenCosts,
 } from '../lib/token-usage-format'
@@ -1758,7 +1760,7 @@ function TokenUsagePanel({
               <div
                 className={`h-[194px] overflow-auto [scrollbar-gutter:stable] ${loading ? 'opacity-60' : ''}`}
               >
-                <table className="w-full min-w-[960px] table-fixed text-left text-[13px]">
+                <table className="w-full min-w-[1120px] table-fixed text-left text-[13px]">
                   <thead className="sticky top-0 bg-surface text-ink-faint">
                     <tr className="border-b border-line-soft">
                       <th className="w-[280px] px-2.5 py-1.5 font-semibold">
@@ -1772,6 +1774,18 @@ function TokenUsagePanel({
                       </th>
                       <th className="px-2.5 py-1.5 text-right font-semibold">
                         {t('dashboard.tokenUsageOutput')}
+                      </th>
+                      <th
+                        className="px-2.5 py-1.5 text-right font-semibold"
+                        title={t('dashboard.tokenUsageTimingHint')}
+                      >
+                        {t('dashboard.tokenUsageAverageFirstToken')}
+                      </th>
+                      <th
+                        className="px-2.5 py-1.5 text-right font-semibold"
+                        title={t('dashboard.tokenUsageTimingHint')}
+                      >
+                        {t('dashboard.tokenUsageOutputSpeed')}
                       </th>
                       <th className="px-2.5 py-1.5 text-right font-semibold">
                         {t('dashboard.tokenUsageCacheRead')}
@@ -1913,7 +1927,7 @@ function TokenUsagePanel({
             <div
               className={`h-64 overflow-auto ${eventsLoading ? 'opacity-60' : ''}`}
             >
-              <table className="w-full min-w-[1060px] text-left text-[13px]">
+              <table className="w-full min-w-[1240px] text-left text-[13px]">
                 <thead className="sticky top-0 bg-surface text-ink-faint">
                   <tr className="border-b border-line-soft">
                     <th className="px-2.5 py-1.5 font-semibold">
@@ -1936,6 +1950,18 @@ function TokenUsagePanel({
                     </th>
                     <th className="px-2.5 py-1.5 text-right font-semibold">
                       {t('dashboard.tokenUsageOutput')}
+                    </th>
+                    <th
+                      className="px-2.5 py-1.5 text-right font-semibold"
+                      title={t('dashboard.tokenUsageTimingHint')}
+                    >
+                      {t('dashboard.tokenUsageFirstToken')}
+                    </th>
+                    <th
+                      className="px-2.5 py-1.5 text-right font-semibold"
+                      title={t('dashboard.tokenUsageTimingHint')}
+                    >
+                      {t('dashboard.tokenUsageOutputSpeed')}
                     </th>
                     <th className="px-2.5 py-1.5 text-right font-semibold">
                       {t('dashboard.tokenUsageCacheRead')}
@@ -2342,6 +2368,12 @@ function TokenUsageModelRow({ model }: { model: TokenUsageModelSummary }) {
       <td className="px-2.5 py-1.5 text-right text-ink-soft">
         {formatTokenCount(model.output_tokens)}
       </td>
+      <td className="whitespace-nowrap px-2.5 py-1.5 text-right text-ink-soft">
+        {formatLatency(model.average_first_token_ms)}
+      </td>
+      <td className="whitespace-nowrap px-2.5 py-1.5 text-right text-ink-soft">
+        {formatOutputSpeed(model.output_tokens_per_second)}
+      </td>
       <td className="px-2.5 py-1.5 text-right text-ink-soft">
         {formatTokenCount(model.cache_read_input_tokens)}
       </td>
@@ -2408,6 +2440,7 @@ function TokenUsageSessionRow({
 }
 
 function TokenUsageEventRow({ event }: { event: TokenUsageEventRecord }) {
+  const { t } = useLanguage()
   return (
     <tr className="border-b border-line-soft last:border-b-0">
       <td
@@ -2445,6 +2478,15 @@ function TokenUsageEventRow({ event }: { event: TokenUsageEventRecord }) {
       </td>
       <td className="px-2.5 py-1.5 text-right text-ink-soft">
         {formatTokenCount(event.output_tokens)}
+      </td>
+      <td
+        className="whitespace-nowrap px-2.5 py-1.5 text-right text-ink-soft"
+        title={`${t('dashboard.tokenUsageDuration')}: ${formatLatency(event.duration_ms)}`}
+      >
+        {formatLatency(event.first_token_ms)}
+      </td>
+      <td className="whitespace-nowrap px-2.5 py-1.5 text-right text-ink-soft">
+        {formatOutputSpeed(event.output_tokens_per_second)}
       </td>
       <td className="px-2.5 py-1.5 text-right text-ink-soft">
         {formatTokenCount(event.cache_read_input_tokens)}

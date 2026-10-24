@@ -118,8 +118,13 @@ function toPersistedEvent(
   }
 
   const now = new Date()
+  const timing = requestContext.getStore()?.requestTiming
   const cost = resolveTokenUsageCost({ ...input, at: now })
   return {
+    request_id: timing?.id ?? null,
+    first_token_ms: timing?.firstTokenMs ?? null,
+    duration_ms: timing?.durationMs ?? null,
+    request_outcome: timing?.outcome ?? null,
     cache_creation_input_tokens: normalizeToken(
       input.cache_creation_input_tokens,
     ),
@@ -158,6 +163,8 @@ export function recordTokenUsageEvent(input: TokenUsageEventInput): void {
   }
 
   const observer = requestContext.getStore()?.pluginRequest
+  const timing = requestContext.getStore()?.requestTiming
+  if (timing) timing.hasUsage = true
   observer?.setSessionId(event.session_id)
   observer?.recordUsage(event)
   tokenUsageEventBus.publish("token_usage.recorded", event)

@@ -232,6 +232,12 @@ const en: Locale = {
     tokenUsageCacheHitRate: 'Cache hit rate',
     tokenUsageCost: 'Cost',
     tokenUsageEndpoint: 'Endpoint',
+    tokenUsageFirstToken: 'TTFT',
+    tokenUsageAverageFirstToken: 'Avg. TTFT',
+    tokenUsageOutputSpeed: 'Output speed',
+    tokenUsageDuration: 'Duration',
+    tokenUsageTimingHint:
+      'Timed from thinking start or first output. Speed is output tokens divided by generation time. Only valid completed requests contribute.',
     tokenUsageEvents: 'Event details',
     tokenUsageInput: 'Input',
     tokenUsageModel: 'Model',

@@ -220,6 +220,12 @@ const zh: Locale = {
     tokenUsageCacheHitRate: '缓存命中率',
     tokenUsageCost: '费用',
     tokenUsageEndpoint: '端点',
+    tokenUsageFirstToken: '首 token',
+    tokenUsageAverageFirstToken: '平均首 token',
+    tokenUsageOutputSpeed: '输出速度',
+    tokenUsageDuration: '总耗时',
+    tokenUsageTimingHint:
+      '从思考开始或首段有效输出计时；速度为输出 token 数除以生成耗时。仅统计有效的完整请求。',
     tokenUsageEvents: '事件明细',
     tokenUsageInput: '输入',
     tokenUsageModel: '模型',
