@@ -19,6 +19,7 @@ import {
 import { getUpstreamTransportConfig } from "~/lib/config"
 import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
+import { setPluginRequestActualModel } from "~/lib/request-context"
 import { state } from "~/lib/state"
 import { parseUserIdMetadata } from "~/lib/utils"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
@@ -138,6 +139,7 @@ export const createMessages = async (
   consola.log(`<-- model: ${payload.model}`)
 
   const transportConfig = getUpstreamTransportConfig()
+  setPluginRequestActualModel(payload.model)
   const response = await fetchUpstreamWithLifecycle(
     `${copilotBaseUrl(state)}/v1/messages`,
     {

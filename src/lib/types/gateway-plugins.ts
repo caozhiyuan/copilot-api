@@ -9,11 +9,13 @@ export interface PluginRequest {
   port: number
   startedAt: number
   model: string | null
+  actualModel: string | null
 }
 
 export interface GatewayPluginEvents {
   "request.start": PluginRequest
   "request.model": PluginRequest
+  "request.actual_model": PluginRequest
   "request.session": PluginRequest
   "request.first_token": PluginRequest & { firstTokenMs: number }
   "request.end": PluginRequest & {
@@ -26,6 +28,7 @@ export interface GatewayPluginEvents {
     requestId: string | null
     userAgent: string
     sessionId: string | null
+    actualModel: string
   }
 }
 
@@ -52,6 +55,7 @@ export type GatewayPluginSetup = (
 export interface RequestEventObserver {
   id: string
   setModel(model: string): void
+  setActualModel(model: string): void
   setSessionId(sessionId: string): void
   recordFirstToken(): void
   recordUsage(event: PersistedTokenUsageEvent): void

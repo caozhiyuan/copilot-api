@@ -39,6 +39,7 @@ export function requestEventsMiddleware(
       port,
       startedAt: Date.now(),
       model: null,
+      actualModel: null,
     }
     let finished = false
     const signal = c.req.raw.signal
@@ -70,6 +71,17 @@ export function requestEventsMiddleware(
         info.model = model
         plugins.publish("request.model", info)
       },
+      setActualModel: (model) => {
+        if (
+          finished
+          || typeof model !== "string"
+          || !model
+          || info.actualModel === model
+        )
+          return
+        info.actualModel = model
+        plugins.publish("request.actual_model", info)
+      },
       setSessionId: (sessionId) => {
         if (!sessionId || info.sessionId === sessionId) return
         info.sessionId = sessionId
@@ -86,6 +98,7 @@ export function requestEventsMiddleware(
           requestId: info.id,
           userAgent: info.userAgent,
           sessionId: event.session_id || null,
+          actualModel: event.model,
         }),
     }
     plugins.publish("request.start", info)

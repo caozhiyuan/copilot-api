@@ -16,7 +16,10 @@ import {
 } from "~/lib/request-events"
 import { traceIdMiddleware } from "~/lib/trace"
 import { recordResponsesFirstToken } from "~/lib/first-token"
-import { requestContext } from "~/lib/request-context"
+import {
+  requestContext,
+  setPluginRequestActualModel,
+} from "~/lib/request-context"
 import { createAuthMiddleware } from "~/lib/request-auth"
 import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
 import {
@@ -50,6 +53,7 @@ async function appWithEvents(keys: Array<string> = []) {
   const plugins = runtime()
   const starts: Array<GatewayPluginEvents["request.start"]> = []
   const models: Array<GatewayPluginEvents["request.model"]> = []
+  const actualModels: Array<GatewayPluginEvents["request.actual_model"]> = []
   const tokens: Array<GatewayPluginEvents["request.first_token"]> = []
   const sessions: Array<GatewayPluginEvents["request.session"]> = []
   const ends: Array<GatewayPluginEvents["request.end"]> = []
@@ -59,6 +63,9 @@ async function appWithEvents(keys: Array<string> = []) {
     })
     on("request.model", (event) => {
       models.push(event)
+    })
+    on("request.actual_model", (event) => {
+      actualModels.push(event)
     })
     on("request.session", (event) => {
       sessions.push(event)
@@ -79,7 +86,7 @@ async function appWithEvents(keys: Array<string> = []) {
     }),
   )
   app.use(requestEventsMiddleware(plugins, 5000))
-  return { app, plugins, starts, models, sessions, tokens, ends }
+  return { app, plugins, starts, models, actualModels, sessions, tokens, ends }
 }
 
 const payload = JSON.stringify({ model: "original/model", input: "hello" })
@@ -100,6 +107,7 @@ const info = {
   port: 5000,
   startedAt: 123,
   model: null,
+  actualModel: null,
 }
 
 async function expectFailure(promise: Promise<unknown>, message: string) {
@@ -259,6 +267,39 @@ describe("gateway plugin runtime", () => {
 })
 
 describe("request event lifecycle", () => {
+  test("keeps requested and actual models separate and snapshots actual target updates", async () => {
+    const { app, plugins, starts, models, actualModels, ends } =
+      await appWithEvents()
+    let lateUpdate = () => {}
+    app.post("/v1/messages", (c) => {
+      setPluginRequestModel("client-alias")
+      setPluginRequestActualModel("")
+      setPluginRequestActualModel("resolved-model")
+      setPluginRequestActualModel("resolved-model")
+      setPluginRequestActualModel("fallback-model")
+      const observer = requestContext.getStore()!.pluginRequest!
+      lateUpdate = () => observer.setActualModel("too-late")
+      return c.text("ok")
+    })
+    await (await app.request("/v1/messages", requestOptions)).text()
+    lateUpdate()
+    await plugins.flush()
+    expect(starts[0].actualModel).toBeNull()
+    expect(models[0]).toMatchObject({
+      model: "client-alias",
+      actualModel: null,
+    })
+    expect(actualModels.map((e) => e.actualModel)).toEqual([
+      "resolved-model",
+      "fallback-model",
+    ])
+    expect(actualModels.every((e) => e.model === "client-alias")).toBe(true)
+    expect(ends[0]).toMatchObject({
+      model: "client-alias",
+      actualModel: "fallback-model",
+    })
+  })
+
   test("reuses handler parsing, keeps metadata immutable and preserves response headers", async () => {
     const { app, plugins, starts, models, ends, tokens } = await appWithEvents()
     app.post("/v1/messages", async (c) => {
@@ -382,7 +423,7 @@ describe("request event lifecycle", () => {
     expect(ends[0].firstTokenMs).toBeNull()
   })
 
-  test("times the first parsed model output once, excluding earlier heartbeat and empty deltas", async () => {
+  test("times the first parsed model output once, excluding heartbeat, hidden reasoning metadata and empty deltas", async () => {
     const { app, plugins, ends, tokens } = await appWithEvents()
     let now = 100
     const clock = spyOn(performance, "now").mockImplementation(() => now)
@@ -401,6 +442,18 @@ describe("request event lifecycle", () => {
     app.post("/v1/responses", (c) =>
       streamSSE(c, async (stream) => {
         recordResponsesFirstToken(delta)
+        recordResponsesFirstToken({
+          type: "response.output_item.added",
+          output_index: 0,
+          sequence_number: 0,
+          item: {
+            id: "reasoning-1",
+            type: "reasoning",
+            status: "in_progress",
+            summary: [],
+            encrypted_content: "hidden-reasoning",
+          },
+        })
         await stream.writeSSE({ event: "ping", data: "{}" })
         await gate
         recordResponsesFirstToken({ ...delta, delta: "Hello" })
@@ -605,9 +658,11 @@ describe("request event lifecycle", () => {
     expect(ends[0].sessionId).toBe("original-session")
     expect(sessions).toHaveLength(0)
     expect(usages[0].userAgent).toBe("usage-client/1.0")
+    expect(usages[0].actualModel).toBe("test-model")
     expect(persisted.items[0].session_id).toBe("original-session")
     expect(persisted.items[0]).not.toHaveProperty("userAgent")
     expect(persisted.items[0]).not.toHaveProperty("sessionId")
+    expect(persisted.items[0]).not.toHaveProperty("actualModel")
     expect(persisted.items[0].total_tokens).toBe(5)
   })
 
@@ -838,6 +893,17 @@ describe("request event lifecycle", () => {
         "request-1": { model: "test-model", user_agent: "plugin-test/1.0" },
       },
     })
+    plugins!.publish("request.actual_model", {
+      ...info,
+      model: "test-model",
+      actualModel: "resolved-model",
+    })
+    await plugins!.flush()
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+      requests: {
+        "request-1": { model: "test-model", actual_model: "resolved-model" },
+      },
+    })
     plugins!.publish("request.session", {
       ...info,
       sessionId: "existing-session",
@@ -854,6 +920,7 @@ describe("request event lifecycle", () => {
     plugins!.publish("request.end", {
       ...info,
       model: "test-model",
+      actualModel: "resolved-model",
       sessionId: "existing-session",
       durationMs: 5,
       firstTokenMs: 2.4,
@@ -873,6 +940,7 @@ describe("request event lifecycle", () => {
       user_agent: "plugin-test/1.0",
       session_id: "existing-session",
       ttft_ms: 2,
+      actual_model: "resolved-model",
     })
     await plugins!.close()
     expect(existsSync(path)).toBe(false)

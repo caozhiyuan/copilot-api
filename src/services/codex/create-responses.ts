@@ -32,7 +32,10 @@ import {
 } from "~/services/responses-websocket-helpers"
 import { createResponsesHttpEventStream } from "~/services/responses-http"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
-import { requestContext } from "~/lib/request-context"
+import {
+  requestContext,
+  setPluginRequestActualModel,
+} from "~/lib/request-context"
 import consola from "consola"
 
 export const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api"
@@ -304,6 +307,7 @@ export async function forwardCodexResponses(
 ): Promise<CreateResponsesReturn> {
   consola.log(`<-- model: ${payload.model}`)
   options.clientSignal?.throwIfAborted()
+  setPluginRequestActualModel(payload.model)
   const transport = resolveCodexResponsesTransport(options.transport)
   if (payload.stream && transport === "websocket") {
     return forwardCodexResponsesOverWebSocket(

@@ -22,6 +22,9 @@ Each module default-exports a setup function:
 ```js
 export default function setup({ version, server, on, log }) {
   log(`Plugin API ${version}, listening on ${server.port}`)
+  on("request.actual_model", (event) => {
+    log(`${event.model ?? "unknown"} -> ${event.actualModel}`)
+  })
   on("request.end", (event) => {
     log(`${event.model ?? "unknown"}: ${event.durationMs} ms (${event.outcome})`)
   })
@@ -44,12 +47,13 @@ two-second total deadline. There is no durable delivery or hot reload.
 | --- | --- | --- |
 | `request.start` | After authentication, before reading the body | Common request metadata, initially `model: null` |
 | `request.model` | A handler has already parsed the requested model | Common metadata with the original requested model |
+| `request.actual_model` | Upstream dispatch selects or changes the resolved target | Common metadata with `actualModel` |
 | `request.session` | Existing usage/session resolution identifies or updates the session while the request is active | Common metadata with `sessionId` |
 | `request.first_token` | Existing stream parsing observes the first nonempty model output | Common metadata plus `firstTokenMs` |
 | `request.end` | Body completes, errors, is cancelled, or the client aborts | Common metadata plus `durationMs`, `firstTokenMs`, HTTP `status`, and `outcome` |
-| `usage.recorded` | The existing token-usage recorder emits an event | Existing usage fields plus `requestId`, `userAgent`, and `sessionId` |
+| `usage.recorded` | The existing token-usage recorder emits an event | Existing usage fields plus `requestId`, `userAgent`, `sessionId`, and `actualModel` |
 
-Common metadata is `{ id, traceId, userAgent, sessionId, path, port, startedAt, model }`. `id` is a
+Common metadata is `{ id, traceId, userAgent, sessionId, path, port, startedAt, model, actualModel }`. `id` is a
 gateway-generated request ID, independent of client-supplied trace IDs. `port` is
 the configured listening port. `userAgent` is copied from the existing request
 context and is an empty string when the header is absent. It is also included in
@@ -64,6 +68,19 @@ system. In `usage.recorded`, `sessionId` mirrors the existing `session_id` field
 `startedAt` is epoch **milliseconds**; durations use
 the monotonic clock and are milliseconds. End outcomes are `completed`, `error`,
 and `cancelled`. A cancellation before response headers has `status: 0`.
+
+`model` stays the original client-requested model. `actualModel` is the resolved
+target sent upstream after mapping, provider alias resolution, automatic model
+selection, and endpoint normalization. For Google this is the model ID in the
+request URL. It starts as null and emits `request.actual_model` at dispatch,
+before waiting for the upstream response or token usage, so it is also available
+for in-flight or failed requests without usage. Unknown targets and raw passthrough
+routes keep it null. If a request selects different targets, the event repeats
+when the target changes; subsequent lifecycle events carry the latest target.
+This identifies the gateway's upstream target, not provider-internal routing.
+In `usage.recorded`, `actualModel` aliases that usage event's existing `model`,
+rather than a later target selected by another call. No SQLite column is added.
+
 `firstTokenMs` measures time to first observable model output (TTFT), from the same
 post-authentication request start as `durationMs`. It includes upload/decompression
 and upstream wait time. Existing stream parsers detect nonempty text, reasoning
@@ -72,7 +89,9 @@ also count. Google streams count a nonempty text part or a complete function-cal
 part. Whitespace counts as output. Heartbeats, role declarations, empty deltas,
 signatures, usage, and response/tool-start metadata do not trigger the event.
 The event is emitted once, without forwarding output content to plugins or
-reparsing the stream. Hidden reasoning is not observable. Non-streaming responses,
+reparsing the stream. Hidden reasoning is not observable: if GPT emits no content
+during thinking, TTFT includes that wait and ends at the first observable output,
+not the model's internal first reasoning token. Non-streaming responses,
 synthetic streams built from complete results, raw passthrough routes, and streams
 that end without observable output keep `firstTokenMs: null`.
 
@@ -90,7 +109,7 @@ join it by `requestId`, rather than assuming it always precedes `request.end`.
 The example [monitor.mjs](../../../plugin/gateway/monitor.mjs) implements both a
 per-process in-flight snapshot and monthly JSONL timing logs. Copy it to your API
 home and configure `COPILOT_API_MONITOR_DIR` as its output directory. Timing records
-include `user_agent`, `session_id`, and `ttft_ms`. Readers should check each
+include `model`, `actual_model`, `user_agent`, `session_id`, and `ttft_ms`. Readers should check each
 snapshot's PID for liveness after crashes; live requests are not expired by age.
 With `COPILOT_API_PLUGINS` unset, no plugins are imported and no lifecycle body
 wrapper is installed. The gateway itself creates no telemetry output files.

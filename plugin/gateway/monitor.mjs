@@ -22,6 +22,7 @@ export default function setup({ on, server }) {
     requests.set(event.id, {
       t: event.startedAt / 1000,
       model: "unknown",
+      actual_model: event.actualModel,
       user_agent: event.userAgent,
       session_id: event.sessionId,
       ttft_ms: null,
@@ -32,6 +33,13 @@ export default function setup({ on, server }) {
     const entry = requests.get(event.id)
     if (entry) {
       entry.model = event.model
+      flush()
+    }
+  })
+  on("request.actual_model", (event) => {
+    const entry = requests.get(event.id)
+    if (entry) {
+      entry.actual_model = event.actualModel
       flush()
     }
   })
@@ -57,6 +65,7 @@ export default function setup({ on, server }) {
       t: event.startedAt / 1000,
       port: String(event.port),
       model: event.model ?? "unknown",
+      actual_model: event.actualModel,
       user_agent: event.userAgent,
       session_id: event.sessionId,
       ms: Math.round(event.durationMs),

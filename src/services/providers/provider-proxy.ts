@@ -12,7 +12,10 @@ import {
 } from "~/lib/config"
 import { getGrokBuildVersion } from "~/lib/grok-build"
 import { XAI_API_BASE_URL } from "~/lib/oauth/xai"
-import { requestContext } from "~/lib/request-context"
+import {
+  requestContext,
+  setPluginRequestActualModel,
+} from "~/lib/request-context"
 import { createTimeoutDispatcher } from "~/lib/timeout-dispatcher"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { ChatCompletionsPayload } from "~/lib/types/chat-completions"
@@ -218,6 +221,7 @@ export async function forwardProviderMessages(
     resolveOpencodeMessagesSession(payload),
   )
   const transportConfig = getUpstreamTransportConfig()
+  setPluginRequestActualModel(payload.model)
   return await fetchUpstreamWithLifecycle(
     resolveProviderEndpointUrl(providerConfig, "messages"),
     {
@@ -247,6 +251,7 @@ export async function forwardProviderChatCompletions(
     payload.prompt_cache_key?.trim() || undefined,
   )
   const transportConfig = getUpstreamTransportConfig()
+  setPluginRequestActualModel(payload.model)
   return await fetchUpstreamWithLifecycle(
     resolveProviderEndpointUrl(providerConfig, "chat/completions"),
     {
@@ -277,6 +282,7 @@ export async function forwardProviderResponses(
     payload.prompt_cache_key?.trim() || undefined,
   )
   await applyXaiGrokBuildHeaders(providerConfig, headers, payload)
+  setPluginRequestActualModel(payload.model)
   return await fetchUpstreamWithLifecycle(
     resolveProviderEndpointUrl(providerConfig, "responses"),
     {

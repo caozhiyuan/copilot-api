@@ -23,6 +23,7 @@ function observed(run: () => void): number {
       pluginRequest: {
         id: "request",
         setModel: () => {},
+        setActualModel: () => {},
         setSessionId: () => {},
         recordUsage: () => {},
         recordFirstToken: () => {
@@ -111,6 +112,17 @@ describe("observable first token", () => {
   test("ignores Responses tool starts, search status, annotations, done events and errors", () => {
     const events: Array<ResponseStreamEvent | null> = [
       null,
+      {
+        ...responseDelta,
+        type: "response.output_item.added",
+        item: {
+          id: "reasoning-1",
+          type: "reasoning",
+          status: "in_progress",
+          summary: [],
+          encrypted_content: "hidden-reasoning",
+        },
+      },
       {
         ...responseDelta,
         type: "response.output_item.added",

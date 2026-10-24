@@ -22,6 +22,11 @@ export const requestContext = {
     asyncLocalStorage.run(context, callback),
 }
 
+// Observe the final target at upstream dispatch, after mapping and overrides.
+export function setPluginRequestActualModel(model: string): void {
+  requestContext.getStore()?.pluginRequest?.setActualModel(model)
+}
+
 export function generateTraceId(): string {
   const timestamp = Date.now().toString(36)
   const random = Math.random().toString(36).slice(2, 8)
