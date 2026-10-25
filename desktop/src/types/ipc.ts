@@ -1,5 +1,10 @@
 import type { LangPreference } from '../locales'
 import type {
+  SubscriptionProvider,
+  SubscriptionUsage,
+} from '../../../src/lib/types/subscription-usage'
+export type { SubscriptionProvider, SubscriptionUsage }
+import type {
   CreatedImage,
   ImageCreationInput,
   SaveMediaInput,
@@ -378,6 +383,9 @@ declare global {
       ) => Promise<void>
       openUrl: (url: string) => Promise<void>
       fetchUsage: () => Promise<unknown>
+      fetchSubscriptionUsage: (
+        provider: SubscriptionProvider,
+      ) => Promise<SubscriptionUsage | null>
       fetchModels: () => Promise<unknown>
       createImages: (
         id: string,

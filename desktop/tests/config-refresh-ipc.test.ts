@@ -226,6 +226,77 @@ beforeEach(async () => {
 
 afterEach(() => mock.restore())
 
+describe('desktop subscription quota IPC', () => {
+  test('requests CLI server quotas with gateway auth', async () => {
+    spyOn(fs.promises, 'readFile').mockResolvedValue(
+      JSON.stringify({ auth: { apiKeys: ['quota-key'] } }),
+    )
+    const usage = {
+      provider: 'codex',
+      planType: 'business',
+      windows: [],
+      limitReached: false,
+    }
+    const fetcher = spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(() => Promise.resolve(Response.json(usage)), {
+        preconnect: () => {},
+      }),
+    )
+    expect(await invoke('server:fetch-subscription-usage', 'codex')).toEqual(
+      usage,
+    )
+    expect(fetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:4141/usage/codex',
+      expect.objectContaining({
+        headers: { 'x-api-key': 'quota-key' },
+      }),
+    )
+    expect(fetcher.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+    expect(await invoke('server:fetch-subscription-usage', 'xai')).toEqual(
+      usage,
+    )
+    expect(fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:4141/usage/xai',
+      expect.anything(),
+    )
+  })
+
+  test('distinguishes unavailable accounts from failed requests and validates the provider', async () => {
+    spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(null, { status: 404 }),
+    )
+    expect(await invoke('server:fetch-subscription-usage', 'codex')).toBeNull()
+    spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('private-upstream-error', { status: 502 }),
+    )
+    await expect(
+      invoke('server:fetch-subscription-usage', 'xai'),
+    ).rejects.toThrow('Failed to fetch subscription usage')
+    await expect(
+      invoke('server:fetch-subscription-usage', '../admin/config'),
+    ).rejects.toThrow('Unsupported subscription provider')
+    spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('offline'))
+    await expect(
+      invoke('server:fetch-subscription-usage', 'codex'),
+    ).rejects.toThrow('offline')
+  })
+
+  test('exposes typed quota queries through preload', async () => {
+    await import('../electron/preload')
+    if (!preloadApi) throw new Error('Preload bridge was not exposed')
+    await preloadApi.fetchSubscriptionUsage('codex')
+    expect(rendererInvoke).toHaveBeenCalledWith(
+      'server:fetch-subscription-usage',
+      'codex',
+    )
+    await preloadApi.fetchSubscriptionUsage('xai')
+    expect(rendererInvoke).toHaveBeenLastCalledWith(
+      'server:fetch-subscription-usage',
+      'xai',
+    )
+  })
+})
+
 describe('desktop media IPC', () => {
   const imageInput = {
     mode: 'generate',

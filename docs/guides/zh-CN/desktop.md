@@ -14,6 +14,8 @@
 
 ## Electron 桌面应用
 
+概览页为已启用的 Codex、xAI 提供商展示可独立刷新的订阅额度卡片。Codex 支持个人额度窗口、额外模型额度池、工作区 Credits（含无限制）和 Business 成员月度上限；xAI 支持 Grok Build 每周 / 每月额度、旧版月度额度、按量付费用量和预付余额。额度通过 CLI server 查询，重置时间使用本地时区。网页用量看板也展示这些额度和 Copilot 进度条，已移除 Copilot 原始 JSON 展示。
+
 如果你更喜欢图形界面，仓库里还提供了位于 `desktop/` 的 Electron 桌面应用。它支持 GitHub Copilot 登录、OpenAI Codex OAuth 与最多 3 个 Codex 账号的手动切换、移除未在使用的账号，以及 Kimi、DeepSeek、DashScope、OpenRouter 或自定义 provider 的 API Key 配置。Provider 配置、服务 API Key 和账号修改后，会自动刷新运行中的服务，新请求使用更新后的配置。授权或配置 provider 后，可以一键启动或停止本地代理，并在界面里直接查看本地端点、鉴权 Header、可用模型、额度和日志。
 
 监听地址、代理、详细日志和 Token 日志属于服务启动选项，保存后会自动重启正在运行的服务，进行中的请求可能中断。OAuth App、API Home、SQLite DB Path 和 Enterprise URL 仍需重启桌面应用。服务未运行时只保存设置，不会自动启动。

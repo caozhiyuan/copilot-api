@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { runInNewContext } from "node:vm"
 import { Window } from "happy-dom"
+import type { SubscriptionUsage } from "~/lib/types/subscription-usage"
 import type { TokenUsageSummary } from "../desktop/src/types/ipc"
 
 const pagePath = new URL("../pages/index.html", import.meta.url)
@@ -29,34 +30,6 @@ function extractCollapseHelpers(html: string): string {
     "        // --- Collapsible Sections ---",
     "        function getModelField(model, fields) {",
   )
-}
-
-type UsageViewerFormatters = {
-  escapeHtml: (value: unknown) => string
-  formatObject: (value: unknown) => string
-  renderDetailedData: (value: unknown) => string
-}
-
-async function loadUsageViewerFormatters(): Promise<UsageViewerFormatters> {
-  const html = await readUsageViewerPage()
-  const source = [
-    extractInlineFunctionRange(
-      html,
-      "        function escapeHtml(value) {",
-      "        function getErrorMessage(error) {",
-    ),
-    extractInlineFunctionRange(
-      html,
-      "        function formatObject(obj) {",
-      "        function renderTokenUsageSection() {",
-    ),
-    extractCollapseHelpers(html),
-    "({ escapeHtml, formatObject, renderDetailedData })",
-  ].join("\n")
-
-  return runInNewContext(source, {
-    state: { collapsedSections: {} },
-  }) as UsageViewerFormatters
 }
 
 describe("usage viewer period contract", () => {
@@ -523,6 +496,7 @@ describe("usage viewer session fetching", () => {
       SESSION_PAGE_SIZE: 10,
       DEFAULT_TOKEN_USAGE_EVENTS_PAGE_SIZE: 20,
       render: () => rendering.onRender(),
+      fetchSubscriptionQuotas: () => Promise.resolve(),
       getSelectedPeriod: () => "today",
       getErrorMessage: (error: Error) => error.message,
       isMissingTokenUsageEndpointError: (error: unknown) =>
@@ -691,7 +665,7 @@ describe("usage viewer Copilot quota", () => {
       extractInlineFunctionRange(
         html,
         "        function getCopilotQuotaRemaining(details) {",
-        "        function formatObject(obj) {",
+        "        function renderTokenUsageSection() {",
       ),
       "({ renderQuotaCard, getCopilotQuotaRemaining, getCopilotQuotaPercentRemaining })",
     ].join("\n")
@@ -778,86 +752,11 @@ describe("usage viewer Copilot quota", () => {
   })
 })
 
-describe("usage viewer detailed response formatter", () => {
-  test("escapes HTML in keys and values", async () => {
-    const { escapeHtml, formatObject } = await loadUsageViewerFormatters()
-
-    expect(escapeHtml(`<tag attr="x">&'`)).toBe(
-      "&lt;tag attr=&quot;x&quot;&gt;&amp;&#39;",
-    )
-    const unsafeKey = `unsafe_<key&"'`
-    const value = `<script>&"'`
-    const html = formatObject({ [unsafeKey]: value })
-    expect(html).toContain(escapeHtml(unsafeKey.replace(/_/g, " ")))
-    expect(html).toContain(escapeHtml(JSON.stringify(value)))
-  })
-
-  test("renders every nested array entry and primitive", async () => {
-    const { escapeHtml, formatObject } = await loadUsageViewerFormatters()
-    const arrayValue = `<array & "'>`
-
-    const html = formatObject({
-      values: [
-        "text",
-        17,
-        true,
-        false,
-        null,
-        {},
-        [],
-        arrayValue,
-        ["nested array", null],
-        { nested_array: ["deep", { nested_null: null }] },
-      ],
-      enterprise_list: [{ enterprise_name: "Copilot Engineering" }],
-    })
-
-    for (const value of [
-      "[0]",
-      "[1]",
-      "[2]",
-      "[3]",
-      "[4]",
-      "[5]",
-      "[6]",
-      "[7]",
-      "[8]",
-      "Copilot Engineering",
-      "enterprise name:",
-      "&quot;text&quot;",
-      "17",
-      "true",
-      "false",
-      "null",
-      "{}",
-      "[]",
-      "&quot;nested array&quot;",
-      "&quot;deep&quot;",
-      "nested null:",
-    ]) {
-      expect(html).toContain(value)
-    }
-    expect(html).toContain(escapeHtml(JSON.stringify(arrayValue)))
-    expect(html).toContain("color: var(--color-green)")
-    expect(html).toContain("color: var(--color-red)")
-    expect(html).not.toContain("items]")
-  })
-
-  test("shows empty containers and renders the detailed response section", async () => {
-    const { formatObject, renderDetailedData } =
-      await loadUsageViewerFormatters()
-
-    expect(formatObject({})).toContain("{}")
-    expect(formatObject([])).toContain("[]")
-    expect(formatObject({ empty_object: {}, empty_array: [] })).toContain("{}")
-    expect(formatObject({ empty_object: {}, empty_array: [] })).toContain("[]")
-    expect(renderDetailedData(null)).toBe("")
-    expect(renderDetailedData(undefined)).toBe("")
-    expect(renderDetailedData({})).toContain("{}")
-    expect(renderDetailedData({ response: [null] })).toContain(
-      "Copilot Usage API Response",
-    )
-  })
+test("usage viewer omits the raw Copilot JSON section", async () => {
+  const html = await readUsageViewerPage()
+  expect(html).not.toContain("Copilot Usage API Response")
+  expect(html).not.toContain("renderDetailedData")
+  expect(html).not.toContain("function formatObject")
 })
 
 describe("usage viewer collapsible sections", () => {
@@ -868,7 +767,7 @@ describe("usage viewer collapsible sections", () => {
     "sessionBreakdown",
     "requestEvents",
     "copilotQuotas",
-    "usageApiResponse",
+    "subscriptionQuotas",
   ] as const
 
   type CollapseState = {
@@ -880,6 +779,7 @@ describe("usage viewer collapsible sections", () => {
     tokenUsageSummary: unknown
     error: string | null
     data: { quota_snapshots: Record<string, unknown> } | null
+    subscriptionUsage: Record<string, SubscriptionUsage>
   }
 
   type CollapseViewer = {
@@ -887,7 +787,7 @@ describe("usage viewer collapsible sections", () => {
     renderTokenUsageSection: () => string
     renderUsageQuotas: (snapshots: unknown) => string
     renderUsageErrorSection: () => string
-    renderDetailedData: (data: unknown) => string
+    renderSubscriptionUsageSection: () => string
     handleContentAreaClick: (event: unknown) => void
   }
 
@@ -943,6 +843,9 @@ describe("usage viewer collapsible sections", () => {
         totals,
         byModel: [],
       },
+      subscriptionUsage: {
+        codex: { provider: "codex", windows: [], limitReached: false },
+      },
       error: null,
       data: {
         quota_snapshots: { chat: { entitlement: 100, remaining: 50 } },
@@ -978,11 +881,6 @@ describe("usage viewer collapsible sections", () => {
       extractInlineFunctionRange(
         html,
         "        function renderUsageQuotas(snapshots) {",
-        "        function formatObject(obj) {",
-      ),
-      extractInlineFunctionRange(
-        html,
-        "        function formatObject(obj) {",
         "        function renderTokenUsageSection() {",
       ),
       extractInlineFunctionRange(
@@ -1000,7 +898,7 @@ describe("usage viewer collapsible sections", () => {
         renderTokenUsageSection,
         renderUsageQuotas,
         renderUsageErrorSection,
-        renderDetailedData,
+        renderSubscriptionUsageSection,
         handleContentAreaClick,
       })`,
     ].join("\n")
@@ -1028,7 +926,7 @@ describe("usage viewer collapsible sections", () => {
         state.error && !state.data ?
           viewer.renderUsageErrorSection()
         : viewer.renderUsageQuotas(state.data?.quota_snapshots),
-        viewer.renderDetailedData(state.data),
+        viewer.renderSubscriptionUsageSection(),
       ].join("")
     }
     const toggle = (key: string) =>
@@ -1074,8 +972,8 @@ describe("usage viewer collapsible sections", () => {
       expect(h.root.querySelector("[hidden]")).toBeNull()
       expect(h.toggle("tokenUsage").textContent).toBe("Token Usage")
       expect(h.toggle("copilotQuotas").textContent).toBe("Copilot Quotas")
-      expect(h.toggle("usageApiResponse").textContent).toBe(
-        "Copilot Usage API Response",
+      expect(h.toggle("subscriptionQuotas").textContent).toBe(
+        "Subscription Quotas",
       )
       expect(h.toggle("requestEvents").textContent).toBe("Request Events")
     } finally {
@@ -1088,12 +986,12 @@ describe("usage viewer collapsible sections", () => {
       stored: JSON.stringify({
         tokenUsage: true,
         requestEvents: true,
-        usageApiResponse: true,
+        subscriptionQuotas: true,
       }),
     })
     try {
       h.render()
-      for (const key of ["tokenUsage", "requestEvents", "usageApiResponse"]) {
+      for (const key of ["tokenUsage", "requestEvents", "subscriptionQuotas"]) {
         expect(h.isExpanded(key)).toBe(false)
         expect(h.isBodyHidden(key)).toBe(true)
       }
@@ -1105,8 +1003,8 @@ describe("usage viewer collapsible sections", () => {
         expect(h.isExpanded(key)).toBe(true)
         expect(h.isBodyHidden(key)).toBe(false)
       }
-      expect(h.toggle("usageApiResponse").textContent).toContain(
-        "Copilot Usage API Response",
+      expect(h.toggle("subscriptionQuotas").textContent).toContain(
+        "Subscription Quotas",
       )
     } finally {
       await h.win.happyDOM.close()

@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["src/**/*", "../src/lib/server-host-shared.ts", "../src/lib/types/provider-management.ts", "../src/lib/types/oauth.ts"],
+  "include": ["src/**/*", "../src/lib/server-host-shared.ts", "../src/lib/types/provider-management.ts", "../src/lib/types/oauth.ts", "../src/lib/types/subscription-usage.ts"],
   "compilerOptions": {
     "composite": true,
     "lib": ["ESNext", "DOM", "DOM.Iterable"]

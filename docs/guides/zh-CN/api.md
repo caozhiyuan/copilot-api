@@ -112,6 +112,10 @@ curl http://localhost:4141/v1/videos/YOUR_REQUEST_ID \
 | 端点           | 方法 | 说明                                              |
 | -------------- | ---- | ------------------------------------------------- |
 | `GET /usage`   | `GET` | 获取详细的 Copilot 使用统计与额度信息。          |
+| `GET /usage/codex` | `GET` | 获取当前 Codex 订阅的额度窗口、Credits 和 Business 成员额度上限。 |
+| `GET /usage/xai` | `GET` | 获取当前 xAI 订阅的 Grok Build 额度和预付余额。 |
+
+订阅接口使用服务端已启用的 OAuth 提供商和当前选中的账号，返回统一的 `provider`、`planType`、`windows`、`credits` 和额度限制状态，`resetAt` 使用 Unix 秒时间戳。订阅不可用时返回 404，上游或凭据查询失败时返回 502。桌面概览和网页用量看板分别查询这些接口，上游凭据保留在服务端。
 
 ### Admin / 配置端点
 

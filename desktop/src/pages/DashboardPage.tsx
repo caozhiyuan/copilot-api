@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 
 import Header from '../components/Header'
+import SubscriptionQuotaCard from '../components/SubscriptionQuotaCard'
 import {
   TokenUsageCostMetric,
   TokenUsageMetric,
@@ -361,6 +362,7 @@ export default function DashboardPage({
     }
   }, [showCreate, tab])
   const [usage, setUsage] = useState<UsageInfo | null>(null)
+  const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
   const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null)
   const [tokenUsageDaily, setTokenUsageDaily] =
     useState<TokenUsageDailySummary | null>(null)
@@ -825,6 +827,7 @@ export default function DashboardPage({
 
   const handleRefreshActiveTab = () => {
     if (tab === 'dashboard') {
+      setQuotaRefreshKey((value) => value + 1)
       void fetchData()
       void fetchProviderConfig()
       return
@@ -1126,7 +1129,7 @@ export default function DashboardPage({
               ))}
             </div>
             <div className="grid min-h-0 flex-1 items-start gap-3 md:grid-cols-[minmax(0,1fr)_340px] md:grid-rows-[minmax(0,1fr)]">
-              <div className="flex min-h-0 min-w-0 flex-col gap-3 md:h-full">
+              <div className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto md:h-full">
                 {/* Provider overview */}
                 {shouldShowProviderOverview && (
                   <div className="shrink-0 bg-surface border border-line rounded-xl p-3">
@@ -1253,6 +1256,20 @@ export default function DashboardPage({
                       </div>
                     )}
                 </div>
+
+                {(['codex', 'xai'] as const).map((provider) =>
+                  (
+                    providers.some(
+                      (item) => item.name === provider && item.enabled,
+                    )
+                  ) ?
+                    <SubscriptionQuotaCard
+                      key={provider}
+                      provider={provider}
+                      refreshKey={quotaRefreshKey}
+                    />
+                  : null,
+                )}
 
                 {/* GitHub Copilot Quota */}
                 {shouldShowQuotaUsage && (

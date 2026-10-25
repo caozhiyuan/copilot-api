@@ -125,6 +125,7 @@ beforeEach(async () => {
       getProviderManagementConfig: getProviderConfig,
       getProviderModelOptions: () => Promise.resolve({}),
       fetchUsage: fetchCopilotUsage,
+      fetchSubscriptionUsage: () => Promise.resolve(null),
       fetchModels: () => Promise.resolve({ data: [{ id: 'qwen-plus' }] }),
       fetchTokenUsage: fetchUsageSummary,
       fetchTokenUsageDaily: () =>
@@ -265,6 +266,38 @@ async function clickButton(label: string) {
 }
 
 describe('dashboard overview', () => {
+  test('loads both subscription quotas independently in provider mode', async () => {
+    getProviderConfig.mockResolvedValue({
+      configPath: 'config.json',
+      providers: [
+        { name: 'codex', type: 'openai-responses', enabled: true },
+        { name: 'xai', type: 'openai-responses', enabled: true },
+      ],
+    })
+    const fetchSubscriptions = mock((provider: 'codex' | 'xai') =>
+      provider === 'codex' ?
+        Promise.resolve({
+          provider,
+          windows: [],
+          planType: 'business',
+          limitReached: false,
+        })
+      : Promise.reject(new Error('xAI offline')),
+    )
+    window.electronAPI.fetchSubscriptionUsage = fetchSubscriptions
+    await render('provider')
+    expect(container.textContent).toContain('Codex · Subscription quota')
+    expect(container.textContent).toContain('xAI · Subscription quota')
+    expect(container.textContent).toContain('business')
+    expect(container.textContent).toContain('Could not load quota')
+    expect(cardByTitle('Available models').textContent).toContain('qwen-plus')
+    expect(fetchCopilotUsage).not.toHaveBeenCalled()
+    expect(fetchSubscriptions).toHaveBeenCalledWith('codex')
+    expect(fetchSubscriptions).toHaveBeenCalledWith('xai')
+    await clickButton('Refresh')
+    expect(fetchSubscriptions).toHaveBeenCalledTimes(4)
+  })
+
   test('places providers at the top of the dashboard and keeps models in the sidebar', async () => {
     await render('provider')
     expect(

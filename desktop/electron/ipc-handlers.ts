@@ -92,6 +92,8 @@ import type {
   ProviderAuthInput,
   ServerAuthInfo,
   ServerKeysConfigUpdate,
+  SubscriptionProvider,
+  SubscriptionUsage,
 } from '../src/types/ipc'
 
 interface ConfigApiErrorResponse {
@@ -678,6 +680,24 @@ export function registerIpcHandlers(
   })
 
   // Server: Proxy HTTP requests through the main process to bypass file:// origin CORS in the renderer
+  ipcMain.handle(
+    'server:fetch-subscription-usage',
+    async (_event, provider: SubscriptionProvider) => {
+      if (provider !== 'codex' && provider !== 'xai') {
+        throw new Error('Unsupported subscription provider')
+      }
+      const headers = await getServerRequestHeaders()
+      const response = await fetch(`${getServerBaseUrl()}/usage/${provider}`, {
+        headers,
+        // Allow for a credential refresh before the bounded upstream query.
+        signal: AbortSignal.timeout(60_000),
+      })
+      if (response.status === 404) return null
+      if (!response.ok) throw new Error('Failed to fetch subscription usage')
+      return (await response.json()) as SubscriptionUsage
+    },
+  )
+
   ipcMain.handle('server:fetch-usage', async () => {
     const baseUrl = getServerBaseUrl()
     try {

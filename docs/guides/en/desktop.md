@@ -12,6 +12,8 @@ Preview results in the page and save them through the system file dialog. Video 
 
 ## Electron Desktop App
 
+The dashboard includes independently refreshable Codex and xAI subscription quota cards for enabled providers. Codex supports personal windows, additional model pools, workspace credits (including unlimited credits), and Business monthly member limits. xAI supports Grok Build weekly/monthly allowances, legacy monthly budgets, pay-as-you-go usage, and prepaid balances. Quotas are fetched through the CLI server; reset times use your local timezone. The web usage viewer also shows these quotas and Copilot progress bars, without the raw Copilot JSON section.
+
 If you prefer a GUI, this repository also includes an Electron desktop app in `desktop/`. It supports GitHub Copilot sign-in, OpenAI Codex OAuth with manual switching among up to 3 Codex accounts and removal of accounts that are not in use, and API-key configuration for Kimi, DeepSeek, DashScope, OpenRouter, or a custom provider. Provider configuration, server API keys, and account changes automatically refresh the running service; new requests use the updated configuration. After authorization or provider configuration, it can start and stop the local proxy with one click and shows the local endpoint, auth header, available models, usage, and logs in the app.
 
 Server runtime, listening host, proxy, verbose logging, and token logging are server startup options. Saving changes automatically restarts a running service and may interrupt active requests. OAuth App, API Home, SQLite DB Path, and Enterprise URL still require restarting the desktop app. Saving while the service is stopped does not start it.

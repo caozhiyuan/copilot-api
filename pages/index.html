@@ -390,6 +390,10 @@
         grid-template-columns: repeat(6, minmax(0, 1fr));
       }
 
+      .subscription-grid {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+      }
+
       .metric-grid-tight .metric-label {
         white-space: nowrap;
       }
@@ -724,6 +728,10 @@
           isEventsLoading: false,
           error: null,
           data: null,
+          subscriptionUsage: {},
+          subscriptionUsageErrors: {},
+          isSubscriptionsLoading: false,
+          subscriptionRequestId: 0,
           tokenUsageDailySummary: null,
           tokenUsageSummary: null,
           tokenUsageSessionsPage: null,
@@ -1248,6 +1256,9 @@
           const hasContent = Boolean(
             state.error
               || state.data
+              || state.isSubscriptionsLoading
+              || Object.keys(state.subscriptionUsage || {}).length
+              || Object.keys(state.subscriptionUsageErrors || {}).length
               || state.isTokenUsageLoading
               || state.isEventsLoading
               || state.tokenUsageDailySummary
@@ -1263,16 +1274,17 @@
           } else if (state.error && !state.data) {
             contentArea.innerHTML = `
               ${renderTokenUsageSection()}
+              ${renderSubscriptionUsageSection()}
               ${renderUsageErrorSection()}
             `;
           } else if (state.data) {
             contentArea.innerHTML = `
               ${renderTokenUsageSection()}
+              ${renderSubscriptionUsageSection()}
               ${renderUsageQuotas(state.data.quota_snapshots)}
-              ${renderDetailedData(state.data)}
             `;
           } else {
-            contentArea.innerHTML = renderTokenUsageSection();
+            contentArea.innerHTML = renderTokenUsageSection() + renderSubscriptionUsageSection();
           }
 
           // Replace placeholder icons with actual Lucide icons
@@ -1288,7 +1300,7 @@
           "sessionBreakdown",
           "requestEvents",
           "copilotQuotas",
-          "usageApiResponse",
+          "subscriptionQuotas",
         ]);
 
         function readCollapsedSections() {
@@ -1713,82 +1725,80 @@
           `;
         }
 
-        /**
-         * Recursively builds a formatted HTML list from a JSON object.
-         * @param {object} obj - The object to format.
-         * @returns {string} HTML string for the formatted list.
-         */
-        function formatObject(obj) {
-          if (Array.isArray(obj)) {
-            if (obj.length === 0) {
-              return `<span style="color: var(--color-gray);">[]</span>`;
-            }
-
-            return (
-              '<div class="pl-4">' +
-              obj
-                .map(
-                  (value, index) =>
-                    `<div class="mt-1"><span class="capitalize font-semibold" style="color: var(--color-fg-lightest);">[${index}]:</span> ${formatObject(value)}</div>`,
-                )
-                .join("") +
-              "</div>"
-            );
-          }
-
-          if (obj === null || typeof obj !== "object") {
-            if (typeof obj === "boolean") {
-              return `<span class="font-semibold" style="color: ${obj ? "var(--color-green)" : "var(--color-red)"}">${escapeHtml(String(obj))}</span>`;
-            }
-
-            return `<span style="color: var(--color-blue);">${escapeHtml(JSON.stringify(obj))}</span>`;
-          }
-
-          const entries = Object.entries(obj);
-          if (entries.length === 0) {
-            return `<span style="color: var(--color-gray);">{}</span>`;
-          }
-
-          return (
-            '<div class="pl-4">' +
-            entries
-              .map(([key, value]) => {
-                const formattedKey = escapeHtml(key.replace(/_/g, " "));
-                return `<div class="mt-1">
-                  <span class="capitalize font-semibold" style="color: var(--color-fg-lightest);">${formattedKey}:</span>
-                  ${formatObject(value)}
-                </div>`;
-              })
-              .join("") +
-            "</div>"
-          );
+        // Subscription quotas use the same normalized server response as desktop.
+        function subscriptionQuotaLabel(window) {
+          let label = "Included allowance";
+          if (window.kind === "spend") return "Monthly credit limit";
+          if (window.kind === "on-demand") return "Pay as you go · Monthly";
+          const seconds = window.windowSeconds;
+          if (window.period === "weekly" || seconds === 604800) label = "Weekly limit";
+          else if (window.period === "monthly") label = "Monthly limit";
+          else if (Number.isFinite(seconds) && seconds >= 86400) label = `${seconds / 86400}-day limit`;
+          else if (Number.isFinite(seconds) && seconds >= 3600) label = `${seconds / 3600}-hour limit`;
+          else if (Number.isFinite(seconds) && seconds > 0) label = `${seconds / 60}-minute limit`;
+          return window.name ? `${window.name} · ${label}` : label;
         }
 
-        /**
-         * Renders the section with the full, formatted API response.
-         * @param {object} data - The full API response data.
-         * @returns {string} HTML string for the full data section.
-         */
-        function renderDetailedData(data) {
-          if (data === null || typeof data === "undefined") {
-            return "";
-          }
+        function formatSubscriptionAmount(value, unit) {
+          if (!Number.isFinite(value)) return "—";
+          return unit === "USD"
+            ? value.toLocaleString(undefined, { style: "currency", currency: "USD" })
+            : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        }
 
-          const formattedDetails = formatObject(data);
+        function renderSubscriptionQuotaWindow(window) {
+          const percent = window.usedPercent;
+          const hasPercent = Number.isFinite(percent);
+          const width = hasPercent ? Math.min(100, Math.max(0, percent)) : 0;
+          const label = escapeHtml(subscriptionQuotaLabel(window));
+          const color = percent >= 90 || window.limitReached ? "var(--color-yellow)" : "var(--color-blue)";
+          const reset = Number.isFinite(window.resetAt) ? new Date(window.resetAt * 1000) : null;
           return `
-            <section id="detailed-data" class="dashboard-section">
-              <h2 class="section-heading">
-                ${renderCollapseToggle(
-                  "usageApiResponse",
-                  `<i data-lucide="file-text" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Copilot Usage API Response</span>`
-                )}
-              </h2>
-              ${renderCollapseBody(
-                "usageApiResponse",
-                `<div class="panel p-4 relative font-mono text-xs code-block overflow-auto" style="max-height: 420px;">
-                  ${formattedDetails}
-                </div>`
-              )}
+            <div class="mt-3">
+              <div class="flex flex-wrap items-baseline justify-between gap-2 text-xs">
+                <span class="font-semibold">${label}</span>
+                <span>${hasPercent ? `${Math.round(percent * 10) / 10}% used` : "—"}</span>
+              </div>
+              ${hasPercent ? `<div role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${width}" class="progress-bar-bg h-2 mt-2"><div class="progress-bar-fg h-2" style="width: ${width}%; background-color: ${color};"></div></div>` : ""}
+              ${window.used !== undefined || window.limit !== undefined ? `<p class="metric-note">${formatSubscriptionAmount(window.used, window.unit)} / ${formatSubscriptionAmount(window.limit, window.unit)}${window.unit === "credits" ? " Credits" : ""}</p>` : ""}
+              ${reset && Number.isFinite(reset.getTime()) ? `<p class="metric-note">Resets ${escapeHtml(reset.toLocaleString())}</p>` : ""}
+            </div>
+          `;
+        }
+
+        function renderSubscriptionUsageSection() {
+          const cards = ["codex", "xai"].map((provider) => {
+            const usage = state.subscriptionUsage?.[provider];
+            const failed = state.subscriptionUsageErrors?.[provider];
+            if (!usage && !failed) return "";
+            const credits = usage?.credits;
+            let balance = "—";
+            if (credits?.unlimited) balance = "Unlimited";
+            else if (Number.isFinite(credits?.balance)) balance = formatSubscriptionAmount(credits.balance, credits.unit);
+            else if (credits?.hasCredits) balance = "Available";
+            let limitMessage = "Usage limit reached";
+            if (usage?.limitReason === "workspace_owner_credits_depleted" || usage?.limitReason === "workspace_member_credits_depleted") limitMessage = "Workspace credits are depleted";
+            if (usage?.limitReason === "workspace_owner_usage_limit_reached" || usage?.limitReason === "workspace_member_usage_limit_reached") limitMessage = "Workspace spending limit reached";
+            return `
+              <div class="metric-card">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 class="metric-label">${provider === "codex" ? "Codex" : "xAI"}</h3>
+                  ${usage?.planType ? `<span class="text-xs" style="color: var(--color-gray);">${escapeHtml(usage.planType)}</span>` : ""}
+                </div>
+                ${failed ? `<p role="alert" class="metric-note">Could not load quota. Refresh to retry.</p>` : ""}
+                ${usage?.limitReached ? `<p class="metric-note" style="color: var(--color-yellow);">${limitMessage}</p>` : ""}
+                ${(usage?.windows || []).map(renderSubscriptionQuotaWindow).join("")}
+                ${credits ? `<div class="mt-3 flex items-baseline justify-between gap-2 text-xs"><span>${credits.unit === "USD" ? "Prepaid balance" : "Credits"}</span><span class="font-semibold">${balance}</span></div>` : ""}
+                ${usage && !usage.windows?.length && !credits && !usage.limitReached ? `<p class="metric-note">No quota details reported.</p>` : ""}
+              </div>
+            `;
+          }).join("");
+          if (!cards && !state.isSubscriptionsLoading) return "";
+          const content = cards || `<p class="metric-note">Loading subscription quotas…</p>`;
+          return `
+            <section id="subscription-quotas" class="dashboard-section">
+              <h2 class="section-heading">${renderCollapseToggle("subscriptionQuotas", `<i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Subscription Quotas</span>`)}</h2>
+              ${renderCollapseBody("subscriptionQuotas", content, "metric-grid subscription-grid")}
             </section>
           `;
         }
@@ -2692,11 +2702,46 @@
 
         // --- Data Fetching ---
 
+        async function fetchSubscriptionQuotas(usageUrl) {
+          const requestId = ++state.subscriptionRequestId;
+          const endpoint = endpointUrlInput.value.trim();
+          state.subscriptionUsage = {};
+          state.subscriptionUsageErrors = {};
+          state.isSubscriptionsLoading = true;
+          render("usage");
+          const isCurrent = () => requestId === state.subscriptionRequestId
+            && endpoint === endpointUrlInput.value.trim();
+          await Promise.all(["codex", "xai"].map(async (provider) => {
+            try {
+              const usage = await fetchJson(deriveEndpointUrl(usageUrl, `usage/${provider}`));
+              if (!isCurrent()) return;
+              if (usage?.provider !== provider || !Array.isArray(usage.windows)) {
+                throw new Error("Invalid subscription quota response");
+              }
+              state.subscriptionUsage[provider] = usage;
+            } catch (error) {
+              if (!isCurrent()) return;
+              // Disabled providers and older servers have no subscription endpoint.
+              if (error.status !== 404) state.subscriptionUsageErrors[provider] = true;
+            } finally {
+              if (isCurrent()) render("usage");
+            }
+          }));
+          if (isCurrent()) {
+            state.isSubscriptionsLoading = false;
+            render("usage");
+          }
+        }
+
         /**
          * Fetches usage data and token usage data from the specified API endpoint.
          */
         async function fetchData(page = 1) {
           invalidateSessionsRequest();
+          state.subscriptionRequestId = (state.subscriptionRequestId || 0) + 1;
+          state.subscriptionUsage = {};
+          state.subscriptionUsageErrors = {};
+          state.isSubscriptionsLoading = false;
           const endpoint = endpointUrlInput.value.trim();
           if (!endpoint) {
             state.data = null;
@@ -2723,6 +2768,7 @@
 
           try {
             const usageUrl = resolveUsageUrl(endpoint);
+            void fetchSubscriptionQuotas(usageUrl);
             const [usageResult, summaryResult, dailyResult, eventsResult] =
               await Promise.allSettled([
                 fetchJson(usageUrl),
