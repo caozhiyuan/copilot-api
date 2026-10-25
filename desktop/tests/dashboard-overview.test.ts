@@ -266,36 +266,45 @@ async function clickButton(label: string) {
 }
 
 describe('dashboard overview', () => {
-  test('loads both subscription quotas independently in provider mode', async () => {
+  test('loads Copilot, Codex and xAI only inside the subscriptions tab', async () => {
     getProviderConfig.mockResolvedValue({
       configPath: 'config.json',
       providers: [
+        { name: 'github-copilot', type: 'github-copilot', enabled: true },
         { name: 'codex', type: 'openai-responses', enabled: true },
         { name: 'xai', type: 'openai-responses', enabled: true },
       ],
     })
-    const fetchSubscriptions = mock((provider: 'codex' | 'xai') =>
-      provider === 'codex' ?
-        Promise.resolve({
-          provider,
-          windows: [],
-          planType: 'business',
-          limitReached: false,
-        })
-      : Promise.reject(new Error('xAI offline')),
+    const fetchSubscriptions = mock(
+      (provider: 'github-copilot' | 'codex' | 'xai') =>
+        provider === 'xai' ?
+          Promise.reject(new Error('offline'))
+        : Promise.resolve({
+            provider,
+            windows: [],
+            planType: provider === 'codex' ? 'business' : 'individual',
+            limitReached: false,
+          }),
     )
     window.electronAPI.fetchSubscriptionUsage = fetchSubscriptions
     await render('provider')
-    expect(container.textContent).toContain('Codex · Subscription quota')
-    expect(container.textContent).toContain('xAI · Subscription quota')
+    expect(fetchSubscriptions).not.toHaveBeenCalled()
+    expect(fetchCopilotUsage).not.toHaveBeenCalled()
+    expect(container.querySelector('.quota-provider-card')).toBeNull()
+    await clickButton('Subscriptions')
+    expect(container.querySelectorAll('.quota-provider-card')).toHaveLength(3)
+    expect(container.querySelectorAll('.quota-provider-logo img')).toHaveLength(
+      3,
+    )
+    expect(container.textContent).toContain('GitHub Copilot')
     expect(container.textContent).toContain('business')
     expect(container.textContent).toContain('Could not load quota')
+    expect(fetchSubscriptions).toHaveBeenCalledTimes(3)
+    await clickButton('Refresh all')
+    expect(fetchSubscriptions).toHaveBeenCalledTimes(6)
+    await clickButton('Dashboard')
+    expect(container.querySelector('.quota-provider-card')).toBeNull()
     expect(cardByTitle('Available models').textContent).toContain('qwen-plus')
-    expect(fetchCopilotUsage).not.toHaveBeenCalled()
-    expect(fetchSubscriptions).toHaveBeenCalledWith('codex')
-    expect(fetchSubscriptions).toHaveBeenCalledWith('xai')
-    await clickButton('Refresh')
-    expect(fetchSubscriptions).toHaveBeenCalledTimes(4)
   })
 
   test('places providers at the top of the dashboard and keeps models in the sidebar', async () => {
@@ -336,59 +345,27 @@ describe('dashboard overview', () => {
     expect(container.textContent).not.toContain('Quota reset')
   })
 
-  test('folds the Copilot plan into the quota card and hides the duplicate summary', async () => {
-    await render('copilot')
-
-    const quotaCard = cardByTitle('GitHub Copilot Quota')
-    expect(quotaCard.textContent).toContain('individual')
-    expect(quotaCard.textContent).toContain('resets 2026-11-01')
-    expect(quotaCard.textContent).toContain('451 / 1500')
-    expect(
-      [...quotaCard.querySelectorAll('span')].map((node) => node.textContent),
-    ).not.toContain('Chat')
-    expect(quotaCard.textContent).not.toContain('Completions')
-
-    expect(container.textContent).not.toContain('Premium used')
-    expect(container.textContent).not.toContain('Quota reset')
-    expect(container.textContent).not.toContain('Copilot Plan')
-
-    // Several providers are enabled, so the overview stays visible in Copilot mode.
-    expect(cardByTitle('Providers').textContent).toContain('2 / 3 enabled')
-  })
-
-  test('hides the provider overview when Copilot is the only enabled provider', async () => {
-    getProviderConfig.mockImplementation(() =>
-      Promise.resolve({
-        configPath: 'config.json',
-        providers: [
-          { name: 'github-copilot', type: 'github-copilot', enabled: true },
-        ],
-      }),
-    )
-    await render('copilot')
-
-    expect(cardByTitle('GitHub Copilot Quota').textContent).toContain(
-      'individual',
-    )
-    expect(container.querySelector('h3') === null).toBe(false)
-    expect(
-      [...container.querySelectorAll('h3')].map((node) => node.textContent),
-    ).not.toContain('Providers')
-  })
-
-  test('keeps plan and reset information visible when Copilot reports no quota details', async () => {
-    fetchCopilotUsage.mockResolvedValue({
-      copilot_plan: copilotUsage.copilot_plan,
-      quota_reset_date: copilotUsage.quota_reset_date,
+  test('keeps the provider overview visible with Copilot as the only provider', async () => {
+    getProviderConfig.mockResolvedValue({
+      configPath: 'config.json',
+      providers: [
+        { name: 'github-copilot', type: 'github-copilot', enabled: true },
+      ],
     })
     await render('copilot')
+    expect(cardByTitle('Providers').textContent).toContain('1 / 1 enabled')
+    expect(container.querySelector('.quota-provider-card')).toBeNull()
+  })
 
-    const quotaCard = cardByTitle('GitHub Copilot Quota')
-    expect(quotaCard.textContent).toContain('individual')
-    expect(quotaCard.textContent).toContain('resets 2026-11-01')
-    expect(quotaCard.textContent).toContain('No quota details reported.')
-    expect(quotaCard.textContent).not.toContain('Premium')
-    expect(cardByTitle('Available models').textContent).toContain('qwen-plus')
+  test('disables subscriptions until the server is running', async () => {
+    window.electronAPI.getServerStatus = () =>
+      Promise.resolve({ running: false })
+    await render('provider')
+    const tab = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Subscriptions',
+    )
+    expect(tab?.disabled).toBe(true)
+    expect(container.querySelector('.subscriptions-page')).toBeNull()
   })
 
   test('refreshes provider status from the dashboard', async () => {
@@ -436,30 +413,6 @@ describe('dashboard overview', () => {
     expect(providerCard.textContent).toContain('1 / 1 enabled')
     expect(providerCard.textContent).toContain('new-provider')
     expect(providerCard.textContent).not.toContain('dashscope')
-  })
-
-  test('hides cached Copilot quota after disabling its provider', async () => {
-    await render('copilot')
-    expect(cardByTitle('GitHub Copilot Quota').textContent).toContain(
-      '451 / 1500',
-    )
-    await clickButton('Manage')
-    getProviderConfig.mockResolvedValue({
-      ...providerConfig,
-      providers: providerConfig.providers.map((provider) => ({
-        ...provider,
-        enabled: provider.name === 'github-copilot' ? false : provider.enabled,
-      })),
-    })
-
-    await clickButton('Dashboard')
-
-    expect(
-      [...container.querySelectorAll('h3')].map((node) => node.textContent),
-    ).not.toContain('GitHub Copilot Quota')
-    expect(cardByTitle('Providers').textContent).toContain('1 / 3 enabled')
-    expect(cardByTitle('Providers').textContent).toContain('github-copilot')
-    expect(container.textContent).not.toContain('451 / 1500')
   })
 
   test('opens auth configuration from the Providers page', async () => {

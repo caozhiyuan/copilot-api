@@ -44,6 +44,11 @@ function createState() {
     subscriptionUsageErrors: {} as Record<string, boolean>,
     isSubscriptionsLoading: false,
     subscriptionRequestId: 0,
+    subscriptionRequests: {} as Record<string, number>,
+    subscriptionLoadingProviders: {} as Record<string, boolean>,
+    subscriptionsLoaded: false,
+    subscriptionsConnectionKey: null as string | null,
+    subscriptionPageError: null as string | null,
     collapsedSections: {},
   }
 }
@@ -70,7 +75,7 @@ describe("web subscription quota rendering", () => {
     const win = new Window()
     try {
       win.document.body.innerHTML = viewer.renderSubscriptionUsageSection()
-      expect(win.document.body.textContent).toContain("Subscription Quotas")
+      expect(win.document.body.textContent).toContain("Subscriptions")
       expect(win.document.body.textContent).toContain("Monthly credit limit")
       expect(win.document.body.textContent).toContain("25,000 / 25,000 Credits")
       expect(win.document.body.textContent).toContain(
@@ -86,10 +91,8 @@ describe("web subscription quota rendering", () => {
         win.document.querySelectorAll('[role="progressbar"]'),
       ).toHaveLength(2)
       expect(
-        win.document.querySelector(
-          '[data-collapse-toggle="subscriptionQuotas"]',
-        ),
-      ).not.toBeNull()
+        win.document.querySelectorAll(".quota-provider-logo img"),
+      ).toHaveLength(2)
     } finally {
       await win.happyDOM.close()
     }
@@ -98,11 +101,13 @@ describe("web subscription quota rendering", () => {
   test("handles loading, errors, empty data, unlimited and hidden credit balances", () => {
     const state = createState()
     const viewer = createRenderer(state)
-    expect(viewer.renderSubscriptionUsageSection()).toBe("")
-    state.isSubscriptionsLoading = true
     expect(viewer.renderSubscriptionUsageSection()).toContain(
-      "Loading subscription quotas",
+      "Your subscriptions will appear here",
     )
+    state.isSubscriptionsLoading = true
+    state.subscriptionLoadingProviders.codex = true
+    expect(viewer.renderSubscriptionUsageSection()).toContain("quota-skeleton")
+    state.subscriptionLoadingProviders = {}
     state.isSubscriptionsLoading = false
     state.subscriptionUsageErrors.xai = true
     expect(viewer.renderSubscriptionUsageSection()).toContain(
@@ -162,7 +167,7 @@ describe("web subscription quota rendering", () => {
     }
     const rendered = createRenderer(state).renderSubscriptionUsageSection()
     expect(rendered).not.toContain("<script>")
-    expect(rendered).not.toContain("<img")
+    expect(rendered).not.toContain("<img src=x")
     expect(rendered).toContain("&lt;img")
     expect(rendered).toContain("120% used")
     expect(rendered).toContain('aria-valuenow="100"')
@@ -185,6 +190,10 @@ describe("web subscription quota rendering", () => {
 function createRenderer(state: ReturnType<typeof createState>) {
   const source = [
     extract(
+      "        const SUBSCRIPTION_PROVIDERS =",
+      "        const DEFAULT_ENDPOINT =",
+    ),
+    extract(
       "        function escapeHtml(value) {",
       "        function getErrorMessage(error) {",
     ),
@@ -206,6 +215,7 @@ function createRenderer(state: ReturnType<typeof createState>) {
 function createFetcher() {
   const state = createState()
   const endpointUrlInput = { value: "http://gateway/prefix/usage" }
+  const apiKeyInput = { value: "gateway-key" }
   const pending: Array<{
     url: string
     resolve: (data: unknown) => void
@@ -213,52 +223,83 @@ function createFetcher() {
   }> = []
   const source = [
     extract(
+      "        const SUBSCRIPTION_PROVIDERS =",
+      "        const DEFAULT_ENDPOINT =",
+    ),
+    extract(
       "        function resolveUsageUrl(endpoint) {",
       "        async function fetchJson(url) {",
     ),
     extract(
-      "        async function fetchSubscriptionQuotas(usageUrl) {",
+      "        function getConnectionKey() {",
+      "        function syncModelsConnection() {",
+    ),
+    extract(
+      "        function syncSubscriptionsConnection() {",
+      "        function handleModelsConnectionChange() {",
+    ),
+    extract(
+      "        async function refreshSubscriptionQuotas(provider) {",
       "        /**\n         * Fetches usage data",
     ),
-    "({ fetchSubscriptionQuotas })",
+    "({ fetchSubscriptionQuotas, refreshSubscriptionQuotas, syncSubscriptionsConnection })",
   ].join("\n")
   let renders = 0
   const viewer = runInNewContext(source, {
     state,
     endpointUrlInput,
+    apiKeyInput,
     URL,
     window: { location: { href: "http://gateway/usage-viewer" } },
     render: () => {
       renders += 1
     },
+    getErrorMessage: (error: Error) => error.message,
     fetchJson: (url: string) =>
       new Promise((resolve, reject) => {
         pending.push({ url, resolve, reject })
       }),
-  }) as { fetchSubscriptionQuotas: (url: string) => Promise<void> }
+  }) as {
+    fetchSubscriptionQuotas: (url: string, provider?: string) => Promise<void>
+    refreshSubscriptionQuotas: (provider?: string) => Promise<void>
+    syncSubscriptionsConnection: () => void
+  }
   return {
     state,
     endpointUrlInput,
+    apiKeyInput,
     pending,
     viewer,
     renderCount: () => renders,
   }
 }
+const copilot: SubscriptionUsage = {
+  provider: "github-copilot",
+  windows: [],
+  limitReached: false,
+}
+const xai: SubscriptionUsage = {
+  provider: "xai",
+  windows: [],
+  limitReached: false,
+}
 
 describe("web subscription quota fetching", () => {
-  test("loads providers independently from CLI endpoints and preserves path prefixes", async () => {
+  test("loads Copilot, Codex and xAI independently and preserves gateway prefixes", async () => {
     const h = createFetcher()
     const done = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
     expect(h.pending.map((request) => request.url)).toEqual([
+      "http://gateway/prefix/usage/github-copilot",
       "http://gateway/prefix/usage/codex",
       "http://gateway/prefix/usage/xai",
     ])
-    h.pending[0].resolve(business)
+    h.pending[1].resolve(business)
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(h.state.subscriptionUsage.codex).toEqual(business)
     expect(h.state.isSubscriptionsLoading).toBe(true)
     expect(h.renderCount()).toBeGreaterThan(1)
-    h.pending[1].reject(
+    h.pending[0].resolve(copilot)
+    h.pending[2].reject(
       Object.assign(new Error("upstream failed"), { status: 502 }),
     )
     await done
@@ -267,51 +308,90 @@ describe("web subscription quota fetching", () => {
     expect(h.state.isSubscriptionsLoading).toBe(false)
   })
 
-  test("ignores disabled subscriptions and older servers without endpoints", async () => {
+  test("shows an empty page when no subscriptions or endpoints are available", async () => {
     const h = createFetcher()
-    h.state.subscriptionUsage.codex = business
     const done = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
-    expect(h.state.subscriptionUsage).toEqual({})
     for (const request of h.pending)
       request.reject(Object.assign(new Error("missing"), { status: 404 }))
     await done
     expect(h.state.subscriptionUsageErrors).toEqual({})
-    expect(createRenderer(h.state).renderSubscriptionUsageSection()).toBe("")
+    expect(createRenderer(h.state).renderSubscriptionUsageSection()).toContain(
+      "No subscriptions available",
+    )
   })
 
-  test("discards responses and errors after switching endpoints or refreshing", async () => {
+  test("discards stale responses and invalidates quotas when endpoint or credentials change", async () => {
     const h = createFetcher()
     const old = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
     h.endpointUrlInput.value = "http://other/usage"
     const current = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
-    h.pending[2].resolve(business)
-    h.pending[3].resolve({ provider: "xai", windows: [], limitReached: false })
+    h.pending[3].resolve(copilot)
+    h.pending[4].resolve(business)
+    h.pending[5].resolve(xai)
     await current
     h.pending[0].reject(new Error("old error"))
-    h.pending[1].resolve({
-      provider: "xai",
-      windows: [],
-      planType: "old",
-      limitReached: false,
-    })
+    h.pending[1].resolve({ ...business, planType: "old" })
+    h.pending[2].resolve({ ...xai, planType: "old" })
     await old
     expect(h.state.subscriptionUsageErrors).toEqual({})
-    expect(h.state.subscriptionUsage.xai.planType).toBeUndefined()
-    const stale = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
-    h.endpointUrlInput.value = "http://third/usage"
-    h.pending[4].resolve(business)
-    h.pending[5].reject(new Error("late"))
-    await stale
+    expect(h.state.subscriptionUsage.codex.planType).toBe("business")
+    h.viewer.syncSubscriptionsConnection()
     expect(h.state.subscriptionUsage).toEqual({})
-    expect(h.state.subscriptionUsageErrors).toEqual({})
+    h.state.subscriptionUsage.codex = business
+    h.apiKeyInput.value = "new-key"
+    h.viewer.syncSubscriptionsConnection()
+    expect(h.state.subscriptionUsage).toEqual({})
+    expect(h.state.isSubscriptionsLoading).toBe(false)
   })
 
-  test("reports malformed quota responses independently", async () => {
+  test("refreshes one provider without disturbing the other providers", async () => {
     const h = createFetcher()
-    const done = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
-    h.pending[0].resolve({ provider: "codex", windows: null })
-    h.pending[1].resolve({ provider: "other", windows: [] })
+    h.state.subscriptionUsage["github-copilot"] = copilot
+    h.state.subscriptionUsage.xai = xai
+    const old = h.viewer.fetchSubscriptionQuotas(
+      h.endpointUrlInput.value,
+      "codex",
+    )
+    const latest = h.viewer.fetchSubscriptionQuotas(
+      h.endpointUrlInput.value,
+      "codex",
+    )
+    h.pending[1].resolve(business)
+    await latest
+    h.pending[0].reject(new Error("stale"))
+    await old
+    expect(h.pending).toHaveLength(2)
+    expect(h.state.subscriptionUsageErrors).toEqual({})
+    expect(h.state.subscriptionUsage).toEqual({
+      codex: business,
+      "github-copilot": copilot,
+      xai,
+    })
+    expect(h.state.isSubscriptionsLoading).toBe(false)
+    await h.viewer.fetchSubscriptionQuotas(
+      h.endpointUrlInput.value,
+      "../unsupported",
+    )
+    expect(h.pending).toHaveLength(2)
+  })
+
+  test("handles invalid URLs and malformed responses", async () => {
+    const h = createFetcher()
+    h.endpointUrlInput.value = ""
+    await h.viewer.refreshSubscriptionQuotas()
+    expect(h.state.subscriptionPageError).toContain(
+      "Endpoint URL cannot be empty",
+    )
+    h.endpointUrlInput.value = "http://gateway/usage"
+    const done = h.viewer.refreshSubscriptionQuotas()
+    h.pending[0].resolve(null)
+    h.pending[1].resolve({ provider: "codex", windows: null })
+    h.pending[2].resolve({ provider: "other", windows: [] })
     await done
-    expect(h.state.subscriptionUsageErrors).toEqual({ codex: true, xai: true })
+    expect(h.state.subscriptionUsageErrors).toEqual({
+      "github-copilot": true,
+      codex: true,
+      xai: true,
+    })
   })
 })

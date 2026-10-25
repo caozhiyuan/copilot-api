@@ -114,6 +114,7 @@
 
       .page-tabs {
         display: inline-flex;
+        max-width: 100%;
         gap: 4px;
         margin-bottom: 14px;
         padding: 4px;
@@ -535,6 +536,8 @@
       }
 
       @media (max-width: 639px) {
+        .page-tabs { display: flex; width: 100%; gap: 2px; }
+        .page-tab { flex: 1 1 auto; min-width: 0; justify-content: center; gap: 5px; padding: 8px; font-size: 12px; white-space: nowrap; }
         .main-shell {
           padding: 12px 14px 18px;
         }
@@ -560,6 +563,82 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
+
+/* Subscription allowance workspace. Provider SVGs are bundled from models.dev. */
+.subscriptions-page {
+  --quota-text: var(--color-ink, var(--color-fg-lightest));
+  --quota-muted: var(--color-ink-soft, var(--color-gray));
+  --quota-faint: var(--color-ink-faint, var(--color-fg-darker));
+  --quota-line: var(--color-line, var(--color-bg-light-2));
+  --quota-soft: var(--color-sunken, var(--color-bg-light-1));
+  --quota-surface: var(--color-surface, var(--color-bg));
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 30px 24px 36px;
+  color: var(--quota-text);
+}
+.subscriptions-page-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 26px; }
+.subscriptions-eyebrow { margin: 0 0 7px; font-size: 10px; font-weight: 650; letter-spacing: .16em; color: var(--quota-faint); }
+.subscriptions-page-heading h2 { margin: 0; font-size: 25px; font-weight: 650; letter-spacing: -.04em; line-height: 1.25; }
+.subscriptions-description { margin: 9px 0 0; font-size: 13px; line-height: 1.6; color: var(--quota-muted); }
+.subscriptions-count { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; padding: 7px 11px; border: 1px solid var(--quota-line); border-radius: 99px; font-size: 11px; color: var(--quota-muted); background: var(--quota-surface); }
+.subscriptions-count > span { width: 5px; height: 5px; border-radius: 50%; background: #22a06b; }
+.subscriptions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 18px; align-items: start; }
+.quota-provider-card { --quota-brand: #7c5ac7; position: relative; min-width: 0; padding: 22px 20px 14px; overflow: hidden; border: 1px solid var(--quota-line); border-radius: 18px; background: var(--quota-surface); box-shadow: 0 3px 12px rgb(0 0 0 / 2%); }
+.quota-provider-card[data-provider="codex"] { --quota-brand: #179876; }
+.quota-provider-card[data-provider="xai"] { --quota-brand: #386fce; }
+.dark .quota-provider-card { --quota-brand: #b095ef; }
+.dark .quota-provider-card[data-provider="codex"] { --quota-brand: #50bd9b; }
+.dark .quota-provider-card[data-provider="xai"] { --quota-brand: #7aa8f1; }
+.quota-provider-card::before { content: ""; position: absolute; top: 0; left: 22px; right: 22px; height: 2px; background: color-mix(in srgb, var(--quota-brand) 55%, transparent); border-radius: 0 0 4px 4px; }
+.quota-card-header { display: flex; align-items: center; gap: 11px; }
+.quota-provider-logo { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border: 1px solid var(--quota-line); border-radius: 13px; background: var(--quota-soft); }
+.quota-provider-logo img { width: 32px; height: 32px; object-fit: contain; }
+.quota-card-header h3 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.025em; line-height: 1.3; }
+.quota-provider-product { margin: 3px 0 0; font-size: 11px; color: var(--quota-faint); }
+.quota-refresh { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding: 0; margin-left: auto; border: 1px solid var(--quota-line); border-radius: 9px; color: var(--quota-muted); background: var(--quota-surface); cursor: pointer; }
+.quota-refresh:hover { background: var(--quota-soft); color: var(--quota-text); }
+.quota-refresh:disabled { opacity: .45; cursor: default; }
+.quota-card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 17px 0 0; }
+.quota-plan { min-width: 0; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 8px; border-radius: 6px; background: var(--quota-soft); color: var(--quota-muted); font-size: 11px; font-weight: 500; }
+.quota-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 10px; color: var(--quota-faint); }
+.quota-status > span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.quota-status[data-state="ready"] { color: var(--quota-brand); }
+.quota-status[data-state="warning"] { color: #d58a25; }
+.quota-summary { margin: 18px 0 22px; padding: 18px; border-radius: 13px; background: color-mix(in srgb, var(--quota-brand) 4%, var(--quota-soft)); }
+.quota-summary-label { margin: 0 0 9px; font-size: 11px; font-weight: 500; color: var(--quota-muted); }
+.quota-summary-value { font-size: 40px; line-height: 1.05; font-weight: 600; letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+.quota-summary-context { margin: 9px 0 0; font-size: 11px; color: var(--quota-faint); }
+.quota-details { font-size: 12px; }
+.quota-window + .quota-window { margin-top: 18px; }
+.quota-window-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 7px; font-size: 12px; }
+.quota-window-heading > :first-child { color: var(--quota-muted); }
+.quota-window-heading > :last-child { font-weight: 550; color: var(--quota-text); }
+.quota-progress { height: 6px; overflow: hidden; border-radius: 99px; background: var(--quota-soft); }
+.quota-progress-fill { height: 100%; border-radius: inherit; background: var(--quota-brand); transition: width .25s ease; }
+.quota-window[data-warning="true"] .quota-progress-fill { background: #d58a25; }
+.quota-window-note { margin: 6px 0 0; font-size: 11px; color: var(--quota-faint); line-height: 1.5; }
+.quota-balance { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--quota-line); font-size: 12px; color: var(--quota-muted); }
+.quota-balance strong { color: var(--quota-text); font-weight: 600; }
+.quota-notice { margin: 0 0 15px; padding: 10px 12px; border-radius: 9px; background: rgb(213 138 37 / 8%); color: #b67822; font-size: 12px; line-height: 1.6; }
+.quota-card-footer { margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--quota-line); color: var(--quota-faint); font-size: 10px; }
+.quota-card-message { display: flex; align-items: center; min-height: 180px; margin: 0; font-size: 12px; line-height: 1.8; color: var(--quota-muted); }
+.quota-card-message[role="alert"] { color: #b67822; }
+.quota-skeleton { display: flex; flex-direction: column; justify-content: center; gap: 16px; min-height: 230px; animation: quota-pulse 1.5s ease-in-out infinite; }
+.quota-skeleton > div { height: 9px; border-radius: 6px; background: var(--quota-soft); }
+.quota-skeleton > div:first-child { width: 55%; height: 42px; margin-bottom: 22px; }
+.quota-skeleton > div:last-child { width: 75%; }
+@keyframes quota-pulse { 50% { opacity: .45; } }
+.subscriptions-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 260px; padding: 30px; text-align: center; border: 1px dashed var(--quota-line); border-radius: 18px; color: var(--quota-muted); font-size: 13px; }
+.subscriptions-empty h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--quota-text); }
+.subscriptions-empty p { max-width: 360px; margin: 0; line-height: 1.7; }
+.subscriptions-action { margin-top: 5px; border: 0; border-radius: 9px; padding: 8px 14px; background: var(--quota-text); color: var(--quota-surface); cursor: pointer; font-size: 12px; }
+@media (max-width: 639px) {
+  .subscriptions-page { padding: 24px 16px; }
+  .subscriptions-page-heading { align-items: flex-start; gap: 12px; margin-bottom: 20px; flex-direction: column; }
+  .subscriptions-page-heading h2 { font-size: 23px; }
+  .quota-provider-card { padding: 20px 18px 14px; }
+}
     </style>
   </head>
   <body class="antialiased">
@@ -590,6 +669,10 @@
             >
               <i data-lucide="bar-chart-3" class="h-4 w-4" aria-hidden="true"></i>
               Token Usage
+            </button>
+            <button id="subscriptions-tab" type="button" class="page-tab" role="tab" data-tab="subscriptions" aria-selected="false" aria-controls="content-area" tabindex="-1">
+              <i data-lucide="gauge" class="h-4 w-4" aria-hidden="true"></i>
+              Subscriptions
             </button>
             <button
               id="models-tab"
@@ -672,6 +755,7 @@
         const pageTabs = document.getElementById("page-tabs");
         const tabButtons = [
           document.getElementById("usage-tab"),
+          document.getElementById("subscriptions-tab"),
           document.getElementById("models-tab"),
         ];
         const periodField = document.getElementById("token-usage-period-field");
@@ -686,6 +770,24 @@
           fetchButton.style.backgroundColor = "var(--color-blue)";
         });
 
+        // models.dev provider SVGs are bundled to work without external requests.
+        const SUBSCRIPTION_PROVIDERS = {
+  "github-copilot": {
+    "name": "GitHub Copilot",
+    "product": "GitHub",
+    "logo": "data:image/svg+xml,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2040%2040%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Cpath%20d%3D%22M35.3993%2026.4544C34.2871%2028.3855%2027.8314%2032.9425%2020%2032.9425C12.1686%2032.9425%205.71288%2028.3855%204.60075%2026.4544C4.5427%2026.3532%204.50826%2026.2401%204.5%2026.1237V22.418C4.51199%2022.3209%204.53496%2022.2256%204.56846%2022.1338C5.04896%2020.9261%206.30833%2019.1733%207.93325%2018.7031C8.14896%2018.149%208.468%2017.3404%208.76508%2016.7437C8.71727%2016.2776%208.69485%2015.8094%208.69792%2015.3409C8.69792%2013.6217%209.06217%2012.113%2010.1601%2010.9906C10.6729%2010.4662%2011.3097%2010.0644%2012.064%209.76091C13.871%208.29357%2016.4453%207.05745%2019.9716%207.05745C23.4978%207.05745%2026.129%208.29357%2027.936%209.76091C28.6903%2010.0644%2029.3271%2010.4662%2029.8399%2010.9906C30.9378%2012.113%2031.3021%2013.6217%2031.3021%2015.3409C31.3021%2015.8162%2031.284%2016.2877%2031.2349%2016.7437C31.532%2017.3404%2031.851%2018.149%2032.0667%2018.7031C33.6917%2019.1733%2034.951%2020.9261%2035.4315%2022.1338C35.4677%2022.2248%2035.4908%2022.3205%2035.5%2022.418V26.1237C35.4917%2026.2401%2035.4573%2026.3532%2035.3993%2026.4544ZM20.2222%2018.7147H19.7778C19.6422%2018.945%2019.4889%2019.1644%2019.3193%2019.3709C18.3247%2020.5941%2016.8419%2021.2981%2014.7881%2021.2981C12.56%2021.2981%2010.9273%2020.8344%209.90304%2019.6719C9.86495%2019.6283%209.82833%2019.5835%209.79325%2019.5375L9.66667%2019.6719V28.1775C11.5202%2029.1837%2015.4972%2030.992%2020%2030.992C24.5028%2030.992%2028.4798%2029.1837%2030.3333%2028.1775V19.6719L30.2067%2019.5375C30.2067%2019.5375%2030.1641%2019.5957%2030.097%2019.6719C29.0727%2020.8344%2027.44%2021.2981%2025.2119%2021.2981C23.1581%2021.2981%2021.6753%2020.5941%2020.6807%2019.3709C20.5111%2019.1644%2020.3578%2018.945%2020.2222%2018.7147ZM23.2292%2022.9127C23.9383%2022.9127%2024.5208%2023.4952%2024.5208%2024.2043V26.7877C24.5208%2027.4968%2023.9383%2028.0793%2023.2292%2028.0793C22.52%2028.0793%2021.9375%2027.4968%2021.9375%2026.7877V24.2043C21.9375%2023.4952%2022.52%2022.9127%2023.2292%2022.9127ZM16.7708%2022.9127C17.48%2022.9127%2018.0625%2023.4952%2018.0625%2024.2043V26.7877C18.0625%2027.4968%2017.48%2028.0793%2016.7708%2028.0793C16.0617%2028.0793%2015.4792%2027.4968%2015.4792%2026.7877V24.2043C15.4792%2023.4952%2016.0617%2022.9127%2016.7708%2022.9127ZM21.0501%2014.9237C21.2258%2016.289%2021.5707%2017.3947%2022.1842%2018.149C22.7551%2018.8517%2023.649%2019.3606%2025.2119%2019.3606C27.2437%2019.3606%2028.1724%2018.9253%2028.6438%2018.3905C29.1398%2017.8287%2029.3646%2016.9051%2029.3646%2015.3409C29.3646%2013.8684%2029.0507%2012.9552%2028.454%2012.3455C27.8378%2011.7152%2026.7502%2011.2321%2024.8063%2011.0216C22.8856%2010.8136%2021.975%2011.1998%2021.5345%2011.7049C21.187%2012.1014%2020.97%2012.7485%2020.9688%2013.7431V13.7702C20.9688%2014.1121%2020.9959%2014.4966%2021.0501%2014.9237ZM18.9499%2014.9237C19.0041%2014.4966%2019.0312%2014.1117%2019.0312%2013.7689V13.7431C19.03%2012.7485%2018.813%2012.1014%2018.4655%2011.7049C18.025%2011.1998%2017.1144%2010.8136%2015.1937%2011.0216C13.2498%2011.2321%2012.1622%2011.7152%2011.546%2012.3455C10.9493%2012.9552%2010.6354%2013.8684%2010.6354%2015.3409C10.6354%2016.9051%2010.8615%2017.8287%2011.3562%2018.3905C11.8276%2018.9253%2012.7563%2019.3606%2014.7881%2019.3606C16.351%2019.3606%2017.2449%2018.8517%2017.8158%2018.149C18.4293%2017.3947%2018.7742%2016.289%2018.9499%2014.9237Z%22%20fill%3D%22currentColor%22%2F%3E%0A%3C%2Fsvg%3E%0A"
+  },
+  "codex": {
+    "name": "Codex",
+    "product": "OpenAI",
+    "logo": "data:image/svg+xml,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2040%2040%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Cpath%20d%3D%22M32.8377%2017.282C33.2127%2016.25%2033.3072%2015.218%2033.2127%2014.1875C33.1197%2013.1571%2032.7447%2012.1251%2032.2752%2011.1876C31.4322%209.78209%2030.2127%208.6571%2028.8072%208.0001C27.3072%207.34461%2025.7127%207.15711%2024.1197%207.53211C23.3698%206.78212%2022.5253%206.12512%2021.5878%205.65713C20.6503%205.18913%2019.5253%205.00013%2018.4948%205.00013C16.8851%204.99074%2015.3125%205.48246%2013.9948%206.40712C12.6824%207.34311%2011.7449%208.6571%2011.2754%2010.1571C10.1504%2010.4376%209.21289%2010.9071%208.27539%2011.4696C7.4324%2012.1251%206.77541%2012.9696%206.21291%2013.8126C5.36992%2015.2195%205.08792%2016.8125%205.27542%2018.407C5.46399%2019.9968%206.11605%2021.496%207.1504%2022.718C6.79608%2023.7086%206.66795%2024.7659%206.77541%2025.8124C6.86991%2026.8444%207.2449%2027.8749%207.7129%2028.8124C8.55739%2030.2194%209.77538%2031.3444%2011.1824%2031.9999C12.6824%2032.6569%2014.2753%2032.8444%2015.8698%2032.4694C16.6198%2033.2194%2017.4628%2033.8749%2018.4003%2034.3444C19.3378%2034.8139%2020.4628%2034.9999%2021.4948%2034.9999C23.1043%2035.0097%2024.6769%2034.5185%2025.9947%2033.5944C27.3072%2032.6569%2028.2447%2031.3444%2028.7127%2029.8444C29.7719%2029.6432%2030.7682%2029.1934%2031.6197%2028.5319C32.4627%2027.8749%2033.2127%2027.1249%2033.6822%2026.1874C34.5251%2024.7819%2034.8071%2023.1875%2034.6196%2021.5945C34.4322%2020%2033.8697%2018.5015%2032.8377%2017.282ZM21.5878%2033.0304C20.0878%2033.0304%2018.9628%2032.5609%2017.9323%2031.7179C17.9323%2031.7179%2018.0253%2031.6234%2018.1198%2031.6234L24.1197%2028.1554C24.2862%2028.0803%2024.4196%2027.9469%2024.4947%2027.7804C24.5698%2027.636%2024.6021%2027.4731%2024.5877%2027.3109V18.875L27.1197%2020.375V27.3124C27.1455%2028.0547%2027.0215%2028.7945%2026.755%2029.4878C26.4885%2030.181%2026.085%2030.8134%2025.5687%2031.3473C25.0523%2031.8811%2024.4337%2032.3054%2023.7497%2032.5949C23.0658%2032.8843%2022.3305%2033.0314%2021.5878%2033.0304ZM9.49488%2027.8749C8.83789%2026.7499%208.55739%2025.4374%208.83789%2024.125C8.83789%2024.125%208.93239%2024.2195%209.02539%2024.2195L15.0253%2027.6874C15.1693%2027.7638%2015.3325%2027.7966%2015.4948%2027.7819C15.6823%2027.7819%2015.8698%2027.7819%2015.9628%2027.6874L23.2753%2023.4695V26.3749L17.1823%2029.9374C16.5506%2030.3042%2015.8527%2030.5427%2015.1287%2030.6393C14.4046%2030.7358%2013.6686%2030.6884%2012.9629%2030.4999C11.4629%2030.1249%2010.2449%2029.1874%209.49488%2027.8749ZM7.9004%2014.8445C8.56239%2013.7234%209.58826%2012.8627%2010.8074%2012.4056V19.532C10.8074%2019.718%2010.8074%2019.907%2010.9004%2020C10.9755%2020.1665%2011.1089%2020.2998%2011.2754%2020.375L18.5878%2024.5944L16.0573%2026.0944L10.0574%2022.625C9.41842%2022.2639%208.85742%2021.7797%208.40684%2021.2004C7.95627%2020.6211%207.62506%2019.9582%207.4324%2019.25C7.05741%2017.8445%207.1504%2016.157%207.9004%2014.8445ZM28.6197%2019.625L21.3073%2015.407L23.8377%2013.9071L29.8377%2017.375C30.7752%2017.9375%2031.5252%2018.6875%2031.9947%2019.625C32.4642%2020.5625%2032.7447%2021.5945%2032.6502%2022.7195C32.5603%2023.7755%2032.1699%2024.7837%2031.5252%2025.6249C30.8697%2026.4694%2030.0252%2027.1249%2028.9947%2027.4999V20.375C28.9947%2020.1875%2028.9947%2020%2028.9002%2019.907C28.9002%2019.907%2028.8072%2019.718%2028.6197%2019.625ZM31.1502%2015.875C31.1502%2015.875%2031.0572%2015.782%2030.9627%2015.782L24.9627%2012.3126C24.7752%2012.2196%2024.6822%2012.2196%2024.4947%2012.2196C24.3072%2012.2196%2024.1197%2012.2196%2024.0252%2012.3126L16.7128%2016.532V13.6251L22.8073%2010.0626C23.7448%209.50009%2024.7752%209.31259%2025.9002%209.31259C26.9322%209.31259%2027.9627%209.68759%2028.9002%2010.3446C29.7447%2011.0001%2030.4947%2011.8446%2030.8697%2012.7821C31.2447%2013.7196%2031.3377%2014.8445%2031.1502%2015.875ZM15.4003%2021.125L12.8699%2019.625V12.5946C12.8699%2011.5626%2013.1503%2010.4376%2013.7128%209.59459C14.2753%208.6571%2015.1198%208.0001%2016.0573%207.53211C17.0127%207.05249%2018.0956%206.88812%2019.1503%207.06261C20.1823%207.15711%2021.2128%207.62511%2022.0573%208.2821C22.0573%208.2821%2021.9628%208.3751%2021.8698%208.3751L15.8698%2011.8446C15.7033%2011.9197%2015.57%2012.0531%2015.4948%2012.2196C15.4003%2012.4071%2015.4003%2012.5001%2015.4003%2012.6876V21.125ZM16.7128%2018.125L19.9948%2016.25L23.2753%2018.125V21.875L19.9948%2023.75L16.7128%2021.875V18.125Z%22%20fill%3D%22currentColor%22%2F%3E%0A%3C%2Fsvg%3E%0A"
+  },
+  "xai": {
+    "name": "xAI",
+    "product": "Grok Build",
+    "logo": "data:image/svg+xml,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2040%2040%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Cpath%20d%3D%22M12.4579%2015.6036L26.1529%2035H20.0656L6.37059%2015.6036H12.4579ZM12.4524%2026.3764L15.4974%2030.6909L12.4551%2035H6.36377L12.4524%2026.3764ZM33.6365%207.15727V35H28.647V14.2236L33.6365%207.15727ZM33.6365%205L20.0656%2024.2205L17.0206%2019.9073L27.5451%205H33.6365Z%22%20fill%3D%22currentColor%22%2F%3E%0A%3C%2Fsvg%3E%0A"
+  }
+};
         const DEFAULT_ENDPOINT = "http://localhost:4141/usage";
         const DEFAULT_TOKEN_USAGE_PERIOD = "today";
         const DEFAULT_TOKEN_USAGE_EVENTS_PAGE_SIZE = 20;
@@ -726,12 +828,15 @@
           isLoading: false,
           isTokenUsageLoading: false,
           isEventsLoading: false,
-          error: null,
-          data: null,
           subscriptionUsage: {},
           subscriptionUsageErrors: {},
           isSubscriptionsLoading: false,
           subscriptionRequestId: 0,
+          subscriptionRequests: {},
+          subscriptionLoadingProviders: {},
+          subscriptionsLoaded: false,
+          subscriptionsConnectionKey: null,
+          subscriptionPageError: null,
           tokenUsageDailySummary: null,
           tokenUsageSummary: null,
           tokenUsageSessionsPage: null,
@@ -1057,6 +1162,8 @@
             const currentUrl = new URL(window.location.href);
             const endpoint = endpointUrlInput.value.trim();
             const period = getSelectedPeriod();
+            if (state.activeTab === "usage") currentUrl.searchParams.delete("tab");
+            else currentUrl.searchParams.set("tab", state.activeTab);
 
             if (endpoint) {
               currentUrl.searchParams.set("endpoint", endpoint);
@@ -1075,17 +1182,17 @@
           const isLoading =
             state.activeTab === "models"
               ? state.isModelsLoading
-              : state.isLoading;
+              : state.activeTab === "subscriptions" ? state.isSubscriptionsLoading : state.isLoading;
           fetchButton.disabled = isLoading;
           fetchButtonLabel.textContent = isLoading
             ? "Refreshing..."
-            : "Refresh";
+            : state.activeTab === "subscriptions" ? "Refresh all" : "Refresh";
           tokenUsagePeriodSelect.disabled =
             state.isLoading || state.isTokenUsageLoading;
-          periodField.hidden = state.activeTab === "models";
+          periodField.hidden = state.activeTab !== "usage";
           endpointForm.classList.toggle(
             "models-view",
-            state.activeTab === "models"
+            state.activeTab !== "usage"
           );
           contentArea.setAttribute("aria-labelledby", `${state.activeTab}-tab`);
           contentArea.setAttribute("aria-busy", String(isLoading));
@@ -1247,45 +1354,22 @@
             return;
           }
 
+          if (state.activeTab === "subscriptions") {
+            contentArea.innerHTML = renderSubscriptionUsageSection();
+            createIcons();
+            return;
+          }
+
           if (state.isLoading) {
             contentArea.innerHTML = renderSpinner();
             createIcons();
             return;
           }
 
-          const hasContent = Boolean(
-            state.error
-              || state.data
-              || state.isSubscriptionsLoading
-              || Object.keys(state.subscriptionUsage || {}).length
-              || Object.keys(state.subscriptionUsageErrors || {}).length
-              || state.isTokenUsageLoading
-              || state.isEventsLoading
-              || state.tokenUsageDailySummary
-              || state.tokenUsageSummary
-              || state.tokenUsageEventsPage
-              || state.tokenUsageDailyError
-              || state.tokenUsageSummaryError
-              || state.tokenUsageEventsError
-          );
-
-          if (!hasContent) {
-            contentArea.innerHTML = renderWelcomeMessage();
-          } else if (state.error && !state.data) {
-            contentArea.innerHTML = `
-              ${renderTokenUsageSection()}
-              ${renderSubscriptionUsageSection()}
-              ${renderUsageErrorSection()}
-            `;
-          } else if (state.data) {
-            contentArea.innerHTML = `
-              ${renderTokenUsageSection()}
-              ${renderSubscriptionUsageSection()}
-              ${renderUsageQuotas(state.data.quota_snapshots)}
-            `;
-          } else {
-            contentArea.innerHTML = renderTokenUsageSection() + renderSubscriptionUsageSection();
-          }
+          const hasContent = Boolean(state.isTokenUsageLoading || state.isEventsLoading
+            || state.tokenUsageSummary || state.tokenUsageDailySummary || state.tokenUsageEventsPage
+            || state.tokenUsageSummaryError || state.tokenUsageDailyError || state.tokenUsageEventsError);
+          contentArea.innerHTML = hasContent ? renderTokenUsageSection() : renderWelcomeMessage();
 
           // Replace placeholder icons with actual Lucide icons
           createIcons();
@@ -1299,8 +1383,6 @@
           "modelBreakdown",
           "sessionBreakdown",
           "requestEvents",
-          "copilotQuotas",
-          "subscriptionQuotas",
         ]);
 
         function readCollapsedSections() {
@@ -1500,7 +1582,7 @@
           `;
         }
 
-        function getModelsConnectionKey() {
+        function getConnectionKey() {
           return JSON.stringify([
             endpointUrlInput.value.trim(),
             apiKeyInput.value.trim(),
@@ -1508,7 +1590,7 @@
         }
 
         function syncModelsConnection() {
-          const key = getModelsConnectionKey();
+          const key = getConnectionKey();
           if (state.modelsConnectionKey !== key) {
             state.modelsConnectionKey = key;
             state.modelsRequestId += 1;
@@ -1518,9 +1600,24 @@
           }
         }
 
+        function syncSubscriptionsConnection() {
+          const key = getConnectionKey();
+          if (state.subscriptionsConnectionKey !== key) {
+            state.subscriptionsConnectionKey = key;
+            state.subscriptionRequestId += 1;
+            state.subscriptionUsage = {};
+            state.subscriptionUsageErrors = {};
+            state.subscriptionLoadingProviders = {};
+            state.subscriptionsLoaded = false;
+            state.isSubscriptionsLoading = false;
+            state.subscriptionPageError = null;
+          }
+        }
+
         function handleModelsConnectionChange() {
           syncModelsConnection();
-          if (state.activeTab === "models") {
+          syncSubscriptionsConnection();
+          if (state.activeTab === "models" || state.activeTab === "subscriptions") {
             render();
           }
         }
@@ -1532,7 +1629,7 @@
           const requestId = ++state.modelsRequestId;
           const isCurrentRequest = () =>
             requestId === state.modelsRequestId
-            && connectionKey === getModelsConnectionKey();
+            && connectionKey === getConnectionKey();
           state.models = null;
           state.modelsError = null;
           state.isModelsLoading = true;
@@ -1562,15 +1659,20 @@
         }
 
         function activateTab(tab) {
-          if (tab !== "usage" && tab !== "models") {
+          if (!["usage", "subscriptions", "models"].includes(tab)) {
             return;
           }
           syncEndpointCredential();
           syncModelsConnection();
+          syncSubscriptionsConnection();
           state.activeTab = tab;
+          syncUrlState();
           render();
           if (tab === "models" && !state.models && !state.isModelsLoading) {
             void fetchModels();
+          }
+          if (tab === "subscriptions" && !state.subscriptionsLoaded && !state.isSubscriptionsLoading) {
+            void refreshSubscriptionQuotas();
           }
         }
 
@@ -1580,10 +1682,10 @@
             return;
           }
           event.preventDefault();
-          const index = state.activeTab === "usage" ? 0 : 1;
+          const index = tabButtons.findIndex((button) => button.dataset.tab === state.activeTab);
           const nextIndex = event.key === "Home" ? 0
-            : event.key === "End" ? 1
-            : 1 - index;
+            : event.key === "End" ? tabButtons.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + tabButtons.length) % tabButtons.length;
           activateTab(tabButtons[nextIndex].dataset.tab);
           tabButtons[nextIndex].focus();
         }
@@ -1612,122 +1714,10 @@
           feedback.classList.add("py-3");
         }
 
-        /**
-         * Renders the "Usage Quotas" section with progress bars.
-         * @param {object} snapshots - The quota_snapshots object from the API response.
-         * @returns {string} HTML string for the usage quotas section.
-         */
-        function renderUsageQuotas(snapshots) {
-          if (!snapshots) return "";
-
-          const quotaCards = Object.entries(snapshots)
-            .map(([key, value]) => {
-              return renderQuotaCard(key, value);
-            })
-            .join("");
-
-          return `
-            <section id="usage-quotas" class="dashboard-section">
-              <h2 class="section-heading">
-                ${renderCollapseToggle(
-                  "copilotQuotas",
-                  `<i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Copilot Quotas</span>`
-                )}
-              </h2>
-              ${renderCollapseBody("copilotQuotas", quotaCards, "metric-grid")}
-            </section>
-          `;
-        }
-
-        function renderUsageErrorSection() {
-          if (!state.error || state.data) {
-            return "";
-          }
-
-          return `
-            <section id="usage-quotas" class="dashboard-section">
-              <h2 class="section-heading">
-                ${renderCollapseToggle(
-                  "copilotQuotas",
-                  `<i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Copilot Quotas</span>`
-                )}
-              </h2>
-              ${renderCollapseBody(
-                "copilotQuotas",
-                renderError(state.error, "Usage request failed")
-              )}
-            </section>
-          `;
-        }
-
-        /**
-         * Renders a single quota card.
-         * @param {string} title - The name of the quota (e.g., 'chat').
-         * @param {object} details - The details object for the quota.
-         * @returns {string} HTML string for a single card.
-         */
-        function getCopilotQuotaRemaining(details) {
-          if (Number.isFinite(details.remaining)) return details.remaining;
-          if (Number.isFinite(details.quota_remaining)) {
-            return details.quota_remaining;
-          }
-          return null;
-        }
-
-        function getCopilotQuotaPercentRemaining(details) {
-          if (details.unlimited) return 100;
-          const percent = Number.isFinite(details.percent_remaining)
-            ? details.percent_remaining
-            : Number.isFinite(details.entitlement) && details.entitlement > 0
-              ? ((getCopilotQuotaRemaining(details) ?? details.entitlement) /
-                  details.entitlement) * 100
-              : 100;
-          return Math.max(0, Math.min(100, percent));
-        }
-
-        function renderQuotaCard(title, details) {
-          const { entitlement, unlimited } = details;
-          const remaining = getCopilotQuotaRemaining(details) ?? 0;
-
-          const percentUsed = 100 - getCopilotQuotaPercentRemaining(details);
-          const used = unlimited
-            ? "N/A"
-            : (entitlement - remaining).toLocaleString();
-
-          let progressBarColor = "var(--color-green)";
-          if (percentUsed > 75) progressBarColor = "var(--color-yellow)";
-          if (percentUsed > 90) progressBarColor = "var(--color-red)";
-          if (unlimited) progressBarColor = "var(--color-blue)";
-
-          return `
-            <div class="metric-card">
-              <div class="flex items-center justify-between gap-3">
-                <div class="metric-label capitalize">
-                  <span class="metric-dot" style="background-color: ${progressBarColor};"></span>
-                  <span>${escapeHtml(title.replace(/_/g, " "))}</span>
-                </div>
-                ${
-                  unlimited
-                    ? `<span class="rounded-md px-2 py-1 text-xs font-semibold" style="background-color: rgba(37, 99, 235, 0.1); color: var(--color-blue);">Unlimited</span>`
-                    : `<span class="text-xs font-semibold" style="color: var(--color-gray);">${percentUsed.toFixed(1)}% used</span>`
-                }
-              </div>
-              <div class="mt-5">
-                <div class="w-full progress-bar-bg h-2">
-                  <div class="progress-bar-fg h-2" style="width: ${unlimited ? 100 : percentUsed}%; background-color: ${progressBarColor};"></div>
-                </div>
-              </div>
-              <div class="mt-2 flex items-center justify-between gap-4 text-xs font-medium" style="color: var(--color-gray);">
-                <span>${used} / ${unlimited ? "∞" : entitlement.toLocaleString()}</span>
-                <span>${unlimited ? "∞" : remaining.toLocaleString()} remaining</span>
-              </div>
-            </div>
-          `;
-        }
-
         // Subscription quotas use the same normalized server response as desktop.
         function subscriptionQuotaLabel(window) {
           let label = "Included allowance";
+          if (window.id.startsWith("copilot:")) return window.name || "Premium";
           if (window.kind === "spend") return "Monthly credit limit";
           if (window.kind === "on-demand") return "Pay as you go · Monthly";
           const seconds = window.windowSeconds;
@@ -1748,29 +1738,40 @@
 
         function renderSubscriptionQuotaWindow(window) {
           const percent = window.usedPercent;
-          const hasPercent = Number.isFinite(percent);
+          const hasPercent = Number.isFinite(percent) && !window.unlimited;
           const width = hasPercent ? Math.min(100, Math.max(0, percent)) : 0;
           const label = escapeHtml(subscriptionQuotaLabel(window));
-          const color = percent >= 90 || window.limitReached ? "var(--color-yellow)" : "var(--color-blue)";
           const reset = Number.isFinite(window.resetAt) ? new Date(window.resetAt * 1000) : null;
+          const resetDate = window.resetDate || (reset && Number.isFinite(reset.getTime()) ? reset.toLocaleString() : null);
           return `
-            <div class="mt-3">
-              <div class="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-                <span class="font-semibold">${label}</span>
-                <span>${hasPercent ? `${Math.round(percent * 10) / 10}% used` : "—"}</span>
-              </div>
-              ${hasPercent ? `<div role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${width}" class="progress-bar-bg h-2 mt-2"><div class="progress-bar-fg h-2" style="width: ${width}%; background-color: ${color};"></div></div>` : ""}
-              ${window.used !== undefined || window.limit !== undefined ? `<p class="metric-note">${formatSubscriptionAmount(window.used, window.unit)} / ${formatSubscriptionAmount(window.limit, window.unit)}${window.unit === "credits" ? " Credits" : ""}</p>` : ""}
-              ${reset && Number.isFinite(reset.getTime()) ? `<p class="metric-note">Resets ${escapeHtml(reset.toLocaleString())}</p>` : ""}
+            <div class="quota-window" data-warning="${Boolean(window.limitReached || percent >= 90)}">
+              <div class="quota-window-heading"><span>${label}</span><span>${window.unlimited ? "Unlimited" : hasPercent ? `${Math.round(percent * 10) / 10}% used` : "—"}</span></div>
+              ${hasPercent ? `<div role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${width}" class="quota-progress"><div class="quota-progress-fill" style="width: ${width}%;"></div></div>` : ""}
+              ${!window.unlimited && (window.used !== undefined || window.limit !== undefined) ? `<p class="quota-window-note">${formatSubscriptionAmount(window.used, window.unit)} / ${formatSubscriptionAmount(window.limit, window.unit)}${window.unit === "credits" ? " Credits" : window.unit === "requests" ? " requests" : ""}</p>` : ""}
+              ${resetDate ? `<p class="quota-window-note">Resets ${escapeHtml(resetDate)}</p>` : ""}
             </div>
           `;
         }
 
+        function renderSubscriptionSummary(usage) {
+          const main = usage.windows.find((window) => window.kind === "usage") || usage.windows[0];
+          const credits = usage.credits;
+          const showCredits = credits && (credits.hasCredits || credits.unlimited || !main);
+          const value = showCredits ? credits.unlimited ? "∞"
+            : formatSubscriptionAmount(credits.balance, credits.unit)
+            : main?.unlimited ? "∞"
+              : Number.isFinite(main?.usedPercent) ? `${formatSubscriptionAmount(Math.max(0, Math.min(100, 100 - main.usedPercent)))}%` : "—";
+          const label = showCredits ? credits.unit === "USD" ? "Prepaid balance" : "Credits" : "Remaining allowance";
+          return `<div class="quota-summary"><p class="quota-summary-label">${label}</p><div class="quota-summary-value">${value}</div><p class="quota-summary-context">${showCredits ? credits.unlimited ? "Unlimited" : "Available balance" : main ? escapeHtml(subscriptionQuotaLabel(main)) : "Included allowance"}</p></div>`;
+        }
+
         function renderSubscriptionUsageSection() {
-          const cards = ["codex", "xai"].map((provider) => {
+          const ids = Object.keys(SUBSCRIPTION_PROVIDERS).filter((provider) => state.subscriptionUsage?.[provider] || state.subscriptionUsageErrors?.[provider] || state.subscriptionLoadingProviders?.[provider]);
+          const cards = ids.map((provider) => {
+            const meta = SUBSCRIPTION_PROVIDERS[provider];
             const usage = state.subscriptionUsage?.[provider];
             const failed = state.subscriptionUsageErrors?.[provider];
-            if (!usage && !failed) return "";
+            const loading = state.subscriptionLoadingProviders?.[provider];
             const credits = usage?.credits;
             let balance = "—";
             if (credits?.unlimited) balance = "Unlimited";
@@ -1779,28 +1780,19 @@
             let limitMessage = "Usage limit reached";
             if (usage?.limitReason === "workspace_owner_credits_depleted" || usage?.limitReason === "workspace_member_credits_depleted") limitMessage = "Workspace credits are depleted";
             if (usage?.limitReason === "workspace_owner_usage_limit_reached" || usage?.limitReason === "workspace_member_usage_limit_reached") limitMessage = "Workspace spending limit reached";
+            const stateName = loading ? "loading" : failed || usage?.limitReached ? "warning" : "ready";
+            const status = loading ? "Loading…" : failed ? "Could not load" : usage?.limitReached ? "Limit reached" : "Available";
             return `
-              <div class="metric-card">
-                <div class="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 class="metric-label">${provider === "codex" ? "Codex" : "xAI"}</h3>
-                  ${usage?.planType ? `<span class="text-xs" style="color: var(--color-gray);">${escapeHtml(usage.planType)}</span>` : ""}
-                </div>
-                ${failed ? `<p role="alert" class="metric-note">Could not load quota. Refresh to retry.</p>` : ""}
-                ${usage?.limitReached ? `<p class="metric-note" style="color: var(--color-yellow);">${limitMessage}</p>` : ""}
-                ${(usage?.windows || []).map(renderSubscriptionQuotaWindow).join("")}
-                ${credits ? `<div class="mt-3 flex items-baseline justify-between gap-2 text-xs"><span>${credits.unit === "USD" ? "Prepaid balance" : "Credits"}</span><span class="font-semibold">${balance}</span></div>` : ""}
-                ${usage && !usage.windows?.length && !credits && !usage.limitReached ? `<p class="metric-note">No quota details reported.</p>` : ""}
-              </div>
+              <section class="quota-provider-card" data-provider="${provider}" aria-label="${meta.name} subscription quota">
+                <div class="quota-card-header"><span class="quota-provider-logo"><img src="${meta.logo}" alt="" /></span><div style="min-width: 0; flex: 1;"><h3>${meta.name}</h3><p class="quota-provider-product">${meta.product}</p></div><button class="quota-refresh" type="button" data-quota-refresh="${provider}" aria-label="Refresh ${meta.name} quota" title="Refresh" ${loading ? "disabled" : ""}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.6-2L20 8M4 16l2.3 3A7 7 0 0 0 18 17" /></svg></button></div>
+                <div class="quota-card-meta"><span class="quota-plan">${escapeHtml(usage?.planType || meta.product)}</span><span class="quota-status" data-state="${stateName}"><span></span>${status}</span></div>
+                ${loading ? `<div class="quota-skeleton" aria-label="Loading"><div></div><div></div><div></div></div>` : failed ? `<p role="alert" class="quota-card-message">Could not load quota. Refresh to retry.</p>` : `${renderSubscriptionSummary(usage)}<div class="quota-details">${usage.limitReached ? `<p class="quota-notice">${limitMessage}</p>` : ""}${usage.windows.map(renderSubscriptionQuotaWindow).join("")}${credits && usage.windows.length ? `<div class="quota-balance"><span>${credits.unit === "USD" ? "Prepaid balance" : "Credits"}</span><strong>${balance}</strong></div>` : ""}${!usage.windows.length && !credits && !usage.limitReached ? `<p class="quota-window-note">No quota details reported.</p>` : ""}</div>`}
+                <div class="quota-card-footer">Subscription allowance · Refresh anytime</div>
+              </section>
             `;
           }).join("");
-          if (!cards && !state.isSubscriptionsLoading) return "";
-          const content = cards || `<p class="metric-note">Loading subscription quotas…</p>`;
-          return `
-            <section id="subscription-quotas" class="dashboard-section">
-              <h2 class="section-heading">${renderCollapseToggle("subscriptionQuotas", `<i data-lucide="gauge" class="h-5 w-5" style="color: var(--color-blue);"></i><span>Subscription Quotas</span>`)}</h2>
-              ${renderCollapseBody("subscriptionQuotas", content, "metric-grid subscription-grid")}
-            </section>
-          `;
+          const empty = state.subscriptionPageError || (state.subscriptionsLoaded ? "No subscriptions available. Enable a subscription provider and refresh." : "Refresh to load your subscription allowances.");
+          return `<section id="subscription-quotas" class="subscriptions-page"><div class="subscriptions-page-heading"><div><p class="subscriptions-eyebrow">ACCOUNT USAGE</p><h2>Subscriptions</h2><p class="subscriptions-description">Your subscriptions, balances and reset times in one place.</p></div>${ids.length ? `<span class="subscriptions-count"><span></span>${ids.length} providers</span>` : ""}</div>${cards ? `<div class="subscriptions-grid">${cards}</div>` : `<div class="subscriptions-empty"><h3>Your subscriptions will appear here</h3><p>${escapeHtml(empty)}</p></div>`}</section>`;
         }
 
         function renderTokenUsageSection() {
@@ -2695,147 +2687,72 @@
             <div class="panel text-center py-16 px-4">
                 <i data-lucide="info" class="mx-auto h-10 w-10" style="color: var(--color-blue);"></i>
                 <h3 class="mt-3 text-lg font-bold" style="color: var(--color-fg-lightest);">Usage data is ready to load</h3>
-                <p class="mt-2 text-sm" style="color: var(--color-gray);">Refresh the configured endpoint to view Copilot quotas, token totals, trends, and request events.</p>
+                <p class="mt-2 text-sm" style="color: var(--color-gray);">Refresh the configured endpoint to view token totals, trends, and request events. Open Subscriptions for account allowances.</p>
             </div>
           `;
         }
 
         // --- Data Fetching ---
 
-        async function fetchSubscriptionQuotas(usageUrl) {
-          const requestId = ++state.subscriptionRequestId;
-          const endpoint = endpointUrlInput.value.trim();
-          state.subscriptionUsage = {};
-          state.subscriptionUsageErrors = {};
-          state.isSubscriptionsLoading = true;
-          render("usage");
-          const isCurrent = () => requestId === state.subscriptionRequestId
-            && endpoint === endpointUrlInput.value.trim();
-          await Promise.all(["codex", "xai"].map(async (provider) => {
+        async function refreshSubscriptionQuotas(provider) {
+          syncSubscriptionsConnection();
+          try {
+            if (!endpointUrlInput.value.trim()) throw new Error("Endpoint URL cannot be empty.");
+            await fetchSubscriptionQuotas(resolveUsageUrl(endpointUrlInput.value.trim()), provider);
+          } catch (error) {
+            state.subscriptionPageError = getErrorMessage(error);
+            render("subscriptions");
+          }
+        }
+
+        async function fetchSubscriptionQuotas(usageUrl, selectedProvider) {
+          if (selectedProvider && !Object.hasOwn(SUBSCRIPTION_PROVIDERS, selectedProvider)) return;
+          if (!selectedProvider) {
+            state.subscriptionRequestId += 1;
+            state.subscriptionUsage = {};
+            state.subscriptionUsageErrors = {};
+            state.subscriptionLoadingProviders = {};
+          }
+          const requestId = state.subscriptionRequestId;
+          const connectionKey = getConnectionKey();
+          state.subscriptionPageError = null;
+          const providers = selectedProvider ? [selectedProvider] : Object.keys(SUBSCRIPTION_PROVIDERS);
+          await Promise.all(providers.map(async (provider) => {
+            const revision = (state.subscriptionRequests[provider] || 0) + 1;
+            state.subscriptionRequests[provider] = revision;
+            delete state.subscriptionUsage[provider];
+            delete state.subscriptionUsageErrors[provider];
+            state.subscriptionLoadingProviders[provider] = true;
+            state.isSubscriptionsLoading = true;
+            render("subscriptions");
+            const isCurrent = () => requestId === state.subscriptionRequestId
+              && connectionKey === getConnectionKey() && revision === state.subscriptionRequests[provider];
             try {
               const usage = await fetchJson(deriveEndpointUrl(usageUrl, `usage/${provider}`));
               if (!isCurrent()) return;
-              if (usage?.provider !== provider || !Array.isArray(usage.windows)) {
-                throw new Error("Invalid subscription quota response");
-              }
+              if (usage?.provider !== provider || !Array.isArray(usage.windows)) throw new Error("Invalid subscription quota response");
               state.subscriptionUsage[provider] = usage;
             } catch (error) {
               if (!isCurrent()) return;
-              // Disabled providers and older servers have no subscription endpoint.
-              if (error.status !== 404) state.subscriptionUsageErrors[provider] = true;
+              if (error?.status !== 404) state.subscriptionUsageErrors[provider] = true;
             } finally {
-              if (isCurrent()) render("usage");
+              if (isCurrent()) {
+                delete state.subscriptionLoadingProviders[provider];
+                state.isSubscriptionsLoading = Object.keys(state.subscriptionLoadingProviders).length > 0;
+                state.subscriptionsLoaded = true;
+                render("subscriptions");
+              }
             }
           }));
-          if (isCurrent()) {
-            state.isSubscriptionsLoading = false;
-            render("usage");
-          }
         }
 
         /**
          * Fetches usage data and token usage data from the specified API endpoint.
          */
         async function fetchData(page = 1) {
-          invalidateSessionsRequest();
-          state.subscriptionRequestId = (state.subscriptionRequestId || 0) + 1;
-          state.subscriptionUsage = {};
-          state.subscriptionUsageErrors = {};
-          state.isSubscriptionsLoading = false;
-          const endpoint = endpointUrlInput.value.trim();
-          if (!endpoint) {
-            state.data = null;
-            state.tokenUsageDailySummary = null;
-            state.tokenUsageSummary = null;
-            state.tokenUsageEventsPage = null;
-            state.error = "Endpoint URL cannot be empty.";
-            state.tokenUsageDailyError =
-              "Token usage requires a valid endpoint URL.";
-            state.tokenUsageSummaryError =
-              "Token usage requires a valid endpoint URL.";
-            state.tokenUsageEventsError = null;
-            render();
-            return;
-          }
-
-          const period = getSelectedPeriod();
           state.isLoading = true;
-          state.error = null;
-          state.tokenUsageDailyError = null;
-          state.tokenUsageSummaryError = null;
-          state.tokenUsageEventsError = null;
-          render();
-
           try {
-            const usageUrl = resolveUsageUrl(endpoint);
-            void fetchSubscriptionQuotas(usageUrl);
-            const [usageResult, summaryResult, dailyResult, eventsResult] =
-              await Promise.allSettled([
-                fetchJson(usageUrl),
-                fetchJson(buildTokenUsageSummaryUrl(usageUrl, period)),
-                fetchJson(buildTokenUsageDailyUrl(usageUrl, period)),
-                fetchJson(buildTokenUsageEventsUrl(usageUrl, period, page)),
-              ]);
-
-            if (usageResult.status === "fulfilled") {
-              state.data = usageResult.value;
-            } else {
-              state.data = null;
-              state.error = getErrorMessage(usageResult.reason);
-            }
-
-            if (summaryResult.status === "fulfilled") {
-              state.tokenUsageSummary = summaryResult.value;
-              void fetchTokenUsageSessionsPage(1);
-            } else if (
-              isMissingTokenUsageEndpointError(summaryResult.reason)
-            ) {
-              state.tokenUsageSummary = null;
-              state.tokenUsageSummaryError = null;
-            } else {
-              state.tokenUsageSummary = null;
-              state.tokenUsageSummaryError = getErrorMessage(
-                summaryResult.reason
-              );
-            }
-
-            if (dailyResult.status === "fulfilled") {
-              state.tokenUsageDailySummary = dailyResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(dailyResult.reason)
-            ) {
-              state.tokenUsageDailySummary = null;
-              state.tokenUsageDailyError = null;
-            } else {
-              state.tokenUsageDailySummary = null;
-              state.tokenUsageDailyError = getErrorMessage(
-                dailyResult.reason
-              );
-            }
-
-            if (eventsResult.status === "fulfilled") {
-              state.tokenUsageEventsPage = eventsResult.value;
-            } else if (
-              isMissingTokenUsageEndpointError(eventsResult.reason)
-            ) {
-              state.tokenUsageEventsPage = null;
-              state.tokenUsageEventsError = null;
-            } else {
-              state.tokenUsageEventsPage = null;
-              state.tokenUsageEventsError = getErrorMessage(
-                eventsResult.reason
-              );
-            }
-          } catch (error) {
-            console.error("Fetch error:", error);
-            state.data = null;
-            state.tokenUsageDailySummary = null;
-            state.tokenUsageSummary = null;
-            state.tokenUsageEventsPage = null;
-            state.error = getErrorMessage(error);
-            state.tokenUsageDailyError = getErrorMessage(error);
-            state.tokenUsageSummaryError = getErrorMessage(error);
-            state.tokenUsageEventsError = getErrorMessage(error);
+            await fetchTokenUsageSummaryAndEvents(page);
           } finally {
             state.isLoading = false;
             render("usage");
@@ -3028,6 +2945,8 @@
           syncUrlState();
           if (state.activeTab === "models") {
             void fetchModels();
+          } else if (state.activeTab === "subscriptions") {
+            void refreshSubscriptionQuotas();
           } else {
             void fetchData();
           }
@@ -3040,6 +2959,11 @@
 
         function handleContentAreaClick(event) {
           if (!(event.target instanceof Element)) {
+            return;
+          }
+          const quotaRefresh = event.target.closest("[data-quota-refresh]");
+          if (quotaRefresh) {
+            void refreshSubscriptionQuotas(quotaRefresh.dataset.quotaRefresh);
             return;
           }
           const copyButton = event.target.closest("[data-model-copy]");
@@ -3175,6 +3099,8 @@
           const endpointFromUrl = urlParams.get("endpoint");
           const initialEndpoint = endpointFromUrl || DEFAULT_ENDPOINT;
 
+          const initialTab = urlParams.get("tab");
+          if (["usage", "subscriptions", "models"].includes(initialTab)) state.activeTab = initialTab;
           state.tokenUsagePeriod = periodFromUrl;
           tokenUsagePeriodSelect.value = periodFromUrl;
           endpointUrlInput.value = initialEndpoint;
@@ -3183,7 +3109,9 @@
           state.collapsedSections = readCollapsedSections();
 
           if (endpointFromUrl) {
-            void fetchData();
+            if (state.activeTab === "subscriptions") void refreshSubscriptionQuotas();
+            else if (state.activeTab === "models") void fetchModels();
+            else void fetchData();
           } else {
             render();
           }

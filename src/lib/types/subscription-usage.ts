@@ -1,4 +1,4 @@
-export type SubscriptionProvider = "codex" | "xai"
+export type SubscriptionProvider = "github-copilot" | "codex" | "xai"
 
 export interface SubscriptionQuotaWindow {
   id: string
@@ -8,9 +8,11 @@ export interface SubscriptionQuotaWindow {
   windowSeconds?: number
   usedPercent?: number
   resetAt?: number
+  resetDate?: string
+  unlimited?: boolean
   used?: number
   limit?: number
-  unit?: "credits" | "USD"
+  unit?: "credits" | "USD" | "requests"
   limitReached?: boolean
 }
 

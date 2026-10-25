@@ -683,7 +683,11 @@ export function registerIpcHandlers(
   ipcMain.handle(
     'server:fetch-subscription-usage',
     async (_event, provider: SubscriptionProvider) => {
-      if (provider !== 'codex' && provider !== 'xai') {
+      if (
+        provider !== 'codex'
+        && provider !== 'xai'
+        && provider !== 'github-copilot'
+      ) {
         throw new Error('Unsupported subscription provider')
       }
       const headers = await getServerRequestHeaders()

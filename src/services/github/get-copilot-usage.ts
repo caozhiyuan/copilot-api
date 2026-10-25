@@ -7,6 +7,7 @@ export type CopilotAccountType = "individual" | "business" | "enterprise"
 
 export const getCopilotUsage = async (
   githubToken?: string,
+  signal?: AbortSignal,
 ): Promise<CopilotUsageResponse | null> => {
   const resolvedGithubToken = githubToken ?? state.githubToken
   if (!resolvedGithubToken) {
@@ -18,6 +19,7 @@ export const getCopilotUsage = async (
     `${getGitHubApiBaseUrl()}/copilot_internal/user`,
     {
       headers: githubHeaders(authState),
+      signal,
     },
   )
 

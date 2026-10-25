@@ -5,6 +5,8 @@ import { getGrokBuildVersion } from "~/lib/grok-build"
 import { XAI_API_BASE_URL } from "~/lib/oauth/xai"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { readXaiCredentials } from "~/lib/xai-token"
+import { isGitHubCopilotEnabled } from "~/lib/github-copilot-provider"
+import { getCopilotUsage } from "~/services/github/get-copilot-usage"
 import type {
   SubscriptionProvider,
   SubscriptionQuotaWindow,
@@ -100,6 +102,78 @@ const xaiUsage = z.object({
     .nullish(),
   subscription_tier: z.string().nullish(),
 })
+
+const copilotQuota = z.object({
+  entitlement: number.nullish(),
+  remaining: number.nullish(),
+  quota_remaining: number.nullish(),
+  percent_remaining: number.nullish(),
+  unlimited: z.boolean().nullish(),
+})
+const copilotUsage = z.object({
+  copilot_plan: z.string().nullish(),
+  quota_reset_date: z.string().nullish(),
+  quota_snapshots: z
+    .object({
+      premium_interactions: copilotQuota.nullish(),
+      chat: copilotQuota.nullish(),
+      completions: copilotQuota.nullish(),
+    })
+    .nullish(),
+})
+
+export function normalizeCopilotUsage(value: unknown): SubscriptionUsage {
+  const usage = copilotUsage.parse(value)
+  const windows: Array<SubscriptionQuotaWindow> = []
+  const labels = {
+    premium_interactions: "Premium",
+    chat: "Chat",
+    completions: "Completions",
+  }
+  for (const id of ["premium_interactions", "chat", "completions"] as const) {
+    const quota = usage.quota_snapshots?.[id]
+    if (!quota) continue
+    const remaining = quota.remaining ?? quota.quota_remaining
+    const limit = quota.entitlement ?? undefined
+    const remainingPercent =
+      quota.percent_remaining
+      ?? (limit !== undefined && limit > 0 && remaining != null ?
+        (remaining / limit) * 100
+      : undefined)
+    if (
+      !quota.unlimited
+      && remainingPercent == null
+      && remaining == null
+      && limit === undefined
+    )
+      continue
+    windows.push({
+      id: `copilot:${id}`,
+      kind: "usage",
+      name: labels[id],
+      unlimited: quota.unlimited ?? false,
+      usedPercent:
+        quota.unlimited || remainingPercent == null ?
+          undefined
+        : 100 - remainingPercent,
+      used:
+        limit !== undefined && remaining != null ?
+          Math.max(0, limit - remaining)
+        : undefined,
+      limit,
+      unit: "requests",
+      resetDate: usage.quota_reset_date ?? undefined,
+      limitReached:
+        !quota.unlimited && remainingPercent != null && remainingPercent <= 0,
+    })
+  }
+  return {
+    provider: "github-copilot",
+    planType: usage.copilot_plan ?? undefined,
+    windows,
+    limitReached: windows.some((window) => window.limitReached),
+  }
+}
 
 function resetAt(
   window: { reset_at?: number | null; reset_after_seconds?: number | null },
@@ -266,6 +340,15 @@ export async function getSubscriptionUsage(
   provider: SubscriptionProvider,
   signal?: AbortSignal,
 ): Promise<SubscriptionUsage | null> {
+  if (provider === "github-copilot") {
+    if (!isGitHubCopilotEnabled()) return null
+    const timeout = AbortSignal.timeout(15_000)
+    const usage = await getCopilotUsage(
+      undefined,
+      signal ? AbortSignal.any([signal, timeout]) : timeout,
+    )
+    return usage ? normalizeCopilotUsage(usage) : null
+  }
   const config = await resolveProviderConfig(provider)
   if (!config || config.authType !== "oauth2") return null
 

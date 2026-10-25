@@ -1,21 +1,13 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 
 import Header from '../components/Header'
-import SubscriptionQuotaCard from '../components/SubscriptionQuotaCard'
+import SubscriptionsPage from './SubscriptionsPage'
 import {
   TokenUsageCostMetric,
   TokenUsageMetric,
   TokenUsageValueLines,
 } from '../components/TokenUsageMetric'
 import { useLanguage } from '../contexts/LanguageContext'
-import {
-  getCopilotQuotaPercentRemaining,
-  getCopilotQuotaRemaining,
-  getNonEmptyUsageText,
-  hasCopilotQuotaValue,
-  shouldShowCopilotQuotaUsage,
-  type CopilotQuotaDetailLike,
-} from '../lib/copilot-usage-display'
 import {
   formatCacheHitRate,
   formatLatency,
@@ -53,19 +45,6 @@ interface DashboardPageProps {
   onChangeAuth: (returnTab: 'dashboard' | 'providers') => void
 }
 
-type QuotaDetail = CopilotQuotaDetailLike
-
-interface UsageInfo {
-  copilot_plan?: string
-  quota_reset_date?: string
-  quota_snapshots?: {
-    chat?: QuotaDetail
-    completions?: QuotaDetail
-    premium_interactions?: QuotaDetail
-  }
-  [key: string]: unknown
-}
-
 interface Model {
   id: string
   [key: string]: unknown
@@ -75,6 +54,7 @@ type TranslateFn = ReturnType<typeof useLanguage>['t']
 type DashboardTab =
   | 'dashboard'
   | 'tokenUsage'
+  | 'subscriptions'
   | 'providers'
   | 'advancedConfig'
   | 'studio'
@@ -250,17 +230,6 @@ const IconLogs = () => (
   </svg>
 )
 
-function getQuotaBarColor(pct: number, isUsed: boolean): string {
-  if (isUsed) {
-    if (pct >= 80) return 'bg-linear-to-r from-rose-400 to-red-500'
-    if (pct >= 50) return 'bg-linear-to-r from-amber-400 to-orange-500'
-    return 'bg-linear-to-r from-sky-400 to-blue-500'
-  }
-  if (pct >= 50) return 'bg-blue-500'
-  if (pct >= 20) return 'bg-orange-400'
-  return 'bg-red-500'
-}
-
 function maskSecret(value: string): string {
   if (value.length <= 8) return '*'.repeat(Math.max(value.length, 4))
   return `${value.slice(0, 4)}********${value.slice(-4)}`
@@ -310,7 +279,6 @@ function formatCellText(value: string | null | undefined): string {
 }
 
 export default function DashboardPage({
-  authMode: initialAuthMode,
   defaultPort,
   defaultHost,
   initialServerStatus,
@@ -318,7 +286,6 @@ export default function DashboardPage({
   onChangeAuth,
 }: DashboardPageProps) {
   const { t } = useLanguage()
-  const [authMode, setAuthMode] = useState(initialAuthMode)
   const [started, setStarted] = useState(initialServerStatus?.running ?? false)
   const [port, setPort] = useState<string>(
     String(initialServerStatus?.port ?? defaultPort),
@@ -361,7 +328,6 @@ export default function DashboardPage({
       setStudioOpened(false)
     }
   }, [showCreate, tab])
-  const [usage, setUsage] = useState<UsageInfo | null>(null)
   const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
   const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null)
   const [tokenUsageDaily, setTokenUsageDaily] =
@@ -523,7 +489,6 @@ export default function DashboardPage({
 
   const refreshAuthMode = async () => {
     const status = await window.electronAPI.getAuthStatus()
-    setAuthMode(status.mode)
     return status.mode
   }
 
@@ -568,7 +533,6 @@ export default function DashboardPage({
     await window.electronAPI.stopServer()
     setStopping(false)
     setStarted(false)
-    setUsage(null)
     setTokenUsage(null)
     setTokenUsageDaily(null)
     setTokenUsageEvents(null)
@@ -608,7 +572,6 @@ export default function DashboardPage({
         setStarted(true)
       } else {
         setStarted(false)
-        setUsage(null)
         setTokenUsage(null)
         setTokenUsageDaily(null)
         setTokenUsageEvents(null)
@@ -659,21 +622,6 @@ export default function DashboardPage({
     setLoading(true)
     try {
       // Proxy HTTP requests through IPC so the main process bypasses renderer CORS.
-      if ((await refreshAuthMode()) === 'copilot') {
-        const [usageData, modelsData] = await Promise.all([
-          window.electronAPI.fetchUsage(),
-          window.electronAPI.fetchModels(),
-        ])
-        if (usageData) setUsage(usageData as UsageInfo)
-        if (modelsData) {
-          const d = modelsData as { data: Model[] }
-          setModels(d.data ?? [])
-        }
-        setLastDashboardRefreshAt(Date.now())
-        return
-      }
-
-      setUsage(null)
       const modelsData = await window.electronAPI.fetchModels()
       if (modelsData) {
         const d = modelsData as { data: Model[] }
@@ -827,9 +775,12 @@ export default function DashboardPage({
 
   const handleRefreshActiveTab = () => {
     if (tab === 'dashboard') {
-      setQuotaRefreshKey((value) => value + 1)
       void fetchData()
       void fetchProviderConfig()
+      return
+    }
+    if (tab === 'subscriptions') {
+      setQuotaRefreshKey((value) => value + 1)
       return
     }
     if (tab === 'tokenUsage') {
@@ -852,29 +803,10 @@ export default function DashboardPage({
       .catch(() => {})
   }
 
-  const premiumQ = usage?.quota_snapshots?.premium_interactions
-  const isCopilotAuthMode = authMode === 'copilot'
   const providers = providerConfig?.providers ?? []
-  const isCopilotProviderEnabled =
-    providers.find((provider) => provider.name === 'github-copilot')?.enabled
-    ?? isCopilotAuthMode
-  const shouldShowUsagePlaceholders =
-    isCopilotAuthMode && loading && usage === null
-  const copilotPlan = getNonEmptyUsageText(usage?.copilot_plan)
-  const quotaResetDate = getNonEmptyUsageText(usage?.quota_reset_date)
   const shouldShowFailureLogs = !started && Boolean(startError || serverError)
-  const shouldShowQuotaMeta = Boolean(copilotPlan || quotaResetDate)
-  const shouldShowQuotaUsage =
-    isCopilotAuthMode
-    && isCopilotProviderEnabled
-    && (shouldShowUsagePlaceholders
-      || shouldShowQuotaMeta
-      || shouldShowCopilotQuotaUsage(usage))
-  const hasPremiumQuota = hasCopilotQuotaValue(premiumQ)
   const enabledProviderCount = providers.filter((item) => item.enabled).length
-  const shouldShowProviderOverview =
-    providerConfig !== null
-    && (!shouldShowQuotaUsage || enabledProviderCount > 1)
+  const shouldShowProviderOverview = providerConfig !== null
   const sortedProviders = [...providers].sort(
     (left, right) => Number(right.enabled) - Number(left.enabled),
   )
@@ -940,6 +872,27 @@ export default function DashboardPage({
       label: t('dashboard.tabTokenUsage'),
     },
     {
+      icon: (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M5 19a9 9 0 1 1 14 0" />
+          <path d="m12 13 4-5" />
+          <path d="M8 20h8" />
+        </svg>
+      ),
+      key: 'subscriptions',
+      label: t('dashboard.tabSubscriptions'),
+    },
+    {
       icon: <IconProviders />,
       key: 'providers',
       label: t('providers.title'),
@@ -956,7 +909,8 @@ export default function DashboardPage({
     (tabItem) => showCreate || tabItem.key !== 'studio',
   )
   const showRefreshButton =
-    started && (tab === 'dashboard' || tab === 'tokenUsage')
+    started
+    && (tab === 'dashboard' || tab === 'tokenUsage' || tab === 'subscriptions')
   const showStartForm = !started && !TABS_WITHOUT_START_FORM.includes(tab)
 
   return (
@@ -1013,6 +967,8 @@ export default function DashboardPage({
             <IconRefresh spinning={isActiveTabRefreshing} />
             {isActiveTabRefreshing ?
               t('dashboard.refreshing')
+            : tab === 'subscriptions' ?
+              t('dashboard.quotaRefreshAll')
             : t('dashboard.refresh')}
           </button>
         )}
@@ -1256,62 +1212,6 @@ export default function DashboardPage({
                       </div>
                     )}
                 </div>
-
-                {(['codex', 'xai'] as const).map((provider) =>
-                  (
-                    providers.some(
-                      (item) => item.name === provider && item.enabled,
-                    )
-                  ) ?
-                    <SubscriptionQuotaCard
-                      key={provider}
-                      provider={provider}
-                      refreshKey={quotaRefreshKey}
-                    />
-                  : null,
-                )}
-
-                {/* GitHub Copilot Quota */}
-                {shouldShowQuotaUsage && (
-                  <div className="shrink-0 bg-surface border border-line rounded-xl px-3 pt-3 pb-6">
-                    <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-                      <h3 className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">
-                        {t('dashboard.quotaUsage')}
-                      </h3>
-                      {shouldShowQuotaMeta && (
-                        <div className="flex min-w-0 items-baseline gap-1.5 text-[13px] text-ink-faint">
-                          {copilotPlan && (
-                            <span className="truncate font-medium text-ink-soft">
-                              {copilotPlan}
-                            </span>
-                          )}
-                          {quotaResetDate && (
-                            <span className="shrink-0">
-                              {t('dashboard.quotaResetsOn', {
-                                date: quotaResetDate,
-                              })}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-2.5">
-                      {(shouldShowUsagePlaceholders || hasPremiumQuota) && (
-                        <QuotaBar
-                          label="Premium"
-                          quota={premiumQ}
-                          loading={loading}
-                          mode="used"
-                        />
-                      )}
-                      {!loading && !hasPremiumQuota && (
-                        <p className="text-[13px] text-ink-faint">
-                          {t('dashboard.quotaUnavailable')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="flex min-h-0 min-w-0 flex-col gap-3 md:h-full">
@@ -1351,6 +1251,13 @@ export default function DashboardPage({
               </div>
             </div>
           </div>
+        )}
+
+        {started && tab === 'subscriptions' && (
+          <SubscriptionsPage
+            refreshKey={quotaRefreshKey}
+            onManageProviders={() => setTab('providers')}
+          />
         )}
 
         {/* Token usage tab */}
@@ -1434,69 +1341,6 @@ export default function DashboardPage({
 }
 
 // Subcomponents
-
-function QuotaBar({
-  label,
-  quota,
-  loading,
-  mode,
-}: {
-  label: string
-  quota: QuotaDetail | undefined
-  loading: boolean
-  mode: 'used' | 'remaining'
-}) {
-  const { t } = useLanguage()
-  const remainingPct = quota ? getCopilotQuotaPercentRemaining(quota) : 0
-  const pct = quota && mode === 'used' ? 100 - remainingPct : remainingPct
-  const colorClass = getQuotaBarColor(pct, mode === 'used')
-
-  let displayText = '—'
-  if (quota) {
-    const entitlement = quota.entitlement ?? 0
-    const remaining = getCopilotQuotaRemaining(quota) ?? 0
-    if (quota.unlimited) {
-      displayText = '∞'
-    } else if (mode === 'used') {
-      const used = Math.floor(entitlement - remaining)
-      displayText = `${used} / ${Math.floor(entitlement)}`
-    } else {
-      displayText = `${Math.floor(remaining)} / ${Math.floor(entitlement)}`
-    }
-    if (!quota.unlimited) {
-      displayText += ` · ${t(
-        mode === 'used' ?
-          'dashboard.quotaUsedPercent'
-        : 'dashboard.quotaRemainingPercent',
-        { percent: pct.toFixed(1) },
-      )}`
-    }
-  }
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-0.5">
-        <span className="text-[13px] text-ink-soft">{label}</span>
-        <span
-          className={`text-[13px] font-medium ${loading ? 'text-ink-faint' : 'text-ink-soft'}`}
-        >
-          {loading ? '…' : displayText}
-        </span>
-      </div>
-      <div className="h-1.5 bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden">
-        {loading ?
-          <div className="h-full bg-line animate-pulse rounded-full" />
-        : quota && (
-            <div
-              className={`h-full rounded-full transition-all ${colorClass}`}
-              style={{ width: `${pct}%` }}
-            />
-          )
-        }
-      </div>
-    </div>
-  )
-}
 
 function TokenUsageSummaryMetrics({
   className,

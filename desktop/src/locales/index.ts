@@ -198,6 +198,22 @@ export interface Locale {
     copy: string
     quotaUsage: string
     subscriptionQuota: string
+    tabSubscriptions: string
+    quotaRefreshAll: string
+    quotaRemaining: string
+    quotaRequests: string
+    quotaAvailableBalance: string
+    quotaLoadFailedShort: string
+    quotaLimitReachedShort: string
+    quotaConnected: string
+    quotaNotConnected: string
+    quotaRefreshProvider: string
+    quotaLiveUsage: string
+    quotaAccountUsage: string
+    quotaPageDescription: string
+    quotaProviderCount: string
+    quotaEmptyTitle: string
+    quotaEmptyDescription: string
     quotaMonthlyCredits: string
     quotaOnDemand: string
     quotaWeekly: string

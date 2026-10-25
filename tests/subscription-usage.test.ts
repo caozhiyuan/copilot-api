@@ -3,12 +3,14 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import * as providerResolver from "~/lib/provider-resolver"
 import * as grokBuild from "~/lib/grok-build"
 import * as xaiToken from "~/lib/xai-token"
+import * as githubProvider from "~/lib/github-copilot-provider"
 import { state } from "~/lib/state"
 import * as subscriptionUsage from "~/services/subscription-usage"
 import {
   getSubscriptionUsage,
   normalizeCodexUsage,
   normalizeXaiUsage,
+  normalizeCopilotUsage,
 } from "~/services/subscription-usage"
 import * as copilotUsage from "~/services/github/get-copilot-usage"
 import { usageRoute } from "~/routes/usage/route"
@@ -34,6 +36,110 @@ const codexWindow = {
   reset_after_seconds: 120,
   reset_at: 1793000000,
 }
+
+describe("Copilot subscription usage", () => {
+  test("normalizes Premium, Chat and Completions with exact reset dates", () => {
+    const result = normalizeCopilotUsage({
+      login: "private-login",
+      copilot_plan: "individual",
+      quota_reset_date: "2026-11-01",
+      quota_snapshots: {
+        premium_interactions: {
+          entitlement: 1500,
+          remaining: 1049,
+          percent_remaining: 69.9,
+        },
+        chat: { entitlement: 100, quota_remaining: 0 },
+        completions: { unlimited: true },
+      },
+    })
+    expect(result.provider).toBe("github-copilot")
+    expect(result.planType).toBe("individual")
+    expect(result.windows[0]).toMatchObject({
+      id: "copilot:premium_interactions",
+      used: 451,
+      limit: 1500,
+      resetDate: "2026-11-01",
+      unit: "requests",
+    })
+    expect(result.windows[0].usedPercent).toBeCloseTo(30.1)
+    expect(result.windows[1]).toMatchObject({
+      usedPercent: 100,
+      limitReached: true,
+    })
+    expect(result.windows[2]).toMatchObject({
+      unlimited: true,
+      usedPercent: undefined,
+      limitReached: false,
+    })
+    expect(result.limitReached).toBe(true)
+    expect(JSON.stringify(result)).not.toContain("private-login")
+  })
+
+  test("handles percentage-only values and unknown or empty quotas", () => {
+    const result = normalizeCopilotUsage({
+      quota_snapshots: {
+        premium_interactions: { percent_remaining: 25 },
+        chat: {},
+        completions: { entitlement: 100, remaining: 150 },
+      },
+    })
+    expect(result.windows).toHaveLength(2)
+    expect(result.windows[0]).toMatchObject({
+      usedPercent: 75,
+      used: undefined,
+      limit: undefined,
+    })
+    expect(result.windows[1].used).toBe(0)
+    expect(
+      normalizeCopilotUsage({
+        quota_snapshots: { premium_interactions: { percent_remaining: 99.9 } },
+      }).windows[0].usedPercent,
+    ).toBeCloseTo(0.1)
+    expect(normalizeCopilotUsage({}).windows).toEqual([])
+    expect(
+      normalizeCopilotUsage({ quota_snapshots: { chat: { entitlement: 0 } } })
+        .windows[0].usedPercent,
+    ).toBeUndefined()
+    expect(() =>
+      normalizeCopilotUsage({
+        quota_snapshots: { chat: { percent_remaining: NaN } },
+      }),
+    ).toThrow()
+  })
+
+  test("queries Copilot independently of third-party OAuth routing", async () => {
+    const enabled = track(
+      spyOn(githubProvider, "isGitHubCopilotEnabled"),
+    ).mockReturnValue(true)
+    const getUsage = track(
+      spyOn(copilotUsage, "getCopilotUsage"),
+    ).mockResolvedValue({ copilot_plan: "business" } as Awaited<
+      ReturnType<typeof copilotUsage.getCopilotUsage>
+    >)
+    const controller = new AbortController()
+    expect(
+      await getSubscriptionUsage("github-copilot", controller.signal),
+    ).toMatchObject({ provider: "github-copilot", planType: "business" })
+    const signal = getUsage.mock.calls[0][1]
+    controller.abort()
+    expect(signal?.aborted).toBe(true)
+    getUsage.mockResolvedValue(null)
+    expect(await getSubscriptionUsage("github-copilot")).toBeNull()
+    enabled.mockReturnValue(false)
+    expect(await getSubscriptionUsage("github-copilot")).toBeNull()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+  })
+
+  test("forwards cancellation to the existing GitHub usage request", async () => {
+    const fetcher = track(spyOn(globalThis, "fetch")).mockResolvedValue(
+      Response.json({ copilot_plan: "individual" }),
+    )
+    const controller = new AbortController()
+    await copilotUsage.getCopilotUsage("github-token", controller.signal)
+    expect(fetcher.mock.calls[0][1]?.signal).toBe(controller.signal)
+  })
+})
 
 describe("Codex subscription usage", () => {
   test("preserves personal windows, names, and explicit zero values", () => {

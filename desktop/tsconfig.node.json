@@ -56,6 +56,8 @@
     "src/components/WindowControls.tsx",
     "src/components/TokenUsageMetric.tsx",
     "src/components/SubscriptionQuotaCard.tsx",
+    "src/lib/subscription-providers.ts",
+    "src/pages/SubscriptionsPage.tsx",
     "src/contexts/ThemeContext.tsx",
     "src/contexts/LanguageContext.tsx",
     "../src/lib/quick-providers.ts",

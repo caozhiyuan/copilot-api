@@ -8,7 +8,11 @@ export const usageRoute = new Hono()
 usageRoute.get("/:provider", async (c) => {
   const provider = c.req.param("provider")
   c.header("Cache-Control", "no-store")
-  if (provider !== "codex" && provider !== "xai") {
+  if (
+    provider !== "codex"
+    && provider !== "xai"
+    && provider !== "github-copilot"
+  ) {
     return c.json({ error: "Unsupported subscription provider" }, 404)
   }
   try {

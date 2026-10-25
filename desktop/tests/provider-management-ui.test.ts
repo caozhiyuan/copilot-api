@@ -673,24 +673,43 @@ describe('provider management UI', () => {
   )
 
   test('shows Copilot percentages without rounding 99.9 percent to a full bar', async () => {
-    const quota = {
-      entitlement: 1500,
-      remaining: 1499,
-      quota_remaining: 0,
-      percent_remaining: 99.9,
-      unlimited: false,
-    }
+    getConfig.mockResolvedValue({
+      configPath: 'config.json',
+      providers: [
+        { name: 'github-copilot', type: 'github-copilot', enabled: true },
+      ],
+    })
     Object.assign(window.electronAPI, {
       getAuthStatus: () => Promise.resolve({ success: true, mode: 'copilot' }),
       getServerStatus: () => Promise.resolve({ running: true }),
       getServerAuthInfo: () => Promise.resolve({ enabled: false }),
-      fetchUsage: () =>
+      fetchSubscriptionUsage: () =>
         Promise.resolve({
-          quota_snapshots: {
-            premium_interactions: quota,
-            chat: quota,
-            completions: { ...quota, unlimited: true },
-          },
+          provider: 'github-copilot',
+          limitReached: false,
+          windows: [
+            {
+              id: 'copilot:premium_interactions',
+              name: 'Premium',
+              kind: 'usage',
+              used: 1,
+              limit: 1500,
+              unit: 'requests',
+              usedPercent: 0.1,
+            },
+            {
+              id: 'copilot:chat',
+              name: 'Chat',
+              kind: 'usage',
+              unlimited: true,
+            },
+            {
+              id: 'copilot:completions',
+              name: 'Completions',
+              kind: 'usage',
+              unlimited: true,
+            },
+          ],
         }),
     })
     await act(async () => {
@@ -705,17 +724,21 @@ describe('provider management UI', () => {
         }),
       )
     })
-    expect(container.textContent).toContain('1 / 1500 · 0.1% used')
-    expect(container.textContent).not.toContain('99.9% remaining')
-    const quotaBar = (label: string) =>
-      [...container.querySelectorAll('span')]
-        .find((node) => node.textContent === label)
-        ?.parentElement?.parentElement?.querySelector<HTMLDivElement>(
-          'div[style]',
-        )
-    expect(parseFloat(quotaBar('Premium')!.style.width)).toBeCloseTo(0.1)
-    expect(quotaBar('Chat')).toBeUndefined()
-    expect(quotaBar('Completions')).toBeUndefined()
+    await act(async () => button('Subscriptions').click())
+    expect(container.textContent).toContain('1 / 1,500 requests')
+    expect(container.textContent).toContain('0.1% used')
+    expect(container.querySelector('.quota-summary-value')?.textContent).toBe(
+      '99.9%',
+    )
+    expect(
+      parseFloat(
+        container.querySelector<HTMLElement>('.quota-progress-fill')!.style
+          .width,
+      ),
+    ).toBeCloseTo(0.1)
+    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1)
+    expect(container.textContent).toContain('Chat')
+    expect(container.textContent).toContain('Completions')
   })
 
   test('does not report the update installer stopping the server as a crash', async () => {
@@ -1006,7 +1029,7 @@ describe('provider management UI', () => {
     },
   )
 
-  test('uses current Copilot authorization when starting, restarting, and refreshing', async () => {
+  test('uses current authorization for startup and restart without eager quota requests', async () => {
     const getAuthStatus = mock(() =>
       Promise.resolve({ success: true, mode: 'copilot' }),
     )
@@ -1039,8 +1062,8 @@ describe('provider management UI', () => {
       button('Start server').click()
     })
     expect(startServer).toHaveBeenCalledWith(4141, 'copilot', '127.0.0.1')
-    expect(fetchUsage).toHaveBeenCalled()
-    expect(container.textContent).toContain('copilot_pro')
+    expect(fetchUsage).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('copilot_pro')
 
     getAuthStatus.mockImplementation(() =>
       Promise.resolve({ success: true, mode: 'provider' }),
@@ -1061,7 +1084,8 @@ describe('provider management UI', () => {
     await act(async () => {
       button('Refresh').click()
     })
-    expect(container.textContent).toContain('copilot_pro')
+    expect(fetchUsage).not.toHaveBeenCalled()
+    expect(container.textContent).not.toContain('copilot_pro')
   })
 
   test('allows provider management and advanced configuration while stopped', async () => {

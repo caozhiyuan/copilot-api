@@ -108,10 +108,11 @@ New endpoints for monitoring your Copilot usage and quotas.
 | Endpoint     | Method | Description                                                  |
 | ------------ | ------ | ------------------------------------------------------------ |
 | `GET /usage` | `GET`  | Get detailed Copilot usage statistics and quota information. |
+| `GET /usage/github-copilot` | `GET` | Get normalized Premium, Chat, and Completions subscription quotas. |
 | `GET /usage/codex` | `GET` | Get the selected Codex subscription's windows, credits, and Business member credit limit. |
 | `GET /usage/xai` | `GET` | Get the selected xAI subscription's Grok Build allowance and prepaid balance. |
 
-Subscription endpoints use the server's enabled OAuth provider and selected account. They return normalized `provider`, `planType`, `windows`, `credits`, and limit status fields, with `resetAt` in Unix seconds. Unavailable subscriptions return 404; upstream or credential failures return 502. The desktop dashboard and usage viewer query these endpoints independently. Upstream credentials stay on the server.
+Subscription endpoints use the server's enabled provider and selected account. They return normalized `provider`, `planType`, `windows`, `credits`, and limit status fields, with `resetAt` in Unix seconds. Copilot calendar reset dates use `resetDate`; individual windows may report `unlimited`. Unavailable subscriptions return 404; upstream or credential failures return 502. The desktop dashboard and usage viewer query these endpoints independently. Upstream credentials stay on the server.
 
 ### Admin / Configuration Endpoints
 

@@ -5,7 +5,9 @@ import type { Root } from 'react-dom/client'
 
 import SubscriptionQuotaCard, {
   SubscriptionQuotaDetails,
+  SubscriptionQuotaSummary,
 } from '../src/components/SubscriptionQuotaCard'
+import SubscriptionsPage from '../src/pages/SubscriptionsPage'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
 import type { SubscriptionUsage } from '../src/types/ipc'
 
@@ -89,7 +91,7 @@ async function renderDetails(usage: SubscriptionUsage) {
   )
 }
 async function renderCard(
-  provider: 'codex' | 'xai' = 'codex',
+  provider: SubscriptionUsage['provider'] = 'codex',
   refreshKey: unknown = 0,
 ) {
   await act(async () =>
@@ -104,6 +106,122 @@ async function renderCard(
 }
 
 describe('subscription quota details', () => {
+  test('displays Copilot requests, unlimited windows and exact calendar reset dates', async () => {
+    const usage: SubscriptionUsage = {
+      provider: 'github-copilot',
+      planType: 'individual',
+      limitReached: false,
+      windows: [
+        {
+          id: 'copilot:premium_interactions',
+          kind: 'usage',
+          name: 'Premium',
+          used: 0,
+          limit: 300,
+          unit: 'requests',
+          usedPercent: 0,
+          resetDate: '2026-11-01',
+        },
+        { id: 'copilot:chat', kind: 'usage', name: 'Chat', unlimited: true },
+      ],
+    }
+    fetchUsage.mockResolvedValue(usage)
+    await renderCard('github-copilot')
+    expect(container.textContent).toContain('GitHub Copilot')
+    expect(container.textContent).toContain('100%')
+    expect(container.textContent).toContain('0 / 300 requests')
+    expect(container.textContent).toContain('resets 2026-11-01')
+    expect(container.textContent).toContain('Unlimited')
+    expect(container.querySelectorAll('[role="progressbar"]')).toHaveLength(1)
+    expect(container.querySelector('img')?.getAttribute('src')).toStartWith(
+      'data:image/svg+xml,',
+    )
+  })
+
+  test('summarizes finite, unlimited and unknown balances without treating missing values as zero', async () => {
+    const cases: Array<[SubscriptionUsage, string]> = [
+      [
+        {
+          ...business,
+          windows: [],
+          credits: { unlimited: true, hasCredits: true, unit: 'credits' },
+        },
+        '∞',
+      ],
+      [
+        {
+          ...business,
+          windows: [],
+          credits: { unlimited: false, hasCredits: true, unit: 'credits' },
+        },
+        '—',
+      ],
+      [
+        {
+          ...business,
+          windows: [],
+          credits: {
+            unlimited: false,
+            hasCredits: true,
+            balance: 12.5,
+            unit: 'USD',
+          },
+        },
+        '$12.50',
+      ],
+      [
+        {
+          ...business,
+          credits: undefined,
+          windows: [{ id: 'usage', kind: 'usage', usedPercent: 120 }],
+        },
+        '0%',
+      ],
+      [
+        {
+          ...business,
+          credits: undefined,
+          windows: [{ id: 'usage', kind: 'usage', usedPercent: -1 }],
+        },
+        '100%',
+      ],
+      [
+        {
+          ...business,
+          credits: undefined,
+          windows: [{ id: 'usage', kind: 'usage', unlimited: true }],
+        },
+        '∞',
+      ],
+      [{ ...business, credits: undefined, windows: [] }, '—'],
+      [
+        {
+          ...business,
+          credits: {
+            unlimited: false,
+            hasCredits: false,
+            balance: 0,
+            unit: 'credits',
+          },
+        },
+        '68%',
+      ],
+    ]
+    for (const [usage, text] of cases) {
+      await act(async () =>
+        root.render(
+          createElement(
+            LanguageProvider,
+            null,
+            createElement(SubscriptionQuotaSummary, { usage }),
+          ),
+        ),
+      )
+      expect(container.querySelector('.quota-summary-value')?.textContent).toBe(
+        text,
+      )
+    }
+  })
   test('renders Business monthly credit caps and balances without personal windows', async () => {
     await renderDetails(business)
     expect(container.textContent).toContain('Monthly credit limit')
@@ -211,6 +329,80 @@ describe('subscription quota details', () => {
     await renderDetails(business)
     expect(container.textContent).toContain('成员月度额度上限')
     expect(container.textContent).toContain('已用 32%')
+  })
+})
+
+describe('subscriptions page', () => {
+  async function renderPage(refreshKey: number, onManageProviders = () => {}) {
+    await act(async () =>
+      root.render(
+        createElement(
+          LanguageProvider,
+          null,
+          createElement(SubscriptionsPage, { refreshKey, onManageProviders }),
+        ),
+      ),
+    )
+  }
+
+  test('offers provider management when no subscription provider is enabled', async () => {
+    window.electronAPI.getProviderManagementConfig = mock(() =>
+      Promise.resolve({
+        configPath: 'config.json',
+        providers: [
+          { name: 'codex', type: 'openai-responses', enabled: false },
+        ],
+      }),
+    )
+    const manage = mock(() => {})
+    await renderPage(0, manage)
+    expect(container.textContent).toContain(
+      'Your subscriptions will appear here',
+    )
+    expect(fetchUsage).not.toHaveBeenCalled()
+    await act(async () => container.querySelector('button')?.click())
+    expect(manage).toHaveBeenCalledTimes(1)
+  })
+
+  test('recovers from provider config failures through retry', async () => {
+    const config = mock(() =>
+      Promise.resolve({
+        configPath: 'config.json',
+        providers: [{ name: 'codex', type: 'openai-responses', enabled: true }],
+      }),
+    )
+    config.mockRejectedValueOnce(new Error('unreadable config'))
+    window.electronAPI.getProviderManagementConfig = config
+    await renderPage(0)
+    expect(container.textContent).toContain('Could not load')
+    await act(async () => container.querySelector('button')?.click())
+    expect(container.querySelectorAll('.quota-provider-card')).toHaveLength(1)
+    expect(fetchUsage).toHaveBeenCalledTimes(1)
+  })
+
+  test('ignores late provider configs and errors after leaving the page', async () => {
+    let resolve!: (value: { configPath: string; providers: [] }) => void
+    let reject!: (error: Error) => void
+    const config = mock(
+      () =>
+        new Promise<{ configPath: string; providers: [] }>((done) => {
+          resolve = done
+        }),
+    )
+    config.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail
+        }),
+    )
+    window.electronAPI.getProviderManagementConfig = config
+    await renderPage(0)
+    await renderPage(1)
+    await act(async () => reject(new Error('stale failure')))
+    await act(async () => root.render(null))
+    await act(async () => resolve({ configPath: 'config.json', providers: [] }))
+    expect(container.textContent).toBe('')
+    expect(fetchUsage).not.toHaveBeenCalled()
   })
 })
 
