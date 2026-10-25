@@ -72,9 +72,7 @@ body {
   --quota-line: var(--color-line, var(--color-bg-light-2));
   --quota-soft: var(--color-sunken, var(--color-bg-light-1));
   --quota-surface: var(--color-surface, var(--color-bg));
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 30px 24px 36px;
+  padding: 12px 24px 24px;
   color: var(--quota-text);
 }
 .subscriptions-page-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 26px; }
@@ -90,7 +88,6 @@ body {
 .dark .quota-provider-card { --quota-brand: #b095ef; }
 .dark .quota-provider-card[data-provider="codex"] { --quota-brand: #50bd9b; }
 .dark .quota-provider-card[data-provider="xai"] { --quota-brand: #7aa8f1; }
-.quota-provider-card::before { content: ""; position: absolute; top: 0; left: 22px; right: 22px; height: 2px; background: color-mix(in srgb, var(--quota-brand) 55%, transparent); border-radius: 0 0 4px 4px; }
 .quota-card-header { display: flex; align-items: center; gap: 11px; }
 .quota-provider-logo { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border: 1px solid var(--quota-line); border-radius: 13px; background: var(--quota-soft); }
 .quota-provider-logo img { width: 32px; height: 32px; object-fit: contain; }
@@ -103,7 +100,7 @@ body {
 .quota-plan { min-width: 0; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 8px; border-radius: 6px; background: var(--quota-soft); color: var(--quota-muted); font-size: 11px; font-weight: 500; }
 .quota-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 10px; color: var(--quota-faint); }
 .quota-status > span { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-.quota-status[data-state="ready"] { color: var(--quota-brand); }
+.quota-status[data-state="ready"] { color: var(--quota-muted); }
 .quota-status[data-state="warning"] { color: #d58a25; }
 .quota-summary { margin: 18px 0 22px; padding: 18px; border-radius: 13px; background: color-mix(in srgb, var(--quota-brand) 4%, var(--quota-soft)); }
 .quota-summary-label { margin: 0 0 9px; font-size: 11px; font-weight: 500; color: var(--quota-muted); }
@@ -134,7 +131,7 @@ body {
 .subscriptions-empty p { max-width: 360px; margin: 0; line-height: 1.7; }
 .subscriptions-action { margin-top: 5px; border: 0; border-radius: 9px; padding: 8px 14px; background: var(--quota-text); color: var(--quota-surface); cursor: pointer; font-size: 12px; }
 @media (max-width: 639px) {
-  .subscriptions-page { padding: 24px 16px; }
+  .subscriptions-page { padding: 12px 20px 20px; }
   .subscriptions-page-heading { align-items: flex-start; gap: 12px; margin-bottom: 20px; flex-direction: column; }
   .subscriptions-page-heading h2 { font-size: 23px; }
   .quota-provider-card { padding: 20px 18px 14px; }
