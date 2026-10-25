@@ -115,8 +115,11 @@ curl http://localhost:4141/v1/videos/YOUR_REQUEST_ID \
 | `GET /usage/github-copilot` | `GET` | 获取统一格式的 Premium、Chat 和 Completions 订阅额度。 |
 | `GET /usage/codex` | `GET` | 获取当前 Codex 订阅的额度窗口、Credits 和 Business 成员额度上限。 |
 | `GET /usage/xai` | `GET` | 获取当前 xAI 订阅的 Grok Build 额度和预付余额。 |
+| `GET /usage/opencode-go` | `GET` | 获取 OpenCode Go 滚动 5 小时、每周及每月的用量百分比与重置时间。 |
 
-订阅接口使用服务端已启用的提供商和当前选中的账号，返回统一的 `provider`、`planType`、`windows`、`credits` 和额度限制状态，`resetAt` 使用 Unix 秒时间戳，Copilot 的日历重置日期使用 `resetDate`，额度窗口可通过 `unlimited` 表示无限制。订阅不可用时返回 404，上游或凭据查询失败时返回 502。桌面概览和网页用量看板分别查询这些接口，上游凭据保留在服务端。
+OpenCode Go 使用已配置的 provider API key 和 base URL 查询 `GET /v1/usage`；旧地址 `https://opencode.ai/zen/go` 沿用现有规范化逻辑，转为 `https://opencode.ai/inference/go`。不会根据百分比推算金额上限或套餐等级。工作区没有 Go 额度时，与其他不可用订阅一致返回 404。
+
+订阅接口使用服务端已启用的提供商和当前选中的账号，返回统一的 `provider`、`planType`、`windows`、`credits` 和额度限制状态，`resetAt` 使用 Unix 秒时间戳，Copilot 的日历重置日期使用 `resetDate`，额度窗口可通过 `unlimited` 表示无限制。订阅不可用时返回 404，上游或凭据查询失败时返回 502。桌面端和网页的订阅额度标签页分别查询这些接口，上游凭据保留在服务端。
 
 ### Admin / 配置端点
 

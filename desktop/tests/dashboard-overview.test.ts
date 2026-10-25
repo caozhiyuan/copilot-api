@@ -266,17 +266,18 @@ async function clickButton(label: string) {
 }
 
 describe('dashboard overview', () => {
-  test('loads Copilot, Codex and xAI only inside the subscriptions tab', async () => {
+  test('loads all four subscription providers only inside the subscriptions tab', async () => {
     getProviderConfig.mockResolvedValue({
       configPath: 'config.json',
       providers: [
         { name: 'github-copilot', type: 'github-copilot', enabled: true },
         { name: 'codex', type: 'openai-responses', enabled: true },
         { name: 'xai', type: 'openai-responses', enabled: true },
+        { name: 'opencode-go', type: 'openai-compatible', enabled: true },
       ],
     })
     const fetchSubscriptions = mock(
-      (provider: 'github-copilot' | 'codex' | 'xai') =>
+      (provider: 'github-copilot' | 'codex' | 'xai' | 'opencode-go') =>
         provider === 'xai' ?
           Promise.reject(new Error('offline'))
         : Promise.resolve({
@@ -292,16 +293,17 @@ describe('dashboard overview', () => {
     expect(fetchCopilotUsage).not.toHaveBeenCalled()
     expect(container.querySelector('.quota-provider-card')).toBeNull()
     await clickButton('Subscriptions')
-    expect(container.querySelectorAll('.quota-provider-card')).toHaveLength(3)
+    expect(container.querySelectorAll('.quota-provider-card')).toHaveLength(4)
     expect(container.querySelectorAll('.quota-provider-logo img')).toHaveLength(
-      3,
+      4,
     )
     expect(container.textContent).toContain('GitHub Copilot')
+    expect(container.textContent).toContain('OpenCode Go')
     expect(container.textContent).toContain('business')
     expect(container.textContent).toContain('Could not load quota')
-    expect(fetchSubscriptions).toHaveBeenCalledTimes(3)
+    expect(fetchSubscriptions).toHaveBeenCalledTimes(4)
     await clickButton('Refresh all')
-    expect(fetchSubscriptions).toHaveBeenCalledTimes(6)
+    expect(fetchSubscriptions).toHaveBeenCalledTimes(8)
     await clickButton('Dashboard')
     expect(container.querySelector('.quota-provider-card')).toBeNull()
     expect(cardByTitle('Available models').textContent).toContain('qwen-plus')

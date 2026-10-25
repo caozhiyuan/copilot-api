@@ -3,7 +3,12 @@ import SubscriptionQuotaCard from '../components/SubscriptionQuotaCard'
 import { useLanguage } from '../contexts/LanguageContext'
 import type { SubscriptionProvider } from '../types/ipc'
 
-const providerOrder: SubscriptionProvider[] = ['github-copilot', 'codex', 'xai']
+const providerOrder: SubscriptionProvider[] = [
+  'github-copilot',
+  'codex',
+  'xai',
+  'opencode-go',
+]
 
 export default function SubscriptionsPage({
   refreshKey,

@@ -687,6 +687,7 @@ export function registerIpcHandlers(
         provider !== 'codex'
         && provider !== 'xai'
         && provider !== 'github-copilot'
+        && provider !== 'opencode-go'
       ) {
         throw new Error('Unsupported subscription provider')
       }

@@ -103,7 +103,7 @@ These endpoints are designed to be compatible with the Anthropic Messages API.
 
 ### Usage Monitoring Endpoints
 
-New endpoints for monitoring your Copilot usage and quotas.
+Endpoints for monitoring subscription usage and quotas.
 
 | Endpoint     | Method | Description                                                  |
 | ------------ | ------ | ------------------------------------------------------------ |
@@ -111,8 +111,11 @@ New endpoints for monitoring your Copilot usage and quotas.
 | `GET /usage/github-copilot` | `GET` | Get normalized Premium, Chat, and Completions subscription quotas. |
 | `GET /usage/codex` | `GET` | Get the selected Codex subscription's windows, credits, and Business member credit limit. |
 | `GET /usage/xai` | `GET` | Get the selected xAI subscription's Grok Build allowance and prepaid balance. |
+| `GET /usage/opencode-go` | `GET` | Get OpenCode Go rolling 5-hour, weekly, and monthly usage percentages and reset times. |
 
-Subscription endpoints use the server's enabled provider and selected account. They return normalized `provider`, `planType`, `windows`, `credits`, and limit status fields, with `resetAt` in Unix seconds. Copilot calendar reset dates use `resetDate`; individual windows may report `unlimited`. Unavailable subscriptions return 404; upstream or credential failures return 502. The desktop dashboard and usage viewer query these endpoints independently. Upstream credentials stay on the server.
+OpenCode Go uses the configured provider API key and base URL to query `GET /v1/usage`; legacy `https://opencode.ai/zen/go` URLs use the existing normalization to `https://opencode.ai/inference/go`. Monetary caps and plan tiers are not inferred from percentages. A workspace without a Go allowance returns 404, matching other unavailable subscriptions.
+
+Subscription endpoints use the server's enabled provider and selected account. They return normalized `provider`, `planType`, `windows`, `credits`, and limit status fields, with `resetAt` in Unix seconds. Copilot calendar reset dates use `resetDate`; individual windows may report `unlimited`. Unavailable subscriptions return 404; upstream or credential failures return 502. The desktop and web Subscriptions tabs query these endpoints independently. Upstream credentials stay on the server.
 
 ### Admin / Configuration Endpoints
 

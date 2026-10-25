@@ -38,6 +38,31 @@ const business: SubscriptionUsage = {
     unit: "credits",
   },
 }
+const go: SubscriptionUsage = {
+  provider: "opencode-go",
+  limitReached: false,
+  windows: [
+    {
+      id: "opencode-go:rolling",
+      kind: "usage",
+      windowSeconds: 18000,
+      usedPercent: 45,
+      resetAt: 1793491200,
+    },
+    {
+      id: "opencode-go:weekly",
+      kind: "usage",
+      period: "weekly",
+      usedPercent: 20,
+    },
+    {
+      id: "opencode-go:monthly",
+      kind: "usage",
+      period: "monthly",
+      usedPercent: 10,
+    },
+  ],
+}
 function createState() {
   return {
     subscriptionUsage: {} as Record<string, SubscriptionUsage>,
@@ -54,6 +79,36 @@ function createState() {
 }
 
 describe("web subscription quota rendering", () => {
+  test("shows OpenCode Go's logo, remaining allowance and all three windows", async () => {
+    const state = createState()
+    state.subscriptionUsage["opencode-go"] = go
+    const win = new Window()
+    try {
+      win.document.body.innerHTML =
+        createRenderer(state).renderSubscriptionUsageSection()
+      expect(win.document.body.textContent).toContain("OpenCode Go")
+      expect(win.document.body.textContent).toContain("55%")
+      for (const label of [
+        "5-hour limit",
+        "Weekly limit",
+        "Monthly limit",
+        "Resets",
+      ])
+        expect(win.document.body.textContent).toContain(label)
+      expect(
+        win.document.querySelectorAll('[role="progressbar"]'),
+      ).toHaveLength(3)
+      expect(
+        win.document.querySelector("img")?.getAttribute("src"),
+      ).toStartWith("data:image/svg+xml,")
+      expect(
+        win.document.querySelector('[data-quota-refresh="opencode-go"]'),
+      ).not.toBeNull()
+    } finally {
+      await win.happyDOM.close()
+    }
+  })
+
   test("renders Business credit caps, reset times, named windows and xAI balances", async () => {
     const state = createState()
     state.subscriptionUsage.codex = business
@@ -285,13 +340,14 @@ const xai: SubscriptionUsage = {
 }
 
 describe("web subscription quota fetching", () => {
-  test("loads Copilot, Codex and xAI independently and preserves gateway prefixes", async () => {
+  test("loads all four subscriptions independently and preserves gateway prefixes", async () => {
     const h = createFetcher()
     const done = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
     expect(h.pending.map((request) => request.url)).toEqual([
       "http://gateway/prefix/usage/github-copilot",
       "http://gateway/prefix/usage/codex",
       "http://gateway/prefix/usage/xai",
+      "http://gateway/prefix/usage/opencode-go",
     ])
     h.pending[1].resolve(business)
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -302,9 +358,11 @@ describe("web subscription quota fetching", () => {
     h.pending[2].reject(
       Object.assign(new Error("upstream failed"), { status: 502 }),
     )
+    h.pending[3].resolve(go)
     await done
     expect(h.state.subscriptionUsageErrors.xai).toBe(true)
     expect(h.state.subscriptionUsage.codex).toEqual(business)
+    expect(h.state.subscriptionUsage["opencode-go"]).toEqual(go)
     expect(h.state.isSubscriptionsLoading).toBe(false)
   })
 
@@ -325,16 +383,19 @@ describe("web subscription quota fetching", () => {
     const old = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
     h.endpointUrlInput.value = "http://other/usage"
     const current = h.viewer.fetchSubscriptionQuotas(h.endpointUrlInput.value)
-    h.pending[3].resolve(copilot)
-    h.pending[4].resolve(business)
-    h.pending[5].resolve(xai)
+    h.pending[4].resolve(copilot)
+    h.pending[5].resolve(business)
+    h.pending[6].resolve(xai)
+    h.pending[7].resolve(go)
     await current
     h.pending[0].reject(new Error("old error"))
     h.pending[1].resolve({ ...business, planType: "old" })
     h.pending[2].resolve({ ...xai, planType: "old" })
+    h.pending[3].resolve({ ...go, planType: "old" })
     await old
     expect(h.state.subscriptionUsageErrors).toEqual({})
     expect(h.state.subscriptionUsage.codex.planType).toBe("business")
+    expect(h.state.subscriptionUsage["opencode-go"].planType).toBeUndefined()
     h.viewer.syncSubscriptionsConnection()
     expect(h.state.subscriptionUsage).toEqual({})
     h.state.subscriptionUsage.codex = business
@@ -368,11 +429,20 @@ describe("web subscription quota fetching", () => {
       xai,
     })
     expect(h.state.isSubscriptionsLoading).toBe(false)
+    const refreshGo = h.viewer.fetchSubscriptionQuotas(
+      h.endpointUrlInput.value,
+      "opencode-go",
+    )
+    h.pending[2].resolve(go)
+    await refreshGo
+    expect(h.state.subscriptionUsage["opencode-go"]).toEqual(go)
+    expect(h.state.subscriptionUsage.codex).toEqual(business)
+    expect(h.state.subscriptionUsage.xai).toEqual(xai)
     await h.viewer.fetchSubscriptionQuotas(
       h.endpointUrlInput.value,
       "../unsupported",
     )
-    expect(h.pending).toHaveLength(2)
+    expect(h.pending).toHaveLength(3)
   })
 
   test("handles invalid URLs and malformed responses", async () => {
@@ -387,11 +457,13 @@ describe("web subscription quota fetching", () => {
     h.pending[0].resolve(null)
     h.pending[1].resolve({ provider: "codex", windows: null })
     h.pending[2].resolve({ provider: "other", windows: [] })
+    h.pending[3].resolve({ provider: "opencode-go", windows: null })
     await done
     expect(h.state.subscriptionUsageErrors).toEqual({
       "github-copilot": true,
       codex: true,
       xai: true,
+      "opencode-go": true,
     })
   })
 })

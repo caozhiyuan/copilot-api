@@ -93,8 +93,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openUrl: (url: string) => ipcRenderer.invoke('shell:open-url', url),
 
   fetchUsage: () => ipcRenderer.invoke('server:fetch-usage'),
-  fetchSubscriptionUsage: (provider: 'github-copilot' | 'codex' | 'xai') =>
-    ipcRenderer.invoke('server:fetch-subscription-usage', provider),
+  fetchSubscriptionUsage: (
+    provider: 'github-copilot' | 'codex' | 'xai' | 'opencode-go',
+  ) => ipcRenderer.invoke('server:fetch-subscription-usage', provider),
   fetchModels: () => ipcRenderer.invoke('server:fetch-models'),
   createImages: (id: string, input: ImageCreationInput) =>
     ipcRenderer.invoke('media:create-images', id, input),

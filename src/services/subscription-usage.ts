@@ -7,6 +7,7 @@ import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { readXaiCredentials } from "~/lib/xai-token"
 import { isGitHubCopilotEnabled } from "~/lib/github-copilot-provider"
 import { getCopilotUsage } from "~/services/github/get-copilot-usage"
+import { resolveProviderEndpointUrl } from "~/services/providers/provider-proxy"
 import type {
   SubscriptionProvider,
   SubscriptionQuotaWindow,
@@ -121,6 +122,44 @@ const copilotUsage = z.object({
     })
     .nullish(),
 })
+
+// OpenCode's Go usage API reports percentages and ISO reset times, not dollars.
+// Source: anomalyco/opencode packages/core/src/usage-limits.ts (GoUsage).
+const opencodeGoWindow = z.object({
+  status: z.enum(["ok", "rate-limited"]),
+  percent: number,
+  resetsAt: z.string().nullish(),
+})
+const opencodeGoUsage = z.object({
+  usage: z.object({
+    rolling: opencodeGoWindow.nullish(),
+    weekly: opencodeGoWindow.nullish(),
+    monthly: opencodeGoWindow.nullish(),
+  }),
+})
+
+export function normalizeOpencodeGoUsage(value: unknown): SubscriptionUsage {
+  const { usage } = opencodeGoUsage.parse(value)
+  const windows: Array<SubscriptionQuotaWindow> = []
+  for (const scope of ["rolling", "weekly", "monthly"] as const) {
+    const window = usage[scope]
+    if (!window) continue
+    windows.push({
+      id: `opencode-go:${scope}`,
+      kind: "usage",
+      windowSeconds: scope === "rolling" ? 18000 : undefined,
+      period: scope === "rolling" ? undefined : scope,
+      usedPercent: window.percent,
+      resetAt: parseResetDate(window.resetsAt),
+      limitReached: window.status === "rate-limited" || window.percent >= 100,
+    })
+  }
+  return {
+    provider: "opencode-go",
+    windows,
+    limitReached: windows.some((window) => window.limitReached),
+  }
+}
 
 export function normalizeCopilotUsage(value: unknown): SubscriptionUsage {
   const usage = copilotUsage.parse(value)
@@ -350,11 +389,18 @@ export async function getSubscriptionUsage(
     return usage ? normalizeCopilotUsage(usage) : null
   }
   const config = await resolveProviderConfig(provider)
-  if (!config || config.authType !== "oauth2") return null
+  if (!config) return null
+  if (provider !== "opencode-go" && config.authType !== "oauth2") return null
 
   let headers: Headers
   let url: string
-  if (provider === "codex") {
+  if (provider === "opencode-go") {
+    url = resolveProviderEndpointUrl(config, "usage")
+    headers = new Headers({
+      Authorization: `Bearer ${config.apiKey}`,
+      Accept: "application/json",
+    })
+  } else if (provider === "codex") {
     // Match codex-login's default_client UA format and backend account scoping.
     const platform =
       process.platform === "win32" ? "Windows"
@@ -404,6 +450,11 @@ export async function getSubscriptionUsage(
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     redirect: "error",
   })
+  // OpenCode's usage client treats 403 as a workspace without a Go allowance.
+  if (provider === "opencode-go" && response.status === 403) {
+    await response.body?.cancel()
+    return null
+  }
   if (!response.ok) {
     await response.body?.cancel()
     // Never expose the upstream body: it can contain account details.
@@ -412,6 +463,7 @@ export async function getSubscriptionUsage(
     )
   }
   const value: unknown = await response.json()
+  if (provider === "opencode-go") return normalizeOpencodeGoUsage(value)
   return provider === "codex" ?
       normalizeCodexUsage(value)
     : normalizeXaiUsage(value)

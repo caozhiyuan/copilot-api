@@ -12,6 +12,7 @@ usageRoute.get("/:provider", async (c) => {
     provider !== "codex"
     && provider !== "xai"
     && provider !== "github-copilot"
+    && provider !== "opencode-go"
   ) {
     return c.json({ error: "Unsupported subscription provider" }, 404)
   }

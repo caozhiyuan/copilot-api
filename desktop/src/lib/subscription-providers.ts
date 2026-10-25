@@ -21,4 +21,9 @@ export const subscriptionProviders: Record<
     product: 'Grok Build',
     logo: 'data:image/svg+xml,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2040%2040%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Cpath%20d%3D%22M12.4579%2015.6036L26.1529%2035H20.0656L6.37059%2015.6036H12.4579ZM12.4524%2026.3764L15.4974%2030.6909L12.4551%2035H6.36377L12.4524%2026.3764ZM33.6365%207.15727V35H28.647V14.2236L33.6365%207.15727ZM33.6365%205L20.0656%2024.2205L17.0206%2019.9073L27.5451%205H33.6365Z%22%20fill%3D%22currentColor%22%2F%3E%0A%3C%2Fsvg%3E%0A',
   },
+  'opencode-go': {
+    name: 'OpenCode Go',
+    product: 'OpenCode',
+    logo: 'data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Cpath%20d%3D%22M15.6%2017.4H8.4V10.2H15.6V17.4Z%22%20fill%3D%22currentColor%22%20fill-opacity%3D%220.4%22%2F%3E%0A%3Cpath%20d%3D%22M15.6%206.6H8.4V17.4H15.6V6.6ZM19.2%2021H4.8V3H19.2V21Z%22%20fill%3D%22currentColor%22%2F%3E%0A%3C%2Fsvg%3E%0A',
+  },
 }

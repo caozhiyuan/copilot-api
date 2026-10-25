@@ -259,6 +259,13 @@ describe('desktop subscription quota IPC', () => {
       'http://127.0.0.1:4141/usage/xai',
       expect.anything(),
     )
+    expect(
+      await invoke('server:fetch-subscription-usage', 'opencode-go'),
+    ).toEqual(usage)
+    expect(fetch).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:4141/usage/opencode-go',
+      expect.objectContaining({ headers: { 'x-api-key': 'quota-key' } }),
+    )
   })
 
   test('distinguishes unavailable accounts from failed requests and validates the provider', async () => {
@@ -293,6 +300,11 @@ describe('desktop subscription quota IPC', () => {
     expect(rendererInvoke).toHaveBeenLastCalledWith(
       'server:fetch-subscription-usage',
       'xai',
+    )
+    await preloadApi.fetchSubscriptionUsage('opencode-go')
+    expect(rendererInvoke).toHaveBeenLastCalledWith(
+      'server:fetch-subscription-usage',
+      'opencode-go',
     )
   })
 })

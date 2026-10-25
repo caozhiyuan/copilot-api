@@ -11,6 +11,7 @@ import {
   normalizeCodexUsage,
   normalizeXaiUsage,
   normalizeCopilotUsage,
+  normalizeOpencodeGoUsage,
 } from "~/services/subscription-usage"
 import * as copilotUsage from "~/services/github/get-copilot-usage"
 import { usageRoute } from "~/routes/usage/route"
@@ -36,6 +37,74 @@ const codexWindow = {
   reset_after_seconds: 120,
   reset_at: 1793000000,
 }
+
+const goWindow = { status: "ok", percent: 25, resetsAt: "2026-11-01T08:00:00Z" }
+
+describe("OpenCode Go subscription usage", () => {
+  test("normalizes rolling, weekly and monthly allowances without inventing monetary limits", () => {
+    const usage = normalizeOpencodeGoUsage({
+      usage: {
+        rolling: { ...goWindow, percent: 0 },
+        weekly: { ...goWindow, percent: 100 },
+        monthly: { ...goWindow, status: "rate-limited", percent: 99.9 },
+      },
+      account: "private-account",
+    })
+    expect(usage.windows).toHaveLength(3)
+    expect(usage.windows[0]).toMatchObject({
+      id: "opencode-go:rolling",
+      usedPercent: 0,
+      windowSeconds: 18000,
+      resetAt: Date.parse(goWindow.resetsAt) / 1000,
+      limitReached: false,
+    })
+    expect(usage.windows[1]).toMatchObject({
+      period: "weekly",
+      usedPercent: 100,
+      limitReached: true,
+    })
+    expect(usage.windows[2]).toMatchObject({
+      period: "monthly",
+      usedPercent: 99.9,
+      limitReached: true,
+    })
+    expect(usage.limitReached).toBe(true)
+    expect(usage.planType).toBeUndefined()
+    expect(usage.credits).toBeUndefined()
+    expect(
+      usage.windows.every(
+        (window) => window.used === undefined && window.limit === undefined,
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(usage)).not.toContain("private-account")
+  })
+
+  test("handles missing windows and rejects invalid percentage or status responses", () => {
+    expect(
+      normalizeOpencodeGoUsage({ usage: { rolling: null } }),
+    ).toMatchObject({
+      provider: "opencode-go",
+      windows: [],
+      limitReached: false,
+    })
+    expect(
+      normalizeOpencodeGoUsage({
+        usage: { monthly: { ...goWindow, resetsAt: "invalid" } },
+      }).windows[0].resetAt,
+    ).toBeUndefined()
+    expect(
+      normalizeOpencodeGoUsage({
+        usage: { weekly: { ...goWindow, resetsAt: null } },
+      }).windows[0].resetAt,
+    ).toBeUndefined()
+    for (const value of [
+      {},
+      { usage: { rolling: { ...goWindow, percent: NaN } } },
+      { usage: { rolling: { ...goWindow, status: "unexpected" } } },
+    ])
+      expect(() => normalizeOpencodeGoUsage(value)).toThrow()
+  })
+})
 
 describe("Copilot subscription usage", () => {
   test("normalizes Premium, Chat and Completions with exact reset dates", () => {
@@ -361,7 +430,7 @@ describe("Grok Build subscription usage", () => {
 })
 
 function mockProvider(
-  provider: "codex" | "xai",
+  provider: "codex" | "xai" | "opencode-go",
   authType: "oauth2" | "authorization" = "oauth2",
 ) {
   return track(
@@ -376,6 +445,82 @@ function mockProvider(
 }
 
 describe("subscription usage requests", () => {
+  test("OpenCode Go uses the configured API key and the existing endpoint normalization", async () => {
+    const resolver = mockProvider("opencode-go", "authorization")
+    const fetcher = track(spyOn(globalThis, "fetch")).mockImplementation(
+      Object.assign(
+        () => Promise.resolve(Response.json({ usage: { rolling: goWindow } })),
+        { preconnect: () => {} },
+      ),
+    )
+    const controller = new AbortController()
+    for (const [baseUrl, expected] of [
+      [
+        "https://opencode.ai/zen/go/",
+        "https://opencode.ai/inference/go/v1/usage",
+      ],
+      [
+        "https://opencode.ai/inference/go",
+        "https://opencode.ai/inference/go/v1/usage",
+      ],
+      [
+        "https://opencode.ai/inference/go/v1",
+        "https://opencode.ai/inference/go/v1/usage",
+      ],
+      ["https://gateway.example/go", "https://gateway.example/go/v1/usage"],
+    ]) {
+      resolver.mockResolvedValue({
+        name: "opencode-go",
+        type: "openai-compatible",
+        baseUrl,
+        apiKey: "go-api-key",
+        authType: "authorization",
+      })
+      expect(
+        await getSubscriptionUsage("opencode-go", controller.signal),
+      ).toMatchObject({ provider: "opencode-go" })
+      const [url, init] = fetcher.mock.calls.at(-1)!
+      expect(url).toBe(expected)
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer go-api-key",
+      )
+      expect(new Headers(init?.headers).get("accept")).toBe("application/json")
+      expect(init?.redirect).toBe("error")
+    }
+    const signal = fetcher.mock.calls.at(-1)![1]?.signal
+    controller.abort()
+    expect(signal?.aborted).toBe(true)
+    resolver.mockResolvedValue(null)
+    expect(await getSubscriptionUsage("opencode-go")).toBeNull()
+    expect(fetcher).toHaveBeenCalledTimes(4)
+  })
+
+  test("OpenCode Go failures remain generic and do not expose account information", async () => {
+    mockProvider("opencode-go", "authorization")
+    const fetcher = track(spyOn(globalThis, "fetch")).mockResolvedValue(
+      new Response("private-go-account", { status: 403 }),
+    )
+    expect(await getSubscriptionUsage("opencode-go")).toBeNull()
+    fetcher.mockResolvedValue(
+      new Response("private-go-account", { status: 401 }),
+    )
+    expect(
+      await getSubscriptionUsage("opencode-go").catch(
+        (error: unknown) => error,
+      ),
+    ).toMatchObject({
+      message: "Subscription usage request failed (HTTP 401)",
+    })
+    fetcher.mockResolvedValue(
+      Response.json({ unexpected: "private-go-account" }),
+    )
+    expect(
+      await getSubscriptionUsage("opencode-go").catch(
+        (error: unknown) => error,
+      ),
+    ).toBeInstanceOf(Error)
+  })
+
   test("Codex uses server credentials and the official backend-client headers", async () => {
     mockProvider("codex")
     state.codexAccessToken = "selected-codex-token"
@@ -488,8 +633,18 @@ describe("subscription usage HTTP routes", () => {
     expect(response.status).toBe(200)
     expect(response.headers.get("cache-control")).toBe("no-store")
     expect(await response.json()).toEqual(usage)
+    const go = {
+      provider: "opencode-go" as const,
+      windows: [],
+      limitReached: false,
+    }
+    getter.mockResolvedValue(go)
+    const goResponse = await usageRoute.request("/opencode-go")
+    expect(goResponse.status).toBe(200)
+    expect(await goResponse.json()).toEqual(go)
     getter.mockResolvedValue(null)
     expect((await usageRoute.request("/xai")).status).toBe(404)
+    expect((await usageRoute.request("/opencode-go")).status).toBe(404)
     expect((await usageRoute.request("/unsupported")).status).toBe(404)
     getter.mockRejectedValue(new Error("private-upstream-body"))
     const failed = await usageRoute.request("/codex")
