@@ -271,7 +271,7 @@ const getHeaderValue = (
   return match?.[1]
 }
 
-const createResponsesWebSocketStreamChunk = (
+export const createResponsesWebSocketStreamChunk = (
   data: string,
 ): { data?: string; event?: string; id?: string } => {
   if (data === "[DONE]") {
@@ -293,14 +293,18 @@ const createResponsesWebSocketStreamChunk = (
     if (parsed.type === "response.completed") {
       logCopilotQuotaSnapshots(parsed.copilot_quota_snapshots)
     }
+    // Normal events have no payload changes: forward their original bytes.
+    // Error events still expose the legacy top-level code/message fields.
+    let forwardedData = data
     if (parsed.type === "error" && parsed.error) {
       consola.warn("Copilot responses websocket stream error:", parsed.error)
       parsed.code = parsed.error.code
       parsed.message = parsed.error.message
+      forwardedData = JSON.stringify(parsed)
     }
     return {
       event: typeof parsed.type === "string" ? parsed.type : undefined,
-      data: JSON.stringify(parsed),
+      data: forwardedData,
       id: typeof parsed.id === "string" ? parsed.id : undefined,
     }
   } catch {
