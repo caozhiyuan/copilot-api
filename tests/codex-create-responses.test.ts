@@ -218,6 +218,7 @@ describe("codex api helpers", () => {
       "gpt-6-luna",
       "gpt-6-sol",
       "gpt-6.1-sol",
+      "gpt-6.1-terra",
       "codex-auto-review",
       "gpt-reserve",
     ])
@@ -271,5 +272,23 @@ describe("codex api helpers", () => {
     expect(gpt61Sol?.capabilities.supports.reasoning_effort).not.toContain(
       "ultra",
     )
+
+    expect(
+      models.data.find((model) => model.id === "gpt-6.1-terra"),
+    ).toMatchObject({
+      capabilities: {
+        limits: {
+          max_context_window_tokens: 872_000,
+          max_output_tokens: 128_000,
+          max_prompt_tokens: 872_000,
+        },
+        supports: {
+          reasoning_effort: ["none", "low", "medium", "high", "xhigh", "max"],
+          vision: true,
+        },
+      },
+      id: "gpt-6.1-terra",
+      name: "GPT-6.1 Terra",
+    })
   })
 })

@@ -519,6 +519,29 @@ describe("token usage storage", () => {
     }
   })
 
+  test("prices GPT-6.1 Terra cache usage at the 272K input tier boundary", () => {
+    for (const { inputTokens, totalCostNanos } of [
+      { inputTokens: 269_000, totalCostNanos: 285_350_000 },
+      { inputTokens: 269_001, totalCostNanos: 563_202_000 },
+    ]) {
+      expect(
+        resolveTokenUsageCost({
+          cache_creation_input_tokens: 1_000,
+          cache_read_input_tokens: 2_000,
+          input_tokens: inputTokens,
+          model: "gpt-6.1-terra",
+          output_tokens: 3_000,
+          providerName: "codex",
+          source: "provider",
+        }),
+      ).toEqual({
+        currency: "USD",
+        source: "builtin",
+        total_cost_nanos: totalCostNanos,
+      })
+    }
+  })
+
   test("prices DashScope Qwen3.8 Max from the cached USD catalog", () => {
     expect(
       resolveTokenUsageCost({

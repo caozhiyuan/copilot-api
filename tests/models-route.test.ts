@@ -2707,6 +2707,23 @@ describe("model routes", () => {
         id: "codex/gpt-6.1-sol",
         name: "GPT-6.1 Sol",
       })
+      expect(
+        body.data.find((model) => model.id === "codex/gpt-6.1-terra"),
+      ).toMatchObject({
+        capabilities: {
+          limits: {
+            max_context_window_tokens: 872_000,
+            max_output_tokens: 128_000,
+            max_prompt_tokens: 872_000,
+          },
+          supports: {
+            reasoning_effort: ["none", "low", "medium", "high", "xhigh", "max"],
+            vision: true,
+          },
+        },
+        id: "codex/gpt-6.1-terra",
+        name: "GPT-6.1 Terra",
+      })
     }
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -2959,6 +2976,21 @@ describe("model routes", () => {
     expect(
       gpt61Sol?.supported_reasoning_levels.map((level) => level.effort),
     ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"])
+    const gpt61Terra = body.models.find(
+      (model) => model.slug === "gpt-6.1-terra",
+    )
+    expect(gpt61Terra).toMatchObject({
+      context_window: 500_000,
+      default_reasoning_level: "low",
+      input_modalities: ["text", "image"],
+      max_context_window: 872_000,
+      multi_agent_reasoning_effort: "xhigh",
+      supported_in_api: true,
+      visibility: "list",
+    })
+    expect(
+      gpt61Terra?.supported_reasoning_levels.map((level) => level.effort),
+    ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"])
     expect(synthetic).toMatchObject({
       display_name: "claude-sonnet-4.6",
       shell_type: template?.shell_type,
@@ -3023,6 +3055,7 @@ describe("model routes", () => {
         } else {
           for (const slug of bundledCodexSlugs) expect(slugs).toContain(slug)
           expect(slugs).toContain("codex/gpt-6.1-sol")
+          expect(slugs).toContain("codex/gpt-6.1-terra")
           expect(slugs).toContain("claude-sonnet-4-6")
         }
         expect(slugs).not.toContain("gpt-native")
@@ -3249,6 +3282,8 @@ describe("model routes", () => {
     const slugs = body.models.map((model) => model.slug)
     expect(slugs).toContain("gpt-6.1-sol")
     expect(slugs).toContain("codex/gpt-6.1-sol")
+    expect(slugs).toContain("gpt-6.1-terra")
+    expect(slugs).toContain("codex/gpt-6.1-terra")
     expect(slugs).toContain("claude-sonnet-4-6")
     expect(slugs).not.toContain("broken-model")
   })

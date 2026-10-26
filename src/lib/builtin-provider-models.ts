@@ -174,6 +174,25 @@ export class BuiltinProviderModelRegistry {
           ],
         },
       },
+      "gpt-6.1-terra": {
+        pricing: {
+          tiers: [
+            {
+              cacheCreationInput: 1.25,
+              cachedInput: 0.05,
+              input: 1,
+              maxInputTokens: 272_000,
+              output: 5,
+            },
+            {
+              cacheCreationInput: 2.5,
+              cachedInput: 0.1,
+              input: 2,
+              output: 7.5,
+            },
+          ],
+        },
+      },
     },
   }
 

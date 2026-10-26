@@ -70,6 +70,14 @@ const CODEX_MODELS: Array<CodexModelDefinition> = [
     name: "GPT-6.1 Sol",
     reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
   },
+  {
+    contextWindow: 872_000,
+    id: "gpt-6.1-terra",
+    input: ["text", "image"],
+    maxTokens: 128_000,
+    name: "GPT-6.1 Terra",
+    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
+  },
   ...["codex-auto-review", "gpt-reserve"].map((id) => ({
     contextWindow: 872_000,
     id,
