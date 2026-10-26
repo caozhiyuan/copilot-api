@@ -91,7 +91,9 @@ const formatRate = (milliseconds: number): string =>
 console.log(
   `Responses WebSocket event microbenchmark (${iterations} events/run, median of 5)`,
 )
-console.log("Synthetic payloads; excludes network, model latency, and SSE writes.\n")
+console.log(
+  "Synthetic payloads; excludes network, model latency, and SSE writes.\n",
+)
 
 for (const [name, optimizedDecoder] of [
   ["Codex", createCodexResponsesWebSocketStreamChunk],
