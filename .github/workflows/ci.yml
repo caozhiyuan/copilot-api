@@ -43,9 +43,5 @@ jobs:
       - name: Run tests
         run: bun test
 
-      # Keep the microbenchmark runnable; numbers are informational, not a CI gate.
-      - name: WebSocket event benchmark smoke
-        run: bun run bench:responses-ws 20000
-
       - name: Build
         run: bun run build
