@@ -641,7 +641,7 @@ const createClientPreflightStream = async function* <T>(
   yield* source
 }
 
-const createCodexResponsesWebSocketStreamChunk = (
+export const createCodexResponsesWebSocketStreamChunk = (
   data: string,
 ): ServerSentEventChunk => {
   if (data === "[DONE]") {
@@ -658,14 +658,18 @@ const createCodexResponsesWebSocketStreamChunk = (
       message?: string
     }
 
+    // Preserve upstream JSON for normal events; error messages retain the
+    // top-level field expected by existing Responses clients.
+    let forwardedData = data
     if (parsed.type === "error" && parsed.error) {
       consola.warn("Codex responses websocket stream error:", parsed.error)
       parsed.message = parsed.error.message
+      forwardedData = JSON.stringify(parsed)
     }
 
     return {
       event: typeof parsed.type === "string" ? parsed.type : undefined,
-      data: JSON.stringify(parsed),
+      data: forwardedData,
       id: typeof parsed.id === "string" ? parsed.id : undefined,
     }
   } catch {
