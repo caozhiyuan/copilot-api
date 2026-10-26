@@ -28,6 +28,7 @@
     "pages"
   ],
   "scripts": {
+    "bench:responses-ws": "bun tests/benchmarks/responses-websocket-events.bench.ts",
     "build": "tsdown",
     "build:desktop": "tsdown --config tsdown.desktop.config.ts",
     "dev": "NODE_USE_SYSTEM_CA=1 bun run --watch ./src/main.ts",
