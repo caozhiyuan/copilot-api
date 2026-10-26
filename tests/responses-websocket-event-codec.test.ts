@@ -4,8 +4,10 @@ import { createCodexResponsesWebSocketStreamChunk } from "~/services/codex/creat
 import { createResponsesWebSocketStreamChunk } from "~/services/copilot/create-responses"
 import { getResponsesStreamTerminalDisposition } from "~/services/responses-websocket-helpers"
 
-const normalEvent = '{ "type" : "response.output_text.delta", "id": "evt-1", "delta": "hello\\nworld" }'
-const completedEvent = '{ "type" : "response.completed", "id": "evt-2", "response": { "usage": null } }'
+const normalEvent =
+  '{ "type" : "response.output_text.delta", "id": "evt-1", "delta": "hello\\nworld" }'
+const completedEvent =
+  '{ "type" : "response.completed", "id": "evt-2", "response": { "usage": null } }'
 
 for (const [name, decode] of [
   ["Codex", createCodexResponsesWebSocketStreamChunk],
@@ -30,7 +32,8 @@ for (const [name, decode] of [
 }
 
 test("Codex websocket errors retain the top-level message", () => {
-  const raw = '{ "type": "error", "error": { "message": "quota exceeded" }, "status_code": 429 }'
+  const raw =
+    '{ "type": "error", "error": { "message": "quota exceeded" }, "status_code": 429 }'
   const chunk = createCodexResponsesWebSocketStreamChunk(raw)
   expect(chunk.event).toBe("error")
   expect(JSON.parse(chunk.data ?? "")).toMatchObject({
@@ -43,7 +46,8 @@ test("Codex websocket errors retain the top-level message", () => {
 })
 
 test("Copilot websocket errors retain top-level code and message", () => {
-  const raw = '{"type":"error","error":{"code":"rate_limit","message":"slow down"}}'
+  const raw =
+    '{"type":"error","error":{"code":"rate_limit","message":"slow down"}}'
   const chunk = createResponsesWebSocketStreamChunk(raw)
   expect(chunk.event).toBe("error")
   expect(JSON.parse(chunk.data ?? "")).toMatchObject({
