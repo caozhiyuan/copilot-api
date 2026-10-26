@@ -7,25 +7,27 @@ import { getResponsesStreamTerminalDisposition } from "~/services/responses-webs
 const normalEvent = '{ "type" : "response.output_text.delta", "id": "evt-1", "delta": "hello\\nworld" }'
 const completedEvent = '{ "type" : "response.completed", "id": "evt-2", "response": { "usage": null } }'
 
-test.each([
+for (const [name, decode] of [
   ["Codex", createCodexResponsesWebSocketStreamChunk],
   ["Copilot", createResponsesWebSocketStreamChunk],
-])("%s forwards normal websocket event JSON without re-encoding", (_name, decode) => {
-  const delta = decode(normalEvent)
-  expect(delta).toEqual({
-    data: normalEvent,
-    event: "response.output_text.delta",
-    id: "evt-1",
+] as const) {
+  test(`${name} forwards normal websocket event JSON without re-encoding`, () => {
+    const delta = decode(normalEvent)
+    expect(delta).toEqual({
+      data: normalEvent,
+      event: "response.output_text.delta",
+      id: "evt-1",
+    })
+    expect(getResponsesStreamTerminalDisposition(delta)).toBe("continue")
+
+    const completed = decode(completedEvent)
+    expect(completed.data).toBe(completedEvent)
+    expect(getResponsesStreamTerminalDisposition(completed)).toBe("reuse")
+
+    expect(decode("[DONE]")).toEqual({ data: "[DONE]" })
+    expect(decode("not json")).toEqual({ data: "not json" })
   })
-  expect(getResponsesStreamTerminalDisposition(delta)).toBe("continue")
-
-  const completed = decode(completedEvent)
-  expect(completed.data).toBe(completedEvent)
-  expect(getResponsesStreamTerminalDisposition(completed)).toBe("reuse")
-
-  expect(decode("[DONE]")).toEqual({ data: "[DONE]" })
-  expect(decode("not json")).toEqual({ data: "not json" })
-})
+}
 
 test("Codex websocket errors retain the top-level message", () => {
   const raw = '{ "type": "error", "error": { "message": "quota exceeded" }, "status_code": 429 }'
