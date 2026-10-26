@@ -8,7 +8,7 @@ import { getResponsesStreamTerminalDisposition } from "~/services/responses-webs
 interface Chunk {
   data?: string
   event?: string
-  id?: string
+  id?: string | number
 }
 
 type Decoder = (data: string) => Chunk
