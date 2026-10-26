@@ -316,12 +316,10 @@ const streamProviderResponses = async (
           normalizeCodex: options.normalizeCodex,
           provider: options.provider,
         })
-        if (event && options.normalizeCodex) {
-          responseChunk = {
-            ...chunk,
-            data: JSON.stringify(event),
-            event: event.type,
-          }
+        if (event && options.normalizeCodex && chunk.event !== event.type) {
+          // The Codex normalizer observes rate limits but does not modify
+          // the event body. Keep the original JSON instead of re-encoding it.
+          responseChunk = { ...chunk, event: event.type }
         }
       }
 
