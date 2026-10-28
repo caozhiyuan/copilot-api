@@ -134,7 +134,9 @@ describe("createResponses", () => {
     })
 
     const [, init] = fetchMock.mock.calls[0]
-    const body = JSON.parse((init as RequestInit).body as string) as ResponsesPayload
+    const body = JSON.parse(
+      (init as RequestInit).body as string,
+    ) as ResponsesPayload
     expect(body.include).toEqual(["reasoning.encrypted_content"])
     expect(payload.include).toEqual([
       "reasoning.encrypted_content",
@@ -156,7 +158,9 @@ describe("createResponses", () => {
     })
 
     const [, init] = fetchMock.mock.calls[0]
-    const body = JSON.parse((init as RequestInit).body as string) as ResponsesPayload
+    const body = JSON.parse(
+      (init as RequestInit).body as string,
+    ) as ResponsesPayload
     expect(body).not.toHaveProperty("include")
     expect(payload.include).toEqual(["output.encrypted_content"])
   })
