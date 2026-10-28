@@ -120,6 +120,47 @@ describe("createResponses", () => {
     expect(body.type).toBeUndefined()
   })
 
+  test("removes unsupported output token replay include from Copilot HTTP requests", async () => {
+    const payload: ResponsesPayload = {
+      include: ["reasoning.encrypted_content", "output.encrypted_content"],
+      input: "hello",
+      model: "gpt-6-astra",
+    }
+
+    await createResponses(payload, {
+      initiator: "user",
+      requestId: "request-1",
+      vision: false,
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string) as ResponsesPayload
+    expect(body.include).toEqual(["reasoning.encrypted_content"])
+    expect(payload.include).toEqual([
+      "reasoning.encrypted_content",
+      "output.encrypted_content",
+    ])
+  })
+
+  test("omits include when only unsupported output token replay is requested", async () => {
+    const payload: ResponsesPayload = {
+      include: ["output.encrypted_content"],
+      input: "hello",
+      model: "gpt-6-astra",
+    }
+
+    await createResponses(payload, {
+      initiator: "user",
+      requestId: "request-1",
+      vision: false,
+    })
+
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string) as ResponsesPayload
+    expect(body).not.toHaveProperty("include")
+    expect(payload.include).toEqual(["output.encrypted_content"])
+  })
+
   test("sets subagent interaction headers for HTTP responses requests", async () => {
     const payload: ResponsesPayload = {
       input: "hello",
