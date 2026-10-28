@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
 
-import type { ResponsesResult } from "~/lib/types/responses"
+import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 
 type ListenerEvent = {
   data?: unknown
@@ -257,6 +257,34 @@ afterEach(() => {
   ).clearTimeout = originalClearTimeout
   ;(globalThis as unknown as { setTimeout: typeof setTimeout }).setTimeout =
     originalSetTimeout
+})
+
+test("Responses websocket removes unsupported output token replay include", async () => {
+  const payload: ResponsesPayload = {
+    include: ["reasoning.encrypted_content", "output.encrypted_content"],
+    input: "hello",
+    model: "gpt-6-astra",
+    stream: true,
+  }
+
+  const response = await createResponses(payload, {
+    initiator: "user",
+    requestId: "request-output-replay",
+    transport: "websocket",
+    vision: false,
+  })
+  await collectStreamChunks(response as AsyncIterable<unknown>)
+
+  const sent = JSON.parse(MockWebSocket.instances[0]?.sent[0] ?? "") as {
+    include?: Array<string>
+    type?: string
+  }
+  expect(sent.type).toBe("response.create")
+  expect(sent.include).toEqual(["reasoning.encrypted_content"])
+  expect(payload.include).toEqual([
+    "reasoning.encrypted_content",
+    "output.encrypted_content",
+  ])
 })
 
 test("Responses websocket pool reuses the same connection for matching pool keys", async () => {
