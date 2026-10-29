@@ -28,24 +28,34 @@ staged="$3"
 backup="$4"
 state="$5"
 exec >>"$state/install.log" 2>&1
+staging=$(/usr/bin/dirname "$staged")
+cleanup() {
+  # A remaining backup may be the only recoverable app after a failed restore.
+  if [ ! -e "$backup" ]; then /bin/rm -rf "$staging" || true; fi
+}
+trap cleanup EXIT
+trap 'echo interrupted >"$state/failed"; exit 1' HUP INT TERM
 echo $$ >"$state/installer-ready"
 i=0
 while kill -0 "$parent_pid" 2>/dev/null; do
-  if [ -f "$state/cancelled" ]; then /bin/rm -rf "$(/usr/bin/dirname "$staged")"; exit 1; fi
+  if [ -f "$state/cancelled" ]; then exit 1; fi
   i=$((i + 1))
   if [ "$i" -ge 60 ]; then echo parent-did-not-exit >"$state/failed"; exit 1; fi
   sleep 1
 done
-if [ -f "$state/cancelled" ]; then /bin/rm -rf "$(/usr/bin/dirname "$staged")"; exit 1; fi
+if [ -f "$state/cancelled" ]; then exit 1; fi
+relaunch() {
+  /usr/bin/open -n "$app" --args --copilot-api-update-failed || true
+}
 restore() {
   if [ -d "$backup" ]; then
-    if [ -e "$app" ]; then /bin/mv "$app" "$(/usr/bin/dirname "$staged")/failed.app" || return 1; fi
+    if [ -e "$app" ]; then /bin/mv "$app" "$staging/failed.app" || return 1; fi
     /bin/mv "$backup" "$app" || return 1
-    /usr/bin/open -n "$app" --args --copilot-api-update-failed || true
+    relaunch
   fi
 }
 trap 'echo interrupted >"$state/failed"; restore; exit 1' HUP INT TERM
-if ! /bin/mv "$app" "$backup"; then echo backup-failed >"$state/failed"; exit 1; fi
+if ! /bin/mv "$app" "$backup"; then echo backup-failed >"$state/failed"; relaunch; exit 1; fi
 if ! /bin/mv "$staged" "$app"; then echo replace-failed >"$state/failed"; restore; exit 1; fi
 if ! /usr/bin/open -n "$app" --args "--copilot-api-update-state=$state"; then
   echo launch-failed >"$state/failed"; restore; exit 1
@@ -73,7 +83,6 @@ while [ ! -f "$state/ready" ]; do
 done
 echo installed >"$state/result"
 /bin/rm -rf "$backup"
-/bin/rmdir "$(/usr/bin/dirname "$staged")" 2>/dev/null || true
 `
 
 export function getMacApplicationPath(executable: string): string {
@@ -97,6 +106,7 @@ export async function canInstallMacUpdate(appPath: string): Promise<boolean> {
     )
       return false
     if (path.basename(appPath) !== 'Copilot API.app') return false
+    await access(appPath, constants.W_OK)
     await access(path.dirname(appPath), constants.W_OK)
     return true
   } catch {

@@ -1,4 +1,14 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from 'bun:test'
+import { constants } from 'node:fs'
+import * as fs from 'node:fs/promises'
 import {
   cp,
   mkdir,
@@ -75,6 +85,27 @@ function setup() {
 }
 
 describe('macOS installation preparation', () => {
+  test('keeps the running app open when its bundle is not writable', async () => {
+    const originalAccess = fs.access
+    const denied = spyOn(fs, 'access').mockImplementation(
+      async (file, mode) => {
+        if (file === appPath && mode === constants.W_OK)
+          throw new Error('App bundle is not writable')
+        await originalAccess(file, mode)
+      },
+    )
+    try {
+      expect(await canInstallMacUpdate(appPath)).toBe(false)
+      const { options, beforeQuit, quit, launchInstaller } = setup()
+      await expect(installMacUpdate(options)).rejects.toThrow('manual')
+      expect(beforeQuit).not.toHaveBeenCalled()
+      expect(quit).not.toHaveBeenCalled()
+      expect(launchInstaller).not.toHaveBeenCalled()
+    } finally {
+      denied.mockRestore()
+    }
+  })
+
   test('only offers automatic installation for a real writable app outside restricted locations', async () => {
     expect(
       getMacApplicationPath(path.join(appPath, 'Contents/MacOS/Copilot API')),
