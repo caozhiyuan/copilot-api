@@ -282,6 +282,7 @@ export interface AppUpdateStatus {
     | 'disabled'
   currentVersion: string
   manualInstall: boolean
+  packageReady?: boolean
   releaseUrl: string
   version?: string
   percent?: number
@@ -362,6 +363,7 @@ declare global {
       getAppUpdateStatus: () => Promise<AppUpdateStatus>
       checkAppUpdate: () => Promise<AppUpdateStatus>
       installAppUpdate: () => Promise<AppUpdateStatus>
+      openAppUpdatePackage: (showInFolder?: boolean) => Promise<void>
       onAppUpdateStatus: (
         callback: (status: AppUpdateStatus) => void,
       ) => () => void

@@ -74,6 +74,10 @@ export interface Locale {
     restartInstall: string
     openRelease: string
     manualInstall: string
+    packageReady: string
+    showPackage: string
+    openPackage: string
+    manualPackageNote: string
     restartNote: string
     progress: string
     actionFailed: string

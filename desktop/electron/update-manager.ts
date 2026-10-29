@@ -22,6 +22,8 @@ interface UpdateManagerOptions {
   checkRelease: () => Promise<ReleaseUpdate | null>
   beforeInstall: () => Promise<void>
   onStatus: (status: AppUpdateStatus) => void
+  packageUpdates?: boolean
+  installPackage?: (file: string, version: string) => Promise<void>
 }
 
 export function createUpdateManager(
@@ -36,6 +38,7 @@ export function createUpdateManager(
   }
   let checkPromise: Promise<AppUpdateStatus> | null = null
   let downloadPromise: Promise<AppUpdateStatus> | null = null
+  let downloadedFile: string | undefined
 
   const getStatus = () => ({ ...status })
   const publish = (changes: Partial<AppUpdateStatus>) => {
@@ -71,7 +74,14 @@ export function createUpdateManager(
     })
   })
   updater.on('update-downloaded', (info) => {
-    publish({ phase: 'downloaded', version: info.version, percent: 100 })
+    downloadedFile = info.downloadedFile
+    publish({
+      phase: 'downloaded',
+      version: info.version,
+      percent: 100,
+      packageReady: options.packageUpdates === true,
+      manualInstall: options.packageUpdates === true && !options.installPackage,
+    })
   })
   updater.on('error', (error) => {
     // checkForUpdates rejects after emitting 'error'; its catch handles
@@ -160,15 +170,28 @@ export function createUpdateManager(
       return getStatus()
     publish({ phase: 'installing', error: undefined })
     try {
+      if (options.installPackage) {
+        if (!downloadedFile || !status.version)
+          throw new Error('No downloaded update package')
+        await options.installPackage(downloadedFile, status.version)
+        return getStatus()
+      }
       // Finish stopping the API child process and enable window closing
       // before quitAndInstall closes windows (before-quit fires too late).
       await options.beforeInstall()
       updater.quitAndInstall(false, true)
     } catch (error) {
       fail(error)
+      if (options.packageUpdates) publish({ manualInstall: true })
     }
     return getStatus()
   }
 
-  return { getStatus, check, download, install }
+  return {
+    getStatus,
+    check,
+    download,
+    install,
+    getDownloadedFile: () => downloadedFile,
+  }
 }

@@ -90,24 +90,61 @@ export default function AppUpdatePanel({
       )}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 text-[12px] text-ink-soft" aria-live="polite">
-          {status
+          {(
+            status?.phase === 'downloaded'
+            && status.packageReady
+            && status.manualInstall
+          ) ?
+            t('updates.packageReady', { version: status.version ?? '' })
+          : status
             && t(`updates.${status.phase}`, {
               version: status.version ?? '',
               percent: Math.round(status.percent ?? 0),
-            })}
+            })
+          }
           {status?.phase === 'available' && status.manualInstall && (
             <p className="mt-1 text-ink-faint">{t('updates.manualInstall')}</p>
           )}
         </div>
         {status?.phase === 'downloaded' ?
-          <button
-            className={buttonClass}
-            onClick={() =>
-              void runAction(() => window.electronAPI.installAppUpdate())
-            }
-          >
-            {t('updates.restartInstall')}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {!status.manualInstall && (
+              <button
+                className={buttonClass}
+                onClick={() =>
+                  void runAction(() => window.electronAPI.installAppUpdate())
+                }
+              >
+                {t('updates.restartInstall')}
+              </button>
+            )}
+            {status.packageReady && (
+              <>
+                <button
+                  className={buttonClass}
+                  onClick={() =>
+                    void runAction(() =>
+                      window.electronAPI.openAppUpdatePackage(true),
+                    )
+                  }
+                >
+                  {t('updates.showPackage')}
+                </button>
+                {!compact && (
+                  <button
+                    className={buttonClass}
+                    onClick={() =>
+                      void runAction(() =>
+                        window.electronAPI.openAppUpdatePackage(),
+                      )
+                    }
+                  >
+                    {t('updates.openPackage')}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         : status?.phase === 'available' && status.manualInstall ?
           <button
             className={buttonClass}
@@ -141,7 +178,13 @@ export default function AppUpdatePanel({
         />
       )}
       {!compact && status?.phase === 'downloaded' && (
-        <p className="text-[12px] text-ink-faint">{t('updates.restartNote')}</p>
+        <p className="text-[12px] text-ink-faint">
+          {t(
+            status.packageReady && status.manualInstall ?
+              'updates.manualPackageNote'
+            : 'updates.restartNote',
+          )}
+        </p>
       )}
       {(actionError || status?.error) && (
         <p role="alert" className="mt-2 break-words text-[12px] text-red-500">

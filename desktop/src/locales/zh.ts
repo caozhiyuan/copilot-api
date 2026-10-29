@@ -61,7 +61,7 @@ const zh: Locale = {
   updates: {
     title: '应用更新',
     description:
-      '启动时及每 6 小时检查更新。Windows 和 Linux AppImage 自动下载更新；未签名的 macOS 版本需手动安装 DMG。',
+      '启动时及每 6 小时检查并自动下载更新。macOS 同时将完整 DMG 保存到下载目录，方便手动安装。',
     currentVersion: '当前版本：{{version}}',
     idle: '可以检查更新',
     checking: '正在检查更新…',
@@ -76,6 +76,11 @@ const zh: Locale = {
     restartInstall: '重启并安装',
     openRelease: '下载安装包',
     manualInstall: '请从 GitHub Releases 下载并安装对应安装包。',
+    packageReady: '{{version}} 安装包已保存到下载目录',
+    showPackage: '在文件夹中显示',
+    openPackage: '打开安装包',
+    manualPackageNote:
+      '请自行退出当前应用后安装下载的 DMG。macOS 可能需要再次允许打开新版本。',
     restartNote: '重启会停止本地 API 服务，并中断进行中的请求。',
     progress: '更新下载进度',
     actionFailed: '更新操作失败，请重试。',

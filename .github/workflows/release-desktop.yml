@@ -47,8 +47,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mac-arm64
-          path: desktop/release/*.dmg
-          if-no-files-found: warn
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.dmg.blockmap
+            desktop/release/latest-mac.yml
+          if-no-files-found: error
 
   # ─── Windows ─────────────────────────────────────────────────────────────
   build-win:

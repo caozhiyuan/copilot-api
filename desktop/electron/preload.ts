@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppUpdateStatus: () => ipcRenderer.invoke('update:get-status'),
   checkAppUpdate: () => ipcRenderer.invoke('update:check'),
   installAppUpdate: () => ipcRenderer.invoke('update:install'),
+  openAppUpdatePackage: (showInFolder = false) =>
+    ipcRenderer.invoke('update:open-package', showInFolder),
   onAppUpdateStatus: (callback: (status: AppUpdateStatus) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

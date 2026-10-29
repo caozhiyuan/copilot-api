@@ -7,6 +7,7 @@ import {
   nativeTheme,
   ipcMain,
   net,
+  shell,
 } from 'electron'
 import path from 'node:path'
 import electronUpdater from 'electron-updater'
@@ -40,6 +41,28 @@ import {
 import { applySettingsEnvOverrides } from './settings-env'
 import { createUpdateManager } from './update-manager'
 import { checkReleaseUpdate } from './release-update'
+import { MacDmgUpdater } from './mac-dmg-updater'
+import {
+  beginMacUpdateStartup,
+  canInstallMacUpdate,
+  getMacApplicationPath,
+  installMacUpdate,
+  markMacUpdateReady,
+} from './mac-update-install'
+
+const macAppPath =
+  process.platform === 'darwin' && app.isPackaged ?
+    getMacApplicationPath(process.execPath)
+  : null
+const macUpdateStartup =
+  macAppPath ?
+    beginMacUpdateStartup(
+      process.argv,
+      app.getPath('userData'),
+      macAppPath,
+      app.getVersion(),
+    )
+  : Promise.resolve(null)
 
 const CLI_ENV_FLAGS = {
   '--api-home': 'COPILOT_API_HOME',
@@ -266,6 +289,11 @@ function createWindow(startHidden = false): BrowserWindow {
   else win.maximize()
 
   win.once('ready-to-show', () => {
+    void macUpdateStartup
+      .then(markMacUpdateReady)
+      .catch((error) =>
+        console.error('Cannot acknowledge macOS update:', error),
+      )
     if (!startHidden) {
       win.show()
     }
@@ -332,15 +360,38 @@ async function initializeApplication(): Promise<void> {
   const settings = await readSettings()
   await applyElectronProxy(getEffectiveProxySettings(settings))
 
-  const { autoUpdater } = electronUpdater
+  const macUpdater =
+    macAppPath ? new MacDmgUpdater(app.getPath('downloads')) : null
+  const autoUpdater = macUpdater ?? electronUpdater.autoUpdater
+  const macCanInstall =
+    macAppPath ? await canInstallMacUpdate(macAppPath) : false
+  const beforeInstall = async () => {
+    const { stopServer } = await getRuntimeDependencies()
+    await stopServer()
+    isQuitting = true
+  }
   const updateManager = createUpdateManager(autoUpdater, {
     currentVersion: app.getVersion(),
     enabled: app.isPackaged,
-    // Unsigned macOS builds need manual DMG installation. Squirrel.Mac
-    // requires a signed app and a ZIP target for automatic installation.
     nativeUpdates:
       process.platform === 'win32'
+      || Boolean(macAppPath)
       || (process.platform === 'linux' && Boolean(process.env.APPIMAGE)),
+    packageUpdates: Boolean(macAppPath),
+    installPackage:
+      macAppPath && macUpdater && macCanInstall ?
+        async (file, version) => {
+          await macUpdater.verifyPackage(file)
+          await installMacUpdate({
+            appPath: macAppPath,
+            dmgPath: file,
+            version,
+            userData: app.getPath('userData'),
+            beforeQuit: beforeInstall,
+            quit: () => app.quit(),
+          })
+        }
+      : undefined,
     checkRelease: () =>
       checkReleaseUpdate(
         (url, options) => net.fetch(url, options),
@@ -348,11 +399,7 @@ async function initializeApplication(): Promise<void> {
         process.platform,
         process.arch,
       ),
-    beforeInstall: async () => {
-      const { stopServer } = await getRuntimeDependencies()
-      await stopServer()
-      isQuitting = true
-    },
+    beforeInstall,
     onStatus: (status) => {
       if (status.phase === 'downloaded' && status.error) isQuitting = false
       for (const window of BrowserWindow.getAllWindows()) {
@@ -364,6 +411,20 @@ async function initializeApplication(): Promise<void> {
   ipcMain.handle('update:get-status', () => updateManager.getStatus())
   ipcMain.handle('update:check', () => updateManager.check())
   ipcMain.handle('update:install', () => updateManager.install())
+  ipcMain.handle(
+    'update:open-package',
+    async (_event, showInFolder: unknown) => {
+      const file = updateManager.getDownloadedFile()
+      if (!macAppPath || !file)
+        throw new Error('No downloaded macOS update package')
+      if (showInFolder === true) shell.showItemInFolder(file)
+      else {
+        await macUpdater?.verifyPackage(file)
+        const error = await shell.openPath(file)
+        if (error) throw new Error(error)
+      }
+    },
+  )
   if (app.isPackaged) {
     const startupCheck = setTimeout(() => void updateManager.check(), 15_000)
     const periodicCheck = setInterval(

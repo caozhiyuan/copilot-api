@@ -62,7 +62,7 @@ const en: Locale = {
   updates: {
     title: 'Updates',
     description:
-      'Check for updates on launch and every 6 hours. Windows and Linux AppImage updates download automatically. Unsigned macOS builds use manual DMG installation.',
+      'Check for updates on launch and every 6 hours. Updates download automatically. macOS also saves a complete DMG to Downloads for manual installation.',
     currentVersion: 'Current version: {{version}}',
     idle: 'Ready to check for updates',
     checking: 'Checking for updates…',
@@ -77,6 +77,11 @@ const en: Locale = {
     restartInstall: 'Restart and install',
     openRelease: 'Download installer',
     manualInstall: 'Download and install the package from GitHub Releases.',
+    packageReady: 'Version {{version}} is saved to Downloads',
+    showPackage: 'Show in folder',
+    openPackage: 'Open installer',
+    manualPackageNote:
+      'Quit this app and install the downloaded DMG manually. macOS may ask you to allow the new version to open.',
     restartNote:
       'Restarting stops the local API server and interrupts active requests.',
     progress: 'Update download progress',
