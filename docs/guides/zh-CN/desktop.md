@@ -51,6 +51,6 @@ macOS 会将经过 SHA-512 校验的完整 DMG 保存到系统下载目录。首
 
 当前构建没有 Developer ID 签名和 Apple 公证。自定义安装流程不调用 Squirrel.Mac，也不关闭系统安全检查；macOS 仍可能要求用户允许打开新版本。在 AppImage 之外启动的 Linux 应用，以及缺少更新元数据的旧 release，会提供 release 页面下载入口。开发模式不检查更新。更新请求使用应用中配置的代理。
 
-桌面发布流程会一并上传 `latest.yml`、Windows `.blockmap`、`latest-linux.yml`、macOS `.dmg.blockmap` 和 `latest-mac.yml`，先上传安装包，再上传更新元数据。缺少这些文件的旧版本需要先手动安装一次新版本；macOS 尚无 DMG 缓存时，第一次下载也可能是完整包。用户电脑无需配置 GitHub Token。
+桌面发布流程会一并上传 `latest.yml`、Windows `.blockmap`、`latest-linux.yml`、macOS `.dmg.blockmap` 和 `latest-mac.yml`，先上传安装包，再上传更新元数据。缺少这些文件的旧版本需要先手动安装一次新版本；macOS 尚无 DMG 缓存时，第一次下载也可能是完整包。
 
 桌面应用里的**高级配置**通过分组表单与共用的完整 JSON 草稿编辑 `config.json`，包括模型映射。文件读写通过 Electron IPC 完成，服务停止时也可以使用；运行中的服务通过 `/admin/config/reload` 刷新，使用 `auth.adminApiKey` 认证。校验、外部修改冲突、密钥脱敏和应用重试的说明见[桌面端配置编辑器](configuration.md#桌面端配置编辑器)。
