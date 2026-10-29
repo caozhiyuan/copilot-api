@@ -100,6 +100,8 @@ Prefer a GUI? The Electron desktop app in `desktop/` covers GitHub Copilot sign-
 
 Windows x64 (`.exe`), macOS Apple Silicon (`.dmg`), and Linux x64 (`.AppImage`) packages are published in [GitHub Releases](https://github.com/caozhiyuan/copilot-api/releases). See [Electron Desktop App](docs/guides/en/desktop.md#electron-desktop-app) for full setup and advanced configuration.
 
+After the initial full-package installation, subsequent updates normally use differential downloads to reduce download size. On macOS, the first update may still download a complete DMG to establish the cache. If the cache is unavailable or differential downloading fails, the app falls back to a full download.
+
 ## Documentation
 
 | Guide | Contents |
