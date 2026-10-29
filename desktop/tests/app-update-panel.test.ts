@@ -23,6 +23,9 @@ let getStatus: ReturnType<
 let check: ReturnType<typeof mock<typeof window.electronAPI.checkAppUpdate>>
 let install: ReturnType<typeof mock<typeof window.electronAPI.installAppUpdate>>
 let openUrl: ReturnType<typeof mock<typeof window.electronAPI.openUrl>>
+let openPackage: ReturnType<
+  typeof mock<typeof window.electronAPI.openAppUpdatePackage>
+>
 let unsubscribe: ReturnType<typeof mock<() => void>>
 const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
 
@@ -48,6 +51,7 @@ beforeEach(async () => {
   check = mock(() => Promise.resolve({ ...initial }))
   install = mock(() => Promise.resolve({ ...initial }))
   openUrl = mock(() => Promise.resolve())
+  openPackage = mock(() => Promise.resolve())
   unsubscribe = mock(() => {})
   Object.defineProperty(win, 'electronAPI', {
     value: {
@@ -55,6 +59,7 @@ beforeEach(async () => {
       checkAppUpdate: check,
       installAppUpdate: install,
       openUrl,
+      openAppUpdatePackage: openPackage,
       onAppUpdateStatus: (callback: typeof listener) => {
         listener = callback
         return unsubscribe
@@ -99,6 +104,40 @@ async function click() {
 }
 
 describe('desktop update UI', () => {
+  test('opens or reveals a manually installable DMG without quitting the app', async () => {
+    await render()
+    await emit({
+      phase: 'downloaded',
+      version: '2.7.44',
+      packageReady: true,
+      manualInstall: true,
+    })
+    expect(container.textContent).toContain('saved to Downloads')
+    expect(container.textContent).toContain('Quit this app')
+    const buttons = container.querySelectorAll('button')
+    expect([...buttons].map((button) => button.textContent)).toEqual([
+      'Show in folder',
+      'Open installer',
+    ])
+    await act(async () => buttons[0].click())
+    expect(openPackage).toHaveBeenCalledWith(true)
+    await act(async () => buttons[1].click())
+    expect(openPackage).toHaveBeenCalledWith()
+    expect(install).not.toHaveBeenCalled()
+  })
+
+  test('keeps a manual package fallback beside the automatic installation action', async () => {
+    await render(true)
+    await emit({ phase: 'downloaded', version: '2.7.44', packageReady: true })
+    expect(
+      [...container.querySelectorAll('button')].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(['Restart and install', 'Show in folder'])
+    await click()
+    expect(install).toHaveBeenCalledTimes(1)
+    expect(openPackage).not.toHaveBeenCalled()
+  })
   test('keeps a newly downloaded update when the menu check returns an older snapshot', async () => {
     let finishCheck: ((status: AppUpdateStatus) => void) | undefined
     check.mockImplementation(

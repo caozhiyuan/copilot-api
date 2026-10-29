@@ -28,21 +28,23 @@ staged="$3"
 backup="$4"
 state="$5"
 exec >>"$state/install.log" 2>&1
-echo waiting >"$state/installer-ready"
+echo $$ >"$state/installer-ready"
 i=0
 while kill -0 "$parent_pid" 2>/dev/null; do
+  if [ -f "$state/cancelled" ]; then /bin/rm -rf "$(/usr/bin/dirname "$staged")"; exit 1; fi
   i=$((i + 1))
   if [ "$i" -ge 60 ]; then echo parent-did-not-exit >"$state/failed"; exit 1; fi
   sleep 1
 done
+if [ -f "$state/cancelled" ]; then /bin/rm -rf "$(/usr/bin/dirname "$staged")"; exit 1; fi
 restore() {
   if [ -d "$backup" ]; then
     if [ -e "$app" ]; then /bin/mv "$app" "$(/usr/bin/dirname "$staged")/failed.app" || return 1; fi
     /bin/mv "$backup" "$app" || return 1
-    /usr/bin/open -n "$app" || true
+    /usr/bin/open -n "$app" --args --copilot-api-update-failed || true
   fi
 }
-trap 'echo interrupted >"$state/failed"; restore' HUP INT TERM
+trap 'echo interrupted >"$state/failed"; restore; exit 1' HUP INT TERM
 if ! /bin/mv "$app" "$backup"; then echo backup-failed >"$state/failed"; exit 1; fi
 if ! /bin/mv "$staged" "$app"; then echo replace-failed >"$state/failed"; restore; exit 1; fi
 if ! /usr/bin/open -n "$app" --args "--copilot-api-update-state=$state"; then
@@ -77,7 +79,7 @@ echo installed >"$state/result"
 export function getMacApplicationPath(executable: string): string {
   const root = path.resolve(executable, '../../..')
   if (
-    path.basename(root) !== 'Copilot API.app'
+    !path.basename(root).endsWith('.app')
     || path.relative(root, executable) !== 'Contents/MacOS/Copilot API'
   )
     throw new Error('The running application is not a packaged Copilot API app')
@@ -90,6 +92,7 @@ export async function canInstallMacUpdate(appPath: string): Promise<boolean> {
     if (
       resolved.startsWith('/Volumes/')
       || resolved.includes('/AppTranslocation/')
+      || !(await lstat(appPath)).isDirectory()
       || (await lstat(appPath)).isSymbolicLink()
     )
       return false
@@ -206,8 +209,13 @@ export async function installMacUpdate(options: InstallOptions): Promise<void> {
     launched = true
     // Extraction and installer startup must succeed before stopping a healthy
     // gateway. The helper only replaces files after this process has exited.
-    await options.beforeQuit()
-    options.quit()
+    try {
+      await options.beforeQuit()
+      options.quit()
+    } catch (error) {
+      await writeFile(path.join(state, 'cancelled'), 'cancelled')
+      throw error
+    }
   } finally {
     if (mounted)
       await execute('/usr/bin/hdiutil', ['detach', mount]).catch(() => {})

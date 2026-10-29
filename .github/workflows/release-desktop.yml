@@ -44,6 +44,14 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Verify macOS update metadata
+        working-directory: desktop
+        run: |
+          test -f release/latest-mac.yml
+          for dmg in release/*.dmg; do
+            test -f "$dmg.blockmap"
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: mac-arm64

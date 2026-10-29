@@ -364,7 +364,10 @@ async function initializeApplication(): Promise<void> {
     macAppPath ? new MacDmgUpdater(app.getPath('downloads')) : null
   const autoUpdater = macUpdater ?? electronUpdater.autoUpdater
   const macCanInstall =
-    macAppPath ? await canInstallMacUpdate(macAppPath) : false
+    macAppPath ?
+      !process.argv.includes('--copilot-api-update-failed')
+      && (await canInstallMacUpdate(macAppPath))
+    : false
   const beforeInstall = async () => {
     const { stopServer } = await getRuntimeDependencies()
     await stopServer()

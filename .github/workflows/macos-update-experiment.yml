@@ -21,10 +21,15 @@ jobs:
           bun-version: '1.4.4'
       - name: Install dependencies
         run: |
+          mkdir -p "$EXPERIMENT_DIR"
           bun install --frozen-lockfile
           bun install --cwd desktop --frozen-lockfile
       - name: Typecheck desktop
         run: bun run --cwd desktop typecheck
+      - name: Verify update unit tests
+        run: |
+          bun test --coverage desktop/tests/update-files.test.ts desktop/tests/mac-dmg-updater.test.ts desktop/tests/mac-update-install.test.ts desktop/tests/update-manager.test.ts desktop/tests/app-update-panel.test.ts desktop/tests/release-update.test.ts > "$EXPERIMENT_DIR/verification.log" 2>&1
+          tail -24 "$EXPERIMENT_DIR/verification.log"
       - name: Build original app and DMG
         run: |
           mkdir -p "$EXPERIMENT_DIR/old"
@@ -40,12 +45,21 @@ jobs:
           cp desktop/release/Copilot.API-2.7.44-*.dmg "$EXPERIMENT_DIR/new.dmg"
           cp desktop/release/Copilot.API-2.7.44-*.dmg.blockmap "$EXPERIMENT_DIR/new.dmg.blockmap"
           test -f desktop/release/latest-mac.yml
+      - name: Build intentionally failing startup fixture
+        working-directory: desktop
+        run: |
+          node -e 'const fs=require("fs");const p="package.json";const x=JSON.parse(fs.readFileSync(p));x.version="2.7.45";fs.writeFileSync(p,JSON.stringify(x,null,2)+"\n");fs.writeFileSync("out/main/index.js","require(\"electron\").app.exit(77)\n")'
+          node node_modules/electron-builder/cli.js --mac --publish never
+          cp release/Copilot.API-2.7.45-*.dmg "$EXPERIMENT_DIR/failed.dmg"
+          cp release/Copilot.API-2.7.45-*.dmg.blockmap "$EXPERIMENT_DIR/failed.dmg.blockmap"
       - name: Run real differential HTTP download in Electron
         run: |
           bun build .github/scripts/macos-update-download-experiment.ts --target=node --format=cjs --external electron --external electron-updater --outfile desktop/ci-update-experiment.cjs
           desktop/node_modules/.bin/electron desktop/ci-update-experiment.cjs
       - name: Run unsigned app replacement and restart
         run: bun run .github/scripts/macos-update-install-experiment.ts
+      - name: Verify rollback after startup failure
+        run: bun run .github/scripts/macos-update-install-experiment.ts --expect-rollback
       - name: Gatekeeper diagnostics
         if: always()
         run: |

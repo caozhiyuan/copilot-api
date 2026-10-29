@@ -7,7 +7,14 @@ import {
 } from '../electron/update-manager'
 import type { AppUpdateStatus } from '../src/types/ipc'
 
-function setup(options: { enabled?: boolean; nativeUpdates?: boolean } = {}) {
+function setup(
+  options: {
+    enabled?: boolean
+    nativeUpdates?: boolean
+    packageUpdates?: boolean
+    installPackage?: (file: string, version: string) => Promise<void>
+  } = {},
+) {
   const updater = Object.assign(new EventEmitter(), {
     autoDownload: true,
     autoInstallOnAppQuit: true,
@@ -33,11 +40,81 @@ function setup(options: { enabled?: boolean; nativeUpdates?: boolean } = {}) {
     checkRelease,
     beforeInstall,
     onStatus,
+    packageUpdates: options.packageUpdates,
+    installPackage: options.installPackage,
   })
   return { manager, updater, checkRelease, beforeInstall, onStatus }
 }
 
 describe('desktop updates', () => {
+  test('downloads macOS packages even when installation must be manual', async () => {
+    const { updater, manager, beforeInstall } = setup({ packageUpdates: true })
+    updater.emit('update-available', { version: '2.7.44' })
+    updater.downloadUpdate.mockImplementation(async () => {
+      updater.emit('update-downloaded', {
+        version: '2.7.44',
+        downloadedFile: '/Downloads/update.dmg',
+      })
+      return ['/cache/update.dmg']
+    })
+    expect(await manager.download()).toMatchObject({
+      phase: 'downloaded',
+      packageReady: true,
+      manualInstall: true,
+    })
+    expect(manager.getDownloadedFile()).toBe('/Downloads/update.dmg')
+    await manager.install()
+    expect(beforeInstall).not.toHaveBeenCalled()
+    expect(updater.quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  test('uses the custom macOS installer without invoking Squirrel or stopping the server before preparation', async () => {
+    const installer = mock(async (_file: string, _version: string) => {})
+    const { manager, updater, beforeInstall } = setup({
+      packageUpdates: true,
+      installPackage: installer,
+    })
+    updater.emit('update-downloaded', {
+      version: '2.7.44',
+      downloadedFile: '/Downloads/update.dmg',
+    })
+    await manager.install()
+    expect(installer).toHaveBeenCalledWith('/Downloads/update.dmg', '2.7.44')
+    expect(beforeInstall).not.toHaveBeenCalled()
+    expect(updater.quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  test('retains the DMG and offers manual installation after a custom installer error', async () => {
+    const { manager, updater } = setup({
+      packageUpdates: true,
+      installPackage: async () => {
+        throw new Error('location not writable')
+      },
+    })
+    updater.emit('update-downloaded', {
+      version: '2.7.44',
+      downloadedFile: '/Downloads/update.dmg',
+    })
+    expect(await manager.install()).toMatchObject({
+      phase: 'downloaded',
+      manualInstall: true,
+      packageReady: true,
+      error: 'location not writable',
+    })
+    expect(manager.getDownloadedFile()).toBe('/Downloads/update.dmg')
+    expect(updater.quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  test('never invokes a custom installer without a downloaded package', async () => {
+    const installer = mock(async () => {})
+    const { manager, updater } = setup({
+      packageUpdates: true,
+      installPackage: installer,
+    })
+    updater.emit('update-downloaded', { version: '2.7.44' })
+    expect((await manager.install()).manualInstall).toBe(true)
+    expect(installer).not.toHaveBeenCalled()
+  })
   test('disables prereleases, downgrades and installation on normal quit', () => {
     const { updater, manager } = setup()
     expect(updater.autoDownload).toBe(false)

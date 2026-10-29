@@ -14,7 +14,7 @@ async function main() {
   app.setPath('userData', userData)
   await app.whenReady()
   const packages = new Map<string, { file: string; size: number; sha512: string }>()
-  for (const [version, source] of [['999.0.1', 'old'], ['999.0.2', 'new']]) {
+  for (const [version, source] of [['999.0.1', 'old'], ['999.0.2', 'new'], ['999.0.3', 'failed']]) {
     const file = path.join(directory, `${source}.dmg`)
     const bytes = await readFile(file)
     packages.set(version, { file, size: bytes.length, sha512: createHash('sha512').update(bytes).digest('base64') })
@@ -22,6 +22,7 @@ async function main() {
   let version = '999.0.1'
   let rangeBytes = 0
   let fullBytes = 0
+  let rejectRanges = false
   const filename = (v: string) => `Copilot.API-${v}-${process.arch}.dmg`
   const server = http.createServer((request, response) => {
     void (async () => {
@@ -36,6 +37,7 @@ async function main() {
       const file = selected[1].file + (url.endsWith('.blockmap') ? '.blockmap' : '')
       const size = (await stat(file)).size
       const range = request.headers.range?.match(/^bytes=(\d+)-(\d+)$/)
+      if (request.headers.range && rejectRanges) { response.writeHead(400).end(); return }
       if (request.headers.range && !range) { response.writeHead(400).end(); return }
       if (range) {
         const start = Number(range[1]), end = Math.min(Number(range[2]), size - 1)
@@ -85,6 +87,14 @@ async function main() {
   assert(rangeBytes > 0, 'Second update must issue HTTP range requests')
   assert.equal(fullBytes, 0, 'Valid baseline must not require a full second download')
   assert(rangeBytes < result.fullSize, 'The experiment should save network bytes')
+  version = '999.0.3'
+  rejectRanges = true
+  fullBytes = 0
+  await updater.checkForUpdates()
+  await updater.downloadUpdate()
+  await updater.verifyPackage(downloaded.at(-1)!)
+  assert.equal(fullBytes, packages.get(version)!.size, 'Unsupported ranges must fall back to a complete verified download')
+  await writeFile(path.join(directory, 'fallback-result.json'), JSON.stringify({ fullBytes, verified: true }, null, 2))
   await new Promise<void>(resolve => server.close(() => resolve()))
   app.exit(0)
 }
