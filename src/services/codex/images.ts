@@ -46,7 +46,10 @@ export async function forwardCodexImages(
     headers,
     body: request.body,
     duplex: "half",
-    signal: AbortSignal.timeout(CODEX_IMAGES_TIMEOUT_MS),
+    signal: AbortSignal.any([
+      request.signal,
+      AbortSignal.timeout(CODEX_IMAGES_TIMEOUT_MS),
+    ]),
   }
 
   const upstreamUrl = resolveCodexImagesUrl(request.url, operation)

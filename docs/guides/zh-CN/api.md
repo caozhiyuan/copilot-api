@@ -63,7 +63,9 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
 | `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
 | `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求转发到 Codex Images 上游。请求未携带 `Content-Type` 时，网关默认补充 `application/json`。请求 `model` 命中已配置的 model mapping 时会被改写；映射结果为已配置 provider 的 `provider/model` 别名时，请求将转发到该 provider 的 images 端点。 |
-| `POST /v1/images/edits` | `POST` | 将 JSON 图片编辑请求发往 Codex 或 model mapping 指定的 provider。使用 `Content-Type: application/json`，传入 `prompt` 和 `images: [{ image_url }]`（HTTP URL 或 base64 data URL），也可使用 `images: [{ file_id }]`；可选 `mask` 为单个图片引用对象。支持 model mapping 与 `provider/model` 别名。桌面端会先将本地图片转成 data URL，再发送 JSON。已移除 multipart 上传支持，此类请求返回 `415`，请改用 JSON。`/codex/v1/images/edits` 同样要求 JSON，并保持原样转发；其他 provider 作用域的图片路由继续保持原有透传行为。 |
+| `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域路由保持透传行为。 |
+
+multipart 上传总大小上限为 128 MiB，单文件上限为 64 MiB，最多 16 个文件；超限返回 `413`，格式错误返回 `400`。转换为 JSON 后，以及失败或取消时，都会清理临时文件。base64 图片数据约增大三分之一，生成的 JSON 会在转发前缓存在内存中。xAI 仍最多接受 5 张图片，不支持 mask、file_id 和流式输出。通过 model mapping 选中的其他 provider 继续接收 multipart。
 
 当 `imageGenerationModel` 或 `imageEditModel` 配置为 `xai/model` 别名时，对应的顶层图片路由会把 OpenAI 图片请求翻译后发到已启用的 `xai` provider 的 Imagine 接口，上游模型由该别名决定。配置为空时仍走上面的 OpenAI 转发路径。这两项目前不接受其他 provider。
 

@@ -108,9 +108,11 @@ export async function handleXaiImageGeneration(
 export async function handleXaiImageEdit(
   c: Context,
   model: string,
+  multipartPayload?: Record<string, unknown>,
 ): Promise<Response> {
   const payload = translateXaiImageEditJson(
-    await readJsonBody(c.req.raw, "Image edit body must be JSON"),
+    multipartPayload
+      ?? (await readJsonBody(c.req.raw, "Image edit body must be JSON")),
     model,
   )
   return await forwardTranslatedXaiImages(c, "edits", payload)

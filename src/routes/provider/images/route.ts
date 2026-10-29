@@ -4,6 +4,10 @@ import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { handleCodexImages } from "~/routes/images/route"
+import {
+  imageEditRequestErrorResponse,
+  parseMultipartImageEdit,
+} from "~/routes/images/multipart-edits"
 import { imageEditContentTypeErrorResponse } from "~/routes/images/shared"
 import type { CodexImagesOperation } from "~/services/codex/images"
 import { forwardProviderImagesWithLogging } from "~/routes/images/forward-provider-images"
@@ -32,11 +36,39 @@ async function handleProviderImages(
       )
     }
 
-    if (providerConfig.name === "codex") {
-      if (operation === "edits") {
-        const contentTypeError = imageEditContentTypeErrorResponse(c)
-        if (contentTypeError) return contentTypeError
+    if (
+      operation === "edits"
+      && (providerConfig.name === "codex" || providerConfig.name === "xai")
+    ) {
+      const contentTypeError = imageEditContentTypeErrorResponse(c)
+      if (contentTypeError) return contentTypeError
+      const multipart = await parseMultipartImageEdit(c.req.raw)
+      if (multipart) {
+        try {
+          const request = await multipart.createRequest(
+            multipart.model,
+            providerConfig.name,
+          )
+          if (providerConfig.name === "codex") {
+            return await handleCodexImages(
+              c,
+              operation,
+              providerConfig,
+              request,
+            )
+          }
+          return await forwardProviderImagesWithLogging(
+            providerConfig,
+            request,
+            operation,
+            { logger, provider },
+          )
+        } finally {
+          await multipart.cleanup()
+        }
       }
+    }
+    if (providerConfig.name === "codex") {
       return await handleCodexImages(c, operation, providerConfig)
     }
 
@@ -47,6 +79,8 @@ async function handleProviderImages(
       { logger, provider },
     )
   } catch (error) {
+    const invalidRequest = imageEditRequestErrorResponse(c, error)
+    if (invalidRequest) return invalidRequest
     logger.error(`provider.images.${operation}.error`, { provider, error })
     return await forwardError(c, error)
   }
