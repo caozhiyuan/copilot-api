@@ -576,6 +576,217 @@ describe("model routes", () => {
     expect(isOpencodeUserAgent("claude-cli/2.1.258")).toBe(false)
   })
 
+  test("discovers Codex and xAI image models from the gateway with image packages", async () => {
+    enableCodexCatalog()
+    enabledProviders.push("xai")
+    providerConfigs.xai = createProviderConfig("xai", "https://unused.example")
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "opencode" },
+    })
+    const { data } = (await response.json()) as { data: Array<OpencodeModel> }
+    const images = data.filter((model) => model.type === "image")
+    expect(images.map((model) => model.id)).toEqual([
+      "codex/gpt-image-2",
+      "xai/grok-imagine-image-2.0",
+    ])
+    for (const image of images) {
+      expect(image).toMatchObject({
+        modelID: image.id,
+        providerID: "local",
+        package: "@opencode/ai/providers/openai/images",
+        capabilities: {
+          tools: false,
+          input: ["text", "image"],
+          output: ["image"],
+        },
+        variants: [],
+        cost: [],
+        limit: { context: 0, output: 0 },
+        enabled: true,
+      })
+    }
+    expect(images[0].family).toBe("gpt-image")
+    expect(images[1].family).toBe("grok-imagine")
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    { provider: "codex", id: "gpt-image-2", chat: "gpt-6-luna" },
+    { provider: "xai", id: "grok-imagine-image-2.0", chat: "grok-4.7" },
+  ])(
+    "applies model selections and provider availability to $provider image models",
+    async ({ provider, id, chat }) => {
+      enableCodexCatalog()
+      enabledProviders = [provider]
+      providerConfigs.xai = createProviderConfig(
+        "xai",
+        "https://unused.example",
+      )
+      const config = providerConfigs[provider]!
+      const request = async () => {
+        const response = await createApp().request("/v1/models", {
+          headers: { "user-agent": "opencode" },
+        })
+        expect(response.status).toBe(200)
+        return ((await response.json()) as { data: Array<OpencodeModel> }).data
+      }
+      config.agentsModels = [id]
+      expect((await request()).map((model) => model.id)).toEqual([
+        `${provider}/${id}`,
+      ])
+      config.agentsModels = [chat]
+      expect((await request()).map((model) => model.id)).toEqual([
+        `${provider}/${chat}`,
+      ])
+      config.agentsModels = []
+      expect(await request()).toEqual([])
+      delete config.agentsModels
+      config.enabled = false
+      enabledProviders = []
+      expect(await request()).toEqual([])
+      enabledProviders = [provider]
+      providerConfigs[provider] = null
+      expect(await request()).toEqual([])
+    },
+  )
+
+  test("merges a listed xAI image model without duplicates and preserves catalog metadata", async () => {
+    const id = "grok-imagine-image-2.0"
+    installModelsDevCatalog({
+      ...modelsDevCatalogFixture,
+      xai: {
+        models: {
+          [id]: {
+            id,
+            name: "Catalog Imagine",
+            release_date: "2026-10-01",
+            modalities: { input: ["text"], output: ["image"] },
+            cost: { input: 1, output: 2 },
+          },
+        },
+      },
+    })
+    enabledProviders = ["xai"]
+    providerConfigs.xai = createProviderConfig("xai", "https://unused.example")
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "opencode" },
+    })
+    const { data } = (await response.json()) as { data: Array<OpencodeModel> }
+    expect(data).toHaveLength(1)
+    expect(data[0]).toMatchObject({
+      id: `xai/${id}`,
+      name: "Catalog Imagine (xai)",
+      type: "image",
+      package: "@opencode/ai/providers/openai/images",
+      capabilities: { tools: false, input: ["text"], output: ["image"] },
+      cost: [{ input: 1, output: 2, cache: { read: 0, write: 0 } }],
+      time: { released: Date.parse("2026-10-01") },
+    })
+  })
+
+  test("uses image output metadata for additional catalog models while keeping mixed output on Responses", async () => {
+    installModelsDevCatalog({
+      ...modelsDevCatalogFixture,
+      images: {
+        models: {
+          image: {
+            id: "image",
+            modalities: { input: ["text", "image"], output: ["image"] },
+            reasoning_options: [{ type: "effort", values: ["high"] }],
+          },
+          mixed: {
+            id: "mixed",
+            modalities: { input: ["text"], output: ["text", "image"] },
+          },
+        },
+      },
+    })
+    enabledProviders = ["custom"]
+    providerConfigs.custom = {
+      ...createProviderConfig("custom", "https://unused.example"),
+      modelsDevProviderId: "images",
+    }
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "opencode" },
+    })
+    const { data } = (await response.json()) as { data: Array<OpencodeModel> }
+    expect(data[0]).toMatchObject({
+      id: "custom/image",
+      type: "image",
+      package: "@opencode/ai/providers/openai/images",
+      capabilities: { tools: false, output: ["image"] },
+      variants: [],
+      limit: { context: 0, output: 0 },
+    })
+    expect(data[1]).toMatchObject({
+      id: "custom/mixed",
+      package: "@opencode/ai/providers/openai/responses",
+      capabilities: { output: ["text", "image"] },
+    })
+    expect(data[1].type).toBeUndefined()
+  })
+
+  test.each([{ type: "image" }, { output_modalities: ["image"] }])(
+    "recognizes upstream image metadata %j without a catalog entry",
+    async (metadata) => {
+      enabledProviders = ["custom"]
+      providerConfigs.custom = createProviderConfig(
+        "custom",
+        "https://custom.example",
+      )
+      fetchMock.mockImplementationOnce(() =>
+        Promise.resolve(
+          Response.json({
+            data: [
+              {
+                id: "upstream-image",
+                input_modalities: ["text", "image"],
+                reasoning_efforts: ["high"],
+                ...metadata,
+              },
+            ],
+          }),
+        ),
+      )
+      const response = await createApp().request("/v1/models", {
+        headers: { "user-agent": "opencode" },
+      })
+      const { data } = (await response.json()) as { data: Array<OpencodeModel> }
+      expect(data).toHaveLength(1)
+      expect(data[0]).toMatchObject({
+        id: "custom/upstream-image",
+        type: "image",
+        package: "@opencode/ai/providers/openai/images",
+        capabilities: {
+          tools: false,
+          input: ["text", "image"],
+          output: ["image"],
+        },
+        variants: [],
+        cost: [],
+      })
+    },
+  )
+
+  test.each(["curl/8.0", "claude-cli/2.1", "codex/1.0"])(
+    "does not add image defaults to the %s chat catalog",
+    async (userAgent) => {
+      enableCodexCatalog()
+      enabledProviders.push("xai")
+      providerConfigs.xai = createProviderConfig(
+        "xai",
+        "https://unused.example",
+      )
+      const response = await createApp().request("/v1/models", {
+        headers: { "user-agent": userAgent },
+      })
+      expect(response.status).toBe(200)
+      const body = await response.text()
+      expect(body).not.toContain("gpt-image-2")
+      expect(body).not.toContain("grok-imagine-image-2.0")
+    },
+  )
+
   test.each<{
     name: string
     configured?: unknown

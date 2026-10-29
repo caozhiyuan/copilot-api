@@ -1,6 +1,9 @@
 import type { Context } from "hono"
 
-import { getBuiltinProviderModelRecords } from "~/lib/builtin-provider-models"
+import {
+  getBuiltinProviderImageModelRecords,
+  getBuiltinProviderModelRecords,
+} from "~/lib/builtin-provider-models"
 import {
   getRawProviderConfig,
   listEnabledProviders,
@@ -212,6 +215,7 @@ type ProviderModelSelector = (
 ) => Array<unknown>
 
 interface ModelSelectors {
+  includeImageModels?: boolean
   selectCopilotModels?: (models: Array<Model>) => Array<Model>
   selectProviderModels?: ProviderModelSelector
 }
@@ -245,19 +249,45 @@ export function deduplicateModels<T>(
   })
 }
 
+function withProviderImageModels(
+  provider: string,
+  models: Array<unknown>,
+): Array<unknown> {
+  const imageModels = getModelsById(
+    getBuiltinProviderImageModelRecords(provider),
+  )
+  if (imageModels.size === 0) return models
+  const listedModels = getModelsById(models)
+  return [
+    ...models.map((model) =>
+      isRecord(model) ?
+        { ...imageModels.get(getStringField(model, "id") ?? ""), ...model }
+      : model,
+    ),
+    ...[...imageModels.values()].filter(
+      (model) => !listedModels.has(getStringField(model, "id") ?? ""),
+    ),
+  ]
+}
+
 async function getProviderModels(
   provider: string,
   requestHeaders: Headers,
   selectModels?: ProviderModelSelector,
+  includeImageModels = false,
 ): Promise<Array<ClientModel>> {
   try {
     const providerConfig = await resolveProviderConfig(provider)
     if (!providerConfig) return []
 
-    const models =
+    const upstreamModels =
       providerConfig.name === "codex" ?
         getCodexModels().data.map(normalizeModelCapabilities)
       : await getProviderModelRecords(providerConfig, requestHeaders)
+    const models =
+      includeImageModels ?
+        withProviderImageModels(providerConfig.name, upstreamModels)
+      : upstreamModels
     return normalizeProviderModels(
       providerConfig.name,
       selectModels?.(providerConfig, models) ?? models,
@@ -295,6 +325,7 @@ export async function getAggregatedModels(
         provider,
         requestHeaders,
         selectors.selectProviderModels,
+        selectors.includeImageModels,
       ),
     ),
   )
@@ -329,8 +360,10 @@ function selectAgentProviderModels(
 
 export async function getAgentModels(
   requestHeaders: Headers,
+  options: { includeImageModels?: boolean } = {},
 ): Promise<Array<ClientModel>> {
   return getAggregatedModels(requestHeaders, {
+    includeImageModels: options.includeImageModels,
     selectCopilotModels: selectAgentCopilotModels,
     selectProviderModels: selectAgentProviderModels,
   })

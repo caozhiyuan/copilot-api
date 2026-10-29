@@ -24,6 +24,7 @@ import {
 import { getModelMetadata } from "~/routes/models/model-metadata"
 
 const RESPONSES_PACKAGE = "@opencode/ai/providers/openai/responses"
+const IMAGES_PACKAGE = "@opencode/ai/providers/openai/images"
 // OpenCode's cost schema is USD per million tokens. Configured CNY prices
 // are converted with this fixed rate; other currencies are not returned as USD.
 const CNY_PER_USD = 6.7
@@ -158,19 +159,27 @@ function toOpencodeModel(
   const metadata = getModelMetadata(provider, rawId, model, config)
   const { modelConfig, defaults, catalog, capabilities, supports, limits } =
     metadata
+  const output =
+    getStringList(model.output_modalities)
+    ?? getStringList(catalog?.modalities?.output)
+    ?? (model.type === "image" ? ["image"] : ["text"])
+  const isImage = output.includes("image") && !output.includes("text")
   const context = metadata.contextWindow ?? 256_000
   const inputLimit = metadata.inputLimit ?? 0
   const supportedMediaTypes = getStringList(
     getRecordField(limits, "vision")?.supported_media_types,
   )
-  const supportPdf = resolveModelPdfSupport(provider, {
-    supportPdf: modelConfig?.supportPdf,
-    supportedMediaTypes,
-    catalogInputModalities: catalog?.modalities?.input,
-    builtinSupportPdf:
-      defaults?.supportPdf
-      ?? builtinProviderModelRegistry.getProviderDefaults(provider)?.supportPdf,
-  })
+  const supportPdf =
+    !isImage
+    && resolveModelPdfSupport(provider, {
+      supportPdf: modelConfig?.supportPdf,
+      supportedMediaTypes,
+      catalogInputModalities: catalog?.modalities?.input,
+      builtinSupportPdf:
+        defaults?.supportPdf
+        ?? builtinProviderModelRegistry.getProviderDefaults(provider)
+          ?.supportPdf,
+    })
   const input = metadata.inputModalities.filter(
     (modality) => modality !== "pdf" || supportPdf,
   )
@@ -197,38 +206,49 @@ function toOpencodeModel(
     id: model.id,
     modelID: model.id,
     providerID: "local",
+    ...(isImage && { type: "image" }),
     name: getStringField(model, "display_name") ?? catalog?.name ?? model.id,
-    family: catalog?.family ?? getStringField(capabilities ?? {}, "family"),
-    package: RESPONSES_PACKAGE,
+    family:
+      catalog?.family
+      ?? getStringField(model, "family")
+      ?? getStringField(capabilities ?? {}, "family"),
+    package: isImage ? IMAGES_PACKAGE : RESPONSES_PACKAGE,
     capabilities: {
       tools:
-        typeof supports?.tool_calls === "boolean" ?
-          supports.tool_calls
+        isImage ? false
+        : typeof supports?.tool_calls === "boolean" ? supports.tool_calls
         : (catalog?.tool_call ?? true),
       input: [...input],
-      output: [...(catalog?.modalities?.output ?? ["text"])],
+      output,
     },
-    variants: efforts.map((effort) => ({
-      id: effort,
-      body: { reasoning: { effort } },
-    })),
+    variants:
+      isImage ?
+        []
+      : efforts.map((effort) => ({
+          id: effort,
+          body: { reasoning: { effort } },
+        })),
     time: { released: Number.isFinite(released) ? released : 0 },
     cost,
     status: catalog?.status ?? (model.preview ? "beta" : "active"),
     enabled: true,
-    limit: {
-      context: Math.min(context, contextWindow),
-      ...(inputLimit > 0 && {
-        input: Math.min(inputLimit, context, contextWindow),
-      }),
-      output: Math.min(context, metadata.maxOutputTokens ?? 32_000),
-    },
+    limit:
+      isImage ?
+        { context: 0, output: 0 }
+      : {
+          context: Math.min(context, contextWindow),
+          ...(inputLimit > 0 && {
+            input: Math.min(inputLimit, context, contextWindow),
+          }),
+          output: Math.min(context, metadata.maxOutputTokens ?? 32_000),
+        },
   }
 }
 
 export async function handleOpencodeModels(c: Context): Promise<Response> {
   const models = await getAgentModels(
     stripInternalRequestHeaders(c.req.raw.headers),
+    { includeImageModels: true },
   )
   const contextWindow = getOpencodeModelContextWindow()
   c.header("Cache-Control", "private, no-store")

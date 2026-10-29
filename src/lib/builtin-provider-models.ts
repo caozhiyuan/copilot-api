@@ -233,6 +233,34 @@ export class BuiltinProviderModelRegistry {
 
 export const builtinProviderModelRegistry = new BuiltinProviderModelRegistry()
 
+// Image endpoints support these models even when the upstream chat catalog
+// omits them. Keep them separate from models advertised to chat-only clients.
+const IMAGE_MODELS: Record<
+  string,
+  Array<{ id: string; name: string; family: string }>
+> = {
+  codex: [{ id: "gpt-image-2", name: "GPT Image 2", family: "gpt-image" }],
+  xai: [
+    {
+      id: "grok-imagine-image-2.0",
+      name: "Grok Imagine Image 2.0",
+      family: "grok-imagine",
+    },
+  ],
+}
+
+export function getBuiltinProviderImageModelRecords(
+  provider: string,
+): Array<Record<string, unknown>> {
+  return (IMAGE_MODELS[provider] ?? []).map((model) => ({
+    ...model,
+    object: "model",
+    type: "image",
+    input_modalities: ["text", "image"],
+    output_modalities: ["image"],
+  }))
+}
+
 export function getBuiltinProviderModelRecords(
   provider: string,
 ): Array<Record<string, unknown>> {

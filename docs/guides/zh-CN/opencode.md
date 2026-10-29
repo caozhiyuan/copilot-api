@@ -12,7 +12,9 @@ OpenCode 已经有直接的 GitHub Copilot provider。本节适用于你希望�
 
 启动网关后，将仓库中的 [`plugin/opencode/copilot-api-provider.js`](../../../plugin/opencode/copilot-api-provider.js) 复制到项目的 `.opencode/plugins/copilot-api-provider.js`，重启 OpenCode v2 即可。也可以放到 `~/.config/opencode/plugins/`，供所有项目使用。插件是单个 JS 文件，无需安装依赖或手动维护 `models`。
 
-默认连接 `http://localhost:4141/v1`，使用 v2 内置的 `@opencode/ai/providers/openai/responses` 包，通过 Responses 协议访问网关，并设置 `settings.compaction: { "type": "native" }`。插件启动时发现模型，每 20 秒刷新一次，provider 名称为 `My Local`，模型选择器中显示为 `local/<模型 ID>`。发现范围遵循网关的 provider 启用状态与 `agentsModels`；刷新失败时保留上次成功的目录，等待下次重试。
+默认连接 `http://localhost:4141/v1`，聊天模型使用 v2 内置的 `@opencode/ai/providers/openai/responses` 包，通过 Responses 协议访问网关，并设置 `settings.compaction: { "type": "native" }`。插件启动时发现模型，每 2 分钟刷新一次，provider 名称为 `My Local`，模型选择器中显示为 `local/<模型 ID>`。发现范围遵循网关的 provider 启用状态与 `agentsModels`；刷新失败时保留上次成功的目录，等待下次重试。
+
+网关还会在对应 provider 可用且 `agentsModels` 筛选允许时，返回 `codex/gpt-image-2` 和 `xai/grok-imagine-image-2.0`。仅输出图片的模型使用 `type: "image"` 和 `@opencode/ai/providers/openai/images`，也支持通过 models.dev 发现的其他图片模型。插件保留服务端返回的模型 package，不再自行补入图片模型；图片模型的显示范围改由网关 provider 配置管理，原插件 `imageModels` 选项不再使用。这些默认图片模型仅补入 OpenCode 目录，其他客户端目录保持原有行为。
 
 当前 OpenCode v2 的 OpenAI Responses runtime 在 native 压缩时，优先在普通 `/v1/responses` 请求的 `input` 末尾追加 `compaction_trigger`。仅当路由不支持 trigger、但提供 endpoint 压缩时才会使用独立的 `/v1/responses/compact`；本网关没有该独立端点。实际压缩仍需所选上游模型或网关适配器支持 trigger。推理档位使用 Responses 的 `reasoning.effort`，不再使用 Anthropic 的 `output_config.effort`。
 

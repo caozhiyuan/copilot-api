@@ -1,31 +1,5 @@
 const providerID = "local"
 const responsesPackage = "@opencode/ai/providers/openai/responses"
-// Image models must use an image-capable provider package; the Responses
-// package cannot call an images API.
-const imagesPackage = "@opencode/ai/providers/openai/images"
-
-// Image models the gateway can serve but does not advertise in its chat model
-// catalog. OpenCode only registers its image_generate tool while some model
-// reports an "image" output capability, so they are added to the catalog here.
-// Override with the plugin's imageModels option, or pass [] to disable.
-const defaultImageModels = [{ id: "codex/gpt-image-2", name: "GPT Image 2" }]
-
-const buildImageModel = (model) => ({
-  id: model.id,
-  modelID: model.id,
-  providerID,
-  package: imagesPackage,
-  type: "image",
-  name: model.name ?? model.id,
-  family: "gpt-image",
-  status: "active",
-  enabled: true,
-  capabilities: { tools: false, input: ["text", "image"], output: ["image"] },
-  variants: [],
-  time: { released: 0 },
-  cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }],
-  limit: { context: 0, output: 0 },
-})
 
 // Single-file plugin for OpenCode's v2 branch; no imports or dependencies.
 export default {
@@ -39,7 +13,6 @@ export default {
     ).replace(/\/+$/u, "")
     const apiKey = options.apiKey ?? process.env.GITHUB_COPILOT_API_KEY ?? "dummy"
     const refreshIntervalMs = options.refreshIntervalMs ?? 120_000
-    const imageModels = options.imageModels ?? defaultImageModels
     const loadModels = async () => {
       const response = await fetch(`${baseURL}/models`, {
         headers: {
@@ -63,15 +36,11 @@ export default {
       ) {
         throw new Error("Invalid OpenCode v2 model catalog")
       }
-      const models = body.data.map((model) => ({
+      return body.data.map((model) => ({
         ...model,
         providerID,
-        package: responsesPackage,
+        package: model.package ?? responsesPackage,
       }))
-      const missingImageModels = imageModels
-        .filter((model) => !models.some((entry) => entry.id === model.id))
-        .map(buildImageModel)
-      return [...models, ...missingImageModels]
     }
     const reportError = (error) =>
       console.warn("copilot-api model discovery:", error?.message ?? error)
