@@ -31,6 +31,71 @@ function extractCollapseHelpers(html: string): string {
   )
 }
 
+describe("usage viewer image model discovery", () => {
+  test.each([
+    ["http://localhost:4141/usage", "http://localhost:4141/models"],
+    [
+      "https://gateway.example/proxy/v1/usage?old=1#quota",
+      "https://gateway.example/proxy/v1/models",
+    ],
+    ["/v1/usage", "https://viewer.example/v1/models"],
+  ])(
+    "loads image models from %s with gateway credentials",
+    async (endpoint, expectedUrl) => {
+      const html = await readUsageViewerPage()
+      const source = [
+        [
+          "function parseCredential(value)",
+          "function resolveUsageUrl(endpoint)",
+        ],
+        [
+          "function deriveEndpointUrl(usageEndpoint, targetPath)",
+          "function buildTokenUsageSummaryUrl(usageEndpoint, period)",
+        ],
+        ["async function fetchJson(url)", "function syncUrlState()"],
+        ["async function fetchModels()", "function activateTab(tab)"],
+      ]
+        .map(([start, end]) => extractInlineFunctionRange(html, start, end))
+        .join("\n")
+      const imageModels = [
+        { id: "codex/gpt-image-2", type: "image" },
+        { id: "xai/grok-imagine-image-2.0", type: "image" },
+      ]
+      const state = {
+        models: null as typeof imageModels | null,
+        modelsError: null,
+        modelsConnectionKey: "connection",
+        modelsRequestId: 0,
+        isModelsLoading: false,
+      }
+      const requests: Array<{ url: string; headers: Headers }> = []
+      const viewer = runInNewContext(`${source}\n({ fetchModels })`, {
+        URL,
+        window: { location: { href: "https://viewer.example/usage-viewer" } },
+        endpointUrlInput: { value: endpoint },
+        apiKeyInput: { value: "Bearer viewer-key" },
+        state,
+        syncEndpointCredential: () => {},
+        syncModelsConnection: () => {},
+        getConnectionKey: () => "connection",
+        render: () => {},
+        getErrorMessage: String,
+        fetch: (url: string, init: RequestInit) => {
+          requests.push({ url, headers: new Headers(init.headers) })
+          return Promise.resolve(Response.json({ data: imageModels }))
+        },
+      }) as { fetchModels: () => Promise<void> }
+      await viewer.fetchModels()
+      expect(requests).toHaveLength(1)
+      expect(requests[0].url).toBe(`${expectedUrl}?include_images=true`)
+      expect(requests[0].headers.get("authorization")).toBe("Bearer viewer-key")
+      expect(state.models).toEqual(imageModels)
+      expect(state.modelsError).toBeNull()
+      expect(state.isModelsLoading).toBe(false)
+    },
+  )
+})
+
 describe("usage viewer period contract", () => {
   test("supports all periods in the selector and usage requests", async () => {
     const html = await readUsageViewerPage()

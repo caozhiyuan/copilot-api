@@ -51,7 +51,7 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 默认情况下，目录中没有的模型不补入内置列表。provider 级接口没有有效缓存模型时返回 `503`（`service_unavailable`），顶层列表跳过空目录。模型能力、窗口和 USD 价格来自目录，显式模型配置优先。
 
-对于 OpenAI 格式的聚合目录，`GET /models?include_images=true`（也支持 `/v1/models?include_images=true`）会为可用的 provider 补入 Codex 和 xAI 内置图片模型。桌面端 Dashboard 的 Available Models 使用这个目录。省略该参数或设为 `false` 时沿用默认目录；客户端专用目录格式保持现有行为。采用 agent 筛选的客户端仍会对请求的图片模型应用 `agentsModels`。
+对于 OpenAI 格式的聚合目录，`GET /models?include_images=true`（也支持 `/v1/models?include_images=true`）会为可用的 provider 补入 Codex 和 xAI 内置图片模型。桌面端 Dashboard 的 Available Models 和网页端 Models 标签页使用这个目录。省略该参数或设为 `false` 时沿用默认目录；客户端专用目录格式保持现有行为。采用 agent 筛选的客户端仍会对请求的图片模型应用 `agentsModels`。
 
 所有 models.dev 模型列表过滤已弃用及 `release_date` 早于 `2026-05-01` 的模型，显式展示名单也遵循此规则；没有有效日期的模型保留。
 
