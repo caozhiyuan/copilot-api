@@ -132,9 +132,10 @@ describe('provider model options', () => {
     'offers $provider image models absent from the chat catalog without changing selections',
     ({ provider, chat, image }) => {
       installModelsDevCatalog(modelsDevProviderCatalogFixture)
+      const selectedModels: string[] = [chat]
       const config = {
         providers: {
-          [provider]: { enabled: false, agentsModels: [chat] },
+          [provider]: { enabled: false, agentsModels: selectedModels },
         },
       }
       const options = buildProviderModelOptions(config)
