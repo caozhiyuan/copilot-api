@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
@@ -18,15 +26,11 @@ const recordedUsages: Array<UsageTokens> = []
 const providerTokenUsageRecorder = (usage: UsageTokens): void => {
   recordedUsages.push(usage)
 }
+let restoreTokenUsageRecorder = () => {}
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
   getProviderConfig: () => providerConfig,
-}))
-
-await mock.module("~/lib/token-usage", () => ({
-  ...actualTokenUsageModule,
-  createProviderTokenUsageRecorder: () => providerTokenUsageRecorder,
 }))
 
 const { providerMessageRoutes } = await import(
@@ -185,6 +189,11 @@ const parseStreamData = (text: string): Array<Record<string, unknown>> =>
     )
 
 beforeEach(() => {
+  const recorder = spyOn(
+    actualTokenUsageModule,
+    "createProviderTokenUsageRecorder",
+  ).mockImplementation(() => providerTokenUsageRecorder)
+  restoreTokenUsageRecorder = () => recorder.mockRestore()
   providerConfig = createProviderConfig()
   recordedUsages.length = 0
   upstreamResponseFactory = () =>
@@ -197,6 +206,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  restoreTokenUsageRecorder()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   providerConfig = null
 })

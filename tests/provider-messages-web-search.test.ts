@@ -29,6 +29,7 @@ let messageApiWebSearchModel: string | undefined
 let restoreModelLookup = () => {}
 
 const noopTokenUsageRecorder = () => {}
+let restoreTokenUsageRecorder = () => {}
 const findEndpointModel = mock((model: string) => ({
   ...createFallbackModel(model),
   supported_endpoints: ["/v1/messages"],
@@ -54,11 +55,6 @@ await mock.module("~/lib/state", () => ({
 await mock.module("~/lib/token", () => ({
   ...actualTokenModule,
   setupCodexToken: async () => {},
-}))
-
-await mock.module("~/lib/token-usage", () => ({
-  ...actualTokenUsageModule,
-  createProviderTokenUsageRecorder: () => noopTokenUsageRecorder,
 }))
 
 const { providerMessageRoutes } = await import(
@@ -346,6 +342,11 @@ const createCodexMessagesPayload = (
 })
 
 beforeEach(() => {
+  const recorder = spyOn(
+    actualTokenUsageModule,
+    "createProviderTokenUsageRecorder",
+  ).mockImplementation(() => noopTokenUsageRecorder)
+  restoreTokenUsageRecorder = () => recorder.mockRestore()
   const modelLookup = spyOn(
     actualModelsModule,
     "findEndpointModel",
@@ -385,6 +386,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  restoreTokenUsageRecorder()
   restoreModelLookup()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   state.codexAccessToken = originalCodexAccessToken

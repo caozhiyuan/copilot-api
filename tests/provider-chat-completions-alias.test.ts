@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
@@ -13,16 +21,12 @@ let providerConfig: ResolvedProviderConfig | null = null
 let modelMappings: Record<string, string> = {}
 
 const noopTokenUsageRecorder = () => {}
+let restoreTokenUsageRecorder = () => {}
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
   getProviderConfig: () => providerConfig,
   resolveMappedModel: (model: string) => modelMappings[model] ?? model,
-}))
-
-await mock.module("~/lib/token-usage", () => ({
-  ...actualTokenUsageModule,
-  createProviderTokenUsageRecorder: () => noopTokenUsageRecorder,
 }))
 
 const { completionRoutes } = await import("~/routes/chat-completions/route")
@@ -70,6 +74,11 @@ const createApp = () => {
 }
 
 beforeEach(() => {
+  const recorder = spyOn(
+    actualTokenUsageModule,
+    "createProviderTokenUsageRecorder",
+  ).mockImplementation(() => noopTokenUsageRecorder)
+  restoreTokenUsageRecorder = () => recorder.mockRestore()
   providerConfig = {
     apiKey: "provider-key",
     authType: "authorization",
@@ -96,6 +105,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  restoreTokenUsageRecorder()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   providerConfig = null
 })
