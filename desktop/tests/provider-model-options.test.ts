@@ -64,7 +64,15 @@ describe('provider model options', () => {
     installModelsDevCatalog({
       ...modelsDevProviderCatalogFixture,
       'alibaba-cn': catalog,
-      xai: catalog,
+      xai: {
+        models: {
+          ...modelsDevReleaseModelsFixture,
+          'grok-imagine-image-2.0': {
+            id: 'grok-imagine-image-2.0',
+            status: 'deprecated',
+          },
+        },
+      },
       'opencode-go': catalog,
     })
     const selection = {
@@ -89,7 +97,7 @@ describe('provider model options', () => {
     }
   })
 
-  test('reads default catalogs and provider aliases without static model fallback', () => {
+  test('reads provider catalogs and aliases alongside built-in image models', () => {
     installModelsDevCatalog(modelsDevProviderCatalogFixture)
     const options = buildProviderModelOptions({
       providers: {
@@ -101,7 +109,7 @@ describe('provider model options', () => {
       },
     })
     expect(options).toMatchObject({
-      xai: ['grok-4.7', 'grok-catalog-only'],
+      xai: ['grok-4.7', 'grok-catalog-only', 'grok-imagine-image-2.0'],
       deepseek: ['deepseek-flash', 'deepseek-v4-pro'],
       kimi: ['k3', 'k3-256k'],
       dashscope: [
@@ -116,6 +124,34 @@ describe('provider model options', () => {
     })
     expect(options.dashscope).not.toContain('ZHIPU/GLM-5.3-FlashX')
   })
+
+  test.each([
+    { provider: 'codex', chat: 'gpt-6-luna', image: 'gpt-image-2' },
+    { provider: 'xai', chat: 'grok-4.7', image: 'grok-imagine-image-2.0' },
+  ])(
+    'offers $provider image models absent from the chat catalog without changing selections',
+    ({ provider, chat, image }) => {
+      installModelsDevCatalog(modelsDevProviderCatalogFixture)
+      const config = {
+        providers: {
+          [provider]: { enabled: false, agentsModels: [chat] },
+        },
+      }
+      const options = buildProviderModelOptions(config)
+      expect(options[provider]).toContain(chat)
+      expect(options[provider].filter((id) => id === image)).toEqual([image])
+      expect(options[provider]).not.toContain(`${provider}/${image}`)
+      expect(config.providers[provider].agentsModels).toEqual([chat])
+
+      config.providers[provider].agentsModels.push(image)
+      expect(
+        buildProviderModelOptions(config)[provider].filter(
+          (id) => id === image,
+        ),
+      ).toEqual([image])
+    },
+  )
+
   test('combines cached xAI models with explicit selections for OAuth providers', () => {
     const options = buildProviderModelOptions(
       {
