@@ -536,7 +536,7 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
       expect(consola.log).not.toHaveBeenCalledWith("cli-access")
     })
 
-    test("lists cached models.dev xAI models in provider and aggregated endpoints without upstream discovery", async () => {
+    test("combines cached xAI chat models and built-in images in aggregated discovery without upstream requests", async () => {
       await persistXaiCredentials(credentials)
       const upstream = mock(() =>
         Promise.reject(new Error("Model listing must stay local")),
@@ -562,7 +562,15 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
       expect(models.data.map((model) => model.id)).toEqual([
         "xai/grok-4.7",
         "xai/grok-catalog-only",
+        "xai/grok-imagine-image-2.0",
       ])
+      expect(
+        models.data.find((model) => model.id === "xai/grok-imagine-image-2.0"),
+      ).toMatchObject({
+        type: "image",
+        input_modalities: ["text", "image"],
+        output_modalities: ["image"],
+      })
       expect(upstream).not.toHaveBeenCalled()
       const codex = await app.request("/v1/models", {
         headers: { "user-agent": "codex/1.0" },
