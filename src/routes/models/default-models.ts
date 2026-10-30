@@ -14,7 +14,7 @@ export async function handleDefaultModels(c: Context): Promise<Response> {
     : getAggregatedModels
   const models = await getModels(
     stripInternalRequestHeaders(c.req.raw.headers),
-    { includeImageModels: c.req.query("include_images") === "true" },
+    { includeImageModels: true },
   )
   return createModelListResponse(c, models)
 }

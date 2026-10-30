@@ -243,7 +243,7 @@ describe('desktop model discovery IPC', () => {
     )
     expect(await invoke('server:fetch-models')).toEqual(catalog)
     expect(fetcher).toHaveBeenLastCalledWith(
-      'http://127.0.0.1:4141/models?include_images=true',
+      'http://127.0.0.1:4141/models',
       expect.objectContaining({
         headers: { 'x-api-key': 'models-key' },
       }),

@@ -87,7 +87,7 @@ describe("usage viewer image model discovery", () => {
       }) as { fetchModels: () => Promise<void> }
       await viewer.fetchModels()
       expect(requests).toHaveLength(1)
-      expect(requests[0].url).toBe(`${expectedUrl}?include_images=true`)
+      expect(requests[0].url).toBe(expectedUrl)
       expect(requests[0].headers.get("authorization")).toBe("Bearer viewer-key")
       expect(state.models).toEqual(imageModels)
       expect(state.modelsError).toBeNull()

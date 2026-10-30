@@ -1647,9 +1647,7 @@
             if (!endpoint) {
               throw new Error("Endpoint URL cannot be empty.");
             }
-            const modelsUrl = new URL(deriveEndpointUrl(endpoint, "models"));
-            modelsUrl.searchParams.set("include_images", "true");
-            const payload = await fetchJson(modelsUrl.toString());
+            const payload = await fetchJson(deriveEndpointUrl(endpoint, "models"));
             if (!Array.isArray(payload?.data)) {
               throw new Error("Model response must contain a data array.");
             }

@@ -45,9 +45,9 @@ These endpoints mimic the OpenAI API structure.
 
 `GET /models`, `GET /v1/models`, and `GET /:provider/v1/models` read `xai`, `openrouter`, `deepseek`, `kimi`, `dashscope`, and `opencode-go` models from the models.dev cache without querying those providers' model endpoints. Kimi defaults to `kimi-code-plan-cn` and DashScope to `alibaba-cn`; other official URLs select their matching catalogs. Explicit `modelsDevProviderId` takes priority.
 
-By default, models missing from the catalog receive no built-in entries. A provider-scoped request with no valid cached models returns `503` (`service_unavailable`); aggregation skips empty catalogs. Capabilities, limits, and USD prices come from the catalog, with explicit model settings taking priority.
+Chat models missing from the catalog receive no additional built-in entries. A provider-scoped request with no valid cached models returns `503` (`service_unavailable`); aggregation skips empty catalogs. Capabilities, limits, and USD prices come from the catalog, with explicit model settings taking priority.
 
-For the aggregated OpenAI-format catalog, `GET /models?include_images=true` (also `/v1/models?include_images=true`) adds the built-in Codex and xAI image models for available providers. The desktop Dashboard's Available Models and the web viewer's Models tab request this catalog. Omitting the parameter or setting it to `false` keeps the default catalog; client-specific discovery formats retain their existing behavior. Agent-filtered clients still apply `agentsModels` to the requested image models.
+The aggregated OpenAI-format `GET /models` and `GET /v1/models` catalogs include built-in Codex and xAI image models by default for available providers. The desktop Dashboard's Available Models and the web viewer's Models tab use these ordinary model endpoints with no extra query parameter. Agent-filtered clients still apply `agentsModels` to image models; client-specific discovery formats retain their existing behavior.
 
 All models.dev lists exclude deprecated models and those released before `2026-05-01`, including explicit display selections. Models without a valid `release_date` remain listed.
 
