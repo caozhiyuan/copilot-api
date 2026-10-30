@@ -787,6 +787,68 @@ describe("model routes", () => {
     },
   )
 
+  test.each(["/models", "/v1/models"])(
+    "includes built-in image models in the requested Dashboard catalog at %s",
+    async (endpoint) => {
+      enableCodexCatalog()
+      enabledProviders.push("xai")
+      providerConfigs.codex!.agentsModels = ["gpt-6-luna"]
+      providerConfigs.xai = {
+        ...createProviderConfig("xai", "https://unused.example"),
+        agentsModels: [],
+      }
+      const response = await createApp().request(
+        `${endpoint}?include_images=true`,
+      )
+      expect(response.status).toBe(200)
+      const { data } = (await response.json()) as {
+        data: Array<Record<string, unknown> & { id: string }>
+      }
+      expect(data.map((model) => model.id)).toContain("codex/gpt-6-luna")
+      expect(data.map((model) => model.id)).toContain("xai/grok-4.7")
+      const images = data.filter((model) => model.type === "image")
+      expect(images.map((model) => model.id)).toEqual([
+        "codex/gpt-image-2",
+        "xai/grok-imagine-image-2.0",
+      ])
+      for (const image of images) {
+        expect(image).toMatchObject({
+          object: "model",
+          input_modalities: ["text", "image"],
+          output_modalities: ["image"],
+        })
+        expect(image).not.toHaveProperty("package")
+      }
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test("keeps image opt-in disabled when false and skips unavailable providers", async () => {
+    enableCodexCatalog()
+    const ordinary = await createApp().request("/models?include_images=false")
+    expect(await ordinary.text()).not.toContain("gpt-image-2")
+    enabledProviders.push("xai")
+    providerConfigs.codex = null
+    const unavailable = await createApp().request("/models?include_images=true")
+    expect(await unavailable.json()).toMatchObject({ data: [] })
+  })
+
+  test("preserves agent selections when DeepSeek clients request image models", async () => {
+    enableCodexCatalog()
+    providerConfigs.codex!.agentsModels = ["gpt-6-luna"]
+    const request = () =>
+      createApp().request("/models?include_images=true", {
+        headers: { "user-agent": "DeepSeek-Harness" },
+      })
+    const chat = await request()
+    expect(await chat.text()).not.toContain("gpt-image-2")
+    providerConfigs.codex!.agentsModels = ["gpt-image-2"]
+    const image = await request()
+    expect(await image.json()).toMatchObject({
+      data: [{ id: "codex/gpt-image-2", type: "image" }],
+    })
+  })
+
   test.each<{
     name: string
     configured?: unknown

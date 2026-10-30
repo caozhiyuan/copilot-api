@@ -12,6 +12,9 @@ export async function handleDefaultModels(c: Context): Promise<Response> {
     c.req.header("user-agent")?.toLowerCase().startsWith("deepseek") ?
       getAgentModels
     : getAggregatedModels
-  const models = await getModels(stripInternalRequestHeaders(c.req.raw.headers))
+  const models = await getModels(
+    stripInternalRequestHeaders(c.req.raw.headers),
+    { includeImageModels: c.req.query("include_images") === "true" },
+  )
   return createModelListResponse(c, models)
 }

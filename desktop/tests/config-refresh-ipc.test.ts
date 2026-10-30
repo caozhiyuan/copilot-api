@@ -226,6 +226,32 @@ beforeEach(async () => {
 
 afterEach(() => mock.restore())
 
+describe('desktop model discovery IPC', () => {
+  test('requests image models for the Dashboard with gateway auth and preserves the catalog', async () => {
+    spyOn(fs.promises, 'readFile').mockResolvedValue(
+      JSON.stringify({ auth: { apiKeys: ['models-key'] } }),
+    )
+    const catalog = {
+      object: 'list',
+      data: [
+        { id: 'codex/gpt-image-2', type: 'image' },
+        { id: 'xai/grok-imagine-image-2.0', type: 'image' },
+      ],
+    }
+    const fetcher = spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json(catalog),
+    )
+    expect(await invoke('server:fetch-models')).toEqual(catalog)
+    expect(fetcher).toHaveBeenLastCalledWith(
+      'http://127.0.0.1:4141/models?include_images=true',
+      expect.objectContaining({
+        headers: { 'x-api-key': 'models-key' },
+      }),
+    )
+    expect(fetcher.mock.calls.at(-1)?.[1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
 describe('desktop subscription quota IPC', () => {
   test('requests CLI server quotas with gateway auth', async () => {
     spyOn(fs.promises, 'readFile').mockResolvedValue(

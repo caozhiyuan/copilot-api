@@ -722,7 +722,7 @@ export function registerIpcHandlers(
     const baseUrl = getServerBaseUrl()
     try {
       const headers = await getServerRequestHeaders()
-      const res = await fetch(`${baseUrl}/models`, {
+      const res = await fetch(`${baseUrl}/models?include_images=true`, {
         headers,
         signal: AbortSignal.timeout(5000),
       })
