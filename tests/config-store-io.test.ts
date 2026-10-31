@@ -184,31 +184,26 @@ test.each([
   { configured: {}, expected: 400_000 },
   { configured: [], expected: 400_000 },
 ])(
-  "normalizes and persists the OpenCode context window setting %j",
+  "normalizes the OpenCode context window on read without rewriting config %j",
   ({ configured, expected }) => {
     const configPath = useTempConfigPath()
-    fs.writeFileSync(
-      configPath,
-      JSON.stringify({
-        ...defaultConfig,
-        auth: { adminApiKey: "existing-admin-key" },
-        opencodeModelContextWindow: configured,
-      }),
-      "utf8",
-    )
+    const storedConfig = JSON.stringify({
+      ...defaultConfig,
+      auth: { adminApiKey: "existing-admin-key" },
+      opencodeModelContextWindow: configured,
+    })
+    fs.writeFileSync(configPath, storedConfig, "utf8")
 
-    expect(reloadConfig().opencodeModelContextWindow).toBe(expected)
+    reloadConfig()
     expect(getOpencodeModelContextWindow()).toBe(expected)
-    const storedConfig = fs.readFileSync(configPath, "utf8")
-    expect(
-      (JSON.parse(storedConfig) as AppConfig).opencodeModelContextWindow,
-    ).toBe(expected)
-    expect(reloadConfig().opencodeModelContextWindow).toBe(expected)
+    expect(fs.readFileSync(configPath, "utf8")).toBe(storedConfig)
+    reloadConfig()
+    expect(getOpencodeModelContextWindow()).toBe(expected)
     expect(fs.readFileSync(configPath, "utf8")).toBe(storedConfig)
   },
 )
 
-test("uses the default OpenCode context ceiling on a lazy read without rewriting legacy config", () => {
+test("uses the default OpenCode context ceiling on a lazy read and reload without rewriting legacy config", () => {
   const configPath = useTempConfigPath()
   const legacyConfig = JSON.stringify({
     ...defaultConfig,
@@ -221,10 +216,8 @@ test("uses the default OpenCode context ceiling on a lazy read without rewriting
   expect(getOpencodeModelContextWindow()).toBe(400_000)
   expect(fs.readFileSync(configPath, "utf8")).toBe(legacyConfig)
   reloadConfig()
-  expect(
-    (JSON.parse(fs.readFileSync(configPath, "utf8")) as AppConfig)
-      .opencodeModelContextWindow,
-  ).toBe(400_000)
+  expect(getOpencodeModelContextWindow()).toBe(400_000)
+  expect(fs.readFileSync(configPath, "utf8")).toBe(legacyConfig)
 })
 
 test("reloadConfig refreshes an explicitly configured OpenCode context ceiling", () => {
