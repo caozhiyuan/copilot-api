@@ -18,7 +18,7 @@ OpenCode 已经有直接的 GitHub Copilot provider。本节适用于你希望�
 
 网关还会在对应 provider 可用且 `agentsModels` 筛选允许时，返回 `codex/gpt-image-2` 和 `xai/grok-imagine-image-2.0`。这两个图片模型来自网关内置清单，与 Codex 内置聊天模型目录分开维护；即使 xAI 的 models.dev 数据没有图片模型，也能补齐。OpenCode 目录、桌面端 provider 模型候选项和桌面端 Dashboard 复用同一份图片清单。仅输出图片的模型使用 `type: "image"` 和 `@opencode/ai/providers/openai/images`，也支持通过 models.dev 发现的其他图片模型。插件保留服务端返回的模型 package，不再自行补入图片模型；图片模型的显示范围改由网关 provider 配置管理，原插件 `imageModels` 选项不再使用。OpenCode 自动补入这些默认图片模型，普通[聚合模型目录](api.md#模型发现来源)也默认包含它们，供桌面端 Dashboard 和网页端直接使用。
 
-使用显式 `agentsModels` 列表时，需要加入上游原始图片模型 ID，例如在 `codex` 下加入 `gpt-image-2`。桌面端 provider 模型选择器已提供这些图片模型候选项。
+使用显式 `agentsModels` 列表时，需要加入上游原始图片模型 ID，例如在 `codex` 下加入 `gpt-image-2`。桌面端 provider 模型选择器已提供这些图片模型候选项。这会允许 OpenCode 发现图片模型；Claude、Codex 和 DeepSeek 客户端目录仍排除仅输出图片的模型，即使共用的名单包含它们。桌面端 Dashboard 和网页端使用的普通聚合目录包含图片模型，不受 `agentsModels` 限制。
 
 全局配置 `imageGenerationModel` 和 `imageEditModel` 分别优先作用于 `/v1/images/generations` 和 `/v1/images/edits`。某项配置为 `xai/model` 时，对应操作会使用配置的 xAI 模型，即使 OpenCode 选择了 `codex/gpt-image-2`；请求中的 `model` 和 model mapping 都不会生效。将对应配置留空，即可按 OpenCode 选择的模型路由。
 

@@ -42,7 +42,7 @@ curl http://localhost:4141/admin/config/model-mappings \
 | --------------------------- | ---- | -------------------------------------------------------------------------------------------------------- |
 | `POST /v1/responses`        | `POST` | OpenAI 中用于生成模型响应的高级接口。支持 `Content-Encoding: zstd` 请求体和 `openai-responses` provider 的 `provider/model` 别名。zstd 请求解压仅作用于 Responses 路由，包括 provider-scoped 别名路由。 |
 | `POST /v1/chat/completions` | `POST` | 为给定聊天对话创建模型响应。支持 `openai-compatible` provider 的 `provider/model` 别名；目标 provider 已配置时可在没有 Copilot 的情况下使用。 |
-| `GET /v1/models`            | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求会转发到 Codex Models 上游。 |
+| `GET /v1/models`            | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求返回合并后的 Codex 格式目录，并排除仅输出图片的模型。 |
 | `POST /v1/embeddings`       | `POST` | 创建表示输入文本的向量嵌入。                                                                             |
 
 ### 模型发现来源
@@ -51,7 +51,9 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 目录中缺失的聊天模型不补入内置聊天模型列表。provider 级接口没有有效缓存模型时返回 `503`（`service_unavailable`），顶层列表跳过空目录。模型能力、窗口和 USD 价格来自目录，显式模型配置优先。
 
-OpenAI 格式的聚合目录 `GET /models` 和 `GET /v1/models` 默认包含可用 provider 的 Codex 和 xAI 内置图片模型。桌面端 Dashboard 的 Available Models 和网页端 Models 标签页直接使用普通模型接口，无需额外查询参数。采用 agent 筛选的客户端仍会对图片模型应用 `agentsModels`；客户端专用目录格式保持现有行为。
+普通 OpenAI 格式的聚合目录 `GET /models` 和 `GET /v1/models` 默认包含可用 provider 的 Codex 和 xAI 内置图片模型，不受 `agentsModels` 限制。桌面端 Dashboard 的 Available Models 和网页端 Models 标签页直接使用普通模型接口，无需额外查询参数。
+
+Claude、Codex 和 DeepSeek 客户端目录始终排除仅输出图片的模型，即使 `agentsModels` 显式选择了这些模型也不会展示。支持图片输入或同时输出文字和图片的聊天模型仍按常规模型筛选规则展示。OpenCode 在 provider 可用且 `agentsModels` 允许时仍会展示仅输出图片的模型；使用显式名单时，需要包含上游原始图片模型 ID，例如在 `codex` 下加入 `gpt-image-2`。
 
 所有 models.dev 模型列表过滤已弃用及 `release_date` 早于 `2026-05-01` 的模型，显式展示名单也遵循此规则；没有有效日期的模型保留。
 

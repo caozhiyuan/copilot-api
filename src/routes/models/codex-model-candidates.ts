@@ -17,6 +17,7 @@ import {
   getModelsById,
   getProviderModelRecords,
   getStringField,
+  isImageOnlyModel,
 } from "~/routes/models/model-discovery"
 import { getModelMetadata } from "~/routes/models/model-metadata"
 
@@ -76,12 +77,14 @@ function getCopilotCodexCandidates(): Array<SyntheticCodexModelCandidate> {
 function isCopilotCodexCandidate(model: Model): boolean {
   const endpoints = model.supported_endpoints ?? []
   return (
-    endpoints.some(
+    !isImageOnlyModel("github-copilot", model.id, model)
+    && endpoints.some(
       (endpoint) =>
         endpoint === MESSAGES_ENDPOINT
         || endpoint === CHAT_COMPLETIONS_ENDPOINT
         || RESPONSES_ENDPOINTS.has(endpoint),
-    ) && model.capabilities.supports.tool_calls !== false
+    )
+    && model.capabilities.supports.tool_calls !== false
   )
 }
 
@@ -135,6 +138,10 @@ async function getProviderCodexCandidates(
     const candidates: Array<SyntheticCodexModelCandidate> = []
     for (const modelId of modelIds) {
       if (!isProviderModelVisible(provider, modelId, providerConfig)) continue
+      const remoteModel = modelsById.get(modelId)
+      if (isImageOnlyModel(provider, modelId, remoteModel, providerConfig)) {
+        continue
+      }
       const effectiveType = resolveEffectiveProviderType(
         providerConfig,
         modelId,
@@ -147,7 +154,7 @@ async function getProviderCodexCandidates(
         createProviderCodexCandidate(
           providerConfig,
           modelId,
-          modelsById.get(modelId),
+          remoteModel,
           effectiveType,
         ),
       )

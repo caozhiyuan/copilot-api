@@ -17,9 +17,11 @@ import {
 import { createHandlerLogger } from "~/lib/logger"
 import { withModelDisplayName } from "~/lib/model-display-name"
 import { toClientModelId } from "~/lib/models"
+import { getModelsDevModel } from "~/lib/models-dev-cache"
 import {
   getLocalProviderModelRecords,
   isProviderModelVisible,
+  resolveProviderModelsDevId,
 } from "~/lib/provider-model-catalog"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { getProviderAgentModels } from "~/lib/provider-management"
@@ -116,6 +118,32 @@ export function getStringList(value: unknown): Array<string> | undefined {
   return strings.length > 0 ? strings : undefined
 }
 
+export function isImageOnlyModel(
+  provider: string,
+  modelId: string,
+  model: unknown,
+  config?: ProviderConfig | null,
+): boolean {
+  const record = isRecord(model) ? model : undefined
+  const catalog = getModelsDevModel(
+    resolveProviderModelsDevId(provider, config),
+    modelId,
+  )
+  const builtin = getBuiltinProviderImageModelRecords(provider).find(
+    (image) => image.id === modelId,
+  )
+  const output =
+    getStringList(record?.output_modalities)
+    ?? getStringList(getRecordField(record, "architecture")?.output_modalities)
+    ?? getStringList(catalog?.modalities?.output)
+    ?? getStringList(builtin?.output_modalities)
+  if (output) return output.includes("image") && !output.includes("text")
+  return (
+    record?.type === "image"
+    || getRecordField(record, "capabilities")?.type === "image"
+  )
+}
+
 type ProviderModelsFallbackReason = "error" | "invalid_body" | "non_ok"
 
 function getFallbackProviderModelRecords(
@@ -138,13 +166,18 @@ function normalizeProviderModel(
   provider: string,
   model: unknown,
   config?: ProviderConfig | null,
+  includeImageModels = false,
 ): ClientModel | null {
   if (!isRecord(model)) {
     return null
   }
 
   const rawId = getStringField(model, "id")
-  if (!rawId || !isProviderModelVisible(provider, rawId, config)) {
+  if (
+    !rawId
+    || !isProviderModelVisible(provider, rawId, config)
+    || (!includeImageModels && isImageOnlyModel(provider, rawId, model, config))
+  ) {
     return null
   }
 
@@ -169,9 +202,12 @@ function normalizeProviderModels(
   provider: string,
   models: Array<unknown>,
   config?: ProviderConfig | null,
+  includeImageModels = false,
 ): Array<ClientModel> {
   return models
-    .map((model) => normalizeProviderModel(provider, model, config))
+    .map((model) =>
+      normalizeProviderModel(provider, model, config, includeImageModels),
+    )
     .filter((model): model is ClientModel => model !== null)
 }
 
@@ -292,6 +328,7 @@ async function getProviderModels(
       providerConfig.name,
       selectModels?.(providerConfig, models) ?? models,
       providerConfig,
+      includeImageModels,
     )
   } catch (error) {
     if (provider === "codex") {
@@ -307,6 +344,7 @@ async function getProviderModels(
       provider,
       selectModels?.(providerConfig, fallbackModels) ?? fallbackModels,
       providerConfig,
+      includeImageModels,
     )
   }
 }
@@ -318,7 +356,18 @@ export async function getAggregatedModels(
   const rawCopilotModels = getCopilotModelRecords()
   const copilotModels = (
     selectors.selectCopilotModels?.(rawCopilotModels) ?? rawCopilotModels
-  ).map(normalizeCopilotModel)
+  )
+    .filter(
+      (model) =>
+        selectors.includeImageModels
+        || !isImageOnlyModel(
+          GITHUB_COPILOT_PROVIDER,
+          model.id,
+          model,
+          getRawProviderConfig(GITHUB_COPILOT_PROVIDER),
+        ),
+    )
+    .map(normalizeCopilotModel)
   const providerModelsByProvider = await Promise.all(
     listEnabledProviders().map((provider) =>
       getProviderModels(

@@ -52,7 +52,7 @@
 - **extraPrompts：** `model -> prompt` 的映射。把 Anthropic 风格请求翻译为 Responses API 时，会将其附加到第一条 system prompt 后面。你可以借此为不同模型注入护栏或指引。对于 GPT-5.3+ 模型（如 `gpt-5.3-codex`、`gpt-5.4`、`gpt-5.5`），未显式配置时会自动使用内置的 commentary prompt。内置 prompt 会启用带阶段感知的 commentary，让模型在工具调用或更深层推理前先发出简短的用户可见进度说明。
 - **providers：** 全局上游 provider 映射。每个 provider key（例如 `dashscope`）都会变成一个路由前缀（`/dashscope/v1/messages`）。支持 `type: "anthropic"`、`type: "openai-compatible"`、`type: "openai-responses"` 和 `type: "google"`。顶层客户端也可以在 `/v1/messages`、`/v1/messages/count_tokens`、`/v1/responses` 和 `/v1/chat/completions` 中使用 `model: "dashscope/model-id"`；AI gateway 会在转发上游前移除 `dashscope/` 前缀。`anthropic`、`openai-compatible` 和 `google` provider 的 `/v1/responses` 会通过 Responses Lite → Messages 适配；其中 `openai-compatible` provider 再复用 Messages → Chat 翻译。Codex 客户端（`User-Agent` 以 `codex` 开头）在 `openai-responses` provider 上请求非 `gpt-*` 模型时同样走该适配路径。`GET /v1/models` 会聚合已启用 provider 的模型，并以 `provider/model-id` 形式返回；Codex UA 的顶层模型列表还会把这些可适配模型合并为 `use_responses_lite` 模型。单个 provider 的原始模型列表仍可使用 `GET /dashscope/v1/models`。
   - `enabled`：可选，若省略则默认为 `true`。
-  - `agentsModels`：可选，填写 Codex 和 Claude Code 网关发现列表展示的上游原始模型 ID；省略表示自动发现，`[]` 表示不展示该 provider 的模型。无需添加 `my-claude-` 或网关 provider 前缀。显式名单覆盖 Codex 默认排除规则，不限制模型调用或其他客户端的列表。
+  - `agentsModels`：可选，填写 Codex、Claude Code、DeepSeek 和 OpenCode 网关发现列表展示的上游原始模型 ID；省略表示自动发现，`[]` 表示不向这些客户端展示该 provider 的模型。无需添加 `my-claude-`、`[1m]` 或网关 provider 前缀。显式名单覆盖 Codex 默认排除规则，但 Codex、Claude 和 DeepSeek 始终排除仅输出图片的模型，显式选择也不会展示。OpenCode 仍可发现仅输出图片的模型；使用显式名单时需加入原始模型 ID，例如在 `codex` 下加入 `gpt-image-2`。该配置不限制模型调用，也不影响桌面端 Dashboard 和网页端使用的普通聚合目录。
     旧 `codexModels` 名单会在启动或保存配置时迁移为 `agentsModels`。若同时存在两个字段，以 `agentsModels` 为准（包括空数组），旧字段会从磁盘配置中移除。
   - `baseUrl`：手动填写 provider 时使用其 API 基础 URL，不要带结尾的 endpoint。Anthropic provider 不要带 `/v1/messages`；OpenAI 兼容 provider 不要带 `/v1/chat/completions`；OpenAI Responses provider 不要带 `/v1/responses`。Google provider 可使用 `https://generativelanguage.googleapis.com`，或以 `/v1beta`、`/v1`、`/v1alpha` 结尾的基础地址；未指定版本时默认追加 `/v1beta`。
   - `modelsDevProviderId`：可选，通过自定义授权选择 models.dev provider 时写入。此时 `baseUrl` 为 models.dev 提供的 API URL（也可编辑），网关直接追加 `/messages`、`/chat/completions` 或 `/responses`。缓存目录中的模型级协议和 USD 价格元数据在可用时生效；仅当 `baseUrl` 与目录中的 provider API URL 一致时，才应用模型级 API URL 覆盖。显式配置的 `models.<id>.pricing` 优先。手动填写的非 Google provider 仍使用 `baseUrl` 加 `/v1/<endpoint>`。Google provider 使用原生 `/models/{model}:generateContent` 或 `:streamGenerateContent` 端点。
@@ -97,9 +97,9 @@
 - **claudeTokenMultiplier：** 用于 Claude `/v1/messages/count_tokens` 请求在本地走 GPT tokenizer 估算时的乘数。默认值为 `1.15`。如果你的客户端仍然过晚触发上下文压缩，可以适当调大。这个配置只会在代理本地估算 Claude token 时生效；如果已经配置 `anthropicApiKey` 且 Anthropic token counting 调用成功，则会直接返回 Anthropic 的精确计数，不会使用这个乘数。
 - **anthropicApiKey：** 用于把 Claude `/v1/messages/count_tokens` 请求转发到 Anthropic 真实 token counting 端点的 API key，这样会返回精确计数，而不是 GPT tokenizer 估算值。也可通过环境变量 `ANTHROPIC_API_KEY` 设置。若未配置，或上游调用失败，则回退到由 `claudeTokenMultiplier` 控制的本地 GPT tokenizer 估算。
 
-**Codex 目录：** 普通 JSON 响应不超过 1 MiB，不限制模型数量。显式 provider 名单优先；候选超过 20 个时，未配置 `agentsModels` 的来源应用默认排除名单。完整本地导出绕过大小及默认排除限制，仍遵守启停状态和显式名单。
+**Codex 目录：** 普通 JSON 响应不超过 1 MiB，不限制模型数量。显式 provider 名单优先；候选超过 20 个时，未配置 `agentsModels` 的来源应用默认排除名单。完整本地导出绕过大小及默认排除限制，仍遵守启停状态、显式名单和仅输出图片模型的过滤规则。
 
-**Provider 管理：** 桌面端“高级配置”前的“Provider 管理”标签页可启停已配置的 provider、编辑“Coding Agent 展示模型”名单，服务停止时也可使用；授权页也保留管理入口。CLI 命令为 `copilot-api provider enable <name>` 和 `copilot-api provider disable <name>`，支持 `--api-home`。`enabled` 控制所有客户端的 Provider 路由，`agentsModels` 筛选 Codex 模型目录和 Claude Code 网关发现列表。停用保留凭据和模型配置；Copilot 继续使用独立授权方式。
+**Provider 管理：** 桌面端“高级配置”前的“Provider 管理”标签页可启停已配置的 provider、编辑“Coding Agent 展示模型”名单，服务停止时也可使用；授权页也保留管理入口。CLI 命令为 `copilot-api provider enable <name>` 和 `copilot-api provider disable <name>`，支持 `--api-home`。`enabled` 控制所有客户端的 Provider 路由，`agentsModels` 按上述图片模型规则筛选 Codex、Claude Code、DeepSeek 和 OpenCode 的发现列表。停用保留凭据和模型配置；Copilot 继续使用独立授权方式。
 
 ![Provider 管理界面](../../screenshots/provider-management.png)
 

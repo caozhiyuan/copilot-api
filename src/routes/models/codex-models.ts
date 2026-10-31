@@ -24,7 +24,7 @@ import type {
   CodexReasoningEffort,
   SyntheticCodexModelCandidate,
 } from "~/routes/models/codex-models-types"
-import { isRecord } from "~/routes/models/model-discovery"
+import { isImageOnlyModel, isRecord } from "~/routes/models/model-discovery"
 import fallbackCodexCatalogJson from "~/routes/models/models.json"
 import { forwardCodexModels } from "~/services/codex/get-models"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
@@ -134,8 +134,10 @@ export async function handleCodexModelsProxy(
     c,
     {
       ...catalog,
-      models: catalog.models.filter((model) =>
-        isProviderAgentModelVisible(providerConfig, model.slug),
+      models: catalog.models.filter(
+        (model) =>
+          !isImageOnlyModel("codex", model.slug, model, providerConfig)
+          && isProviderAgentModelVisible(providerConfig, model.slug),
       ),
     },
     new Set(getProviderAgentModels(providerConfig)),
@@ -176,12 +178,16 @@ export async function handleMergedCodexModels(
     }),
   ])
   const upstreamCatalog = upstreamCatalogResult?.catalog
-  const upstreamModels = upstreamCatalog?.models ?? FALLBACK_CODEX_MODELS
+  const codexConfig = getRawProviderConfig("codex")
+  const upstreamModels = (
+    upstreamCatalog?.models ?? FALLBACK_CODEX_MODELS
+  ).filter(
+    (model) => !isImageOnlyModel("codex", model.slug, model, codexConfig),
+  )
   const template = selectTemplate(upstreamModels)
   const catalogModelsBySlug = new Map(
     upstreamModels.map((model) => [model.slug, model]),
   )
-  const codexConfig = getRawProviderConfig("codex")
   const copilotConfig = getRawProviderConfig("github-copilot")
   const visibleUpstreamModels = upstreamModels.filter(
     (model) =>
