@@ -16,7 +16,6 @@ import {
 import {
   normalizeImagesUsage,
   observeImagesResponse,
-  readImageRequestModel,
 } from "~/lib/token-usage/images"
 import { resolveTokenUsageCost } from "~/lib/token-usage/pricing"
 import { logImageEditRequest } from "~/routes/images/request-logging"
@@ -555,67 +554,6 @@ describe("image usage and pricing", () => {
 })
 
 describe("image request metadata and logs", () => {
-  test("uses the supplied default only when valid JSON omits the model", async () => {
-    const read = (body: string) =>
-      readImageRequestModel(
-        new Request("http://localhost", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body,
-        }),
-        undefined,
-        "gpt-image-2",
-      )
-    expect(await read('{"prompt":"edit","images":[]}')).toBe("gpt-image-2")
-    expect(await read('{"model":"gpt-image-2.5","prompt":"edit"}')).toBe(
-      "gpt-image-2.5",
-    )
-    for (const body of [
-      "invalid",
-      "null",
-      "[]",
-      '{"model":null}',
-      '{"model":3}',
-    ]) {
-      expect(await read(body)).toBe("unknown")
-    }
-    expect(
-      await readImageRequestModel(
-        new Request("http://localhost"),
-        "unknown",
-        "gpt-image-2",
-      ),
-    ).toBe("unknown")
-  })
-
-  test("reads a model without consuming or rewriting the request", async () => {
-    const request = new Request("http://localhost", {
-      method: "POST",
-      body: '{ "model": "gpt-image-2", "prompt": "cat" }',
-    })
-    expect(await readImageRequestModel(request)).toBe("gpt-image-2")
-    expect(await readImageRequestModel(request, "mapped-model")).toBe(
-      "mapped-model",
-    )
-    expect(await request.text()).toBe(
-      '{ "model": "gpt-image-2", "prompt": "cat" }',
-    )
-    for (const body of ["invalid", "null", "{}", '{"model":3}'])
-      expect(
-        await readImageRequestModel(
-          new Request("http://localhost", { method: "POST", body }),
-        ),
-      ).toBe("unknown")
-    expect(
-      await readImageRequestModel(
-        new Request("http://localhost", {
-          method: "POST",
-          body: new FormData(),
-        }),
-      ),
-    ).toBe("unknown")
-  })
-
   test("logs edit fields with nested image and mask base64 removed", async () => {
     state.verbose = true
     const logger = consola.create({ reporters: [] })

@@ -38,11 +38,9 @@ export async function translateXaiImageJsonRequest(
     } catch {
       throw new XaiImagesRequestError("image b64_json is not valid base64")
     }
-    const input = json.value as Record<string, unknown>
     return {
       payload,
       body: externalImageJsonStream(json, payload, request.signal),
-      requestedModel: typeof input.model === "string" ? input.model : model,
     }
   } catch (error) {
     await json.cleanup()

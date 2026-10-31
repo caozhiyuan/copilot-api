@@ -2,11 +2,6 @@ import type { ResolvedProviderConfig } from "~/lib/config"
 import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import { ImageJsonMetadataReader } from "~/lib/image-json-metadata"
 import { requestContext } from "~/lib/request-context"
-import {
-  ImageModelReader,
-  JSON_CHUNK_BYTES,
-  StreamingJsonReader,
-} from "~/lib/streaming-json"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 
 import { createTokenUsageRecorder, type UsageTokens } from "./index"
@@ -52,47 +47,6 @@ export function normalizeImagesUsage(
       ?? (outputDetails?.image_tokens ?? 0) + (outputDetails?.text_tokens ?? 0),
     output_tokens_details: outputDetails,
     total_tokens: token(usage.total_tokens),
-  }
-}
-
-/** Bounded compatibility reader; forwarding routes prepare a single, unteed body. */
-export async function readImageRequestModel(
-  request: Request,
-  knownModel?: string,
-  defaultModel?: string,
-): Promise<string> {
-  if (knownModel !== undefined) return knownModel
-  if (request.headers.get("content-type")?.includes("multipart/form-data"))
-    return "unknown"
-  const reader = (
-    request.clone().body as ReadableStream<Uint8Array> | null
-  )?.getReader()
-  if (!reader) return "unknown"
-  const parser = new StreamingJsonReader()
-  const model = new ImageModelReader()
-  let length = 0
-  try {
-    while (length < JSON_CHUNK_BYTES) {
-      const { done, value } = await reader.read()
-      if (done) {
-        model.read(parser.read())
-        break
-      }
-      const bytes = value.subarray(0, JSON_CHUNK_BYTES - length)
-      length += bytes.byteLength
-      model.read(parser.read(bytes))
-      if (model.complete || model.invalidModel || model.model !== undefined)
-        break
-    }
-    if (!model.object || model.invalidModel) return "unknown"
-    return (
-      model.model ?? (model.complete ? (defaultModel ?? "unknown") : "unknown")
-    )
-  } catch {
-    return "unknown"
-  } finally {
-    void reader.cancel().catch(() => {})
-    reader.releaseLock()
   }
 }
 

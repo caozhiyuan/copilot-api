@@ -4,7 +4,10 @@ import {
   DEFAULT_IMAGE_MODELS,
   IMAGE_PROVIDER_PRIORITY,
 } from "~/lib/image-models"
-import { parseProviderModelAlias } from "~/lib/provider-model"
+import {
+  parseProviderModelAlias,
+  type ProviderModelAlias,
+} from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 
 /** Only missing models and bare gpt-image-2 select an available default. */
@@ -14,13 +17,13 @@ export async function resolveImageRequestModel(
     resolveProviderConfig?: typeof resolveProviderConfig
     isGitHubCopilotAvailable?: typeof isGitHubCopilotAvailable
   } = {},
-): Promise<string> {
+): Promise<ProviderModelAlias> {
   const requested = requestedModel?.trim()
   if (requested && requested !== DEFAULT_IMAGE_MODELS.codex) {
     const alias = parseProviderModelAlias(requested)
-    if (alias) return `${alias.provider}/${alias.model}`
+    if (alias) return alias
 
-    return `codex/${requested}`
+    return { provider: "codex", model: requested }
   }
 
   for (const provider of IMAGE_PROVIDER_PRIORITY) {
@@ -30,7 +33,7 @@ export async function resolveImageRequestModel(
       : (await (options.resolveProviderConfig ?? resolveProviderConfig)(
           provider,
         )) !== null
-    if (available) return `${provider}/${DEFAULT_IMAGE_MODELS[provider]}`
+    if (available) return { provider, model: DEFAULT_IMAGE_MODELS[provider] }
   }
   throw new HTTPError(
     "No enabled image provider is available",

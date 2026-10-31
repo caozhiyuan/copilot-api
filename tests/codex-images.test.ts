@@ -41,6 +41,9 @@ const { forwardCodexImages, resolveCodexImagesUrl } = await import(
 const { imageRouteDependencies, imageRoutes } = await import(
   "~/routes/images/route"
 )
+const { imageForwardDependencies } = await import(
+  "~/routes/images/forward-provider-images"
+)
 const { providerImageRoutes } = await import("~/routes/provider/images/route")
 const { multipartEditDependencies } = await import(
   "~/routes/images/multipart-edits"
@@ -54,7 +57,7 @@ const { createMediaStudioClient } = await import(
   "../desktop/electron/media-studio"
 )
 
-const originalDebugJsonAsync = imageRouteDependencies.debugJsonAsync
+const originalDebugJsonAsync = imageForwardDependencies.debugJsonAsync
 const originalResolveMappedModel = imageRouteDependencies.resolveMappedModel
 const originalResolveProviderConfig =
   imageRouteDependencies.resolveProviderConfig
@@ -141,7 +144,7 @@ beforeEach(() => {
     stagedUploads.push(staged)
     return staged
   }
-  imageRouteDependencies.debugJsonAsync = debugJsonAsyncMock
+  imageForwardDependencies.debugJsonAsync = debugJsonAsyncMock
   imageRouteDependencies.resolveMappedModel = (model) =>
     modelMappings[model] ?? model
   imageRouteDependencies.isGitHubCopilotAvailable = () => false
@@ -164,7 +167,7 @@ afterEach(async () => {
   state.codexAccountId = undefined
   state.verbose = false
   openrouterProviderConfig = null
-  imageRouteDependencies.debugJsonAsync = originalDebugJsonAsync
+  imageForwardDependencies.debugJsonAsync = originalDebugJsonAsync
   imageRouteDependencies.resolveMappedModel = originalResolveMappedModel
   imageRouteDependencies.isGitHubCopilotAvailable = originalCopilotAvailable
   imageRouteDependencies.resolveProviderConfig = originalResolveProviderConfig
@@ -859,6 +862,32 @@ describe("Codex images forwarding", () => {
           },
         },
       ])
+    },
+  )
+
+  test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
+    "forwards Codex CLI edits with image data before a late model on %s",
+    async (path) => {
+      const payload = {
+        images: [{ image_url: `data:image/png;base64,${"A".repeat(100_000)}` }],
+        prompt: "add a red hat",
+        model: "gpt-image-2",
+      }
+      const body = JSON.stringify(payload)
+      expect(body.indexOf('"model"')).toBeGreaterThan(64 * 1024)
+      const response = await createApp().request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      })
+      expect(response.status).toBe(200)
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
+      const headers = new Headers(init?.headers)
+      expect(headers.get("authorization")).toBe("Bearer codex-access-token")
+      expect(headers.get("chatgpt-account-id")).toBe("account-123")
+      expect(await new Response(init?.body).text()).toBe(body)
+      await response.text()
     },
   )
 
