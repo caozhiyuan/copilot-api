@@ -15,6 +15,18 @@ import {
 } from "~/lib/streaming-json"
 import { HTTPError } from "~/lib/error"
 
+function invalidImageJson(
+  message = "Image request body must be a JSON object",
+) {
+  return new HTTPError(
+    message,
+    Response.json(
+      { error: { message, type: "invalid_request_error" } },
+      { status: 400 },
+    ),
+  )
+}
+
 function rebuild(
   request: Request,
   body: ReadableStream<Uint8Array>,
@@ -45,15 +57,18 @@ export async function prepareImageJsonRequest(
   const bytes = input.bytes
   const parser = new StreamingJsonReader()
   const metadata = new ImageModelReader()
-  let valid = true
   const scan = (chunk?: Uint8Array) => {
-    if (!valid) return
     try {
       metadata.read(parser.read(chunk))
     } catch (error) {
-      if (error instanceof DuplicateImageModelError) throw error
-      valid = false
+      throw invalidImageJson(
+        error instanceof DuplicateImageModelError ? error.message : undefined,
+      )
     }
+    if (metadata.invalidModel)
+      throw invalidImageJson(
+        "Image model must be a string of at most 4096 characters",
+      )
   }
   const prefix: Array<Uint8Array> = []
   let length = 0
@@ -85,21 +100,9 @@ export async function prepareImageJsonRequest(
       prefix.push(chunk)
       length += chunk.byteLength
       scan(chunk)
-      if (
-        !valid
-        || metadata.model !== undefined
-        || metadata.invalidModel
-        || metadata.complete
-      )
-        break
+      if (metadata.model !== undefined || metadata.complete) break
     }
-    if (
-      valid
-      && !eof
-      && !metadata.complete
-      && metadata.model === undefined
-      && !metadata.invalidModel
-    ) {
+    if (!eof && !metadata.complete && metadata.model === undefined) {
       files = await createImageJsonFiles()
       const file = await files.create()
       stagedPath = file.path
@@ -122,17 +125,10 @@ export async function prepareImageJsonRequest(
       }
       files.scheduleCleanup()
     }
+    if (!metadata.object) throw invalidImageJson()
   } catch (error) {
     await input.cancel(error)
     await files?.cleanup()
-    if (error instanceof DuplicateImageModelError)
-      throw new HTTPError(
-        error.message,
-        Response.json(
-          { error: { message: error.message, type: "invalid_request_error" } },
-          { status: 400 },
-        ),
-      )
     throw error
   }
   let claimed = false
@@ -171,7 +167,6 @@ export async function prepareImageJsonRequest(
     await files?.cleanup()
   }
   return {
-    valid: valid && metadata.object && !metadata.invalidModel,
     model: metadata.model,
     originalRequest: rebuild(request, jsonByteStream(source(), cancel)),
     createRequest: (model: string) =>

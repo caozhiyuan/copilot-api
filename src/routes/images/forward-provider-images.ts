@@ -34,7 +34,7 @@ export async function forwardProviderImagesWithLogging(
     && !request.headers.get("content-type")?.includes("multipart/form-data")
   ) {
     const parsed = await prepareImageJsonRequest(request)
-    actualModel = parsed.valid ? parsed.model : "unknown"
+    actualModel = parsed.model
     request = parsed.originalRequest
   }
   actualModel ??= "unknown"
