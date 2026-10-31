@@ -154,7 +154,7 @@ headers has `status` set to `0`.
 sent upstream after model mapping, provider alias resolution, automatic model
 selection, and endpoint normalization. For Google, it is the model ID in the
 request URL. Targets include the configured provider name, such as
-`codex/gpt-5.4`, `xai/grok-imagine-image-2.0`, or `my-provider/claude-sonnet-4.6`.
+`codex/gpt-5.4`, `xai/grok-4`, or `my-provider/claude-sonnet-4.6`.
 GitHub Copilot targets keep the model ID without a provider prefix. For example,
 a request for `my-alias` routed to Codex produces `model: "my-alias"` and
 `actualModel: "codex/gpt-5.4"`. The same prefix rule applies to `usage.recorded`;
@@ -272,6 +272,7 @@ temporary file. Cleanup remains subject to the plugin runtime's shutdown deadlin
 ## Current scope
 
 - Covers existing POST Chat Completions, Messages, Responses, and alpha search routes, including their `/v1` and provider-scoped paths. Authentication failures, model discovery, and token-count endpoints do not produce these lifecycle events.
+- Image generation/editing and video endpoints do not publish plugin lifecycle or usage events. Image usage, costs, and request timing continue to be stored in SQLite.
 - Model events reuse existing parsed payloads, after the existing decompression step for zstd requests. Fully passthrough alpha search requests that do not parse the body may keep `model: null` throughout.
 - Events within each plugin run in order; requests do not wait for async hooks. Each plugin can queue at most 1024 handler invocations, then drops new events with a warning. Delivery is best effort, without a durable queue or automatic replay.
 - Shutdown waits at most two seconds to drain queues and run cleanup functions.

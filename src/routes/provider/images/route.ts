@@ -3,7 +3,6 @@ import { Hono, type Context } from "hono"
 import { forwardError } from "~/lib/error"
 import { createHandlerLogger } from "~/lib/logger"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
-import { setPluginRequestModel } from "~/lib/request-events"
 import { handleCodexImages } from "~/routes/images/route"
 import {
   imageEditRequestErrorResponse,
@@ -49,12 +48,6 @@ async function handleProviderImages(
       const multipart = await parseMultipartImageEdit(c.req.raw)
       if (multipart) {
         try {
-          setPluginRequestModel(
-            multipart.model
-              ?? (providerConfig.name === "codex" ?
-                DEFAULT_CODEX_IMAGE_MODEL
-              : "unknown"),
-          )
           const request = await multipart.createRequest(
             multipart.model,
             providerConfig.name,

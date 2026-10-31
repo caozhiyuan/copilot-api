@@ -1,7 +1,6 @@
 import type { Context } from "hono"
 
 import { forwardError } from "~/lib/error"
-import { setPluginRequestModel } from "~/lib/request-events"
 import {
   imageEditRequestErrorResponse,
   parseMultipartImageEdit,
@@ -46,7 +45,6 @@ export async function handleImagesEdits(c: Context): Promise<Response> {
           )
         }
         if (multipart.model === undefined) {
-          setPluginRequestModel(DEFAULT_CODEX_IMAGE_MODEL)
           return await handleCodexImages(
             c,
             "edits",

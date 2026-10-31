@@ -3,8 +3,6 @@ import type { ConsolaInstance } from "consola"
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { debugJson } from "~/lib/logger"
 import { prepareImageJsonRequest } from "~/lib/image-json-request"
-import { setPluginRequestActualModel } from "~/lib/request-context"
-import { setPluginRequestModel } from "~/lib/request-events"
 import { observeImagesResponse } from "~/lib/token-usage/images"
 import { logImageEditRequest } from "~/routes/images/request-logging"
 import type { CodexImagesOperation } from "~/services/codex/images"
@@ -36,7 +34,6 @@ export async function forwardProviderImagesWithLogging(
     const parsed = await prepareImageJsonRequest(request)
     actualModel = parsed.valid ? parsed.model : "unknown"
     request = parsed.originalRequest
-    setPluginRequestModel(actualModel ?? "unknown")
   }
   actualModel ??= "unknown"
   request = await logImageEditRequest(
@@ -48,8 +45,6 @@ export async function forwardProviderImagesWithLogging(
 
   let upstreamResponse: Response
   try {
-    if (actualModel !== "unknown")
-      setPluginRequestActualModel(actualModel, providerConfig.name)
     upstreamResponse = await forwardProviderImages(
       providerConfig,
       request,

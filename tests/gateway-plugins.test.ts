@@ -284,6 +284,97 @@ describe("gateway plugin runtime", () => {
 })
 
 describe("request event lifecycle", () => {
+  test("excludes image events while preserving SQLite costs, timing, and concurrent chat events", async () => {
+    process.env.COPILOT_API_SQLITE_DB_PATH = ":memory:"
+    await closeUsageStore()
+    const {
+      app,
+      plugins,
+      starts,
+      models,
+      actualModels,
+      sessions,
+      tokens,
+      ends,
+    } = await appWithEvents()
+    const usages: Array<GatewayPluginEvents["usage.recorded"]> = []
+    await plugins.register("usage", ({ on }) => {
+      on("usage.recorded", (event) => {
+        usages.push(event)
+      })
+    })
+    const imagePaths = [
+      "/images/generations",
+      "/v1/images/generations",
+      "/images/edits",
+      "/v1/images/edits",
+      "/codex/v1/images/generations",
+      "/xai/images/edits",
+    ]
+    for (const path of imagePaths) {
+      app.post(path, (c) => {
+        expect(requestContext.getStore()?.pluginRequest).toBeUndefined()
+        expect(requestContext.getStore()?.requestTiming).toBeDefined()
+        setPluginRequestModel("image-alias")
+        setPluginRequestActualModel("grok-imagine-image-2.0", "xai")
+        recordTokenUsageEvent({
+          source: "provider",
+          providerName: "xai",
+          endpoint:
+            path.endsWith("/edits") ? "images_edits" : "images_generations",
+          model: "grok-imagine-image-2.0",
+          cost: 0.04,
+        })
+        return c.json({ data: [] })
+      })
+    }
+    app.post("/v1/messages", (c) => {
+      setPluginRequestModel("chat-alias")
+      setPluginRequestActualModel("grok-4", "xai")
+      recordTokenUsageEvent({
+        source: "provider",
+        providerName: "xai",
+        endpoint: "messages",
+        model: "grok-4",
+        cost: 0.01,
+      })
+      return c.json({ ok: true })
+    })
+    await Promise.all(
+      [...imagePaths, "/v1/messages"].map(async (path) => {
+        const response = await app.request(path, requestOptions)
+        expect(response.status).toBe(200)
+        await response.text()
+      }),
+    )
+    await plugins.flush()
+    expect(starts.map((event) => event.path)).toEqual(["/v1/messages"])
+    expect(ends.map((event) => event.path)).toEqual(["/v1/messages"])
+    expect(models.map((event) => event.model)).toEqual(["chat-alias"])
+    expect(actualModels.map((event) => event.actualModel)).toEqual([
+      "xai/grok-4",
+    ])
+    expect(usages.map((event) => event.endpoint)).toEqual(["messages"])
+    expect(sessions).toEqual([])
+    expect(tokens).toEqual([])
+    const page = await getTokenUsageEventsPage({
+      period: "today",
+      page: 1,
+      pageSize: 20,
+    })
+    const images = page.items.filter((event) =>
+      event.endpoint.startsWith("images_"),
+    )
+    expect(images).toHaveLength(imagePaths.length)
+    for (const image of images) {
+      expect(image.cost?.amount).toBe(0.04)
+      expect(image.request_id).toBeString()
+      expect(image.duration_ms).toBeNumber()
+      expect(image.request_outcome).toBe("completed")
+      expect(image.first_token_ms).toBeNull()
+    }
+  })
+
   test("keeps requested and actual models separate and snapshots actual target updates", async () => {
     const { app, plugins, starts, models, actualModels, ends } =
       await appWithEvents()

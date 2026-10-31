@@ -4,8 +4,6 @@ import type { Context } from "hono"
 import { resolveMappedModel, type ResolvedProviderConfig } from "~/lib/config"
 import { forwardError } from "~/lib/error"
 import { prepareImageJsonRequest } from "~/lib/image-json-request"
-import { setPluginRequestActualModel } from "~/lib/request-context"
-import { setPluginRequestModel } from "~/lib/request-events"
 import { createHandlerLogger, debugJson, debugJsonAsync } from "~/lib/logger"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
@@ -152,10 +150,8 @@ export async function handleCodexImages(
       actualModel =
         parsed.valid ? (parsed.model ?? DEFAULT_CODEX_IMAGE_MODEL) : "unknown"
       request = parsed.originalRequest
-      setPluginRequestModel(actualModel)
     }
     actualModel ??= "unknown"
-    if (actualModel === "unknown") setPluginRequestModel(actualModel)
     request = await logImageEditRequest(
       logger,
       `images.${operation}.codex.request`,
@@ -164,8 +160,6 @@ export async function handleCodexImages(
       imageRouteDependencies.debugJsonAsync,
     )
 
-    if (actualModel !== "unknown")
-      setPluginRequestActualModel(actualModel, "codex")
     const upstreamResponse = await forwardCodexImages(request, operation)
     debugJson(logger, `images.${operation}.codex.response`, {
       ...getContentMetadata(upstreamResponse.headers),
@@ -195,7 +189,6 @@ export async function routeImagesRequest(
   parsed: ParsedImagesRequest,
 ): Promise<Response> {
   const requestedModel = parsed.model
-  setPluginRequestModel(requestedModel ?? DEFAULT_CODEX_IMAGE_MODEL)
   if (requestedModel === undefined) {
     return await handleCodexImages(
       c,

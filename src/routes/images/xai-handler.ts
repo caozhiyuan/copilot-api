@@ -1,5 +1,4 @@
 import type { Context } from "hono"
-import { setPluginRequestModel } from "~/lib/request-events"
 
 import { forwardXaiImagesWithLogging } from "~/routes/images/forward-provider-images"
 import { imageRouteDependencies, logger } from "~/routes/images/shared"
@@ -67,7 +66,6 @@ export async function handleXaiImageGeneration(
     "generations",
     model,
   )
-  setPluginRequestModel(translated.requestedModel)
   return await forwardTranslatedXaiImages(
     c,
     "generations",
@@ -82,11 +80,6 @@ export async function handleXaiImageEdit(
   multipartPayload?: Record<string, unknown>,
 ): Promise<Response> {
   if (multipartPayload) {
-    setPluginRequestModel(
-      typeof multipartPayload.model === "string" ?
-        multipartPayload.model
-      : model,
-    )
     return await forwardTranslatedXaiImages(
       c,
       "edits",
@@ -98,7 +91,6 @@ export async function handleXaiImageEdit(
     "edits",
     model,
   )
-  setPluginRequestModel(translated.requestedModel)
   return await forwardTranslatedXaiImages(
     c,
     "edits",

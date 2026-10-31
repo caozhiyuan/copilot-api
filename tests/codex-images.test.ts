@@ -45,12 +45,10 @@ const { providerImageRoutes } = await import("~/routes/provider/images/route")
 const { multipartEditDependencies } = await import(
   "~/routes/images/multipart-edits"
 )
-const { server } = await import("~/server")
+const { createServer, server } = await import("~/server")
 const { closeUsageStore, getTokenUsageEventsPage } = await import(
   "~/lib/token-usage"
 )
-const { traceIdMiddleware } = await import("~/lib/trace")
-const { requestEventsMiddleware } = await import("~/lib/request-events")
 const { GatewayPlugins } = await import("~/lib/gateway-plugins")
 const { createMediaStudioClient } = await import(
   "../desktop/electron/media-studio"
@@ -272,7 +270,7 @@ describe("images route usage recording", () => {
     { mode: "multipart", url: "/codex/v1/images/edits", provider: "codex" },
   ]
   for (const { mode, url, provider } of cases) {
-    test(`records ${provider} usage and cost via ${mode} ${url}`, async () => {
+    test(`records ${provider} usage and cost without plugin events via ${mode} ${url}`, async () => {
       const model =
         provider === "xai" ? "grok-imagine-image-2.0" : "gpt-image-2"
       const reportedUsage =
@@ -300,8 +298,6 @@ describe("images route usage recording", () => {
         "image",
         new File(["image"], "cat.png", { type: "image/png" }),
       )
-      const app = new Hono()
-      app.use(traceIdMiddleware)
       const plugins = new GatewayPlugins(5000)
       pluginsToClose.push(plugins)
       const lifecycle: Array<{ name: string; value: unknown }> = []
@@ -310,6 +306,8 @@ describe("images route usage recording", () => {
           "request.start",
           "request.model",
           "request.actual_model",
+          "request.session",
+          "request.first_token",
           "request.end",
           "usage.recorded",
         ] as const)
@@ -317,8 +315,7 @@ describe("images route usage recording", () => {
             lifecycle.push({ name, value })
           })
       })
-      app.use(requestEventsMiddleware(plugins, 5000))
-      app.route("/", createApp())
+      const app = createServer({ plugins, port: 5000, getApiKeys: () => [] })
       const response = await app.request(url, {
         method: "POST",
         headers: {
@@ -364,28 +361,7 @@ describe("images route usage recording", () => {
       expect(event.request_id).toBeString()
       expect(event.duration_ms).toBeNumber()
       await plugins.flush()
-      expect(
-        lifecycle.filter((item) => item.name === "request.start"),
-      ).toHaveLength(1)
-      expect(
-        lifecycle.find((item) => item.name === "request.model")?.value,
-      ).toMatchObject({ model: mode === "mapped" ? "image-alias" : model })
-      expect(
-        lifecycle.find((item) => item.name === "request.actual_model")?.value,
-      ).toMatchObject({ actualModel: `${provider}/${model}` })
-      expect(
-        lifecycle.filter((item) => item.name === "usage.recorded"),
-      ).toHaveLength(1)
-      expect(
-        lifecycle.find((item) => item.name === "usage.recorded")?.value,
-      ).toMatchObject({ model, actualModel: `${provider}/${model}` })
-      expect(
-        lifecycle.find((item) => item.name === "request.end")?.value,
-      ).toMatchObject({
-        id: event.request_id,
-        durationMs: event.duration_ms,
-        outcome: "completed",
-      })
+      expect(lifecycle).toEqual([])
     })
   }
 
@@ -395,7 +371,7 @@ describe("images route usage recording", () => {
     "/codex/v1/images/generations",
     "/xai/images/edits",
   ])(
-    "records cancelled image usage and publishes lifecycle events once on %s",
+    "records cancelled image usage without plugin events on %s",
     async (path) => {
       const plugins = new GatewayPlugins(5000)
       pluginsToClose.push(plugins)
@@ -431,10 +407,7 @@ describe("images route usage recording", () => {
           { headers: { "content-type": "application/json" } },
         ),
       )
-      const app = new Hono()
-      app.use(traceIdMiddleware)
-      app.use(requestEventsMiddleware(plugins, 5000))
-      app.route("/", createApp())
+      const app = createServer({ plugins, port: 5000, getApiKeys: () => [] })
       const response = await app.request(path, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -457,12 +430,8 @@ describe("images route usage recording", () => {
       expect(events.items[0]?.request_outcome).toBe("cancelled")
       expect(events.items[0]?.duration_ms).toBeNumber()
       await plugins.flush()
-      expect(ended).toHaveLength(1)
-      expect(recorded).toHaveLength(1)
-      expect(ended[0]).toMatchObject({
-        id: events.items[0]?.request_id,
-        outcome: "cancelled",
-      })
+      expect(ended).toEqual([])
+      expect(recorded).toEqual([])
     },
   )
 })
