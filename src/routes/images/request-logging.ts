@@ -9,6 +9,15 @@ import {
   StreamingJsonReader,
 } from "~/lib/streaming-json"
 
+const MULTIPART_LOG_FIELDS = new Set([
+  "model",
+  "prompt",
+  "size",
+  "quality",
+  "n",
+])
+const MAX_MULTIPART_LOG_FIELD_LENGTH = 8 * 1024
+
 function redactImageBase64(value: unknown, key = ""): unknown {
   if (["b64_json", "base64", "image_base64"].includes(key))
     return "[image base64 omitted]"
@@ -30,30 +39,20 @@ function redactImageBase64(value: unknown, key = ""): unknown {
   return value
 }
 
-async function editRequestBody(request: Request): Promise<unknown> {
-  try {
-    const cloned = request.clone()
-    if (request.headers.get("content-type")?.includes("multipart/form-data")) {
-      const fields: Array<{ name: string; value: unknown }> = []
-      for (const [name, value] of await cloned.formData()) {
-        fields.push({
-          name,
-          value:
-            typeof value === "string" ?
-              redactImageBase64(value, name)
-            : {
-                filename: value.name,
-                mime_type: value.type,
-                size: value.size,
-              },
-        })
-      }
-      return fields
+function multipartLogFields(form: FormData | undefined) {
+  if (!form) return []
+  const fields: Array<{ name: string; value: unknown }> = []
+  for (const name of MULTIPART_LOG_FIELDS) {
+    for (const value of form.getAll(name)) {
+      if (typeof value !== "string") continue
+      const text =
+        value.length > MAX_MULTIPART_LOG_FIELD_LENGTH ?
+          `${value.slice(0, MAX_MULTIPART_LOG_FIELD_LENGTH)}[truncated]`
+        : value
+      fields.push({ name, value: redactImageBase64(text, name) })
     }
-    return redactImageBase64(await cloned.json())
-  } catch {
-    return "[unavailable JSON body]"
   }
+  return fields
 }
 
 export async function logImageEditRequest(
@@ -62,16 +61,22 @@ export async function logImageEditRequest(
   request: Request,
   extra: Record<string, unknown> = {},
   debug: typeof debugJsonAsync = debugJsonAsync,
+  multipartForm?: FormData,
 ): Promise<Request> {
   if (!state.verbose) return request
-  if (!request.headers.get("content-type")?.includes("multipart/form-data"))
+  if (
+    !multipartForm
+    && !request.headers.get("content-type")?.includes("multipart/form-data")
+  )
     return logImageJsonRequest(logger, label, request, extra, debug)
-  await debug(logger, label, async () => ({
-    contentType: request.headers.get("content-type"),
-    contentLength: request.headers.get("content-length"),
-    ...extra,
-    body: await editRequestBody(request),
-  }))
+  await debug(logger, label, () =>
+    Promise.resolve({
+      contentType: request.headers.get("content-type"),
+      contentLength: request.headers.get("content-length"),
+      ...extra,
+      body: multipartLogFields(multipartForm),
+    }),
+  )
   return request
 }
 

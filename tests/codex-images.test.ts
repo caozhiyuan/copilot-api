@@ -361,6 +361,41 @@ describe("explicit image provider routing", () => {
     expect(response.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  test.each([
+    { path: "/codex/v1/images/edits", model: "gpt-image-2" },
+    { path: "/xai/v1/images/edits", model: "grok-imagine-image-2.0" },
+    { path: "/v1/images/edits", model: "xai/grok-imagine-image-2.0" },
+  ])(
+    "logs selected fields for converted multipart edits on $path",
+    async ({ path, model }) => {
+      state.verbose = true
+      const form = new FormData()
+      form.set("model", model)
+      form.set("prompt", "edit this image")
+      form.set(
+        "image",
+        new File(["private-image-data"], "image.png", { type: "image/png" }),
+      )
+      fetchMock.mockImplementationOnce(async (_url, init) => {
+        await new Response(init?.body).json()
+        return Response.json({ data: [] })
+      })
+      const response = await createApp().request(path, {
+        method: "POST",
+        body: form,
+      })
+      expect(response.status).toBe(200)
+      expect(debugValues).toHaveLength(1)
+      expect(debugValues[0]).toMatchObject({
+        body: [
+          { name: "model", value: model },
+          { name: "prompt", value: "edit this image" },
+        ],
+      })
+      expect(JSON.stringify(debugValues)).not.toContain("private-image-data")
+    },
+  )
 })
 
 describe("images route usage recording", () => {
@@ -386,6 +421,87 @@ describe("images route usage recording", () => {
       Reflect.deleteProperty(process.env, "COPILOT_API_SQLITE_DB_PATH")
     else process.env.COPILOT_API_SQLITE_DB_PATH = originalDbPath
   })
+
+  test.each(
+    ["/v1/images/edits", "/openrouter/v1/images/edits"].flatMap((path) =>
+      [false, true].map((verbose) => ({ path, verbose })),
+    ),
+  )(
+    "records the staged provider model and selected logs at $path, verbose=$verbose",
+    async ({ path, verbose }) => {
+      state.verbose = verbose
+      const model = "my-image"
+      openrouterProviderConfig = {
+        ...openrouterProviderConfig!,
+        pricingCurrency: "USD",
+        models: { [model]: { pricing: { input: 1, output: 2 } } },
+      }
+      const form = new FormData()
+      form.append(
+        "image",
+        new File(["private-image-data"], "source.png", { type: "image/png" }),
+      )
+      form.append(
+        "model",
+        path.startsWith("/v1") ? `openrouter/${model}` : model,
+      )
+      form.append("prompt", "make it blue")
+      form.append("size", "1024x1024")
+      form.append("quality", "high")
+      form.append("n", "1")
+      form.append("vendor_option", "do-not-log")
+      fetchMock.mockImplementationOnce(async (_url, init) => {
+        expect(stagedUploads).toHaveLength(1)
+        expect(existsSync(stagedUploads[0].directory)).toBe(true)
+        const headers = new Headers(init?.headers)
+        const forwarded = await new Response(init?.body, { headers }).formData()
+        expect(forwarded.get("model")).toBe(model)
+        expect(forwarded.get("prompt")).toBe("make it blue")
+        expect(forwarded.get("vendor_option")).toBe("do-not-log")
+        const image = forwarded.get("image")
+        expect(image).toBeInstanceOf(File)
+        if (!image || typeof image === "string")
+          throw new Error("Expected image")
+        expect(await image.text()).toBe("private-image-data")
+        return Response.json({ data: [], usage })
+      })
+
+      const response = await createApp().request(path, {
+        method: "POST",
+        body: form,
+      })
+      expect(response.status).toBe(200)
+      await response.text()
+      const events = await getTokenUsageEventsPage({
+        page: 1,
+        pageSize: 20,
+        period: "today",
+      })
+      expect(events.items).toHaveLength(1)
+      expect(events.items[0]).toMatchObject({
+        endpoint: "images_edits",
+        provider_name: "openrouter",
+        model,
+        cost: { amount: 0.002758, currency: "USD", source: "config" },
+      })
+      if (verbose) {
+        expect(debugValues).toHaveLength(1)
+        const logged = debugValues[0] as { body: Array<unknown> }
+        expect(logged.body).toHaveLength(5)
+        expect(logged.body).toEqual([
+          { name: "model", value: model },
+          { name: "prompt", value: "make it blue" },
+          { name: "size", value: "1024x1024" },
+          { name: "quality", value: "high" },
+          { name: "n", value: "1" },
+        ])
+        expect(JSON.stringify(logged)).not.toContain("private-image-data")
+        expect(JSON.stringify(logged)).not.toContain("do-not-log")
+      } else {
+        expect(debugValues).toHaveLength(0)
+      }
+    },
+  )
 
   for (const format of ["json", "multipart"] as const) {
     test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
@@ -1681,6 +1797,7 @@ describe("multipart image edit routing", () => {
     "/v1/images/edits",
     "/codex/v1/images/edits",
     "/xai/v1/images/edits",
+    "/openrouter/v1/images/edits",
   ])(
     "rejects oversized and malformed multipart uploads on %s",
     async (path) => {
@@ -1709,6 +1826,17 @@ describe("multipart image edit routing", () => {
       expect(fetchMock).not.toHaveBeenCalled()
     },
   )
+
+  test("cleans staged provider uploads when forwarding fails", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("upstream failed"))
+    const response = await createApp().request("/openrouter/v1/images/edits", {
+      method: "POST",
+      body: editForm("my-image"),
+    })
+    expect(response.status).toBe(500)
+    expect(stagedUploads).toHaveLength(1)
+    expect(existsSync(stagedUploads[0].directory)).toBe(false)
+  })
 
   test("cancels the Codex upstream request after multipart conversion", async () => {
     const controller = new AbortController()

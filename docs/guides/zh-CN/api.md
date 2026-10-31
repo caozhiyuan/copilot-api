@@ -73,11 +73,11 @@ JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域�
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
 | `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
 | `POST /v1/images/generations` | `POST` | 按 model mapping 或 provider 别名路由 JSON 图片生成请求。请求未携带 `Content-Type` 时默认补充 `application/json`。仅省略、空白或裸 `gpt-image-2` 自动选择 provider，其他型号保留并交给上游校验。 |
-| `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex、GitHub Copilot 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits`、`/github-copilot/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域路由保持透传行为。 |
+| `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex、GitHub Copilot 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits`、`/github-copilot/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域的 multipart 编辑也会先暂存到磁盘，再以 multipart 转发，并按 `model` 记录用量。 |
 
 在两个图片端点中使用 `model: "github-copilot/gpt-image-2.5-flare"`，或将 model mapping 指向这个别名，可在 GitHub Copilot 可用时选择该 provider。网关移除模型名中的 `github-copilot/` 前缀，转发 OpenAI 兼容的图片参数、JSON 图片引用和响应，支持流式事件；multipart 编辑会转换为相同的 JSON 格式。`/github-copilot/v1/images/generations` 和 `/github-copilot/v1/images/edits` 接受原始模型 ID，并固定使用 Copilot；禁用时返回 `403`，缺少 GitHub 登录态时返回 `401`。上游请求使用当前 GitHub 登录令牌及已有设备 ID。内置图片目录会补入该模型，不依赖 Copilot 的 models 接口。token 用量读取标准 OpenAI 兼容的 `usage` 字段；仅费用从 `copilot_usage.total_nano_aiu` 读取，并按现有 Copilot AIU 汇率计算。
 
-multipart 上传总大小上限为 128 MiB，单文件上限为 64 MiB，最多 16 个文件；超限返回 `413`，格式错误返回 `400`。转换为 JSON 后，以及失败或取消时，都会清理临时文件。base64 图片数据约增大三分之一，生成的 JSON 会在转发前缓存在内存中。xAI 仍最多接受 5 张图片，不支持 mask、file_id 和流式输出。
+multipart 上传总大小上限为 128 MiB，单文件上限为 64 MiB，最多 16 个文件；超限返回 `413`，格式错误返回 `400`。详细日志只记录 `model`、`prompt`、`size`、`quality` 和 `n` 字段，单个字段超过 8192 字符时截断。转换为 JSON 后，以及失败或取消时，都会清理临时文件。base64 图片数据约增大三分之一，生成的 JSON 会在转发前缓存在内存中。xAI 仍最多接受 5 张图片，不支持 mask、file_id 和流式输出。
 
 图片模型解析为 `xai/model` 时，通用路由会把 OpenAI 图片参数转换为 xAI Imagine API 格式：`size` 映射为 `aspect_ratio` 和 `resolution`；`grok-imagine-image-2.0` 的 `high`、`hd` 质量映射为 `medium`，其他型号省略 `quality`。xAI 最多接受 5 张图片，不支持 mask、file_id 和流式输出。OAuth 使用订阅 base URL，API key 使用 provider 配置的 base URL。
 

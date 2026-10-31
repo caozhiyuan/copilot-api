@@ -33,6 +33,8 @@ export interface ParsedImagesRequest {
     provider?: string,
   ) => Request | Promise<Request>
   model: string | undefined
+  /** Disk-backed form retained for multipart request metadata logging. */
+  formData?: FormData
   /** Unchanged request, forwarded as-is when no rebuild is needed. */
   originalRequest?: Request
 }
@@ -77,6 +79,7 @@ export async function routeImagesRequest(
     return await forwardCopilotImagesWithLogging(request, operation, {
       logger,
       ...alias,
+      multipartForm: parsed.formData,
     })
   }
 
@@ -103,7 +106,7 @@ export async function routeImagesRequest(
       providerConfig,
       request,
       operation,
-      { logger, ...alias },
+      { logger, ...alias, multipartForm: parsed.formData },
     )
   }
 
@@ -117,7 +120,7 @@ export async function routeImagesRequest(
     request,
     operation,
     translated.payload,
-    { logger, ...alias },
+    { logger, ...alias, multipartForm: parsed.formData },
     translated.body,
   )
 }

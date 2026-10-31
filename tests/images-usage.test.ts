@@ -604,7 +604,7 @@ describe("image request metadata and logs", () => {
     expect(JSON.stringify(logged)).not.toContain("secret-")
   })
 
-  test("logs multipart metadata, handles invalid JSON, and stays lazy without debug", async () => {
+  test("logs selected staged fields without consuming the multipart body", async () => {
     const logger = consola.create({ reporters: [] })
     const debug = Object.assign(
       mock((_label: string, _value: string) => {}),
@@ -622,20 +622,75 @@ describe("image request metadata and logs", () => {
     await (await logImageEditRequest(logger, "edit", request)).text()
     expect(debug.mock.calls[0]?.[1]).toContain("[unavailable JSON body]")
     const form = new FormData()
+    form.append("model", "image-model")
     form.append("prompt", "a cat")
+    form.append("size", "1024x1024")
+    form.append("private_option", "do-not-log")
     form.append(
       "image",
       new File(["secret-image"], "cat.png", { type: "image/png" }),
     )
-    await logImageEditRequest(
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull() {
+          pulls++
+          throw new Error("multipart body must not be read for logging")
+        },
+      },
+      { highWaterMark: 0 },
+    )
+    const multipart = new Request("http://localhost", {
+      method: "POST",
+      headers: { "content-type": "multipart/form-data; boundary=example" },
+      body,
+      duplex: "half",
+    } as RequestInit)
+    const forwarded = await logImageEditRequest(
       logger,
       "edit",
-      new Request("http://localhost", { method: "POST", body: form }),
+      multipart,
       { provider: "custom" },
+      undefined,
+      form,
     )
     const logged = debug.mock.calls[1]?.[1] ?? ""
-    expect(logged).toContain('"filename":"cat.png"')
-    expect(logged).toContain('"value":"a cat"')
+    expect(JSON.parse(logged)).toMatchObject({
+      provider: "custom",
+      body: [
+        { name: "model", value: "image-model" },
+        { name: "prompt", value: "a cat" },
+        { name: "size", value: "1024x1024" },
+      ],
+    })
     expect(logged).not.toContain("secret-image")
+    expect(logged).not.toContain("do-not-log")
+    expect(logged).not.toContain("cat.png")
+    expect(forwarded.bodyUsed).toBe(false)
+    expect(pulls).toBe(0)
+    await forwarded.body?.cancel()
+  })
+
+  test("bounds long multipart log fields without changing the form", async () => {
+    state.verbose = true
+    const logger = consola.create({ reporters: [] })
+    const debug = Object.assign(
+      mock((_label: string, _value: string) => {}),
+      { raw: logger.debug.raw },
+    )
+    logger.debug = debug
+    const form = new FormData()
+    const prompt = "x".repeat(10_000)
+    form.set("prompt", prompt)
+    const request = new Request("http://localhost", {
+      method: "POST",
+      body: form,
+    })
+    await logImageEditRequest(logger, "edit", request, {}, undefined, form)
+    const logged = debug.mock.calls[0]?.[1] ?? ""
+    expect(logged).toContain("[truncated]")
+    expect(logged.length).toBeLessThan(9_000)
+    expect(form.get("prompt")).toBe(prompt)
+    expect(request.bodyUsed).toBe(false)
   })
 })

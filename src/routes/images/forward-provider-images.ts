@@ -20,6 +20,7 @@ export interface ProviderImagesForwardLogContext {
   logger: ConsolaInstance
   provider: string
   model?: string
+  multipartForm?: FormData
 }
 
 /**
@@ -31,7 +32,7 @@ export async function forwardProviderImagesWithLogging(
   providerConfig: ResolvedProviderConfig,
   request: Request,
   operation: CodexImagesOperation,
-  { logger, provider, model }: ProviderImagesForwardLogContext,
+  { logger, provider, model, multipartForm }: ProviderImagesForwardLogContext,
 ): Promise<Response> {
   let actualModel = model
   if (
@@ -54,6 +55,7 @@ export async function forwardProviderImagesWithLogging(
       request,
       extra,
       imageForwardDependencies.debugJsonAsync,
+      multipartForm,
     )
     const upstreamResponse =
       isCodex ? await forwardCodexImages(request, operation)
@@ -107,7 +109,7 @@ export async function forwardXaiImagesWithLogging(
   request: Request,
   operation: CodexImagesOperation,
   payload: Record<string, unknown>,
-  { logger, provider }: ProviderImagesForwardLogContext,
+  { logger, provider, multipartForm }: ProviderImagesForwardLogContext,
   body: ReadableStream<Uint8Array>,
 ): Promise<Response> {
   const upstreamRequest = new Request(request.url, {
@@ -128,6 +130,7 @@ export async function forwardXaiImagesWithLogging(
       logger,
       provider,
       model: typeof payload.model === "string" ? payload.model : "unknown",
+      multipartForm,
     },
   )
   return await ensureImageResponseB64Json(upstreamResponse, undefined, {
