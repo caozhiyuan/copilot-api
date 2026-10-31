@@ -426,6 +426,95 @@ describe("responses reasoning transport isolation", () => {
     ).toBe(true)
   })
 
+  test.each([undefined, null])(
+    "rejects agent messages with %p content before the Messages fallback",
+    async (content) => {
+      state.models = {
+        object: "list",
+        data: [
+          {
+            capabilities: { limits: { max_prompt_tokens: 128000 } },
+            id: "claude-test",
+            supported_endpoints: ["/v1/messages"],
+          },
+        ],
+      } as typeof state.models
+      const handleMessages = mock(() =>
+        Promise.resolve(createMessagesResponse([])),
+      )
+      responsesMessagesDependencies.handleCompletionPayload = handleMessages
+
+      const response = await createApp().request("/v1/responses", {
+        body: JSON.stringify({
+          model: "claude-test",
+          input: [
+            { role: "user", type: "message", content: "Delegate" },
+            { type: "agent_message", author: "a", recipient: "b", content },
+          ],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({
+        error: {
+          message: "input[1].content must be an array",
+          type: "invalid_request_error",
+        },
+      })
+      expect(handleMessages).not.toHaveBeenCalled()
+    },
+  )
+
+  test("strips encrypted agent message content before the Messages fallback", async () => {
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: { limits: { max_prompt_tokens: 128000 } },
+          id: "claude-test",
+          supported_endpoints: ["/v1/messages"],
+        },
+      ],
+    } as typeof state.models
+    const handleMessages = mock(
+      (_context: Context, _payload: AnthropicMessagesPayload) =>
+        Promise.resolve(
+          createMessagesResponse([{ type: "text", text: "done" }]),
+        ),
+    )
+    responsesMessagesDependencies.handleCompletionPayload = handleMessages
+
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({
+        model: "claude-test",
+        input: [
+          { role: "user", type: "message", content: "Delegate" },
+          {
+            type: "agent_message",
+            author: "/root/worker",
+            recipient: "/root",
+            content: [
+              { type: "input_text", text: "Worker result" },
+              { type: "encrypted_content", encrypted_content: "cipher" },
+            ],
+          },
+        ],
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    const blocks = getMessageBlocks(handleMessages.mock.calls[0]?.[1])
+    expect(
+      blocks
+        .filter((block) => block.type === "text")
+        .map((block) => block.text),
+    ).toEqual(["Worker result"])
+  })
+
   for (const [name, models] of [
     [
       "Responses to Messages to Responses",

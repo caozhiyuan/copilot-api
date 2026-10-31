@@ -796,7 +796,13 @@ function translateInputAgentMessage(
   item: ResponseInputAgentMessage,
   messages: Array<AnthropicInputMessage>,
 ): void {
-  const content = translateUserContent(item.content, "agent_message.content")
+  // Codex ciphertext is opaque to Messages models, so drop it instead of
+  // sending it as prompt text.
+  const parts =
+    Array.isArray(item.content) ?
+      item.content.filter((part) => part.type !== "encrypted_content")
+    : item.content
+  const content = translateUserContent(parts, "agent_message.content")
   messages.push({ role: "user", content })
 }
 
