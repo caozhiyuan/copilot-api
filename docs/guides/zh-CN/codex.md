@@ -82,7 +82,7 @@ enabled = false
 >
 > `GITHUB_COPILOT_API_KEY` 需设置为系统级用户环境变量，以便 Codex 应用也能读取。填写任一[网关 API Key](cli.md#auth-命令选项)；未配置 Key 时，填写任意非空占位值即可。未设置时，Codex 会报 `Missing environment variable` 错误。
 
-如果上游不支持加密多 Agent 消息，可在网关 `config.json` 或桌面端高级配置中开启 [`codexMultiAgentV1`](configuration.md#codex-多-agent-兼容性)。默认仍使用 V2。请在新的 Codex 会话中测试，并检查是否有优先于目录的 CLI 显式 feature 配置。
+如果上游不支持加密多 Agent 消息，可在网关 `config.json` 或桌面端高级配置中开启 [`codexMultiAgentV1`](configuration.md#codex-多-agent-兼容性)。默认仍使用 V2。应用网关配置，刷新远程目录（或重新生成本地目录），然后**新建 Codex 会话**。运行中刷新目录不会切换会话已确定的版本，恢复旧会话会沿用已记录的版本；已有加密历史不会被转换。CLI 显式 feature 配置可能优先于已记录的版本和目录元数据。
 
 ### 自动审核模型映射
 

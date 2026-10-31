@@ -72,6 +72,8 @@ curl http://localhost:4141/v1/models
 
 From here, jump to the guide for your client: [Claude Code](docs/guides/en/claude-code.md#using-with-claude-code), [OpenCode](docs/guides/en/opencode.md#using-with-opencode), [Codex](docs/guides/en/codex.md#using-with-codex), [DeepSeek Harness](docs/guides/en/dsh.md#using-with-deepseek-harness), or run it with [Docker](docs/guides/en/docker.md#using-with-docker).
 
+**Codex Multi-Agent compatibility:** [`codexMultiAgentV1`](docs/guides/en/configuration.md#codex-multi-agent-compatibility) optionally advertises V1; V2 remains the default. Apply the gateway setting and start a **new Codex session**. Catalog refreshes do not switch an already-selected session version, and resumed sessions retain their recorded version. Explicit CLI overrides may take precedence.
+
 ## Compatibility
 
 Every client talks to the same local endpoint. The gateway routes each request to GitHub Copilot, the built-in `codex` or `xai` provider, or a configured third-party provider, translating between protocols when the provider speaks a different one.

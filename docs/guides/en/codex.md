@@ -80,7 +80,7 @@ enabled = false
 >
 > Set `GITHUB_COPILOT_API_KEY` as a system-level user environment variable so the Codex app can read it too. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.
 
-For upstream providers that cannot handle encrypted Multi-Agent messages, enable the gateway's [`codexMultiAgentV1` option](configuration.md#codex-multi-agent-compatibility) in `config.json` or Desktop Advanced config. V2 remains the default. Test in a new Codex session and check explicit CLI feature overrides, which may take precedence over the catalog.
+For upstream providers that cannot handle encrypted Multi-Agent messages, enable the gateway's [`codexMultiAgentV1` option](configuration.md#codex-multi-agent-compatibility) in `config.json` or Desktop Advanced config. V2 remains the default. Apply the gateway configuration, refresh the remote catalog (or regenerate your local catalog), and start a **new Codex session**. Catalog refreshes do not switch a running session's already-selected version; resuming restores the recorded version. Existing encrypted history is not converted. Explicit CLI feature overrides may take precedence over both the recorded version and catalog metadata.
 
 ### Auto Review Model Mapping
 

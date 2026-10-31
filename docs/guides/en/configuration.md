@@ -122,7 +122,9 @@ Edit this file to customize prompts or swap in your own fast model. Restart the 
 
 V1 uses plain-text task/message arguments and can improve compatibility with upstream providers that do not support encrypted Multi-Agent messages. This setting does not remove encrypted content from requests. Enable it in Desktop **Advanced config → Request settings → Codex Multi-Agent V1**, or edit `config.json` and restart the gateway.
 
-Test version changes in a **new Codex session**, since resumed sessions can retain their previous Multi-Agent version. Explicit Codex CLI feature overrides may take precedence over model catalog metadata. Regenerate a local `model_catalog.json` if you use one.
+After applying the gateway configuration, refresh the remote model catalog (or regenerate your local `model_catalog.json`) and start a **new Codex session**. Once Codex selects a session's Multi-Agent version, later catalog refreshes do not switch it. Resuming prioritizes the recorded session version. This setting does not convert existing encrypted history or repair encrypted arguments already stored in an old session.
+
+Explicit Codex CLI feature overrides may take precedence over both the recorded session version and model catalog metadata.
 
 ### Desktop configuration editor
 
