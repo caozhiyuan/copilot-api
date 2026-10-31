@@ -63,6 +63,8 @@ Explicit `provider/model` aliases stay on that provider and preserve the upstrea
 
 JSON image requests must be UTF-8 encoded objects. Invalid JSON returns `400` (`invalid_request_error`) on both top-level and provider-scoped routes instead of falling back to Codex. Validation preserves large-request streaming and stops forwarding if an error is discovered during upload. Multipart image edits remain supported.
 
+JSON routing reads at most the first 64 KiB to find a complete top-level `model` string. If the object has not ended and no complete model is found within that prefix, the gateway returns `400` without staging the request to disk. Place `model` before large image/base64 fields. Objects that finish within the prefix may still omit `model` and use the existing default behavior.
+
 Image requests routed to Codex require an active Codex login; other image routes use their provider's credentials. Alpha search can use either the Codex backend or a Responses web-search adapter.
 
 | Endpoint                                                       | Method | Description                                                     |
