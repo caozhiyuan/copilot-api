@@ -78,7 +78,7 @@ beforeEach(() => {
   state.macMachineId = "machine-1"
   state.vsCodeDeviceId = "device-1"
   state.vsCodeSessionId = "session-1"
-  state.vsCodeVersion = "1.120.0"
+  state.vsCodeVersion = "1.144.0"
 
   fetchMock.mockClear()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
@@ -346,8 +346,8 @@ describe("createResponses", () => {
       "Copilot-Integration-Id": "vscode-chat",
       "Copilot-Vision-Request": "true",
       "Editor-Device-Id": "device-1",
-      "Editor-Plugin-Version": "copilot-chat/0.68.0",
-      "Editor-Version": "vscode/1.120.0",
+      "Editor-Plugin-Version": "copilot-chat/0.72.0",
+      "Editor-Version": "vscode/1.144.0",
       "OpenAI-Intent": "conversation-agent",
       "VScode-SessionId": "session-1",
       "VScode-MachineId": "machine-1",

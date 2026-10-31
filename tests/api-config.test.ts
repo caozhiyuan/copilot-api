@@ -22,7 +22,7 @@ const proxyState: State = {
   copilotApiUrl: "https://api.individual.githubcopilot.com",
   githubToken: "test-github-token",
   copilotToken: "test-copilot-token",
-  vsCodeVersion: "1.140.0",
+  vsCodeVersion: "1.144.0",
   vsCodeDeviceId: "device-1",
   vsCodeSessionId: "session-1",
   macMachineId: "machine-1",
@@ -68,7 +68,7 @@ test("prepareMessageProxyHeaders uses the captured casing and GitHub credentials
     "anthropic-version": "client-version",
     "anthropic-beta": "context-management-2025-06-27",
     "User-Agent":
-      "vscode_claude_code/2.1.281 (external, sdk-ts, agent-sdk/0.3.281)",
+      "vscode_claude_code/2.1.304 (external, sdk-ts, agent-sdk/0.3.304)",
     "Content-Type": "application/json",
     Authorization: "Bearer test-github-token",
     "X-Request-Id": requestId,
@@ -78,8 +78,8 @@ test("prepareMessageProxyHeaders uses the captured casing and GitHub credentials
     "VScode-SessionId": "session-1",
     "VScode-MachineId": "machine-1",
     "Editor-Device-Id": "device-1",
-    "Editor-Plugin-Version": "copilot-chat/1.140.0",
-    "Editor-Version": "vscode/1.140.0",
+    "Editor-Plugin-Version": "copilot-chat/1.144.0",
+    "Editor-Version": "vscode/1.144.0",
   })
   expect(headers["X-Request-Id"]).not.toBe("original-request-id")
 })
@@ -88,14 +88,14 @@ test("Copilot requests use the upgraded VS Code and Copilot Chat versions", asyn
   const vsCodeVersion = await getVSCodeVersion()
   const headers = copilotHeaders({ ...proxyState, vsCodeVersion })
 
-  expect(headers["editor-version"]).toBe("vscode/1.140.0")
-  expect(headers["editor-plugin-version"]).toBe("copilot-chat/0.68.0")
-  expect(headers["user-agent"]).toBe("GitHubCopilotChat/0.68.0")
+  expect(headers["editor-version"]).toBe("vscode/1.144.0")
+  expect(headers["editor-plugin-version"]).toBe("copilot-chat/0.72.0")
+  expect(headers["user-agent"]).toBe("GitHubCopilotChat/0.72.0")
   expect(githubHeaders(proxyState)["user-agent"]).toBe(
-    "GitHubCopilotChat/0.68.0",
+    "GitHubCopilotChat/0.72.0",
   )
   expect(githubUserHeaders(proxyState)["user-agent"]).toBe(
-    "GitHubCopilotChat/0.68.0",
+    "GitHubCopilotChat/0.72.0",
   )
 })
 

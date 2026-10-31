@@ -156,7 +156,7 @@ describe("Messages proxy request headers", () => {
       const payload = createPayload()
       const result = await createMessages(
         payload,
-        "interleaved-thinking-2025-05-14,context-management-2025-06-27,unknown-beta",
+        "interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,advanced-tool-use-2025-11-20,unknown-beta",
         {
           anthropicVersionHeader: version,
           requestId: "original-request-id",
@@ -174,9 +174,9 @@ describe("Messages proxy request headers", () => {
       expect(getRequestHeaders()).toEqual({
         "anthropic-version": expectedVersion,
         "anthropic-beta":
-          "interleaved-thinking-2025-05-14,context-management-2025-06-27",
+          "interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,advanced-tool-use-2025-11-20",
         "User-Agent":
-          "vscode_claude_code/2.1.281 (external, sdk-ts, agent-sdk/0.3.281)",
+          "vscode_claude_code/2.1.304 (external, sdk-ts, agent-sdk/0.3.304)",
         "Content-Type": "application/json",
         Authorization: "Bearer test-github-token",
         "X-Request-Id": getRequestHeaders()["X-Request-Id"],
@@ -186,8 +186,8 @@ describe("Messages proxy request headers", () => {
         "VScode-SessionId": "vscode-session-1",
         "VScode-MachineId": "machine-1",
         "Editor-Device-Id": "device-1",
-        "Editor-Plugin-Version": "copilot-chat/1.140.0",
-        "Editor-Version": "vscode/1.140.0",
+        "Editor-Plugin-Version": "copilot-chat/1.144.0",
+        "Editor-Version": "vscode/1.144.0",
       })
       expect(getRequestHeaders()["X-Request-Id"]).not.toBe(
         "original-request-id",
@@ -278,7 +278,7 @@ describe("Standard Copilot Messages request compatibility", () => {
     })
 
     expect(getRequestHeaders().Authorization).toBe("Bearer test-copilot-token")
-    expect(getRequestHeaders()["user-agent"]).toBe("GitHubCopilotChat/0.68.0")
+    expect(getRequestHeaders()["user-agent"]).toBe("GitHubCopilotChat/0.72.0")
     expect(new Headers(getRequestHeaders()).has("anthropic-version")).toBe(
       false,
     )
