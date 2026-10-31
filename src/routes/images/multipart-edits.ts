@@ -1,5 +1,6 @@
 import type { Context } from "hono"
 
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import {
   InvalidMultipartBodyError,
   MultipartBodyTooLargeError,
@@ -159,7 +160,11 @@ export async function parseMultipartImageEdit(request: Request) {
       const headers = new Headers(requestHeaders)
       headers.delete("content-length")
       let body: FormData | Uint8Array
-      if (provider === "codex" || provider === "xai") {
+      if (
+        provider === "codex"
+        || provider === "xai"
+        || provider === GITHUB_COPILOT_PROVIDER
+      ) {
         const payload = {
           ...(await readPayload()),
           ...(model === undefined ? {} : { model }),

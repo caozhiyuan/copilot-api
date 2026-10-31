@@ -56,6 +56,25 @@ beforeEach(() => {
 })
 
 describe('media requests', () => {
+  test.each(['generate', 'edit'] as const)(
+    'lets the gateway supply a model for blank %s input',
+    async (mode) => {
+      await client().createImages('one', {
+        ...imageInput,
+        mode,
+        model: '  ',
+        images: mode === 'edit' ? [image] : [],
+      })
+      const payload: unknown = JSON.parse(
+        fetchMock.mock.calls[0][1]?.body as string,
+      )
+      expect(payload).not.toHaveProperty('model')
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `http://[::1]:5151/v1/images/${mode === 'edit' ? 'edits' : 'generations'}`,
+      )
+    },
+  )
+
   test('sends image options through the running gateway with its auth', async () => {
     const result = await client().createImages('one', imageInput)
     expect(result[0].url).toBe('data:image/png;base64,iVBORw==')
@@ -151,7 +170,7 @@ describe('media requests', () => {
   )
   test.each([
     { prompt: ' ' },
-    { model: '' },
+    { model: null },
     { n: 0 },
     { n: 5 },
     { n: 1.5 },

@@ -1,11 +1,13 @@
 import type { ConsolaInstance } from "consola"
 
-import type { ResolvedProviderConfig } from "~/lib/config"
+import { getRawProviderConfig, type ResolvedProviderConfig } from "~/lib/config"
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import { debugJson } from "~/lib/logger"
 import { prepareImageJsonRequest } from "~/lib/image-json-request"
 import { observeImagesResponse } from "~/lib/token-usage/images"
 import { logImageEditRequest } from "~/routes/images/request-logging"
 import type { CodexImagesOperation } from "~/services/codex/images"
+import { forwardCopilotImages } from "~/services/copilot/images"
 import { forwardProviderImages } from "~/services/providers/provider-proxy"
 import { ensureImageResponseB64Json } from "~/services/xai/images"
 
@@ -45,11 +47,10 @@ export async function forwardProviderImagesWithLogging(
 
   let upstreamResponse: Response
   try {
-    upstreamResponse = await forwardProviderImages(
-      providerConfig,
-      request,
-      operation,
-    )
+    upstreamResponse =
+      providerConfig.name === GITHUB_COPILOT_PROVIDER ?
+        await forwardCopilotImages(request, operation)
+      : await forwardProviderImages(providerConfig, request, operation)
   } catch (error) {
     await request.body?.cancel().catch(() => {})
     throw error
@@ -70,6 +71,28 @@ export async function forwardProviderImagesWithLogging(
         ...metadata,
       }),
   })
+}
+
+export async function forwardCopilotImagesWithLogging(
+  request: Request,
+  operation: CodexImagesOperation,
+  context: ProviderImagesForwardLogContext,
+): Promise<Response> {
+  const config = getRawProviderConfig(GITHUB_COPILOT_PROVIDER)
+  return await forwardProviderImagesWithLogging(
+    {
+      name: GITHUB_COPILOT_PROVIDER,
+      type: "openai-compatible",
+      authType: "oauth2",
+      apiKey: "",
+      baseUrl: "",
+      models: config?.models,
+      pricingCurrency: config?.pricingCurrency,
+    },
+    request,
+    operation,
+    context,
+  )
 }
 
 /** Forwards translated xAI requests and normalizes OpenAI-compatible output. */

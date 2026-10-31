@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { primaryButtonClass } from '../lib/button-styles'
+import { selectMediaImageModel } from '../lib/media-models'
 import {
   serializeMediaFile,
   serializeVideoMediaFile,
@@ -86,9 +87,8 @@ export default function MediaStudioPage({
   const { t } = useLanguage()
   const formId = useId()
   const [mode, setMode] = useState<Mode>('generate')
-  const [provider, setProvider] =
-    useState<ImageCreationInput['provider']>('default')
-  const [model, setModel] = useState('gpt-image-2')
+  const [model, setModel] = useState('')
+  const modelEdited = useRef(false)
   const [prompts, setPrompts] = useState<Record<Mode, string>>({
     generate: '',
     edit: '',
@@ -127,6 +127,21 @@ export default function MediaStudioPage({
   const resultPrompt = result?.prompt ?? ''
   const videoPending = video?.status === 'pending'
   const hasResults = result !== null
+
+  useEffect(() => {
+    if (!serverRunning) return
+    let active = true
+    void window.electronAPI
+      .fetchModels()
+      .then((catalog) => {
+        if (active && !modelEdited.current)
+          setModel(selectMediaImageModel(catalog))
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [serverRunning])
 
   function stopWaiting() {
     const id = generationRequest.current
@@ -269,7 +284,7 @@ export default function MediaStudioPage({
       } else {
         const result = await window.electronAPI.createImages(id, {
           mode,
-          provider,
+          provider: 'default',
           model,
           prompt,
           size,
@@ -358,37 +373,17 @@ export default function MediaStudioPage({
             className={`min-h-0 min-w-0 flex-1 overflow-y-auto disabled:opacity-70 ${mode === 'video' ? 'space-y-2.5' : 'space-y-3'}`}
           >
             {mode !== 'video' ?
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
-                <Field label={t('studio.provider')}>
-                  <select
-                    aria-label={t('studio.provider')}
-                    className={selectClass}
-                    value={provider}
-                    onChange={(e) => {
-                      const next = e.target
-                        .value as ImageCreationInput['provider']
-                      setProvider(next)
-                      setModel(
-                        next === 'xai' ?
-                          'grok-imagine-image-2.0'
-                        : 'gpt-image-2',
-                      )
-                    }}
-                  >
-                    <option value="default">{t('studio.gateway')}</option>
-                    <option value="codex">Codex</option>
-                    <option value="xai">xAI</option>
-                  </select>
-                </Field>
-                <Field label={t('studio.model')}>
-                  <input
-                    className={fieldClass}
-                    required
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                  />
-                </Field>
-              </div>
+              <Field label={t('studio.model')}>
+                <input
+                  className={fieldClass}
+                  value={model}
+                  placeholder={t('studio.gateway')}
+                  onChange={(e) => {
+                    modelEdited.current = true
+                    setModel(e.target.value)
+                  }}
+                />
+              </Field>
             : <p className="break-all rounded-lg bg-sunken px-3 py-2 font-mono text-xs text-ink-soft">
                 {VIDEO_MODEL}
               </p>
@@ -586,7 +581,6 @@ export default function MediaStudioPage({
                   busy
                   || !serverRunning
                   || promptMissing
-                  || (mode !== 'video' && !model.trim())
                   || (mode === 'edit' && !editFiles.length)
                   || videoPending
                 }

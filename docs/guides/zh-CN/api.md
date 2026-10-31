@@ -51,7 +51,7 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 目录中缺失的聊天模型不补入内置聊天模型列表。provider 级接口没有有效缓存模型时返回 `503`（`service_unavailable`），顶层列表跳过空目录。模型能力、窗口和 USD 价格来自目录，显式模型配置优先。
 
-普通 OpenAI 格式的聚合目录 `GET /models` 和 `GET /v1/models` 默认包含可用 provider 的 Codex 和 xAI 内置图片模型，不受 `agentsModels` 限制。桌面端 Dashboard 的 Available Models 和网页端 Models 标签页直接使用普通模型接口，无需额外查询参数。
+普通 OpenAI 格式的聚合目录 `GET /models` 和 `GET /v1/models` 默认包含可用 provider 的 GitHub Copilot、Codex 和 xAI 内置图片模型，不受 `agentsModels` 限制。桌面端 Dashboard 的 Available Models 和网页端 Models 标签页直接使用普通模型接口，无需额外查询参数。
 
 Claude、Codex 和 DeepSeek 客户端目录始终排除仅输出图片的模型，即使 `agentsModels` 显式选择了这些模型也不会展示。支持图片输入或同时输出文字和图片的聊天模型仍按常规模型筛选规则展示。OpenCode 在 provider 可用且 `agentsModels` 允许时仍会展示仅输出图片的模型；使用显式名单时，需要包含上游原始图片模型 ID，例如在 `codex` 下加入 `gpt-image-2`。
 
@@ -61,15 +61,19 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 ### Codex 后端端点
 
-这些端点实现 Codex 后端 API。路由到 Codex 的图片请求要求已有可用的 Codex 登录态；路由到已配置 provider 的图片请求使用该 provider 的凭据。alpha-search 则可以使用 Codex 后端或 Responses web-search 适配器。
+顶层图片路由支持三个模型：`codex/gpt-image-2`、`github-copilot/gpt-image-2.5-flare`、`xai/grok-imagine-image-2.0`，也接受对应的原始模型 ID。省略、空白、不支持或不可用的模型会按 **Codex → GitHub Copilot → xAI** 选择首个可用 provider 的默认模型。可用性依据 provider 启用状态及凭据判断，不查询其他 provider 的模型目录。JSON 和 multipart 转换后的请求都会写入最终模型，并使用该模型记账；没有可用 provider 时返回 `404`。provider 作用域路径固定使用路径中的 provider，并使用它的默认模型。显式配置的 `imageGenerationModel`、`imageEditModel` 在顶层路由仍然优先。
+
+路由到 Codex 的图片请求要求已有可用的 Codex 登录态；其他图片路由使用对应 provider 的凭据。alpha-search 可以使用 Codex 后端或 Responses web-search 适配器。
 
 | 端点                                                       | 方法 | 说明                                                                                                 |
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
 | `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
-| `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求转发到 Codex Images 上游。请求未携带 `Content-Type` 时，网关默认补充 `application/json`。请求 `model` 命中已配置的 model mapping 时会被改写；映射结果为已配置 provider 的 `provider/model` 别名时，请求将转发到该 provider 的 images 端点。 |
-| `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域路由保持透传行为。 |
+| `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求路由到 Codex、GitHub Copilot 或 xAI。请求未携带 `Content-Type` 时默认补充 `application/json`。先应用 model mapping，再选择支持的模型；省略、空白或不支持的模型名按上述默认规则处理。 |
+| `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex、GitHub Copilot 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits`、`/github-copilot/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域路由保持透传行为。 |
 
-multipart 上传总大小上限为 128 MiB，单文件上限为 64 MiB，最多 16 个文件；超限返回 `413`，格式错误返回 `400`。转换为 JSON 后，以及失败或取消时，都会清理临时文件。base64 图片数据约增大三分之一，生成的 JSON 会在转发前缓存在内存中。xAI 仍最多接受 5 张图片，不支持 mask、file_id 和流式输出。通过 model mapping 选中的其他 provider 继续接收 multipart。
+在两个图片端点中使用 `model: "github-copilot/gpt-image-2.5-flare"`，或将 model mapping 指向这个别名，可在 GitHub Copilot 可用时选择该 provider。网关移除模型名中的 `github-copilot/` 前缀，转发 OpenAI 兼容的图片参数、JSON 图片引用和响应，支持流式事件；multipart 编辑会转换为相同的 JSON 格式。`/github-copilot/v1/images/generations` 和 `/github-copilot/v1/images/edits` 接受原始模型 ID，并固定使用 Copilot；禁用时返回 `403`，缺少 GitHub 登录态时返回 `401`。上游请求使用当前 GitHub 登录令牌及已有设备 ID。内置图片目录会补入该模型，不依赖 Copilot 的 models 接口。token 用量读取标准 OpenAI 兼容的 `usage` 字段；仅费用从 `copilot_usage.total_nano_aiu` 读取，并按现有 Copilot AIU 汇率计算。
+
+multipart 上传总大小上限为 128 MiB，单文件上限为 64 MiB，最多 16 个文件；超限返回 `413`，格式错误返回 `400`。转换为 JSON 后，以及失败或取消时，都会清理临时文件。base64 图片数据约增大三分之一，生成的 JSON 会在转发前缓存在内存中。xAI 仍最多接受 5 张图片，不支持 mask、file_id 和流式输出。
 
 当 `imageGenerationModel` 或 `imageEditModel` 配置为 `xai/model` 别名时，对应的顶层图片路由会把 OpenAI 图片请求翻译后发到已启用的 `xai` provider 的 Imagine 接口，上游模型由该别名决定。配置为空时仍走上面的 OpenAI 转发路径。这两项目前不接受其他 provider。
 

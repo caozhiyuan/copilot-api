@@ -42,6 +42,11 @@ let getVideo = mock(
 )
 let cancel = mock((_id: string): Promise<void> => Promise.resolve())
 let save = mock((): Promise<boolean> => Promise.resolve(true))
+let fetchModels = mock((): Promise<unknown> =>
+  Promise.resolve({
+    data: [{ id: 'codex/gpt-image-2' }],
+  }),
+)
 let timers: ReturnType<typeof spyOn<typeof globalThis, 'setTimeout'>>
 
 beforeEach(async () => {
@@ -81,6 +86,9 @@ beforeEach(async () => {
   )
   cancel = mock((_id) => Promise.resolve())
   save = mock(() => Promise.resolve(true))
+  fetchModels = mock(() =>
+    Promise.resolve({ data: [{ id: 'codex/gpt-image-2' }] }),
+  )
   Object.defineProperty(win, 'electronAPI', {
     configurable: true,
     value: {
@@ -89,6 +97,7 @@ beforeEach(async () => {
       getVideo,
       cancelMediaRequest: cancel,
       saveMedia: save,
+      fetchModels,
     },
   })
   timers = spyOn(globalThis, 'setTimeout')
@@ -176,6 +185,70 @@ const file = (name = 'source.png') =>
   new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' })
 
 describe('media creation page', () => {
+  test.each<{ ids: string[]; expected: string }>([
+    {
+      ids: [
+        'xai/grok-imagine-image-2.0',
+        'github-copilot/gpt-image-2.5-flare',
+        'codex/gpt-image-2',
+      ],
+      expected: 'codex/gpt-image-2',
+    },
+    {
+      ids: ['xai/grok-imagine-image-2.0', 'github-copilot/gpt-image-2.5-flare'],
+      expected: 'github-copilot/gpt-image-2.5-flare',
+    },
+    {
+      ids: ['xai/grok-imagine-image-2.0'],
+      expected: 'xai/grok-imagine-image-2.0',
+    },
+    { ids: [], expected: '' },
+  ])(
+    'selects the available default image model $expected',
+    async ({ ids, expected }) => {
+      fetchModels.mockResolvedValueOnce({ data: ids.map((id) => ({ id })) })
+      await render()
+      const model =
+        container.querySelector<HTMLInputElement>('input:not([type])')!
+      expect(model.value).toBe(expected)
+      await prompt()
+      await click('Create')
+      expect(createImages.mock.calls[0][1]).toMatchObject({
+        provider: 'default',
+        model: expected,
+      })
+    },
+  )
+
+  test('keeps a user model when discovery finishes later', async () => {
+    let finish: ((value: unknown) => void) | undefined
+    fetchModels.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+    )
+    await render()
+    const model =
+      container.querySelector<HTMLInputElement>('input:not([type])')!
+    await change(model, 'github-copilot/gpt-image-2.5-flare')
+    await act(async () => {
+      finish?.({ data: [{ id: 'codex/gpt-image-2' }] })
+      await Promise.resolve()
+    })
+    expect(model.value).toBe('github-copilot/gpt-image-2.5-flare')
+  })
+
+  test('allows gateway defaults when model discovery fails', async () => {
+    fetchModels.mockRejectedValueOnce(new Error('discovery unavailable'))
+    await render()
+    await prompt()
+    await click('Create')
+    expect(createImages.mock.calls[0][1]).toMatchObject({
+      provider: 'default',
+      model: '',
+    })
+  })
+
   test.each([
     ['Generate image', '1', '2'],
     ['Edit image', '1', '3'],
@@ -262,14 +335,14 @@ describe('media creation page', () => {
   test('generates, previews and saves images with the selected options', async () => {
     await render()
     await prompt()
-    await change(select(0), 'codex')
-    await change(select(1), '1536x1024')
-    await change(select(2), 'high')
+    expect(container.textContent).not.toContain('Provider')
+    await change(select(0), '1536x1024')
+    await change(select(1), 'high')
     await change(number(0), '2')
     await click('Create')
     expect(createImages.mock.calls[0][1]).toMatchObject({
-      provider: 'codex',
-      model: 'gpt-image-2',
+      provider: 'default',
+      model: 'codex/gpt-image-2',
       mode: 'generate',
       size: '1536x1024',
       quality: 'high',
@@ -369,18 +442,17 @@ describe('media creation page', () => {
     )
     expect(container.querySelector('[role=dialog]')).toBeNull()
   })
-  test('changes the provider default model and permits a custom model alias', async () => {
+  test('routes custom model aliases through Gateway default', async () => {
     await render()
     await prompt()
-    await change(select(0), 'xai')
     const model =
       container.querySelector<HTMLInputElement>('input:not([type])')!
-    expect(model.value).toBe('grok-imagine-image-2.0')
-    await change(model, 'custom-image-model')
+    expect(model.value).toBe('codex/gpt-image-2')
+    await change(model, 'github-copilot/gpt-image-2.5-flare')
     await click('Create')
     expect(createImages.mock.calls[0][1]).toMatchObject({
-      provider: 'xai',
-      model: 'custom-image-model',
+      provider: 'default',
+      model: 'github-copilot/gpt-image-2.5-flare',
     })
   })
   test('requires an edit image, uploads bytes and removes previews', async () => {
@@ -395,6 +467,7 @@ describe('media creation page', () => {
     await click('Create')
     expect(createImages.mock.calls[0][1]).toMatchObject({
       mode: 'edit',
+      provider: 'default',
       images: [
         {
           name: 'source.png',

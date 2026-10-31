@@ -1,4 +1,5 @@
 import type { TokenUsagePricingConfig } from "./token-usage/pricing"
+import { DEFAULT_IMAGE_MODELS } from "./image-models"
 import type { CodexReasoningEffort, ModelReasoningField } from "./config-store"
 import {
   getOpencodeGoModelConfig,
@@ -239,10 +240,23 @@ const IMAGE_MODELS: Record<
   string,
   Array<{ id: string; name: string; family: string }>
 > = {
-  codex: [{ id: "gpt-image-2", name: "GPT Image 2", family: "gpt-image" }],
+  "github-copilot": [
+    {
+      id: DEFAULT_IMAGE_MODELS["github-copilot"],
+      name: "GPT Image 2.5 Flare",
+      family: "gpt-image",
+    },
+  ],
+  codex: [
+    {
+      id: DEFAULT_IMAGE_MODELS.codex,
+      name: "GPT Image 2",
+      family: "gpt-image",
+    },
+  ],
   xai: [
     {
-      id: "grok-imagine-image-2.0",
+      id: DEFAULT_IMAGE_MODELS.xai,
       name: "Grok Imagine Image 2.0",
       family: "grok-imagine",
     },

@@ -61,6 +61,7 @@ const originalResolveProviderConfig =
 const originalGetImageEditModel = imageRouteDependencies.getImageEditModel
 const originalGetImageGenerationModel =
   imageRouteDependencies.getImageGenerationModel
+const originalCopilotAvailable = imageRouteDependencies.isGitHubCopilotAvailable
 let debugValues: Array<unknown> = []
 const debugJsonAsyncMock = mock(
   async (
@@ -146,6 +147,7 @@ beforeEach(() => {
   imageRouteDependencies.debugJsonAsync = debugJsonAsyncMock
   imageRouteDependencies.resolveMappedModel = (model) =>
     modelMappings[model] ?? model
+  imageRouteDependencies.isGitHubCopilotAvailable = () => false
   imageRouteDependencies.resolveProviderConfig = (provider) =>
     Promise.resolve(
       provider === "codex" ? codexProviderConfig
@@ -173,6 +175,7 @@ afterEach(async () => {
   openrouterProviderConfig = null
   imageRouteDependencies.debugJsonAsync = originalDebugJsonAsync
   imageRouteDependencies.resolveMappedModel = originalResolveMappedModel
+  imageRouteDependencies.isGitHubCopilotAvailable = originalCopilotAvailable
   imageRouteDependencies.resolveProviderConfig = originalResolveProviderConfig
   imageRouteDependencies.getImageEditModel = originalGetImageEditModel
   imageRouteDependencies.getImageGenerationModel =
@@ -207,8 +210,7 @@ describe("images route usage recording", () => {
     test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
       `records the Codex default model and cost for model-less ${format} at %s`,
       async (url) => {
-        // Missing client models keep Codex routing even when its default model
-        // has a mapping; the upstream body must stay model-less.
+        // Default selection keeps Codex priority even if its model has a mapping.
         modelMappings = { "gpt-image-2": "openrouter/other-image-model" }
         fetchMock.mockResolvedValueOnce(
           Response.json({ data: [{ b64_json: "image" }], usage }),
@@ -239,7 +241,7 @@ describe("images route usage recording", () => {
           "https://chatgpt.com/backend-api/codex/images/edits",
         )
         const forwardedBody: unknown = await new Response(init?.body).json()
-        expect(forwardedBody).not.toHaveProperty("model")
+        expect(forwardedBody).toHaveProperty("model", "gpt-image-2")
         const events = await getTokenUsageEventsPage({
           page: 1,
           pageSize: 20,
@@ -587,10 +589,10 @@ describe("Codex images forwarding", () => {
     })
   })
 
-  test("routes a mapped JSON generation model to its configured provider", async () => {
+  test("routes a mapped JSON generation model to the enabled xAI provider", async () => {
     codexProviderConfig = null
     modelMappings = {
-      "image-model": "openrouter/black-forest-labs/flux-1.1-pro",
+      "image-model": "xai/grok-imagine-image-2.0",
     }
 
     const response = await createApp().request(
@@ -608,19 +610,18 @@ describe("Codex images forwarding", () => {
     expect(response.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe(
-      "https://openrouter.example/v1/images/generations?output=base64",
-    )
+    expect(url).toBe("https://api.x.ai/v1/images/generations?output=base64")
     const headers = new Headers(init?.headers)
-    expect(headers.get("authorization")).toBe("Bearer openrouter-key")
+    expect(headers.get("authorization")).toBe("Bearer xai-key")
     expect(headers.has("chatgpt-account-id")).toBe(false)
     expect(await new Response(init?.body).json()).toEqual({
-      model: "black-forest-labs/flux-1.1-pro",
+      model: "grok-imagine-image-2.0",
       prompt: "mapped provider image",
+      response_format: "b64_json",
     })
   })
 
-  test("forwards the original model to Codex when the mapped provider is unavailable", async () => {
+  test("uses the Codex default when the mapped provider is unavailable", async () => {
     openrouterProviderConfig = null
     modelMappings = {
       "image-model": "openrouter/black-forest-labs/flux-1.1-pro",
@@ -641,7 +642,7 @@ describe("Codex images forwarding", () => {
     const headers = new Headers(init?.headers)
     expect(headers.get("authorization")).toBe("Bearer codex-access-token")
     expect(await new Response(init?.body).json()).toEqual({
-      model: "image-model",
+      model: "gpt-image-2",
       prompt: "fallback to original model",
     })
   })
@@ -708,7 +709,7 @@ describe("Codex images forwarding", () => {
     {
       requested: "edit-model",
       mapped: "missing/gpt-image-2",
-      expected: "edit-model",
+      expected: "gpt-image-2",
     },
   ])(
     "applies JSON edit model mappings and provider aliases %j",
@@ -778,9 +779,9 @@ describe("Codex images forwarding", () => {
     },
   )
 
-  test("routes a mapped JSON edit model to its configured provider", async () => {
+  test("uses the default model for unsupported mapped JSON edits", async () => {
     modelMappings = {
-      "edit-model": "openrouter/black-forest-labs/flux-kontext-pro",
+      "edit-model": "unsupported/image-model",
     }
     const payload = {
       model: "edit-model",
@@ -795,13 +796,13 @@ describe("Codex images forwarding", () => {
 
     expect(response.status).toBe(200)
     const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://openrouter.example/v1/images/edits")
+    expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
     const headers = new Headers(init?.headers)
-    expect(headers.get("authorization")).toBe("Bearer openrouter-key")
+    expect(headers.get("authorization")).toBe("Bearer codex-access-token")
     expect(headers.get("content-type")).toBe("application/json")
     expect(await new Response(init?.body).json()).toEqual({
       ...payload,
-      model: "black-forest-labs/flux-kontext-pro",
+      model: "gpt-image-2",
     })
   })
 
@@ -818,7 +819,10 @@ describe("Codex images forwarding", () => {
     expect(response.status).toBe(200)
     const [url, init] = fetchMock.mock.calls[0] ?? []
     expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
-    expect(await new Response(init?.body).json()).toEqual(payload)
+    expect(await new Response(init?.body).json()).toEqual({
+      ...payload,
+      model: "gpt-image-2",
+    })
   })
 
   test.each([
@@ -1058,7 +1062,11 @@ describe("Codex images forwarding", () => {
       "images.generations.codex.request",
     )
     expect(debugValues).toEqual([
-      { contentType: "application/json", contentLength: null, body: payload },
+      {
+        contentType: "application/json",
+        contentLength: null,
+        body: { ...payload, model: "gpt-image-2" },
+      },
     ])
   })
 
@@ -1069,8 +1077,9 @@ describe("Codex images forwarding", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  test("returns 404 when the Codex provider is unavailable", async () => {
+  test("returns 404 when all image providers are unavailable", async () => {
     codexProviderConfig = null
+    xaiProviderConfig = null
 
     const response = await createApp().request("/images/edits", {
       method: "POST",
@@ -1081,7 +1090,7 @@ describe("Codex images forwarding", () => {
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({
       error: {
-        message: "Provider 'codex' not found or disabled",
+        message: "No enabled image provider is available",
         type: "invalid_request_error",
       },
     })
@@ -1279,7 +1288,7 @@ describe("multipart image edit routing", () => {
     {
       requested: "image-model",
       mapped: "missing/gpt-image-2",
-      expected: "image-model",
+      expected: "gpt-image-2",
       provider: "codex",
     },
     {
@@ -1337,23 +1346,18 @@ describe("multipart image edit routing", () => {
     expect(response.status).toBe(200)
     const [, init] = fetchMock.mock.calls[0] ?? []
     expect(await new Response(init?.body).json()).toEqual({
+      model: "gpt-image-2",
       prompt: "make it blue",
       images: [{ image_url: "data:image/png;base64,c291cmNl" }],
     })
   })
 
-  test("keeps mapped custom-provider uploads as multipart", async () => {
-    modelMappings = { "image-model": "openrouter/other-model" }
-    let forwardedModel: unknown
-    let forwardedImage: string | undefined
+  test("uses the default JSON model for unsupported multipart mappings", async () => {
+    modelMappings = { "image-model": "unsupported/image-model" }
+    let forwardedPayload: unknown
     fetchMock.mockImplementationOnce(async (_url, init) => {
-      expect(existsSync(stagedUploads[0].directory)).toBe(true)
-      const form = await new Response(init?.body).formData()
-      forwardedModel = form.get("model")
-      const image = form.get("image")
-      if (!image || typeof image === "string")
-        throw new Error("Expected uploaded file")
-      forwardedImage = await image.text()
+      expect(existsSync(stagedUploads[0].directory)).toBe(false)
+      forwardedPayload = await new Response(init?.body).json()
       return Response.json({ data: [] })
     })
     const response = await createApp().request("/v1/images/edits", {
@@ -1362,12 +1366,14 @@ describe("multipart image edit routing", () => {
     })
     expect(response.status).toBe(200)
     const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://openrouter.example/v1/images/edits")
-    expect(new Headers(init?.headers).get("content-type")).toStartWith(
-      "multipart/form-data; boundary=",
+    expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
+    expect(new Headers(init?.headers).get("content-type")).toBe(
+      "application/json",
     )
-    expect(forwardedModel).toBe("other-model")
-    expect(forwardedImage).toBe("source")
+    expect(forwardedPayload).toMatchObject({
+      model: "gpt-image-2",
+      images: [{ image_url: "data:image/png;base64,c291cmNl" }],
+    })
   })
 
   test.each(["/xai/images/edits", "/xai/v1/images/edits"])(

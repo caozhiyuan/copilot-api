@@ -94,6 +94,10 @@ const { modelRoutes } = await import("~/routes/models/route")
 const { providerModelRoutes } = await import("~/routes/provider/models/route")
 
 const originalFetch = globalThis.fetch
+const originalCopilotTokens = {
+  githubToken: state.githubToken,
+  copilotToken: state.copilotToken,
+}
 
 const createProviderConfig = (
   name: string,
@@ -309,6 +313,8 @@ async function getDiscoveredModelIds(endpoint: string, userAgent: string) {
 }
 
 beforeEach(() => {
+  state.githubToken = undefined
+  state.copilotToken = undefined
   setRouteConfig({})
   installModelsDevCatalog(modelsDevProviderCatalogFixture)
   enabledProviders = []
@@ -325,6 +331,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  Object.assign(state, originalCopilotTokens)
   PATHS.CONFIG_PATH = originalConfigPath
   invalidateConfigCache()
   if (catalogConfigDir)
@@ -337,6 +344,98 @@ afterEach(() => {
 })
 
 describe("model routes", () => {
+  test.each(["curl/8.0", "opencode/2.0"])(
+    "adds the missing Copilot image model for %s without querying upstream",
+    async (userAgent) => {
+      state.githubToken = "test-github-token"
+      state.copilotToken = "test-copilot-token"
+      state.models = createCopilotModels(["gpt-test"])
+      const response = await createApp().request("/v1/models", {
+        headers: { "user-agent": userAgent },
+      })
+      expect(response.status).toBe(200)
+      const { data } = (await response.json()) as { data: Array<OpencodeModel> }
+      expect(data.map((model) => model.id)).toEqual([
+        "gpt-test",
+        "github-copilot/gpt-image-2.5-flare",
+      ])
+      expect(data[1]).toMatchObject({
+        id: "github-copilot/gpt-image-2.5-flare",
+        type: "image",
+      })
+      if (userAgent.startsWith("opencode")) {
+        expect(data[1]).toMatchObject({
+          package: "@opencode/ai/providers/openai/images",
+          capabilities: {
+            tools: false,
+            input: ["text", "image"],
+            output: ["image"],
+          },
+          family: "gpt-image",
+        })
+      }
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  test("applies Copilot availability and client selections to the builtin image model", async () => {
+    const image = "gpt-image-2.5-flare"
+    const alias = `github-copilot/${image}`
+    state.githubToken = "test-github-token"
+    state.copilotToken = "test-copilot-token"
+    providerConfigs["github-copilot"] = createProviderConfig(
+      "github-copilot",
+      "https://unused.test",
+    )
+    const config = providerConfigs["github-copilot"]
+    config.agentsModels = []
+    expect(await getDiscoveredModelIds("/v1/models", "opencode/2.0")).toEqual(
+      [],
+    )
+    expect(await getDiscoveredModelIds("/v1/models", "curl/8.0")).toEqual([
+      alias,
+    ])
+    config.agentsModels = ["gpt-test"]
+    expect(await getDiscoveredModelIds("/v1/models", "opencode/2.0")).toEqual(
+      [],
+    )
+    config.agentsModels = [image]
+    expect(await getDiscoveredModelIds("/v1/models", "opencode/2.0")).toEqual([
+      alias,
+    ])
+    for (const userAgent of ["codex/1.0", "claude-cli/2.1", "deepseek/1.0"]) {
+      expect(await getDiscoveredModelIds("/v1/models", userAgent)).toEqual([])
+    }
+    state.githubToken = undefined
+    expect(await getDiscoveredModelIds("/v1/models", "opencode/2.0")).toEqual(
+      [],
+    )
+    expect(await getDiscoveredModelIds("/v1/models", "curl/8.0")).toEqual([])
+    state.githubToken = "test-github-token"
+    setRouteConfig({ providers: { "github-copilot": { enabled: false } } })
+    expect(await getDiscoveredModelIds("/v1/models", "opencode/2.0")).toEqual(
+      [],
+    )
+    expect(await getDiscoveredModelIds("/v1/models", "curl/8.0")).toEqual([])
+  })
+
+  test("deduplicates cached Copilot image models and keeps their metadata", async () => {
+    state.githubToken = "test-github-token"
+    state.copilotToken = "test-copilot-token"
+    state.models = createCopilotModels(["gpt-image-2.5-flare"])
+    state.models.data[0].name = "Account Image Model"
+    const response = await createApp().request("/v1/models", {
+      headers: { "user-agent": "opencode/2.0" },
+    })
+    const { data } = (await response.json()) as { data: Array<OpencodeModel> }
+    expect(data).toHaveLength(1)
+    expect(data[0]).toMatchObject({
+      id: "github-copilot/gpt-image-2.5-flare",
+      name: "Account Image Model (github-copilot)",
+      type: "image",
+    })
+  })
+
   test.each(
     ["dashscope", "alibaba"].flatMap((provider) =>
       [

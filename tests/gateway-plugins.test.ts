@@ -310,6 +310,8 @@ describe("request event lifecycle", () => {
       "/v1/images/edits",
       "/codex/v1/images/generations",
       "/xai/images/edits",
+      "/github-copilot/v1/images/generations",
+      "/github-copilot/images/edits",
     ]
     for (const path of imagePaths) {
       app.post(path, (c) => {

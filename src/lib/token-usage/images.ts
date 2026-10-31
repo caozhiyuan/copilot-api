@@ -1,4 +1,5 @@
 import type { ResolvedProviderConfig } from "~/lib/config"
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import { ImageJsonMetadataReader } from "~/lib/image-json-metadata"
 import { requestContext } from "~/lib/request-context"
 import {
@@ -8,7 +9,7 @@ import {
 } from "~/lib/streaming-json"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 
-import { createProviderTokenUsageRecorder, type UsageTokens } from "./index"
+import { createTokenUsageRecorder, type UsageTokens } from "./index"
 import { xaiUsdTicksToCost } from "./pricing"
 import { normalizeToken, type ImageTokenDetails } from "./store"
 
@@ -108,7 +109,8 @@ export function observeImagesResponse(
   if (!response.body) return createProviderProxyResponse(response)
   const context = requestContext.getStore()
   const provider = options.providerConfig
-  const recordUsage = createProviderTokenUsageRecorder({
+  const recordUsage = createTokenUsageRecorder({
+    source: provider.name === GITHUB_COPILOT_PROVIDER ? "copilot" : "provider",
     endpoint:
       options.operation === "edits" ? "images_edits" : "images_generations",
     model: options.model,
@@ -122,8 +124,20 @@ export function observeImagesResponse(
   const metadataReader = new ImageJsonMetadataReader((metadata) => {
     if (context) requestContext.run(context, () => options.onMetadata(metadata))
     else options.onMetadata(metadata)
-    if (response.ok && isRecord(metadata.usage)) {
-      usage = normalizeImagesUsage(metadata.usage, provider.name)
+    if (response.ok) {
+      if (isRecord(metadata.usage)) {
+        usage = {
+          ...usage,
+          ...normalizeImagesUsage(metadata.usage, provider.name),
+        }
+      }
+      if (
+        provider.name === GITHUB_COPILOT_PROVIDER
+        && isRecord(metadata.copilot_usage)
+      ) {
+        const totalNanoAiu = token(metadata.copilot_usage.total_nano_aiu)
+        if (totalNanoAiu !== undefined) usage.total_nano_aiu = totalNanoAiu
+      }
     }
   })
   const finish = () => {

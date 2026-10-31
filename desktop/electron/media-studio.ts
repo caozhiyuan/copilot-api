@@ -10,6 +10,10 @@ import {
   translateXaiImageGeneration,
 } from '../../src/services/xai/images'
 import {
+  DEFAULT_IMAGE_MODELS,
+  getDefaultImageModel,
+} from '../../src/lib/image-models'
+import {
   IMAGE_QUALITIES,
   IMAGE_SIZES,
   MAX_TOTAL_UPLOAD_BYTES,
@@ -234,7 +238,6 @@ export function createMediaStudioClient(options: MediaClientOptions) {
         !['generate', 'edit'].includes(input.mode)
         || !['default', 'codex', 'xai'].includes(input.provider)
         || typeof input.model !== 'string'
-        || !input.model.trim()
         || !IMAGE_SIZES.includes(input.size)
         || !IMAGE_QUALITIES.includes(input.quality)
         || !Number.isInteger(input.n)
@@ -245,8 +248,9 @@ export function createMediaStudioClient(options: MediaClientOptions) {
       validateUploads(input.images, 5)
       if (input.mode === 'edit' && !input.images.length)
         throw new Error('Select an image to edit')
+      const model = input.model.trim() || getDefaultImageModel(input.provider)
       const payload = {
-        model: input.model.trim(),
+        ...(model ? { model } : {}),
         prompt,
         n: input.n,
         size: input.size,
@@ -264,11 +268,11 @@ export function createMediaStudioClient(options: MediaClientOptions) {
                 images: input.images.map(uploadUrl),
                 response_format: 'b64_json',
               },
-              payload.model,
+              model ?? DEFAULT_IMAGE_MODELS.xai,
             )
           : translateXaiImageGeneration(
               { ...payload, response_format: 'b64_json' },
-              payload.model,
+              model ?? DEFAULT_IMAGE_MODELS.xai,
             ),
         )
       } else if (input.mode === 'edit') {

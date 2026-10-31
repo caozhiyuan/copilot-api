@@ -12,6 +12,7 @@ import {
 } from "~/lib/config"
 import {
   GITHUB_COPILOT_PROVIDER,
+  isGitHubCopilotAvailable,
   isGitHubCopilotEnabled,
 } from "~/lib/github-copilot-provider"
 import { createHandlerLogger } from "~/lib/logger"
@@ -354,20 +355,42 @@ export async function getAggregatedModels(
   selectors: ModelSelectors = {},
 ): Promise<Array<ClientModel>> {
   const rawCopilotModels = getCopilotModelRecords()
+  const copilotConfig = getRawProviderConfig(GITHUB_COPILOT_PROVIDER)
+  const isCopilotImage = (model: Model) =>
+    isImageOnlyModel(GITHUB_COPILOT_PROVIDER, model.id, model, copilotConfig)
   const copilotModels = (
     selectors.selectCopilotModels?.(rawCopilotModels) ?? rawCopilotModels
   )
-    .filter(
-      (model) =>
-        selectors.includeImageModels
-        || !isImageOnlyModel(
-          GITHUB_COPILOT_PROVIDER,
-          model.id,
-          model,
-          getRawProviderConfig(GITHUB_COPILOT_PROVIDER),
-        ),
-    )
+    .filter((model) => !isCopilotImage(model))
     .map(normalizeCopilotModel)
+  const rawCopilotImages =
+    selectors.includeImageModels && isGitHubCopilotAvailable() ?
+      withProviderImageModels(
+        GITHUB_COPILOT_PROVIDER,
+        rawCopilotModels.filter(isCopilotImage),
+      )
+    : []
+  const copilotImages =
+    selectors.includeImageModels && isGitHubCopilotAvailable() ?
+      normalizeProviderModels(
+        GITHUB_COPILOT_PROVIDER,
+        (
+          selectors.selectProviderModels?.(copilotConfig, rawCopilotImages)
+          ?? rawCopilotImages
+        ).filter(
+          (model) =>
+            isRecord(model)
+            && isImageOnlyModel(
+              GITHUB_COPILOT_PROVIDER,
+              getStringField(model, "id") ?? "",
+              model,
+              copilotConfig,
+            ),
+        ),
+        copilotConfig,
+        true,
+      )
+    : []
   const providerModelsByProvider = await Promise.all(
     listEnabledProviders().map((provider) =>
       getProviderModels(
@@ -380,7 +403,7 @@ export async function getAggregatedModels(
   )
 
   return deduplicateModels(
-    [...copilotModels, ...providerModelsByProvider.flat()],
+    [...copilotModels, ...copilotImages, ...providerModelsByProvider.flat()],
     (model) => model.id,
   )
 }

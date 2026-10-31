@@ -177,7 +177,10 @@ export async function prepareImageJsonRequest(
     createRequest: (model: string) =>
       rebuild(
         request,
-        jsonByteStream(rewriteImageModel(source(), model), cancel),
+        jsonByteStream(
+          rewriteImageModel(source(), model, metadata.model === undefined),
+          cancel,
+        ),
         true,
       ),
     cleanup: cancel,

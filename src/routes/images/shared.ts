@@ -2,7 +2,11 @@ import consola from "consola"
 import type { Context } from "hono"
 
 import { resolveMappedModel, type ResolvedProviderConfig } from "~/lib/config"
-import { forwardError } from "~/lib/error"
+import { forwardError, HTTPError } from "~/lib/error"
+import {
+  GITHUB_COPILOT_PROVIDER,
+  isGitHubCopilotAvailable,
+} from "~/lib/github-copilot-provider"
 import { prepareImageJsonRequest } from "~/lib/image-json-request"
 import { createHandlerLogger, debugJson, debugJsonAsync } from "~/lib/logger"
 import { parseProviderModelAlias } from "~/lib/provider-model"
@@ -13,7 +17,7 @@ import {
   getImageGenerationModel,
 } from "~/lib/xai-image-model"
 import {
-  forwardProviderImagesWithLogging,
+  forwardCopilotImagesWithLogging,
   forwardXaiImagesWithLogging,
 } from "~/routes/images/forward-provider-images"
 import { logImageEditRequest } from "~/routes/images/request-logging"
@@ -23,6 +27,7 @@ import {
   type CodexImagesOperation,
 } from "~/services/codex/images"
 import { translateXaiImageJsonRequest } from "~/routes/images/xai-json-request"
+import { resolveImageRequestModel } from "~/routes/images/default-model"
 
 export const logger = createHandlerLogger("images-handler")
 
@@ -30,6 +35,7 @@ export const imageRouteDependencies = {
   debugJsonAsync,
   getImageEditModel,
   getImageGenerationModel,
+  isGitHubCopilotAvailable,
   resolveMappedModel,
   resolveProviderConfig,
 }
@@ -180,113 +186,90 @@ export async function handleCodexImages(
 }
 
 /**
- * Routes a parsed images request: applies the model mapping, forwards to a
- * mapped provider when configured, and otherwise falls back to Codex.
+ * Applies model mappings and resolves unknown or absent models to an available
+ * provider's image default before dispatching.
  */
 export async function routeImagesRequest(
   c: Context,
   operation: CodexImagesOperation,
   parsed: ParsedImagesRequest,
 ): Promise<Response> {
-  const requestedModel = parsed.model
-  if (requestedModel === undefined) {
-    return await handleCodexImages(
-      c,
-      operation,
-      undefined,
+  let resolvedModel: string
+  try {
+    resolvedModel = await resolveImageRequestModel(
+      parsed.model?.trim() ?
+        imageRouteDependencies.resolveMappedModel(parsed.model.trim())
+      : undefined,
+      {
+        resolveProviderConfig: imageRouteDependencies.resolveProviderConfig,
+        isGitHubCopilotAvailable:
+          imageRouteDependencies.isGitHubCopilotAvailable,
+      },
+    )
+  } catch (error) {
+    await parsed.originalRequest?.body?.cancel().catch(() => {})
+    throw error
+  }
+
+  const alias = parseProviderModelAlias(resolvedModel)
+  if (!alias) throw new Error("Invalid resolved image model")
+  consola.debug(
+    `Resolved image model: ${parsed.model ?? "(default)"} -> ${resolvedModel}`,
+  )
+  const request =
+    (
       parsed.originalRequest
-        ?? (await parsed.createRequest(DEFAULT_CODEX_IMAGE_MODEL)),
-      DEFAULT_CODEX_IMAGE_MODEL,
-    )
-  }
-  const mappedModel = imageRouteDependencies.resolveMappedModel(requestedModel)
-  if (mappedModel !== requestedModel) {
-    consola.debug(`Resolved model mapping: ${requestedModel} -> ${mappedModel}`)
+      && (alias.provider === "xai" || parsed.model === alias.model)
+    ) ?
+      parsed.originalRequest
+    : await parsed.createRequest(alias.model, alias.provider)
+
+  if (alias.provider === GITHUB_COPILOT_PROVIDER) {
+    return await forwardCopilotImagesWithLogging(request, operation, {
+      logger,
+      ...alias,
+    })
   }
 
-  const providerModelAlias = parseProviderModelAlias(mappedModel)
-  if (providerModelAlias) {
-    const providerConfig = await imageRouteDependencies.resolveProviderConfig(
-      providerModelAlias.provider,
-    )
-    if (providerConfig) {
-      const request =
-        providerConfig.name === "xai" && parsed.originalRequest ?
-          parsed.originalRequest
-        : await parsed.createRequest(
-            providerModelAlias.model,
-            providerConfig.name,
-          )
-      if (providerConfig.name === "codex") {
-        return await handleCodexImages(
-          c,
-          operation,
-          providerConfig,
-          request,
-          providerModelAlias.model,
-        )
-      }
-      if (providerConfig.name === "xai") {
-        const translated = await translateXaiImageJsonRequest(
-          request,
-          operation,
-          providerModelAlias.model,
-        )
-        return await forwardXaiImagesWithLogging(
-          providerConfig,
-          request,
-          operation,
-          translated.payload,
-          {
-            logger,
-            provider: providerModelAlias.provider,
-            model: providerModelAlias.model,
-          },
-          translated.body,
-        )
-      }
-
-      return await forwardProviderImagesWithLogging(
-        providerConfig,
-        request,
-        operation,
+  const providerConfig = await imageRouteDependencies.resolveProviderConfig(
+    alias.provider,
+  )
+  if (!providerConfig) {
+    await request.body?.cancel().catch(() => {})
+    throw new HTTPError(
+      `Provider '${alias.provider}' not found or disabled`,
+      Response.json(
         {
-          logger,
-          provider: providerModelAlias.provider,
-          model: providerModelAlias.model,
+          error: {
+            message: `Provider '${alias.provider}' not found or disabled`,
+            type: "invalid_request_error",
+          },
         },
-      )
-    }
-
-    // The mapped provider is not configured: keep the pre-mapping behavior
-    // and forward the client-sent model to Codex, not the prefixed alias.
-    consola.debug(
-      `Provider '${providerModelAlias.provider}' not found or disabled; forwarding the original model to Codex`,
+        { status: 404 },
+      ),
     )
+  }
+  if (alias.provider === "codex") {
     return await handleCodexImages(
       c,
       operation,
-      undefined,
-      parsed.originalRequest ?? (await parsed.createRequest(requestedModel)),
-      requestedModel,
+      providerConfig,
+      request,
+      alias.model,
     )
   }
 
-  if (parsed.originalRequest && mappedModel === requestedModel) {
-    return await handleCodexImages(
-      c,
-      operation,
-      undefined,
-      parsed.originalRequest,
-      requestedModel,
-    )
-  }
-
-  return await handleCodexImages(
-    c,
+  const translated = await translateXaiImageJsonRequest(
+    request,
     operation,
-    undefined,
-    await parsed.createRequest(mappedModel),
-    mappedModel,
+    alias.model,
+  )
+  return await forwardXaiImagesWithLogging(
+    providerConfig,
+    request,
+    operation,
+    translated.payload,
+    { logger, ...alias },
+    translated.body,
   )
 }

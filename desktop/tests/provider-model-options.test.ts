@@ -19,12 +19,18 @@ describe('provider model options', () => {
       },
     })
     const options = buildProviderModelOptions({})
-    expect(options['github-copilot']).toEqual([])
+    expect(options['github-copilot']).toEqual(['gpt-image-2.5-flare'])
     expect(
       mergeProviderModelOptions(options, {
         data: [{ id: 'gpt-6-luna' }, { id: 'claude-sonnet-5.5' }],
       }),
-    ).toEqual({ 'github-copilot': ['claude-sonnet-5.5', 'gpt-6-luna'] })
+    ).toEqual({
+      'github-copilot': [
+        'claude-sonnet-5.5',
+        'gpt-6-luna',
+        'gpt-image-2.5-flare',
+      ],
+    })
   })
 
   test('preserves explicit Copilot model IDs without importing a catalog override', () => {
@@ -52,11 +58,22 @@ describe('provider model options', () => {
         catalog: () => ['claude-fable-5.1'],
       },
     )
-    expect(options['github-copilot']).toEqual(['configured', 'selected'])
+    expect(options['github-copilot']).toEqual([
+      'configured',
+      'selected',
+      'static-model',
+    ])
     expect(mergeProviderModelOptions(options, null)).toEqual(options)
     expect(
       mergeProviderModelOptions(options, { data: [{ id: 'gpt-6-luna' }] }),
-    ).toEqual({ 'github-copilot': ['configured', 'gpt-6-luna', 'selected'] })
+    ).toEqual({
+      'github-copilot': [
+        'configured',
+        'gpt-6-luna',
+        'selected',
+        'static-model',
+      ],
+    })
   })
 
   test('filters old releases from all cached, configured and selected models.dev options', () => {
@@ -126,6 +143,11 @@ describe('provider model options', () => {
   })
 
   test.each([
+    {
+      provider: 'github-copilot',
+      chat: 'gpt-6-luna',
+      image: 'gpt-image-2.5-flare',
+    },
     { provider: 'codex', chat: 'gpt-6-luna', image: 'gpt-image-2' },
     { provider: 'xai', chat: 'grok-4.7', image: 'grok-imagine-image-2.0' },
   ])(
@@ -197,7 +219,7 @@ describe('provider model options', () => {
       },
     )
     expect(options).toEqual({
-      'github-copilot': [],
+      'github-copilot': ['builtin', 'configured'],
       example: ['builtin', 'catalog-model', 'configured', 'selected'],
     })
     expect(JSON.stringify(options)).not.toContain('secret')
@@ -209,13 +231,14 @@ describe('provider model options', () => {
         {
           data: [
             { id: 'gpt-5.4' },
+            { id: 'github-copilot/gpt-image-2.5-flare' },
             { id: 'org/family/model' },
             { id: 'custom/model' },
           ],
         },
       ),
     ).toEqual({
-      'github-copilot': ['gpt-5.4', 'org/family/model'],
+      'github-copilot': ['gpt-5.4', 'gpt-image-2.5-flare', 'org/family/model'],
       custom: ['model'],
     })
   })

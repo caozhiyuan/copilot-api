@@ -26,6 +26,11 @@ export function mergeProviderModelOptions(
     const id = model.id
     if (typeof id !== 'string') continue
     for (const [name, ids] of Object.entries(result)) {
+      const prefix = `${name}/`
+      if (id.startsWith(prefix) && id.length > prefix.length) {
+        ids.push(id.slice(prefix.length))
+        break
+      }
       if (
         name === 'github-copilot'
         && !Object.keys(result).some(
@@ -34,11 +39,6 @@ export function mergeProviderModelOptions(
         )
       ) {
         ids.push(id)
-        break
-      }
-      const prefix = `${name}/`
-      if (id.startsWith(prefix) && id.length > prefix.length) {
-        ids.push(id.slice(prefix.length))
         break
       }
     }

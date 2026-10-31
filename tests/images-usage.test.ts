@@ -35,6 +35,46 @@ const sampleUsage = {
   output_tokens_details: { image_tokens: 1372, text_tokens: 0 },
   total_tokens: 1386,
 }
+const copilotImageUsage = {
+  token_details: [
+    {
+      batch_size: 1_000_000,
+      cost_per_batch: 500_000_000_000,
+      model: "gpt-image-2.5-flare",
+      token_count: 73,
+      token_type: "input",
+    },
+    {
+      batch_size: 1_000_000,
+      cost_per_batch: 0,
+      model: "gpt-image-2.5-flare",
+      token_count: 0,
+      token_type: "cache_read",
+    },
+    {
+      batch_size: 1_000_000,
+      cost_per_batch: 0,
+      model: "gpt-image-2.5-flare",
+      token_count: 0,
+      token_type: "cache_write",
+    },
+    {
+      batch_size: 1_000_000,
+      cost_per_batch: 0,
+      model: "gpt-image-2.5-flare",
+      token_count: 0,
+      token_type: "output",
+    },
+    {
+      batch_size: 1_000_000,
+      cost_per_batch: 3_000_000_000_000,
+      model: "gpt-image-2.5-flare",
+      token_count: 158,
+      token_type: "image_output",
+    },
+  ],
+  total_nano_aiu: 510_500_000,
+}
 const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
 
 beforeEach(async () => {
@@ -51,6 +91,127 @@ afterEach(async () => {
 
 const events = () =>
   getTokenUsageEventsPage({ period: "today", page: 1, pageSize: 20 })
+
+describe("Copilot image usage", () => {
+  test.each(["json", "sse"])(
+    "reads standard usage and Copilot image charges from %s responses",
+    async (format) => {
+      const payload = {
+        data: [{ b64_json: "image" }],
+        usage: sampleUsage,
+        copilot_usage: copilotImageUsage,
+      }
+      const text =
+        format === "json" ?
+          JSON.stringify(payload)
+        : `event: image_generation.completed\ndata: ${JSON.stringify(payload)}\n\ndata: [DONE]\n\n`
+      const response = observeImagesResponse(
+        new Response(text, {
+          headers: {
+            "content-type":
+              format === "json" ? "application/json" : "text/event-stream",
+          },
+        }),
+        {
+          providerConfig: { ...codex, name: "github-copilot" },
+          model: "gpt-image-2.5-flare",
+          operation: "generations",
+          onMetadata: () => {},
+        },
+      )
+      expect(await response.text()).toBe(text)
+      const page = await events()
+      expect(page.items).toHaveLength(1)
+      expect(page.items[0]).toMatchObject({
+        source: "copilot",
+        provider_name: "github-copilot",
+        input_tokens: sampleUsage.input_tokens,
+        output_tokens: sampleUsage.output_tokens,
+        total_tokens: sampleUsage.total_tokens,
+        total_nano_aiu: 510_500_000,
+        cost: { amount: 0.005105, currency: "USD", source: "copilot_aiu" },
+      })
+    },
+  )
+
+  test.each(["usage-first", "cost-first"])(
+    "keeps usage and Copilot charges from separate SSE events (%s)",
+    async (order) => {
+      const chunks = [
+        `data: ${JSON.stringify({ usage: sampleUsage })}\n\n`,
+        `data: ${JSON.stringify({ copilot_usage: copilotImageUsage })}\n\n`,
+      ]
+      if (order === "cost-first") chunks.reverse()
+      const text = `${chunks.join("")}data: [DONE]\n\n`
+      const response = observe(new Response(text), {
+        ...codex,
+        name: "github-copilot",
+      })
+      await response.text()
+      expect((await events()).items[0]).toMatchObject({
+        input_tokens: 14,
+        output_tokens: 1372,
+        total_tokens: 1386,
+        total_nano_aiu: 510_500_000,
+        cost: { amount: 0.005105, source: "copilot_aiu" },
+      })
+    },
+  )
+
+  test("does not infer token usage from Copilot billing details", async () => {
+    const response = observe(
+      Response.json({ copilot_usage: copilotImageUsage }),
+      {
+        ...codex,
+        name: "github-copilot",
+      },
+    )
+    await response.text()
+    expect((await events()).items[0]).toMatchObject({
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      total_nano_aiu: 510_500_000,
+      cost: { amount: 0.005105, source: "copilot_aiu" },
+    })
+  })
+
+  test.each([undefined, null, -1, "510500000"])(
+    "retains standard usage when the reported Copilot charge is invalid (%s)",
+    async (charge) => {
+      const response = observe(
+        Response.json({
+          usage: sampleUsage,
+          copilot_usage: { ...copilotImageUsage, total_nano_aiu: charge },
+        }),
+        { ...codex, name: "github-copilot" },
+      )
+      await response.text()
+      expect((await events()).items[0]).toMatchObject({
+        input_tokens: sampleUsage.input_tokens,
+        output_tokens: sampleUsage.output_tokens,
+        total_tokens: sampleUsage.total_tokens,
+        total_nano_aiu: null,
+        cost: null,
+      })
+    },
+  )
+
+  test("does not apply Copilot charges to other providers or failed responses", async () => {
+    const payload = { data: [], copilot_usage: copilotImageUsage }
+    for (const [provider, status] of [
+      ["codex", 200],
+      ["github-copilot", 429],
+    ] as const) {
+      const response = observe(Response.json(payload, { status }), {
+        ...codex,
+        name: provider,
+      })
+      await response.text()
+    }
+    expect((await events()).items).toHaveLength(0)
+  })
+})
 
 function observe(
   response: Response,

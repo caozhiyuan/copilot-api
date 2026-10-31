@@ -22,6 +22,34 @@ import {
 const encoder = new TextEncoder()
 const url = "http://localhost/v1/images/edits"
 
+test.each([
+  {},
+  {
+    prompt: "a cat \u{1f408} caf\u00e9",
+    nested: { model: "nested-model" },
+    n: 1,
+  },
+  {
+    images: [{ image_url: `data:image/png;base64,${"A".repeat(100_000)}` }],
+    prompt: "edit",
+  },
+])(
+  "inserts a missing image model without dropping fields %#",
+  async (payload) => {
+    const request = new Request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    const parsed = await prepareImageJsonRequest(request)
+    expect(parsed.valid).toBe(true)
+    expect(await parsed.createRequest("gpt-image-2.5-flare").json()).toEqual({
+      ...payload,
+      model: "gpt-image-2.5-flare",
+    })
+  },
+)
+
 async function expectFailure(
   promise: Promise<unknown>,
   expected?: string | Error,

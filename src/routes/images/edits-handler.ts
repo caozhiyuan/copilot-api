@@ -14,7 +14,6 @@ import {
   routeImagesRequest,
 } from "~/routes/images/shared"
 import { handleXaiImageEdit } from "~/routes/images/xai-handler"
-import { DEFAULT_CODEX_IMAGE_MODEL } from "~/services/codex/images"
 
 export async function handleImagesEdits(c: Context): Promise<Response> {
   try {
@@ -42,15 +41,6 @@ export async function handleImagesEdits(c: Context): Promise<Response> {
             c,
             configuredModel.model,
             await multipart.readPayload(),
-          )
-        }
-        if (multipart.model === undefined) {
-          return await handleCodexImages(
-            c,
-            "edits",
-            undefined,
-            await multipart.createRequest(undefined),
-            DEFAULT_CODEX_IMAGE_MODEL,
           )
         }
         return await routeImagesRequest(c, "edits", {

@@ -206,10 +206,11 @@ export class ImageModelReader {
   }
 }
 
-/** Re-encodes one bounded chunk at a time, replacing only the top-level model. */
+/** Re-encodes bounded chunks, replacing or inserting the top-level model. */
 export async function* rewriteImageModel(
   input: AsyncIterable<Uint8Array>,
   model: string,
+  insertModel = false,
 ): AsyncGenerator<Uint8Array, void, unknown> {
   const parser = new StreamingJsonReader()
   const encode = new TextEncoder()
@@ -225,6 +226,17 @@ export async function* rewriteImageModel(
       if (text !== none) parts.push(text)
     }
     for (const token of tokens) {
+      if (insertModel && depth === 0 && token.name === "startObject") {
+        emit(token)
+        emit({ name: "startKey" })
+        emit({ name: "stringChunk", value: "model" })
+        emit({ name: "endKey" })
+        emit({ name: "startString" })
+        emit({ name: "stringChunk", value: model })
+        emit({ name: "endString" })
+        depth++
+        continue
+      }
       if (replacing) {
         if (token.name === "endString") replacing = false
         continue
