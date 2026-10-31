@@ -294,7 +294,7 @@ function createCodexCatalogResponse(
   explicitSlugs: ReadonlySet<string>,
   fallback: CodexModel["model_messages"],
 ): Response {
-  if (getConfig().codexMultiAgentV1) {
+  if (getConfig().codexMultiAgentV1 === true) {
     response = {
       ...response,
       models: response.models.map((model) =>
@@ -382,7 +382,7 @@ export function createSyntheticCodexModel(
     // Gateway adapters use request-level effort, regardless of template capabilities.
     supports_reasoning_effort_updates: false,
     tool_mode: "code_mode_only",
-    multi_agent_version: getConfig().codexMultiAgentV1 ? "v1" : "v2",
+    multi_agent_version: getConfig().codexMultiAgentV1 === true ? "v1" : "v2",
     multi_agent_reasoning_effort: null,
     shell_type: template.shell_type,
     experimental_supported_tools: [],

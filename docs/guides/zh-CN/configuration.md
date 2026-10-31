@@ -122,7 +122,7 @@
 
 ### Codex 多 Agent 兼容性
 
-`codexMultiAgentV1` 默认 `false`：合成的 Codex 模型声明 `multi_agent_version: "v2"`。设为 `true` 后声明 `"v1"`，同时将上游模型及其别名中的 V2 声明改为 V1。上游原有的 V1 或未启用能力保持不变。缺失或非布尔值回退为 `false`，启动合并配置时会将规范化后的值写入 `config.json`。
+`codexMultiAgentV1` 默认 `false`：合成的 Codex 模型声明 `multi_agent_version: "v2"`。设为 `true` 后声明 `"v1"`，同时将上游模型及其别名中的 V2 声明改为 V1。上游原有的 V1 或未启用能力保持不变。只有布尔值 `true` 启用 V1，缺失或非法值均回退为 V2。
 
 V1 使用明文任务和消息参数，可改善不支持加密多 Agent 消息的上游兼容性。此开关不会删除请求中的加密内容。可在桌面端 **高级配置 → 请求设置 → Codex 多 Agent V1** 中开启，或编辑 `config.json` 后重启网关。
 

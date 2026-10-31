@@ -118,7 +118,7 @@ Edit this file to customize prompts or swap in your own fast model. Restart the 
 
 ### Codex Multi-Agent compatibility
 
-`codexMultiAgentV1` defaults to `false`: synthesized Codex models advertise `multi_agent_version: "v2"`. Set it to `true` to advertise `"v1"`, including upstream models and aliases that would otherwise advertise V2. Existing upstream V1 or unset capabilities remain unchanged. Missing or non-boolean values fall back to `false`; startup merges persist the normalized value in `config.json`.
+`codexMultiAgentV1` defaults to `false`: synthesized Codex models advertise `multi_agent_version: "v2"`. Set it to `true` to advertise `"v1"`, including upstream models and aliases that would otherwise advertise V2. Existing upstream V1 or unset capabilities remain unchanged. Only the boolean `true` enables V1; missing or invalid values fall back to V2.
 
 V1 uses plain-text task/message arguments and can improve compatibility with upstream providers that do not support encrypted Multi-Agent messages. This setting does not remove encrypted content from requests. Enable it in Desktop **Advanced config → Request settings → Codex Multi-Agent V1**, or edit `config.json` and restart the gateway.
 

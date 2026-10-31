@@ -5,7 +5,6 @@ import path from "node:path"
 
 import {
   defaultConfig,
-  getConfig,
   getAlphaSearchModel,
   getClaudeAutoModel,
   getMessageApiWebSearchModel,
@@ -119,38 +118,6 @@ test("reloadConfig creates a default config when it is missing", () => {
     expect(fs.statSync(configPath).mode & 0o777).toBe(0o600)
   }
 })
-
-test.each([
-  { configured: undefined, expected: false },
-  { configured: false, expected: false },
-  { configured: true, expected: true },
-  { configured: null, expected: false },
-  { configured: "true", expected: false },
-  { configured: "false", expected: false },
-  { configured: 1, expected: false },
-  { configured: {}, expected: false },
-  { configured: [], expected: false },
-])(
-  "normalizes and persists the Codex Multi-Agent V1 setting %j",
-  ({ configured, expected }) => {
-    const configPath = useTempConfigPath()
-    const original = JSON.stringify({
-      ...defaultConfig,
-      auth: { adminApiKey: "existing-admin-key" },
-      codexMultiAgentV1: configured,
-    })
-    fs.writeFileSync(configPath, original, "utf8")
-    invalidateConfigCache()
-
-    expect(getConfig().codexMultiAgentV1).toBe(expected)
-    expect(fs.readFileSync(configPath, "utf8")).toBe(original)
-    expect(reloadConfig().codexMultiAgentV1).toBe(expected)
-    const stored = fs.readFileSync(configPath, "utf8")
-    expect((JSON.parse(stored) as AppConfig).codexMultiAgentV1).toBe(expected)
-    expect(reloadConfig().codexMultiAgentV1).toBe(expected)
-    expect(fs.readFileSync(configPath, "utf8")).toBe(stored)
-  },
-)
 
 test("reloads Codex Multi-Agent V1 changes saved through the config store", () => {
   useTempConfigPath()

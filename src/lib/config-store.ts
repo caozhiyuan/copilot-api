@@ -320,7 +320,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
     config.opencodeModelContextWindow,
     defaultOpencodeModelContextWindow,
   )
-  const codexMultiAgentV1 = config.codexMultiAgentV1 === true
   const {
     changed: upstreamTransportMigrated,
     migrated: migratedUpstreamTransport,
@@ -356,8 +355,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
   const hasContextManagementChanges = missingContextManagementKeys.length > 0
   const hasOpencodeModelContextWindowChanges =
     config.opencodeModelContextWindow !== opencodeModelContextWindow
-  const hasCodexMultiAgentV1Changes =
-    config.codexMultiAgentV1 !== codexMultiAgentV1
   const hasUpstreamTransportChanges = Object.entries(upstreamTransport).some(
     ([key, value]) =>
       migratedUpstreamTransport[key as keyof UpstreamTransportConfig] !== value,
@@ -370,7 +367,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
     && !hasResponsesApiCompactThresholdChanges
     && !hasContextManagementChanges
     && !hasOpencodeModelContextWindowChanges
-    && !hasCodexMultiAgentV1Changes
     && !hasUpstreamTransportChanges
     && !upstreamTransportMigrated
     && !agentModelsMigrated
@@ -401,7 +397,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
         ...contextManagement,
       },
       opencodeModelContextWindow,
-      codexMultiAgentV1,
       extraPrompts: {
         ...defaultExtraPrompts,
         ...extraPrompts,
