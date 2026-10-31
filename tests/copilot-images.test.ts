@@ -218,6 +218,27 @@ describe("Copilot images routing", () => {
         expect(fetchMock).not.toHaveBeenCalled()
       },
     )
+
+    test.each(["future-image", "github-copilot/future-image", "gpt-image-2"])(
+      `preserves scoped Copilot ${operation} model %s without checking other providers`,
+      async (requested) => {
+        const resolve = mock(imageRouteDependencies.resolveProviderConfig)
+        imageRouteDependencies.resolveProviderConfig = resolve
+        const response = await post(`/github-copilot/v1/images/${operation}`, {
+          model: requested,
+          prompt: "future image",
+        })
+        expect(response.status).toBe(200)
+        expect(forwardedPayload).toHaveProperty(
+          "model",
+          requested === "github-copilot/future-image" ? "future-image" : (
+            requested
+          ),
+        )
+        expect(resolve).not.toHaveBeenCalled()
+        await response.text()
+      },
+    )
   }
 
   test("supplies JSON content type when generations omit it", async () => {
@@ -435,7 +456,7 @@ describe("default image provider routing", () => {
     },
   }
   for (const [index, provider] of providers.entries()) {
-    for (const input of ["missing", "unknown"] as const) {
+    for (const input of ["missing", "generic"] as const) {
       test.each(["generations", "edits", "multipart"])(
         `defaults ${input} models to ${provider} for %s`,
         async (format) => {
@@ -468,7 +489,7 @@ describe("default image provider routing", () => {
             "image",
             new File(["image"], "image.png", { type: "image/png" }),
           )
-          if (input === "unknown") form.set("model", "unlisted-image-model")
+          if (input === "generic") form.set("model", "gpt-image-2")
           const response = await app().request(`/v1/images/${operation}`, {
             method: "POST",
             headers:
@@ -478,9 +499,7 @@ describe("default image provider routing", () => {
             body:
               format === "multipart" ? form : (
                 JSON.stringify({
-                  ...(input === "unknown" ?
-                    { model: "unlisted-image-model" }
-                  : {}),
+                  ...(input === "generic" ? { model: "gpt-image-2" } : {}),
                   prompt: "a cat",
                   ...(operation === "edits" ?
                     {

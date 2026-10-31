@@ -5,8 +5,8 @@ import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import { prepareImageJsonRequest } from "~/lib/image-json-request"
 import { getDefaultImageModel } from "~/lib/image-models"
 import { createHandlerLogger } from "~/lib/logger"
+import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
-import { resolveImageRequestModel } from "~/routes/images/default-model"
 import {
   forwardCopilotImagesWithLogging,
   forwardProviderImagesWithLogging,
@@ -75,15 +75,17 @@ async function handleProviderImages(
     }
 
     const target = providerConfig?.name ?? provider
-    if (!getDefaultImageModel(target)) return await forward(c.req.raw)
+    const defaultModel = getDefaultImageModel(target)
+    if (!defaultModel) return await forward(c.req.raw)
 
     return await withImageEditRequest(c, operation, async (multipart) => {
       const parsed: ParsedImagesRequest =
         multipart ?? (await prepareImageJsonRequest(c.req.raw))
       try {
-        const model = await resolveImageRequestModel(parsed.model, {
-          provider: target,
-        })
+        const requested = parsed.model?.trim()
+        const alias = requested ? parseProviderModelAlias(requested) : null
+        const model =
+          (alias?.provider === target ? alias.model : requested) || defaultModel
         const request =
           parsed.model === model && parsed.originalRequest ?
             parsed.originalRequest

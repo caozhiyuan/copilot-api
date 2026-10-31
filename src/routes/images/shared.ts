@@ -17,6 +17,7 @@ import {
 } from "~/lib/xai-image-model"
 import {
   forwardCopilotImagesWithLogging,
+  forwardProviderImagesWithLogging,
   forwardXaiImagesWithLogging,
 } from "~/routes/images/forward-provider-images"
 import { logImageEditRequest } from "~/routes/images/request-logging"
@@ -94,8 +95,8 @@ export async function handleCodexImages(
 }
 
 /**
- * Applies model mappings and resolves unknown or absent models to an available
- * provider's image default before dispatching.
+ * Apply model mappings and resolve automatic defaults before dispatching.
+ * Explicit targets retain their model and never fall back to another provider.
  */
 export async function routeImagesRequest(
   c: Context,
@@ -164,6 +165,15 @@ export async function routeImagesRequest(
       providerConfig,
       request,
       alias.model,
+    )
+  }
+
+  if (alias.provider !== "xai") {
+    return await forwardProviderImagesWithLogging(
+      providerConfig,
+      request,
+      operation,
+      { logger, ...alias },
     )
   }
 

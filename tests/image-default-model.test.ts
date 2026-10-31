@@ -2,7 +2,6 @@ import { describe, expect, mock, test } from "bun:test"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import {
-  DEFAULT_IMAGE_MODELS,
   getDefaultImageModel,
   selectDefaultImageModel,
   type ImageProvider,
@@ -15,7 +14,7 @@ const xai = "xai/grok-imagine-image-2.0"
 
 function dependencies(available: Array<ImageProvider>) {
   return {
-    isGitHubCopilotAvailable: () => available.includes("github-copilot"),
+    isGitHubCopilotAvailable: mock(() => available.includes("github-copilot")),
     resolveProviderConfig: mock(
       (name: string): Promise<ResolvedProviderConfig | null> =>
         Promise.resolve(
@@ -51,8 +50,8 @@ describe("default image models", () => {
     expect(getDefaultImageModel("custom")).toBeUndefined()
   })
 
-  test.each([undefined, "", "  ", "not-a-model", "custom/missing"])(
-    "defaults missing or unsupported model %s to the first available provider",
+  test.each([undefined, "", "  ", "gpt-image-2", " gpt-image-2 "])(
+    "automatically selects a provider for model %s",
     async (requested) => {
       expect(
         await resolveImageRequestModel(
@@ -76,43 +75,42 @@ describe("default image models", () => {
     },
   )
 
-  test.each(["codex", "github-copilot", "xai"] as const)(
-    "keeps scoped requests on %s",
-    async (provider) => {
-      const options = { ...dependencies([]), provider }
-      for (const requested of [undefined, "", "unsupported-model"]) {
-        expect(await resolveImageRequestModel(requested, options)).toBe(
-          DEFAULT_IMAGE_MODELS[provider],
-        )
-      }
-      expect(options.resolveProviderConfig).not.toHaveBeenCalled()
-    },
-  )
-
   test.each([
-    { requested: "gpt-image-2", expected: codex },
+    { requested: codex, expected: codex },
     { requested: copilot, expected: copilot },
     { requested: "gpt-image-2.5-flare", expected: copilot },
     { requested: "grok-imagine-image-2.0", expected: xai },
     { requested: xai, expected: xai },
+    { requested: "gpt-image-1", expected: "codex/gpt-image-1" },
+    { requested: "future-image-model", expected: "codex/future-image-model" },
+    { requested: "codex/future-image", expected: "codex/future-image" },
+    {
+      requested: "github-copilot/future-image",
+      expected: "github-copilot/future-image",
+    },
+    { requested: "xai/future-image", expected: "xai/future-image" },
+    {
+      requested: "openrouter/black-forest-labs/flux-1.1-pro",
+      expected: "openrouter/black-forest-labs/flux-1.1-pro",
+    },
+    { requested: " custom / future-image ", expected: "custom/future-image" },
   ])(
-    "preserves supported model $requested when its provider is available",
+    "preserves explicit model $requested without probing other providers",
     async ({ requested, expected }) => {
-      expect(
-        await resolveImageRequestModel(
-          requested,
-          dependencies(["codex", "github-copilot", "xai"]),
-        ),
-      ).toBe(expected)
+      const options = dependencies([])
+      expect(await resolveImageRequestModel(requested, options)).toBe(expected)
+      expect(options.resolveProviderConfig).not.toHaveBeenCalled()
+      expect(options.isGitHubCopilotAvailable).not.toHaveBeenCalled()
     },
   )
 
-  test("falls back when the explicitly selected provider is unavailable", async () => {
+  test("probes providers in priority order only for an automatic selection", async () => {
     const options = dependencies(["github-copilot", "xai"])
-    expect(await resolveImageRequestModel(codex, options)).toBe(copilot)
+    expect(await resolveImageRequestModel("gpt-image-2", options)).toBe(copilot)
     expect(
       options.resolveProviderConfig.mock.calls.map(([name]) => name),
     ).toEqual(["codex"])
+    expect(options.isGitHubCopilotAvailable).toHaveBeenCalledTimes(1)
   })
 
   test("returns a clear error when no default provider is available", async () => {

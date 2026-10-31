@@ -61,7 +61,9 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 ### Codex 后端端点
 
-顶层图片路由支持三个模型：`codex/gpt-image-2`、`github-copilot/gpt-image-2.5-flare`、`xai/grok-imagine-image-2.0`，也接受对应的原始模型 ID。省略、空白、不支持或不可用的模型会按 **Codex → GitHub Copilot → xAI** 选择首个可用 provider 的默认模型。可用性依据 provider 启用状态及凭据判断，不查询其他 provider 的模型目录。JSON 和 multipart 转换后的请求都会写入最终模型，并使用该模型记账；没有可用 provider 时返回 `404`。provider 作用域路径固定使用路径中的 provider，并使用它的默认模型。显式配置的 `imageGenerationModel`、`imageEditModel` 在顶层路由仍然优先。
+顶层图片路由先应用 model mapping。仅省略、空白模型或裸 `gpt-image-2` 会按 **Codex → GitHub Copilot → xAI** 选择首个可用 provider 的默认图片模型。可用性依据 provider 启用状态及凭据判断，不查询模型目录；没有可用 provider 时返回 `404`。
+
+显式 `provider/model` 别名固定目标 provider，保留上游模型名，包括内置目录中未列出的型号；目标不可用时返回对应错误，不会切换到其他 provider。裸 `gpt-image-2.5-flare` 固定走 GitHub Copilot，裸 `grok-imagine-image-2.0` 固定走 xAI，其他裸模型名保持原样发往 Codex。provider 作用域路径保留传入模型；内置 provider 的作用域路径仅在模型省略或空白时补充默认型号，并移除与路径匹配的 `provider/` 前缀。自定义 provider 接收原生 Images JSON 或 multipart 请求。使用最终上游模型记账。显式配置的 `imageGenerationModel`、`imageEditModel` 在顶层路由仍然优先。
 
 JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域路由遇到无效 JSON 时统一返回 `400`（`invalid_request_error`），不再兜底转发给 Codex。大请求仍保持流式处理，上传过程中发现错误时中止转发。multipart 图片编辑继续支持。
 
@@ -70,7 +72,7 @@ JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域�
 | 端点                                                       | 方法 | 说明                                                                                                 |
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
 | `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
-| `POST /v1/images/generations` | `POST` | 将 JSON 图片生成请求路由到 Codex、GitHub Copilot 或 xAI。请求未携带 `Content-Type` 时默认补充 `application/json`。先应用 model mapping，再选择支持的模型；省略、空白或不支持的模型名按上述默认规则处理。 |
+| `POST /v1/images/generations` | `POST` | 按 model mapping 或 provider 别名路由 JSON 图片生成请求。请求未携带 `Content-Type` 时默认补充 `application/json`。仅省略、空白或裸 `gpt-image-2` 自动选择 provider，其他型号保留并交给上游校验。 |
 | `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex、GitHub Copilot 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits`、`/github-copilot/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域路由保持透传行为。 |
 
 在两个图片端点中使用 `model: "github-copilot/gpt-image-2.5-flare"`，或将 model mapping 指向这个别名，可在 GitHub Copilot 可用时选择该 provider。网关移除模型名中的 `github-copilot/` 前缀，转发 OpenAI 兼容的图片参数、JSON 图片引用和响应，支持流式事件；multipart 编辑会转换为相同的 JSON 格式。`/github-copilot/v1/images/generations` 和 `/github-copilot/v1/images/edits` 接受原始模型 ID，并固定使用 Copilot；禁用时返回 `403`，缺少 GitHub 登录态时返回 `401`。上游请求使用当前 GitHub 登录令牌及已有设备 ID。内置图片目录会补入该模型，不依赖 Copilot 的 models 接口。token 用量读取标准 OpenAI 兼容的 `usage` 字段；仅费用从 `copilot_usage.total_nano_aiu` 读取，并按现有 Copilot AIU 汇率计算。
