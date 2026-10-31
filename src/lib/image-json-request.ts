@@ -1,4 +1,10 @@
 import {
+  createImageJsonFiles,
+  IMAGE_JSON_MAX_BYTES,
+  imageJsonLimitError,
+  readImageJsonFile,
+} from "~/lib/image-json-files"
+import {
   DuplicateImageModelError,
   createJsonByteSource,
   ImageModelReader,
@@ -37,8 +43,11 @@ function rebuild(
   } as RequestInit)
 }
 
-/** Find the model or a complete object within 64 KiB, then stream the body. */
-export async function prepareImageJsonRequest(request: Request) {
+/** Read at most 64 KiB before forwarding a model-first request. Late models use disk. */
+export async function prepareImageJsonRequest(
+  request: Request,
+  maxStagedBytes = IMAGE_JSON_MAX_BYTES,
+) {
   const forwardingAbort = new AbortController()
   const signal = AbortSignal.any([request.signal, forwardingAbort.signal])
   const input = createJsonByteSource(
@@ -73,6 +82,8 @@ export async function prepareImageJsonRequest(request: Request) {
     }
     yield* bytes
   }
+  let files: Awaited<ReturnType<typeof createImageJsonFiles>> | undefined
+  let stagedPath: string | undefined
   try {
     while (length < JSON_CHUNK_BYTES) {
       const next = await bytes.next()
@@ -92,18 +103,38 @@ export async function prepareImageJsonRequest(request: Request) {
       if (metadata.model !== undefined || metadata.complete) break
     }
     if (!eof && !metadata.complete && metadata.model === undefined) {
-      throw invalidImageJson(
-        "Image model must appear within the first 64 KiB of the JSON body",
-      )
+      files = await createImageJsonFiles()
+      const file = await files.create()
+      stagedPath = file.path
+      try {
+        for (const chunk of prefix) {
+          if (length > maxStagedBytes) throw imageJsonLimitError()
+          await file.handle.writeFile(chunk)
+        }
+        prefix.length = 0
+        for await (const chunk of remaining()) {
+          length += chunk.byteLength
+          if (length > maxStagedBytes) throw imageJsonLimitError()
+          scan(chunk)
+          await file.handle.writeFile(chunk)
+        }
+        eof = true
+        scan()
+      } finally {
+        await file.handle.close()
+      }
+      files.scheduleCleanup()
     }
     if (!metadata.object) throw invalidImageJson()
   } catch (error) {
     await input.cancel(error)
+    await files?.cleanup()
     throw error
   }
   let claimed = false
   const abort = () => {
     void input.cancel().catch(() => {})
+    void files?.cleanup().catch(() => {})
   }
   request.signal.addEventListener("abort", abort, { once: true })
   async function* source(): AsyncGenerator<Uint8Array, void, unknown> {
@@ -111,24 +142,29 @@ export async function prepareImageJsonRequest(request: Request) {
     claimed = true
     try {
       signal.throwIfAborted()
-      yield* prefix
-      prefix.length = 0
-      if (!eof) {
-        for await (const chunk of remaining()) {
-          scan(chunk)
-          yield chunk
+      if (stagedPath) yield* readImageJsonFile(stagedPath, signal)
+      else {
+        yield* prefix
+        prefix.length = 0
+        if (!eof) {
+          for await (const chunk of remaining()) {
+            scan(chunk)
+            yield chunk
+          }
+          scan()
         }
-        scan()
       }
     } finally {
       request.signal.removeEventListener("abort", abort)
       await bytes.return(undefined).catch(() => {})
+      await files?.cleanup()
     }
   }
   const cancel = async (reason?: unknown) => {
     forwardingAbort.abort(reason)
     request.signal.removeEventListener("abort", abort)
     await input.cancel(reason)
+    await files?.cleanup()
   }
   return {
     model: metadata.model,
@@ -143,5 +179,6 @@ export async function prepareImageJsonRequest(request: Request) {
         true,
       ),
     cleanup: cancel,
+    stagedDirectory: files?.directory,
   }
 }

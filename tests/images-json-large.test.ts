@@ -67,6 +67,7 @@ test("rewrites a 20 MiB image request before reading its image bytes", async () 
   const parsed = await prepareImageJsonRequest(input.request)
   expect(parsed.model).toBe("image-alias")
   expect(input.sent()).toBe(0)
+  expect(parsed.stagedDirectory).toBeUndefined()
   const output = parsed.createRequest("gpt-image-2")
   expect(await bodyDigest(output.body as ReadableStream<Uint8Array>)).toEqual(
     expectedDigest(prefix.replace("image-alias", "gpt-image-2"), suffix),
