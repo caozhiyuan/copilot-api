@@ -3,7 +3,6 @@ import consola from "consola"
 import { access } from "node:fs/promises"
 import { createImageJsonFiles } from "~/lib/image-json-files"
 
-import { HTTPError } from "~/lib/error"
 import { prepareImageJsonRequest } from "~/lib/image-json-request"
 import { readExternalImageJson } from "~/lib/image-json-value"
 import { state } from "~/lib/state"
@@ -31,10 +30,9 @@ test.each([
     n: 1,
   },
   {
-    images: [{ image_url: `data:image/png;base64,${"A".repeat(1000)}` }],
+    images: [{ image_url: `data:image/png;base64,${"A".repeat(100_000)}` }],
     prompt: "edit",
   },
-  { prompt: "a".repeat(65523) },
 ])(
   "inserts a missing image model without dropping fields %#",
   async (payload) => {
@@ -152,6 +150,7 @@ describe("streaming image JSON", () => {
     const parsed = await prepareImageJsonRequest(request(body))
     expect(parsed.model).toBe("gpt-image-2")
     expect(pulls).toBe(1)
+    expect(parsed.stagedDirectory).toBeUndefined()
     tail = true
     expect(await parsed.originalRequest.text()).toBe(
       '{ "model": "gpt-image-2", "images": ["data:image/png;base64,AAAA"] }',
@@ -179,7 +178,7 @@ describe("streaming image JSON", () => {
     })
   }, 20000)
 
-  test("handles single-byte JSON tokens", async () => {
+  test("handles single-byte JSON tokens and a prefix split in the middle of a network chunk", async () => {
     const small = {
       model: 'alias\\"caf\u00e9',
       prompt: "\u{1f408}\n\ud800",
@@ -193,103 +192,84 @@ describe("streaming image JSON", () => {
       ...small,
       model: "gpt-image-2",
     })
-  })
-
-  test.each([1013, 100000])(
-    "accepts a model ending at exactly 64 KiB with %i-byte network chunks",
-    async (size) => {
-      const head = '{"prompt":"🐈'
-      const model = '","model":"gpt-image-2"'
-      const prefix =
-        head
-        + "a".repeat(65536 - encoder.encode(head + model).byteLength)
-        + model
-      expect(encoder.encode(prefix).byteLength).toBe(65536)
-      const text = prefix + ',"image":"' + "A".repeat(100000) + '"}'
-      const parsed = await prepareImageJsonRequest(request(chunks(text, size)))
-      expect(parsed.model).toBe("gpt-image-2")
-      expect(await parsed.originalRequest.text()).toBe(text)
-    },
-  )
-
-  test.each([
-    JSON.stringify({ image: "A".repeat(100000), model: "late" }),
-    JSON.stringify({ image: "A".repeat(100000) }),
-    JSON.stringify({ nested: { model: "nested" }, image: "A".repeat(100000) }),
-    '{"prompt":"' + "a".repeat(65512) + '","model":"late"}',
-  ])(
-    "rejects an unfinished prefix without a complete model %#",
-    async (text) => {
-      let pulls = 0
-      const cancel = mock(() => {})
-      const body = new ReadableStream<Uint8Array>(
-        {
-          pull(controller) {
-            if (++pulls > 1) throw new Error("Read beyond the 64 KiB prefix")
-            controller.enqueue(encoder.encode(text).subarray(0, 65536))
-          },
-          cancel,
-        },
-        { highWaterMark: 0 },
-      )
-      const error: unknown = await prepareImageJsonRequest(request(body)).catch(
-        (error: unknown) => error,
-      )
-      expect(error).toBeInstanceOf(HTTPError)
-      if (!(error instanceof HTTPError)) throw new Error("Expected HTTPError")
-      expect(error.response.status).toBe(400)
-      expect(await error.response.json()).toEqual({
-        error: {
-          message:
-            "Image model must appear within the first 64 KiB of the JSON body",
-          type: "invalid_request_error",
-        },
-      })
-      expect(pulls).toBe(1)
-      expect(cancel).toHaveBeenCalledTimes(1)
-      expect(body.locked).toBe(false)
-    },
-  )
-
-  test("rejects a late model contained in a single oversized network chunk", async () => {
-    await expectFailure(
-      prepareImageJsonRequest(
-        request(JSON.stringify({ image: "A".repeat(100000), model: "late" })),
-      ),
-      "first 64 KiB",
-    )
-  })
-
-  test("releases an unconsumed request on cancellation", async () => {
-    const original = request(
-      chunks('{"model":"alias","image":"' + "A".repeat(100000) + '"}'),
-    )
-    const parsed = await prepareImageJsonRequest(original)
-    await parsed.originalRequest.body!.cancel()
-    expect(original.body!.locked).toBe(false)
-    expect(await original.body!.getReader().read()).toEqual({
-      done: true,
-      value: undefined,
-    })
-  })
-
-  test("releases the input on client abort and during forwarding cancellation", async () => {
-    const text = JSON.stringify({
+    const late = JSON.stringify({
+      prompt: "a".repeat(65530),
       model: "gpt-image-2",
+      images: [],
+    })
+    const staged = await prepareImageJsonRequest(request(chunks(late, 1013)))
+    expect(staged.model).toBe("gpt-image-2")
+    expect(await staged.originalRequest.text()).toBe(late)
+  })
+
+  test("spools a late model or missing model and removes the file after forwarding", async () => {
+    for (const model of ["gpt-image-2", undefined]) {
+      const text = JSON.stringify({
+        images: ["data:image/png;base64," + "A".repeat(2 * 1024 * 1024)],
+        prompt: "edit",
+        model,
+      })
+      const parsed = await prepareImageJsonRequest(request(chunks(text)))
+      expect(parsed.model).toBe(model)
+      expect(parsed.stagedDirectory).toBeDefined()
+      await access(parsed.stagedDirectory!)
+      expect(await parsed.originalRequest.text()).toBe(text)
+      expect(
+        await access(parsed.stagedDirectory!).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false)
+    }
+  })
+
+  test("rewrites a late model from disk and cleans an unconsumed staged request on cancel", async () => {
+    const text = JSON.stringify({
+      image: "data:image/png;base64," + "A".repeat(100000),
+      model: "alias",
+    })
+    const parsed = await prepareImageJsonRequest(request(chunks(text)))
+    expect(await parsed.createRequest("gpt-image-2").json()).toEqual({
+      ...JSON.parse(text),
+      model: "gpt-image-2",
+    })
+    const pending = await prepareImageJsonRequest(request(chunks(text)))
+    await pending.originalRequest.body!.cancel()
+    expect(
+      await access(pending.stagedDirectory!).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+  })
+
+  test("removes staged files on client abort and on cancellation during replay", async () => {
+    const text = JSON.stringify({
       image: "data:image/png;base64," + "A".repeat(200000),
+      model: "gpt-image-2",
     })
     const abort = new AbortController()
-    const original = request(chunks(text), abort.signal)
-    const parsed = await prepareImageJsonRequest(original)
+    const parsed = await prepareImageJsonRequest(
+      request(chunks(text), abort.signal),
+    )
     abort.abort()
     await parsed.cleanup()
-    expect(original.body!.locked).toBe(false)
-    const next = request(chunks(text))
-    const forwarded = await prepareImageJsonRequest(next)
-    const reader = forwarded.originalRequest.body!.getReader()
+    expect(
+      await access(parsed.stagedDirectory!).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    const replay = await prepareImageJsonRequest(request(chunks(text)))
+    const reader = replay.originalRequest.body!.getReader()
     await reader.read()
-    await reader.cancel("stop forwarding")
-    expect(next.body!.locked).toBe(false)
+    await reader.cancel("stop replay")
+    expect(
+      await access(replay.stagedDirectory!).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
   })
 
   test("rejects invalid JSON, nonobjects, invalid model types, and non-UTF8 bytes", async () => {
@@ -335,7 +315,14 @@ describe("streaming image JSON", () => {
     await expectFailure(parsed.originalRequest.text(), "Duplicate")
   })
 
-  test("propagates source errors and cancels an in-progress upload", async () => {
+  test("bounds staging, propagates source errors, and cancels an in-progress upload", async () => {
+    await expectFailure(
+      prepareImageJsonRequest(
+        request(chunks('{"image":"' + "A".repeat(100000) + '"}')),
+        70000,
+      ),
+      "staging limit",
+    )
     const failure = new Error("upload failed")
     await expectFailure(
       prepareImageJsonRequest(

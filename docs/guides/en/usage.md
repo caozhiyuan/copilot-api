@@ -37,7 +37,7 @@ xAI uses the upstream `usage.cost_in_usd_ticks` amount (`10^10` ticks = 1 USD), 
 
 Verbose logs include image response JSON metadata except `data` and streamed image base64. Edit request logs retain prompts, models, and parameters, replacing image base64 with placeholders; multipart files log only names, MIME types, and sizes.
 
-Image requests also include request IDs, total duration, and completion/cancellation outcomes in SQLite, without publishing gateway plugin events. Image TTFT remains unset. JSON requests with an early `model` stream upstream, including model rewrites. If the first 64 KiB contains neither a complete top-level `model` nor a complete object, routing returns `400` without staging the body. xAI format conversion still uses temporary files for large strings, with a 512 MiB staging limit and automatic cleanup; verbose JSON logging observes the forwarding stream without buffering the full body.
+Image requests also include request IDs, total duration, and completion/cancellation outcomes in SQLite, without publishing gateway plugin events. Image TTFT remains unset. JSON requests with an early `model` stream upstream, including model rewrites. Late models and xAI format conversion use temporary files for large bodies/strings, with a 512 MiB staging limit and automatic cleanup; verbose JSON logging observes the forwarding stream without buffering the full body.
 
 ### Video costs
 

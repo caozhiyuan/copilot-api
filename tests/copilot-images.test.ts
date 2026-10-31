@@ -251,40 +251,18 @@ describe("Copilot images routing", () => {
     await response.text()
   })
 
-  test("preserves large edit images when the model precedes image data", async () => {
+  test("preserves large edit images when the model comes after image data", async () => {
     const images = [
       { image_url: `data:image/png;base64,${"A".repeat(100_000)}` },
     ]
     const response = await post("/v1/images/edits", {
-      model: alias,
       images,
+      model: alias,
       prompt: "edit",
     })
     expect(response.status).toBe(200)
     expect(forwardedPayload).toEqual({ images, model, prompt: "edit" })
     await response.text()
-  })
-
-  test.each([
-    "/v1/images/generations",
-    "/v1/images/edits",
-    "/github-copilot/v1/images/generations",
-    "/github-copilot/v1/images/edits",
-  ])("rejects a late JSON model before forwarding at %s", async (path) => {
-    const response = await post(path, {
-      images: [{ image_url: `data:image/png;base64,${"A".repeat(100_000)}` }],
-      model: alias,
-      prompt: "edit",
-    })
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      error: {
-        message:
-          "Image model must appear within the first 64 KiB of the JSON body",
-        type: "invalid_request_error",
-      },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test.each(["/v1/images/edits", "/github-copilot/v1/images/edits"])(

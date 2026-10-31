@@ -67,8 +67,6 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域路由遇到无效 JSON 时统一返回 `400`（`invalid_request_error`），不再兜底转发给 Codex。大请求仍保持流式处理，上传过程中发现错误时中止转发。multipart 图片编辑继续支持。
 
-JSON 路由最多读取前 64 KiB，查找完整的顶层 `model` 字符串。如果对象尚未结束，且该范围内没有读到完整模型，网关直接返回 `400`，不再将请求落盘。请将 `model` 放在大图片/base64 字段之前。在该范围内已结束的对象仍可省略 `model`，沿用默认行为。
-
 路由到 Codex 的图片请求要求已有可用的 Codex 登录态；其他图片路由使用对应 provider 的凭据。alpha-search 可以使用 Codex 后端或 Responses web-search 适配器。
 
 | 端点                                                       | 方法 | 说明                                                                                                 |

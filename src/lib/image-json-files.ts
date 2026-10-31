@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs"
+import { createReadStream, rmSync } from "node:fs"
 import { mkdtemp, open, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -58,5 +58,17 @@ export async function createImageJsonFiles(ttlMs = 15 * 60 * 1000) {
       const path = join(directory, String(index++))
       return { path, handle: await open(path, "wx") }
     },
+  }
+}
+
+export async function* readImageJsonFile(
+  path: string,
+  signal?: AbortSignal,
+): AsyncGenerator<Uint8Array, void, unknown> {
+  const stream = createReadStream(path, { highWaterMark: 64 * 1024, signal })
+  try {
+    for await (const bytes of stream) yield bytes as Buffer
+  } finally {
+    stream.destroy()
   }
 }
