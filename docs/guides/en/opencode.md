@@ -18,8 +18,6 @@ The gateway's built-in image catalog supplies `codex/gpt-image-2` and `xai/grok-
 
 When using explicit `agentsModels`, include the upstream image ID, such as `gpt-image-2` under `codex`. These image IDs are available in the desktop provider model picker.
 
-The current OpenCode v2 [model selector](https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/component/dialog-model.tsx) has no separate visibility flag for image models. `disabled` removes a model from the available catalog. Hiding image entries from `/models` while retaining image generation requires a selector-side filter in OpenCode.
-
 The global `imageGenerationModel` and `imageEditModel` settings take precedence on `/v1/images/generations` and `/v1/images/edits`, respectively. If a setting specifies `xai/model`, that operation uses the configured xAI model even when OpenCode selects `codex/gpt-image-2`; the request's `model` and model mappings are ignored. Leave the corresponding setting empty to route by the model selected in OpenCode.
 
 With the current OpenCode v2 OpenAI Responses runtime, native compaction prefers a `compaction_trigger` appended to `input` on a regular `/v1/responses` request. The standalone `/v1/responses/compact` mechanism is used only when the route has no trigger support but does expose endpoint compaction; this gateway does not expose that standalone endpoint. Native compaction still requires the selected upstream model or gateway adapter to support the trigger. Reasoning variants use Responses `reasoning.effort`, not Anthropic `output_config.effort`.

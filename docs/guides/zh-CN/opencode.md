@@ -20,8 +20,6 @@ OpenCode 已经有直接的 GitHub Copilot provider。本节适用于你希望�
 
 使用显式 `agentsModels` 列表时，需要加入上游原始图片模型 ID，例如在 `codex` 下加入 `gpt-image-2`。桌面端 provider 模型选择器已提供这些图片模型候选项。
 
-当前 OpenCode v2 [模型选择器](https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/component/dialog-model.tsx)没有单独控制图片模型可见性的字段，`disabled` 会将模型移出可用目录。要在 `/models` 中隐藏图片条目并保留图片生成功能，需要 OpenCode 在选择器端增加过滤。
-
 全局配置 `imageGenerationModel` 和 `imageEditModel` 分别优先作用于 `/v1/images/generations` 和 `/v1/images/edits`。某项配置为 `xai/model` 时，对应操作会使用配置的 xAI 模型，即使 OpenCode 选择了 `codex/gpt-image-2`；请求中的 `model` 和 model mapping 都不会生效。将对应配置留空，即可按 OpenCode 选择的模型路由。
 
 当前 OpenCode v2 的 OpenAI Responses runtime 在 native 压缩时，优先在普通 `/v1/responses` 请求的 `input` 末尾追加 `compaction_trigger`。仅当路由不支持 trigger、但提供 endpoint 压缩时才会使用独立的 `/v1/responses/compact`；本网关没有该独立端点。实际压缩仍需所选上游模型或网关适配器支持 trigger。推理档位使用 Responses 的 `reasoning.effort`，不再使用 Anthropic 的 `output_config.effort`。
