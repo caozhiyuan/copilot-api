@@ -3,11 +3,12 @@ import { describe, expect, test } from "bun:test"
 import type { ResponseInputItem, ResponsesPayload } from "~/lib/types/responses"
 
 import {
-  normalizeGuardianAgentMessages,
+  findMalformedAgentMessageIndex,
+  normalizeAgentMessages,
   sanitizeUnsupportedInputFields,
 } from "~/routes/responses/utils"
 
-describe("normalizeGuardianAgentMessages", () => {
+describe("normalizeAgentMessages", () => {
   const createGuardianPayload = (): ResponsesPayload & {
     input: Array<ResponseInputItem>
   } => ({
@@ -56,7 +57,7 @@ describe("normalizeGuardianAgentMessages", () => {
       user,
     ]
 
-    expect(normalizeGuardianAgentMessages(payload)).toBe(2)
+    expect(normalizeAgentMessages(payload)).toBe(2)
     const expectedUser = {
       type: "message",
       role: "user",
@@ -75,51 +76,26 @@ describe("normalizeGuardianAgentMessages", () => {
     expect(payload.input[0]).toBe(developer)
     expect(payload.input[2]).toBe(reasoning)
     expect(payload.input[4]).toBe(user)
-    expect(normalizeGuardianAgentMessages(payload)).toBe(0)
+    expect(normalizeAgentMessages(payload)).toBe(0)
   })
 
-  test("matches the guardia prefix", () => {
+  test("translates agent messages in non-Guardian requests", () => {
     const payload = createGuardianPayload()
-    payload.prompt_cache_key = "guardia:session"
+    payload.prompt_cache_key = "01a19321-a391-75f0-822a-c5f1bf9167cd"
+    payload.text = { format: { type: "text" } }
 
-    expect(normalizeGuardianAgentMessages(payload)).toBe(1)
+    expect(normalizeAgentMessages(payload)).toBe(1)
+    expect(payload.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "Agent handoff" },
+          { type: "input_text", text: "Planned action" },
+        ],
+      },
+    ])
   })
-
-  test.each([
-    undefined,
-    null,
-    "",
-    "stable-cache-key",
-    "xguardian:session",
-    "Guardian:session",
-  ])("keeps agent messages when prompt_cache_key is %j", (cacheKey) => {
-    const payload = createGuardianPayload()
-    payload.prompt_cache_key = cacheKey
-    const originalInput = structuredClone(payload.input)
-
-    expect(normalizeGuardianAgentMessages(payload)).toBe(0)
-    expect(payload.input).toEqual(originalInput)
-  })
-
-  const nonSchemaTextConfigs: Array<ResponsesPayload["text"]> = [
-    undefined,
-    null,
-    {},
-    { format: null },
-    { format: { type: "text" } },
-    { format: { type: "json_object" } },
-  ]
-  test.each(nonSchemaTextConfigs)(
-    "keeps agent messages when text config is %j",
-    (text) => {
-      const payload = createGuardianPayload()
-      payload.text = text
-      const originalInput = structuredClone(payload.input)
-
-      expect(normalizeGuardianAgentMessages(payload)).toBe(0)
-      expect(payload.input).toEqual(originalInput)
-    },
-  )
 
   test("handles missing, string and empty input", () => {
     const inputs: Array<ResponsesPayload["input"]> = [
@@ -130,7 +106,7 @@ describe("normalizeGuardianAgentMessages", () => {
     for (const input of inputs) {
       const payload = { ...createGuardianPayload(), input }
 
-      expect(normalizeGuardianAgentMessages(payload)).toBe(0)
+      expect(normalizeAgentMessages(payload)).toBe(0)
       expect(payload.input).toEqual(input)
     }
   })
@@ -148,10 +124,27 @@ describe("normalizeGuardianAgentMessages", () => {
       },
     ]
 
-    expect(normalizeGuardianAgentMessages(payload)).toBe(1)
+    expect(normalizeAgentMessages(payload)).toBe(1)
     expect(payload.input).toEqual([
       { type: "message", role: "user", content: [] },
     ])
+  })
+})
+
+describe("findMalformedAgentMessageIndex", () => {
+  test("finds agent messages without array content", () => {
+    const agentMessage = { type: "agent_message", author: "a", recipient: "b" }
+    const input = [
+      { role: "user", content: "Hi" },
+      { ...agentMessage, content: [] },
+      { ...agentMessage, content: null },
+    ] as unknown as Array<ResponseInputItem>
+
+    expect(findMalformedAgentMessageIndex({ model: "m", input })).toBe(2)
+    expect(findMalformedAgentMessageIndex({ model: "m", input: "Hi" })).toBe(-1)
+    expect(
+      findMalformedAgentMessageIndex({ model: "m", input: input.slice(0, 2) }),
+    ).toBe(-1)
   })
 })
 

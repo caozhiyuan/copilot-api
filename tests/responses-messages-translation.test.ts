@@ -577,10 +577,7 @@ describe("Responses Lite to Messages translation", () => {
     expect(result.messagesPayload.messages).toEqual([
       {
         role: "user",
-        content: [
-          { type: "text", text: "Agent handoff" },
-          { type: "text", text: "encrypted-handoff" },
-        ],
+        content: [{ type: "text", text: "Agent handoff" }],
       },
       {
         role: "user",

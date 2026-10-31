@@ -47,7 +47,8 @@ import {
   filterReasoningForTransport,
   getResponsesTransportForModel,
   getResponsesRequestOptions,
-  normalizeGuardianAgentMessages,
+  findMalformedAgentMessageIndex,
+  normalizeAgentMessages,
   normalizeInputImageDetails,
   normalizeResponsesReasoningEffort,
   sanitizeOversizedInputImages,
@@ -134,6 +135,26 @@ export const handleResponses = async (c: Context) => {
   }
   const responsesTransport = getResponsesTransportForModel(selectedModel)
 
+  const malformedAgentMessageIndex = findMalformedAgentMessageIndex(payload)
+  if (malformedAgentMessageIndex !== -1) {
+    return c.json(
+      {
+        error: {
+          message: `input[${malformedAgentMessageIndex}].content must be an array`,
+          type: "invalid_request_error",
+        },
+      },
+      400,
+    )
+  }
+
+  const normalizedAgentMessageCount = normalizeAgentMessages(payload)
+  if (normalizedAgentMessageCount > 0) {
+    logger.debug(
+      `Translated ${normalizedAgentMessageCount} agent message(s) to user messages`,
+    )
+  }
+
   const useMessagesFallback = shouldFallbackToMessages(
     c,
     payload.model,
@@ -172,13 +193,6 @@ export const handleResponses = async (c: Context) => {
     fallbackSessionId,
     model: payload.model,
   })
-
-  const normalizedAgentMessageCount = normalizeGuardianAgentMessages(payload)
-  if (normalizedAgentMessageCount > 0) {
-    logger.debug(
-      `Translated ${normalizedAgentMessageCount} Guardian agent message(s) to user messages before forwarding to Copilot Responses`,
-    )
-  }
 
   const sanitizedUnsupportedFieldCount = sanitizeUnsupportedInputFields(payload)
   if (sanitizedUnsupportedFieldCount > 0) {

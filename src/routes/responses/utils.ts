@@ -24,7 +24,10 @@ import {
   type ResponsesReasoningEffort,
 } from "~/lib/reasoning-effort"
 
-import { isMessagesReasoningId } from "./messages-translation"
+import {
+  isMessagesReasoningId,
+  stripEncryptedAgentMessageContent,
+} from "./messages-translation"
 
 export const RESPONSES_ENDPOINT = "/responses"
 export const RESPONSES_WS_ENDPOINT = "ws:/responses"
@@ -150,14 +153,20 @@ const isInputAgentMessage = (
   item: ResponseInputItem,
 ): item is ResponseInputAgentMessage => item.type === "agent_message"
 
-export const normalizeGuardianAgentMessages = (
+export const findMalformedAgentMessageIndex = (
   payload: ResponsesPayload,
 ): number => {
-  if (
-    !payload.prompt_cache_key?.startsWith("guardia")
-    || payload.text?.format?.type !== "json_schema"
-    || !Array.isArray(payload.input)
-  ) {
+  if (!Array.isArray(payload.input)) return -1
+  return payload.input.findIndex(
+    (item: ResponseInputItem) =>
+      isInputAgentMessage(item) && !Array.isArray(item.content),
+  )
+}
+
+// Codex delivers subagent replies as agent_message items whose encrypted
+// parts Copilot cannot decrypt, so any request carrying them fails.
+export const normalizeAgentMessages = (payload: ResponsesPayload): number => {
+  if (!Array.isArray(payload.input)) {
     return 0
   }
 
@@ -170,11 +179,11 @@ export const normalizeGuardianAgentMessages = (
     return {
       type: "message",
       role: "user",
-      // Discard encrypted blocks to fix Copilot's error:
+      // Discard encrypted blocks to fix Copilot's errors:
       // "Encrypted function output content could not be decrypted or decoded."
-      content: agentMessage.content.filter(
-        (part) => part.type !== "encrypted_content",
-      ),
+      // "Portable encrypted function call arguments require their original
+      // tool declaration or saved encryption schema."
+      content: stripEncryptedAgentMessageContent(agentMessage.content),
     } satisfies ResponseInputMessage
   })
 

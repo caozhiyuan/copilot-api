@@ -29,6 +29,7 @@ import type {
 import type {
   NamespaceTool,
   ResponseInputAgentMessage,
+  ResponseInputAgentMessageContent,
   ResponseInputItem,
   ResponseInputMessage,
   ResponseInputReasoning,
@@ -792,11 +793,23 @@ function translateInputMessage(
   messages.push({ role: "user", content })
 }
 
+// Codex ciphertext is opaque to Copilot and Messages models, so drop it
+// instead of forwarding it as content.
+export const stripEncryptedAgentMessageContent = (
+  content: Array<ResponseInputAgentMessageContent>,
+): Array<ResponseInputAgentMessageContent> =>
+  content.filter((part) => part.type !== "encrypted_content")
+
 function translateInputAgentMessage(
   item: ResponseInputAgentMessage,
   messages: Array<AnthropicInputMessage>,
 ): void {
-  const content = translateUserContent(item.content, "agent_message.content")
+  // Non-array content falls through to translateUserContent unchanged.
+  const parts =
+    Array.isArray(item.content) ?
+      stripEncryptedAgentMessageContent(item.content)
+    : item.content
+  const content = translateUserContent(parts, "agent_message.content")
   messages.push({ role: "user", content })
 }
 
