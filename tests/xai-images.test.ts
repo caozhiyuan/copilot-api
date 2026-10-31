@@ -1,15 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
-import fs from "node:fs"
-import os from "node:os"
-import path from "node:path"
+import { describe, expect, test } from "bun:test"
 
-import { invalidateConfigCache } from "~/lib/config-store"
-import { PATHS } from "~/lib/paths"
-import {
-  getImageEditModel,
-  getImageGenerationModel,
-  resolveConfiguredXaiImageModel,
-} from "~/lib/xai-image-model"
 import {
   ensureImageResponseB64Json,
   translateXaiImageEditJson,
@@ -17,77 +7,10 @@ import {
   XaiImagesRequestError,
 } from "~/services/xai/images"
 
-const originalConfigPath = PATHS.CONFIG_PATH
-const tempDirs: Array<string> = []
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 )
-
-afterEach(() => {
-  PATHS.CONFIG_PATH = originalConfigPath
-  invalidateConfigCache()
-  while (tempDirs.length > 0) {
-    fs.rmSync(tempDirs.pop()!, { recursive: true, force: true })
-  }
-})
-
-function writeConfig(config: Record<string, unknown>): void {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "xai-images-config-"))
-  tempDirs.push(tempDir)
-  PATHS.CONFIG_PATH = path.join(tempDir, "config.json")
-  fs.writeFileSync(PATHS.CONFIG_PATH, JSON.stringify(config))
-  invalidateConfigCache()
-}
-
-describe("xAI image model config", () => {
-  test("keeps empty settings on the OpenAI path", () => {
-    expect(
-      resolveConfiguredXaiImageModel(undefined, "imageGenerationModel"),
-    ).toEqual({
-      status: "disabled",
-    })
-    expect(resolveConfiguredXaiImageModel(null, "imageEditModel")).toEqual({
-      status: "disabled",
-    })
-    expect(resolveConfiguredXaiImageModel("  ", "imageEditModel")).toEqual({
-      status: "disabled",
-    })
-  })
-
-  test("accepts an xai model alias and rejects other providers", () => {
-    expect(
-      resolveConfiguredXaiImageModel(
-        "  XAI/grok-imagine-image-2.0  ",
-        "imageGenerationModel",
-      ),
-    ).toEqual({ model: "grok-imagine-image-2.0", status: "xai" })
-    expect(
-      resolveConfiguredXaiImageModel("openrouter/image", "imageEditModel"),
-    ).toEqual({
-      message:
-        "imageEditModel only supports an xai/model alias, received 'openrouter/image'",
-      status: "invalid",
-    })
-    expect(resolveConfiguredXaiImageModel(1, "imageGenerationModel")).toEqual({
-      message: "imageGenerationModel must be an xai/model alias",
-      status: "invalid",
-    })
-  })
-
-  test("reads generation and edit settings independently", () => {
-    writeConfig({
-      imageEditModel: "",
-      imageGenerationModel: "xai/grok-imagine-image",
-    })
-
-    expect(getImageGenerationModel()).toEqual({
-      model: "grok-imagine-image",
-      status: "xai",
-    })
-    expect(getImageEditModel()).toEqual({ status: "disabled" })
-  })
-})
 
 describe("xAI image request translation", () => {
   test.each(["grok-imagine-image", "grok-imagine-image-pro"])(

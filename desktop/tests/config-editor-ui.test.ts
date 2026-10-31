@@ -482,11 +482,10 @@ describe('Desktop config editor', () => {
       container.querySelector<HTMLSelectElement>('#config-claudeAutoModel')!
         .value,
     ).toBe('default')
-    await click('Search and images')
+    await click('Search')
     await change(field('alphaSearchModel'), '')
-    await change(field('imageEditModel'), 'bad/model')
-    expect(button('Save configuration').disabled).toBe(true)
-    await change(field('imageEditModel'), 'xai/image-model')
+    expect(container.querySelector('#config-imageGenerationModel')).toBeNull()
+    expect(container.querySelector('#config-imageEditModel')).toBeNull()
     expect(button('Save configuration').disabled).toBe(false)
     await click('Upstream transport')
     await change(field('headersTimeoutMs'), '0')
@@ -502,7 +501,7 @@ describe('Desktop config editor', () => {
     for (const group of [
       'Request settings',
       'Model rules',
-      'Search and images',
+      'Search',
       'Upstream transport',
       'Model mappings',
     ]) {
@@ -559,7 +558,7 @@ describe('Desktop config editor', () => {
   test.each([
     'Request settings',
     'Model rules',
-    'Search and images',
+    'Search',
     'Upstream transport',
     'Model mappings',
   ])(
@@ -725,7 +724,7 @@ describe('Desktop config editor', () => {
 
   test('shows dollar replacement sequences literally in change previews', async () => {
     await render()
-    await click('Search and images')
+    await click('Search')
     await change(field('alphaSearchModel'), 'model$&name$$')
     await click('Review changes')
     const review = container.querySelector(
@@ -877,7 +876,7 @@ describe('Desktop config editor', () => {
       await render()
       await click('Request settings')
       await act(async () => field('useMessagesApi').click())
-      await click('Search and images')
+      await click('Search')
       await change(field('alphaSearchModel'), 'mine')
       save.mockResolvedValueOnce({ error: { code: 'conflict' } })
       await click('Save configuration')

@@ -85,18 +85,6 @@ export const configFields = [
     type: 'string',
   },
   {
-    id: 'imageGenerationModel',
-    path: 'imageGenerationModel',
-    section: 'search',
-    type: 'string',
-  },
-  {
-    id: 'imageEditModel',
-    path: 'imageEditModel',
-    section: 'search',
-    type: 'string',
-  },
-  {
     id: 'headersTimeoutMs',
     path: 'upstreamTransport.headersTimeoutMs',
     section: 'transport',

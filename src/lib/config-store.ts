@@ -40,10 +40,6 @@ export interface AppConfig {
   // via /responses. Leave unset to disable (the tool is then stripped).
   // Mixing web_search with other tools is not supported.
   messageApiWebSearchModel?: string
-  // Top-level image routes stay on the OpenAI/Codex path until these are set
-  // to an xai/model alias. Only the xAI Imagine API is supported.
-  imageGenerationModel?: string
-  imageEditModel?: string
   // Model used for Claude Code background security-monitor requests on
   // /v1/messages and provider message APIs: requests without tools, with
   // `stop_sequences: ["</block>"]` and a system block starting with

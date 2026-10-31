@@ -96,10 +96,6 @@ beforeEach(() => {
   imageRouteDependencies.resolveMappedModel = (value) => value
   imageRouteDependencies.resolveProviderConfig = () => Promise.resolve(null)
   imageRouteDependencies.isGitHubCopilotAvailable = () => true
-  imageRouteDependencies.getImageEditModel = () => ({ status: "disabled" })
-  imageRouteDependencies.getImageGenerationModel = () => ({
-    status: "disabled",
-  })
 })
 
 afterEach(async () => {
