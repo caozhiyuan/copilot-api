@@ -58,9 +58,6 @@ const originalDebugJsonAsync = imageRouteDependencies.debugJsonAsync
 const originalResolveMappedModel = imageRouteDependencies.resolveMappedModel
 const originalResolveProviderConfig =
   imageRouteDependencies.resolveProviderConfig
-const originalGetImageEditModel = imageRouteDependencies.getImageEditModel
-const originalGetImageGenerationModel =
-  imageRouteDependencies.getImageGenerationModel
 const originalCopilotAvailable = imageRouteDependencies.isGitHubCopilotAvailable
 let debugValues: Array<unknown> = []
 const debugJsonAsyncMock = mock(
@@ -155,12 +152,6 @@ beforeEach(() => {
       : provider === "xai" ? xaiProviderConfig
       : null,
     )
-  imageRouteDependencies.getImageEditModel = () => ({
-    status: "disabled" as const,
-  })
-  imageRouteDependencies.getImageGenerationModel = () => ({
-    status: "disabled" as const,
-  })
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =
     fetchMock as unknown as typeof fetch
 })
@@ -177,9 +168,6 @@ afterEach(async () => {
   imageRouteDependencies.resolveMappedModel = originalResolveMappedModel
   imageRouteDependencies.isGitHubCopilotAvailable = originalCopilotAvailable
   imageRouteDependencies.resolveProviderConfig = originalResolveProviderConfig
-  imageRouteDependencies.getImageEditModel = originalGetImageEditModel
-  imageRouteDependencies.getImageGenerationModel =
-    originalGetImageGenerationModel
 })
 
 describe("explicit image provider routing", () => {
@@ -191,6 +179,24 @@ describe("explicit image provider routing", () => {
     })
 
   for (const operation of ["generations", "edits"] as const) {
+    test(`routes the Create default through model mappings for ${operation}`, async () => {
+      modelMappings = { "gpt-image-2": "xai/grok-imagine-image-2.0" }
+      const response = await postJson(`/v1/images/${operation}`, {
+        model: "gpt-image-2",
+        prompt: "mapped Create default",
+        ...(operation === "edits" ?
+          { images: [{ image_url: "https://example.com/source.png" }] }
+        : {}),
+      })
+      expect(response.status).toBe(200)
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe(`https://api.x.ai/v1/images/${operation}`)
+      expect(await new Response(init?.body).json()).toMatchObject({
+        model: "grok-imagine-image-2.0",
+        prompt: "mapped Create default",
+      })
+    })
+
     test.each(["alias", "mapped", "scoped"])(
       `forwards custom ${operation} through the %s target without xAI translation`,
       async (mode) => {
@@ -439,7 +445,6 @@ describe("images route usage recording", () => {
     { mode: "mapped", url: "/v1/images/generations", provider: "codex" },
     { mode: "scoped", url: "/xai/v1/images/generations", provider: "xai" },
     { mode: "mapped", url: "/v1/images/generations", provider: "xai" },
-    { mode: "configured", url: "/v1/images/generations", provider: "xai" },
     { mode: "multipart", url: "/v1/images/edits", provider: "codex" },
     { mode: "multipart", url: "/codex/v1/images/edits", provider: "codex" },
   ]
@@ -460,11 +465,6 @@ describe("images route usage recording", () => {
       )
       if (mode === "mapped")
         modelMappings = { "image-alias": `${provider}/${model}` }
-      if (mode === "configured")
-        imageRouteDependencies.getImageGenerationModel = () => ({
-          status: "xai",
-          model,
-        })
       const form = new FormData()
       form.append("model", model)
       form.append("prompt", "make it green")
@@ -1623,38 +1623,9 @@ describe("multipart image edit routing", () => {
     expect(stagedUploads).toHaveLength(0)
   })
 
-  test("configured xAI edit model overrides multipart models and mappings", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      status: "xai",
-      model: "grok-imagine-image-2.0",
-    })
-    modelMappings = { "image-model": "openrouter/ignored-model" }
-    const form = editForm("image-model")
-    form.append("image[]", "https://example.com/second.png")
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      body: form,
-    })
-    expect(response.status).toBe(200)
-    const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://api.x.ai/v1/images/edits")
-    expect(await new Response(init?.body).json()).toMatchObject({
-      model: "grok-imagine-image-2.0",
-      images: [
-        { type: "image_url", url: "data:image/png;base64,c291cmNl" },
-        { type: "image_url", url: "https://example.com/second.png" },
-      ],
-    })
-  })
-
-  test.each(["configured", "mapped", "scoped"])(
+  test.each(["mapped", "scoped"])(
     "rejects multipart masks for %s xAI edits",
     async (mode) => {
-      if (mode === "configured")
-        imageRouteDependencies.getImageEditModel = () => ({
-          status: "xai",
-          model: "grok-imagine-image-2.0",
-        })
       if (mode === "mapped")
         modelMappings = {
           "grok-imagine-image-2.0": "xai/grok-imagine-image-2.0",
@@ -1930,16 +1901,11 @@ describe("xAI image routes", () => {
   ] as const)(
     "treats nullable image options as omitted: %j",
     async ({ operation, option }) => {
-      imageRouteDependencies.getImageGenerationModel = () => ({
-        model: "grok-imagine-image-2.0",
-        status: "xai",
-      })
-      imageRouteDependencies.getImageEditModel =
-        imageRouteDependencies.getImageGenerationModel
+      modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
       const imageUrl = "https://example.com/source.png"
       const response = await createApp().request(`/v1/images/${operation}`, {
         body: JSON.stringify({
-          model: "gpt-image-1",
+          model: "image-model",
           prompt: "ok",
           [option]: null,
           ...(operation === "edits" ? { image: imageUrl } : {}),
@@ -1967,10 +1933,7 @@ describe("xAI image routes", () => {
   )
 
   test("keeps requested URL output without a second upstream request", async () => {
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
+    modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
     fetchMock.mockImplementationOnce(() =>
       Promise.resolve(
         Response.json({
@@ -1980,7 +1943,11 @@ describe("xAI image routes", () => {
       ),
     )
     const response = await createApp().request("/v1/images/generations", {
-      body: JSON.stringify({ prompt: "ok", response_format: "url" }),
+      body: JSON.stringify({
+        model: "image-model",
+        prompt: "ok",
+        response_format: "url",
+      }),
       headers: { "content-type": "application/json" },
       method: "POST",
     })
@@ -1992,10 +1959,7 @@ describe("xAI image routes", () => {
   })
 
   test("normalizes URL-only edit output to base64 and strips upstream credentials from the download", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
+    modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
     fetchMock.mockImplementationOnce(() =>
       Promise.resolve(
         Response.json({ data: [{ url: "https://imgen.x.ai/output.png" }] }),
@@ -2008,6 +1972,7 @@ describe("xAI image routes", () => {
     )
     const response = await createApp().request("/v1/images/edits", {
       body: JSON.stringify({
+        model: "image-model",
         images: [
           { image_url: "data:image/png;base64," + png.toString("base64") },
         ],
@@ -2038,10 +2003,7 @@ describe("xAI image routes", () => {
   })
 
   test("returns 502 when a requested base64 image cannot be retrieved", async () => {
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
+    modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
     fetchMock.mockImplementationOnce(() =>
       Promise.resolve(
         Response.json({ data: [{ url: "https://imgen.x.ai/output.png" }] }),
@@ -2051,7 +2013,7 @@ describe("xAI image routes", () => {
       Promise.resolve(new Response(null, { status: 404 })),
     )
     const response = await createApp().request("/v1/images/generations", {
-      body: JSON.stringify({ prompt: "ok" }),
+      body: JSON.stringify({ model: "image-model", prompt: "ok" }),
       headers: { "content-type": "application/json" },
       method: "POST",
     })
@@ -2064,10 +2026,7 @@ describe("xAI image routes", () => {
   test("propagates cancellation to provider image generation", async () => {
     const controller = new AbortController()
     let upstreamSignal: AbortSignal | null | undefined
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
+    modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
     fetchMock.mockImplementationOnce((_url, init) => {
       upstreamSignal = init?.signal
       const reason = new Error("The operation was aborted")
@@ -2077,7 +2036,7 @@ describe("xAI image routes", () => {
     })
     const response = await createApp().request(
       new Request("http://localhost/v1/images/generations", {
-        body: JSON.stringify({ prompt: "ok" }),
+        body: JSON.stringify({ model: "image-model", prompt: "ok" }),
         headers: { "content-type": "application/json" },
         method: "POST",
         signal: controller.signal,
@@ -2087,12 +2046,8 @@ describe("xAI image routes", () => {
     expect(upstreamSignal?.aborted).toBe(true)
   })
 
-  test("translates generation to the configured xAI model", async () => {
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
-    modelMappings = { "gpt-image-1": "openrouter/other-image" }
+  test("translates generation to the mapped xAI model", async () => {
+    modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
     xaiProviderConfig = {
       ...xaiProviderConfig!,
       baseUrl: "https://cli-chat-proxy.grok.com",
@@ -2107,8 +2062,8 @@ describe("xAI image routes", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
+          model: "image-model",
           background: "transparent",
-          model: "gpt-image-1",
           prompt: "a red apple",
           quality: "high",
           size: "1024x1024",
@@ -2134,103 +2089,28 @@ describe("xAI image routes", () => {
     })
   })
 
-  test("rejects a non-xai generation model without calling upstream", async () => {
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      message:
-        "imageGenerationModel only supports an xai/model alias, received 'gpt-image-1'",
-      status: "invalid",
-    })
-
-    const response = await createApp().request("/v1/images/generations", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ model: "gpt-image-1", prompt: "a red apple" }),
-    })
-
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      error: {
-        message:
-          "imageGenerationModel only supports an xai/model alias, received 'gpt-image-1'",
-        type: "invalid_request_error",
-      },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
   test("returns 404 when the xAI provider is not configured", async () => {
     xaiProviderConfig = null
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
+    modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
 
     const response = await createApp().request("/v1/images/generations", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "a red apple" }),
+      body: JSON.stringify({ model: "image-model", prompt: "a red apple" }),
     })
 
     expect(response.status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  test("rejects a generation body that is not JSON", async () => {
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
-
-    const response = await createApp().request("/v1/images/generations", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "not-json",
-    })
-
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      error: {
-        message: "Image generation body must be JSON",
-        type: "invalid_request_error",
-      },
-    })
-  })
-
-  test("keeps JSON edits on Codex when only generation is configured", async () => {
-    imageRouteDependencies.getImageGenerationModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
-    const payload = {
-      model: "gpt-image-2",
-      prompt: "unchanged edit",
-      images: [
-        { image_url: "data:image/png;base64," + png.toString("base64") },
-      ],
-    }
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    expect(response.status).toBe(200)
-    const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
-    expect(await new Response(init?.body).json()).toEqual(payload)
-  })
-
-  test("translates a JSON edit into the configured xAI protocol", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      model: "grok-imagine-image",
-      status: "xai",
-    })
-    modelMappings = { "gpt-image-2": "codex/ignored" }
+  test("translates a JSON edit into the mapped xAI protocol", async () => {
+    modelMappings = { "image-model": "xai/grok-imagine-image" }
     const imageUrl = "data:image/png;base64," + png.toString("base64")
     const response = await createApp().request("/v1/images/edits", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-image-2",
+        model: "image-model",
         prompt: "make it blue",
         images: [{ image_url: imageUrl }],
       }),
@@ -2249,14 +2129,11 @@ describe("xAI image routes", () => {
     })
   })
 
-  test("converts multipart edits when an xAI edit model is configured", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      model: "grok-imagine-image",
-      status: "xai",
-    })
+  test("converts multipart edits through an xAI model mapping", async () => {
+    modelMappings = { "image-model": "xai/grok-imagine-image" }
     const form = new FormData()
     form.set("prompt", "edit this image")
-    form.set("model", "ignored-model")
+    form.set("model", "image-model")
     form.set("image", "https://example.com/source.png")
     const response = await createApp().request("/v1/images/edits", {
       method: "POST",
@@ -2273,38 +2150,15 @@ describe("xAI image routes", () => {
     })
   })
 
-  test("rejects invalid image edit model configuration", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      message: "Invalid image edit model",
-      status: "invalid",
-    })
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    })
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      error: {
-        message: "Invalid image edit model",
-        type: "invalid_request_error",
-      },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
   test("translates a JSON edit and rejects a mask", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      model: "grok-imagine-image-2.0",
-      status: "xai",
-    })
+    modelMappings = { "image-model": "xai/grok-imagine-image-2.0" }
 
     const jsonResponse = await createApp().request("/images/edits", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        model: "image-model",
         image: { url: "https://example.com/cat.png" },
-        model: "gpt-image-1",
         prompt: "paint it",
       }),
     })
@@ -2322,6 +2176,7 @@ describe("xAI image routes", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        model: "image-model",
         prompt: "cut it",
         images: [{ image_url: "https://example.com/cat.png" }],
         mask: { image_url: "https://example.com/mask.png" },
@@ -2335,26 +2190,5 @@ describe("xAI image routes", () => {
       },
     })
     expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  test("rejects an edit body that is not JSON when the edit model is xAI", async () => {
-    imageRouteDependencies.getImageEditModel = () => ({
-      model: "grok-imagine-image",
-      status: "xai",
-    })
-
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "not-json",
-    })
-
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      error: {
-        message: "Image edit body must be JSON",
-        type: "invalid_request_error",
-      },
-    })
   })
 })

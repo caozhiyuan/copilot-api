@@ -63,7 +63,7 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 顶层图片路由先应用 model mapping。仅省略、空白模型或裸 `gpt-image-2` 会按 **Codex → GitHub Copilot → xAI** 选择首个可用 provider 的默认图片模型。可用性依据 provider 启用状态及凭据判断，不查询模型目录；没有可用 provider 时返回 `404`。
 
-显式 `provider/model` 别名固定目标 provider，保留上游模型名，包括内置目录中未列出的型号；目标不可用时返回对应错误，不会切换到其他 provider。其他裸模型名保持原样发往 Codex，不会按型号名自动指定 GitHub Copilot 或 xAI；这两类目标通过 provider 别名、model mapping 或 provider 作用域路径指定。provider 作用域路径保留传入模型；内置 provider 的作用域路径仅在模型省略或空白时补充默认型号，并移除与路径匹配的 `provider/` 前缀。自定义 provider 接收原生 Images JSON 或 multipart 请求。使用最终上游模型记账。显式配置的 `imageGenerationModel`、`imageEditModel` 在顶层路由仍然优先。
+显式 `provider/model` 别名固定目标 provider，保留上游模型名，包括内置目录中未列出的型号；目标不可用时返回对应错误，不会切换到其他 provider。其他裸模型名保持原样发往 Codex，不会按型号名自动指定 GitHub Copilot 或 xAI；这两类目标通过 provider 别名、model mapping 或 provider 作用域路径指定。provider 作用域路径保留传入模型；内置 provider 的作用域路径仅在模型省略或空白时补充默认型号，并移除与路径匹配的 `provider/` 前缀。自定义 provider 接收原生 Images JSON 或 multipart 请求。使用最终上游模型记账。
 
 JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域路由遇到无效 JSON 时统一返回 `400`（`invalid_request_error`），不再兜底转发给 Codex。大请求仍保持流式处理，上传过程中发现错误时中止转发。multipart 图片编辑继续支持。
 
@@ -79,7 +79,9 @@ JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域�
 
 multipart 上传总大小上限为 128 MiB，单文件上限为 64 MiB，最多 16 个文件；超限返回 `413`，格式错误返回 `400`。转换为 JSON 后，以及失败或取消时，都会清理临时文件。base64 图片数据约增大三分之一，生成的 JSON 会在转发前缓存在内存中。xAI 仍最多接受 5 张图片，不支持 mask、file_id 和流式输出。
 
-当 `imageGenerationModel` 或 `imageEditModel` 配置为 `xai/model` 别名时，对应的顶层图片路由会把 OpenAI 图片请求翻译后发到已启用的 `xai` provider 的 Imagine 接口，上游模型由该别名决定。配置为空时仍走上面的 OpenAI 转发路径。这两项目前不接受其他 provider。
+图片模型解析为 `xai/model` 时，通用路由会把 OpenAI 图片参数转换为 xAI Imagine API 格式：`size` 映射为 `aspect_ratio` 和 `resolution`；`grok-imagine-image-2.0` 的 `high`、`hd` 质量映射为 `medium`，其他型号省略 `quality`。xAI 最多接受 5 张图片，不支持 mask、file_id 和流式输出。OAuth 使用订阅 base URL，API key 使用 provider 配置的 base URL。
+
+xAI 默认请求 `b64_json`；上游仅返回 URL 时，从 xAI 输出 CDN 下载图片并补充 base64，下载上限 32 MiB，失败返回 `502`。显式设置 `response_format: "url"` 时不下载。provider 作用域的 xAI JSON 保持原生行为，multipart 编辑使用 xAI 转换。
 
 对于路由到 Codex 后端的请求，网关会使用当前 Codex 登录态覆盖客户端的 authorization 和 account header，并保留兼容的请求元数据。基于 Responses 的 alpha-search 则遵循所选 Copilot 或 provider 的路由。
 

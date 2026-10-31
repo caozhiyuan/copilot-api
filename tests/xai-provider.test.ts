@@ -196,13 +196,15 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
     })
 
     test.each(["oauth2", "authorization"] as const)(
-      "routes configured image generation with real %s provider resolution",
+      "routes image model mappings with real %s provider resolution and ignores retired overrides",
       async (authType) => {
         if (authType === "oauth2") await persistXaiCredentials(credentials)
         fs.writeFileSync(
           PATHS.CONFIG_PATH,
           JSON.stringify({
-            imageGenerationModel: "xai/grok-imagine-image-2.0",
+            imageGenerationModel: "xai/retired-override",
+            imageEditModel: "xai/retired-edit-override",
+            modelMappings: { "gpt-image-1": "xai/grok-imagine-image-2.0" },
             providers: {
               xai: {
                 apiKey:

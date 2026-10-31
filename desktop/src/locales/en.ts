@@ -522,7 +522,7 @@ const en: Locale = {
       general: 'Request settings',
       mappings: 'Model mappings',
       models: 'Model rules',
-      search: 'Search and images',
+      search: 'Search',
       transport: 'Upstream transport',
     },
     fields: {
@@ -590,14 +590,6 @@ const en: Locale = {
         label: 'Messages web-search model',
         description:
           'Used for search-only Messages requests; an empty string disables it.',
-      },
-      imageGenerationModel: {
-        label: 'Image generation model',
-        description: 'Leave empty for the default route, or use xai/model.',
-      },
-      imageEditModel: {
-        label: 'Image edit model',
-        description: 'Leave empty for the default route, or use xai/model.',
       },
       headersTimeoutMs: {
         label: 'Response headers timeout',

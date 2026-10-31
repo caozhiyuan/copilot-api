@@ -12,10 +12,6 @@ import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { observeImagesResponse } from "~/lib/token-usage/images"
 import {
-  getImageEditModel,
-  getImageGenerationModel,
-} from "~/lib/xai-image-model"
-import {
   forwardCopilotImagesWithLogging,
   forwardProviderImagesWithLogging,
   forwardXaiImagesWithLogging,
@@ -33,8 +29,6 @@ export const logger = createHandlerLogger("images-handler")
 
 export const imageRouteDependencies = {
   debugJsonAsync,
-  getImageEditModel,
-  getImageGenerationModel,
   isGitHubCopilotAvailable,
   resolveMappedModel,
   resolveProviderConfig,
