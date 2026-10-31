@@ -36,6 +36,11 @@ export async function forwardError(
   c: Context,
   error: unknown,
 ): Promise<Response> {
+  // Undici wraps request-body stream errors in a fetch TypeError on Node.
+  if (error instanceof TypeError && error.cause instanceof HTTPError) {
+    error = error.cause
+  }
+
   if (
     error instanceof UpstreamHeadersTimeoutError
     || error instanceof UpstreamStreamInactivityTimeoutError

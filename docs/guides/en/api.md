@@ -59,6 +59,8 @@ The Codex model catalog, Copilot model cache, and other custom providers retain 
 
 The top-level image routes support three models: `codex/gpt-image-2`, `github-copilot/gpt-image-2.5-flare`, and `xai/grok-imagine-image-2.0`. Their raw model IDs are accepted too. Missing, blank, unsupported, or unavailable selections fall back to the first available provider in this order: **Codex → GitHub Copilot → xAI**. Availability uses the enabled provider and its credentials, without querying other providers' model catalogs. The selected model is written into JSON and multipart-derived requests and used for usage accounting. If none is available, the gateway returns `404`. Provider-scoped paths stay on their named provider and use its default model. Explicit `imageGenerationModel` and `imageEditModel` settings retain precedence on top-level routes.
 
+JSON image requests must be UTF-8 encoded objects. Invalid JSON returns `400` (`invalid_request_error`) on both top-level and provider-scoped routes instead of falling back to Codex. Validation preserves large-request streaming and stops forwarding if an error is discovered during upload. Multipart image edits remain supported.
+
 Image requests routed to Codex require an active Codex login; other image routes use their provider's credentials. Alpha search can use either the Codex backend or a Responses web-search adapter.
 
 | Endpoint                                                       | Method | Description                                                     |

@@ -63,6 +63,8 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 顶层图片路由支持三个模型：`codex/gpt-image-2`、`github-copilot/gpt-image-2.5-flare`、`xai/grok-imagine-image-2.0`，也接受对应的原始模型 ID。省略、空白、不支持或不可用的模型会按 **Codex → GitHub Copilot → xAI** 选择首个可用 provider 的默认模型。可用性依据 provider 启用状态及凭据判断，不查询其他 provider 的模型目录。JSON 和 multipart 转换后的请求都会写入最终模型，并使用该模型记账；没有可用 provider 时返回 `404`。provider 作用域路径固定使用路径中的 provider，并使用它的默认模型。显式配置的 `imageGenerationModel`、`imageEditModel` 在顶层路由仍然优先。
 
+JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域路由遇到无效 JSON 时统一返回 `400`（`invalid_request_error`），不再兜底转发给 Codex。大请求仍保持流式处理，上传过程中发现错误时中止转发。multipart 图片编辑继续支持。
+
 路由到 Codex 的图片请求要求已有可用的 Codex 登录态；其他图片路由使用对应 provider 的凭据。alpha-search 可以使用 Codex 后端或 Responses web-search 适配器。
 
 | 端点                                                       | 方法 | 说明                                                                                                 |

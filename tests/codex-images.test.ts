@@ -869,15 +869,30 @@ describe("Codex images forwarding", () => {
     },
   )
 
-  test("forwards invalid edit JSON for upstream validation", async () => {
-    const response = await createApp().request("/v1/images/edits", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "not-json",
-    })
-    expect(response.status).toBe(200)
-    const [, init] = fetchMock.mock.calls[0] ?? []
-    expect(await new Response(init?.body).text()).toBe("not-json")
+  test.each([
+    "/v1/images/edits",
+    "/codex/v1/images/edits",
+    "/xai/v1/images/edits",
+    "/github-copilot/v1/images/edits",
+    "/openrouter/v1/images/edits",
+    "/v1/images/generations",
+    "/codex/v1/images/generations",
+    "/xai/v1/images/generations",
+    "/github-copilot/v1/images/generations",
+    "/openrouter/v1/images/generations",
+  ])("rejects invalid image JSON locally on %s", async (path) => {
+    for (const body of ["not-json", "null", "[]", '{"model":3}', ""]) {
+      const response = await createApp().request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        error: { type: "invalid_request_error" },
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+    }
   })
 
   test("reports edit request body read failures", async () => {
@@ -898,6 +913,59 @@ describe("Codex images forwarding", () => {
     })
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  test.each(
+    [
+      "/v1/images/edits",
+      "/codex/v1/images/edits",
+      "/xai/v1/images/edits",
+      "/github-copilot/v1/images/edits",
+      "/openrouter/v1/images/edits",
+    ].flatMap((path) => [
+      { path, wrapped: false },
+      { path, wrapped: true },
+    ]),
+  )(
+    "returns 400 for a malformed streaming body on $path (Node wrapper: $wrapped)",
+    async ({ path, wrapped }) => {
+      const originalGithubToken = state.githubToken
+      state.githubToken = "github-image-token"
+      fetchMock.mockImplementationOnce(async (_url, init) => {
+        try {
+          await new Response(init?.body).text()
+        } catch (error) {
+          if (wrapped) throw new TypeError("fetch failed", { cause: error })
+          throw error
+        }
+        return Response.json({ data: [] })
+      })
+      try {
+        const response = await createApp().request(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder()
+              controller.enqueue(
+                encoder.encode('{"model":"gpt-image-2","images":["'),
+              )
+              controller.enqueue(encoder.encode("A".repeat(100000)))
+              controller.enqueue(encoder.encode('"]'))
+              controller.close()
+            },
+          }),
+          duplex: "half",
+        } as StreamingRequestInit)
+        expect(response.status).toBe(400)
+        expect(await response.json()).toMatchObject({
+          error: { type: "invalid_request_error" },
+        })
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      } finally {
+        state.githubToken = originalGithubToken
+      }
+    },
+  )
 
   test.each(["/v1/images/edits", "/codex/v1/images/edits"])(
     "preserves Codex JSON edit errors on %s",
@@ -937,20 +1005,7 @@ describe("Codex images forwarding", () => {
     },
   )
 
-  test("forwards a non-JSON generation body as-is to Codex", async () => {
-    const response = await createApp().request("/v1/images/generations", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "not-json",
-    })
-
-    expect(response.status).toBe(200)
-    const [url, init] = fetchMock.mock.calls[0] ?? []
-    expect(url).toBe("https://chatgpt.com/backend-api/codex/images/generations")
-    expect(await new Response(init?.body).text()).toBe("not-json")
-  })
-
-  test("preserves non-UTF8 generation bytes when forwarding unchanged", async () => {
+  test("rejects non-UTF8 generation bytes before forwarding", async () => {
     const body = new Uint8Array([0xff, 0x00, 0x7b, 0x7d])
 
     const response = await createApp().request("/v1/images/generations", {
@@ -958,16 +1013,11 @@ describe("Codex images forwarding", () => {
       body,
     })
 
-    expect(response.status).toBe(200)
-    const [, init] = fetchMock.mock.calls[0] ?? []
-    const headers = new Headers(init?.headers)
-    expect(headers.get("content-type")).toBe("application/json")
-    expect(
-      new Uint8Array(await new Response(init?.body).arrayBuffer()),
-    ).toEqual(body)
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  test("does not rewrite JSON-shaped generation bodies with invalid UTF-8", async () => {
+  test("rejects JSON-shaped generation bodies with invalid UTF-8", async () => {
     modelMappings = {
       "image-model": "gpt-image-2",
     }
@@ -984,11 +1034,8 @@ describe("Codex images forwarding", () => {
       body,
     })
 
-    expect(response.status).toBe(200)
-    const [, init] = fetchMock.mock.calls[0] ?? []
-    expect(
-      new Uint8Array(await new Response(init?.body).arrayBuffer()),
-    ).toEqual(body)
+    expect(response.status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("keeps the JSON default when rebuilding a headerless generation", async () => {
