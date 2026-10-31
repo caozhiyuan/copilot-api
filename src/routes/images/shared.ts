@@ -1,34 +1,26 @@
 import consola from "consola"
-import type { Context } from "hono"
 
-import { resolveMappedModel, type ResolvedProviderConfig } from "~/lib/config"
-import { forwardError, HTTPError } from "~/lib/error"
+import { resolveMappedModel } from "~/lib/config"
+import { HTTPError } from "~/lib/error"
 import {
   GITHUB_COPILOT_PROVIDER,
   isGitHubCopilotAvailable,
 } from "~/lib/github-copilot-provider"
-import { createHandlerLogger, debugJson, debugJsonAsync } from "~/lib/logger"
-import { parseProviderModelAlias } from "~/lib/provider-model"
+import { createHandlerLogger } from "~/lib/logger"
+import type { ProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
-import { observeImagesResponse } from "~/lib/token-usage/images"
 import {
   forwardCopilotImagesWithLogging,
   forwardProviderImagesWithLogging,
   forwardXaiImagesWithLogging,
 } from "~/routes/images/forward-provider-images"
-import { logImageEditRequest } from "~/routes/images/request-logging"
-import {
-  DEFAULT_CODEX_IMAGE_MODEL,
-  forwardCodexImages,
-  type CodexImagesOperation,
-} from "~/services/codex/images"
+import type { CodexImagesOperation } from "~/services/codex/images"
 import { translateXaiImageJsonRequest } from "~/routes/images/xai-json-request"
 import { resolveImageRequestModel } from "~/routes/images/default-model"
 
 export const logger = createHandlerLogger("images-handler")
 
 export const imageRouteDependencies = {
-  debugJsonAsync,
   isGitHubCopilotAvailable,
   resolveMappedModel,
   resolveProviderConfig,
@@ -45,61 +37,17 @@ export interface ParsedImagesRequest {
   originalRequest?: Request
 }
 
-function getContentMetadata(headers: Headers) {
-  return {
-    contentType: headers.get("content-type"),
-    contentLength: headers.get("content-length"),
-  }
-}
-
-/** Forward an already prepared Codex image request without parsing it again. */
-export async function handleCodexImages(
-  c: Context,
-  operation: CodexImagesOperation,
-  providerConfig: ResolvedProviderConfig,
-  request: Request,
-  model: string = DEFAULT_CODEX_IMAGE_MODEL,
-): Promise<Response> {
-  try {
-    request = await logImageEditRequest(
-      logger,
-      `images.${operation}.codex.request`,
-      request,
-      {},
-      imageRouteDependencies.debugJsonAsync,
-    )
-
-    const upstreamResponse = await forwardCodexImages(request, operation)
-    debugJson(logger, `images.${operation}.codex.response`, {
-      ...getContentMetadata(upstreamResponse.headers),
-      statusCode: upstreamResponse.status,
-    })
-    return observeImagesResponse(upstreamResponse, {
-      model,
-      operation,
-      providerConfig,
-      onMetadata: (metadata) =>
-        debugJson(logger, `images.${operation}.codex.response.body`, metadata),
-    })
-  } catch (error) {
-    await request.body?.cancel().catch(() => {})
-    logger.error(`images.${operation}.codex.error`, { error })
-    return await forwardError(c, error)
-  }
-}
-
 /**
  * Apply model mappings and resolve automatic defaults before dispatching.
  * Explicit targets retain their model and never fall back to another provider.
  */
 export async function routeImagesRequest(
-  c: Context,
   operation: CodexImagesOperation,
   parsed: ParsedImagesRequest,
 ): Promise<Response> {
-  let resolvedModel: string
+  let alias: ProviderModelAlias
   try {
-    resolvedModel = await resolveImageRequestModel(
+    alias = await resolveImageRequestModel(
       parsed.model?.trim() ?
         imageRouteDependencies.resolveMappedModel(parsed.model.trim())
       : undefined,
@@ -114,10 +62,8 @@ export async function routeImagesRequest(
     throw error
   }
 
-  const alias = parseProviderModelAlias(resolvedModel)
-  if (!alias) throw new Error("Invalid resolved image model")
   consola.debug(
-    `Resolved image model: ${parsed.model ?? "(default)"} -> ${resolvedModel}`,
+    `Resolved image model: ${parsed.model ?? "(default)"} -> ${alias.provider}/${alias.model}`,
   )
   const request =
     (
@@ -152,16 +98,6 @@ export async function routeImagesRequest(
       ),
     )
   }
-  if (alias.provider === "codex") {
-    return await handleCodexImages(
-      c,
-      operation,
-      providerConfig,
-      request,
-      alias.model,
-    )
-  }
-
   if (alias.provider !== "xai") {
     return await forwardProviderImagesWithLogging(
       providerConfig,

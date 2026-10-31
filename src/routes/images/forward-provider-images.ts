@@ -2,14 +2,19 @@ import type { ConsolaInstance } from "consola"
 
 import { getRawProviderConfig, type ResolvedProviderConfig } from "~/lib/config"
 import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
-import { debugJson } from "~/lib/logger"
+import { debugJson, debugJsonAsync } from "~/lib/logger"
 import { prepareImageJsonRequest } from "~/lib/image-json-request"
 import { observeImagesResponse } from "~/lib/token-usage/images"
 import { logImageEditRequest } from "~/routes/images/request-logging"
-import type { CodexImagesOperation } from "~/services/codex/images"
+import {
+  forwardCodexImages,
+  type CodexImagesOperation,
+} from "~/services/codex/images"
 import { forwardCopilotImages } from "~/services/copilot/images"
 import { forwardProviderImages } from "~/services/providers/provider-proxy"
 import { ensureImageResponseB64Json } from "~/services/xai/images"
+
+export const imageForwardDependencies = { debugJsonAsync }
 
 export interface ProviderImagesForwardLogContext {
   logger: ConsolaInstance
@@ -38,39 +43,40 @@ export async function forwardProviderImagesWithLogging(
     request = parsed.originalRequest
   }
   actualModel ??= "unknown"
-  request = await logImageEditRequest(
-    logger,
-    `provider.images.${operation}.request`,
-    request,
-    { provider },
-  )
-
-  let upstreamResponse: Response
+  const isCodex = providerConfig.name === "codex"
+  const label =
+    isCodex ? `images.${operation}.codex` : `provider.images.${operation}`
+  const extra = isCodex ? {} : { provider }
   try {
-    upstreamResponse =
-      providerConfig.name === GITHUB_COPILOT_PROVIDER ?
+    request = await logImageEditRequest(
+      logger,
+      `${label}.request`,
+      request,
+      extra,
+      imageForwardDependencies.debugJsonAsync,
+    )
+    const upstreamResponse =
+      isCodex ? await forwardCodexImages(request, operation)
+      : providerConfig.name === GITHUB_COPILOT_PROVIDER ?
         await forwardCopilotImages(request, operation)
       : await forwardProviderImages(providerConfig, request, operation)
+    debugJson(logger, `${label}.response`, {
+      contentType: upstreamResponse.headers.get("content-type"),
+      contentLength: upstreamResponse.headers.get("content-length"),
+      ...extra,
+      statusCode: upstreamResponse.status,
+    })
+    return observeImagesResponse(upstreamResponse, {
+      model: actualModel,
+      operation,
+      providerConfig,
+      onMetadata: (metadata) =>
+        debugJson(logger, `${label}.response.body`, { ...extra, ...metadata }),
+    })
   } catch (error) {
     await request.body?.cancel().catch(() => {})
     throw error
   }
-  debugJson(logger, `provider.images.${operation}.response`, {
-    contentType: upstreamResponse.headers.get("content-type"),
-    contentLength: upstreamResponse.headers.get("content-length"),
-    provider,
-    statusCode: upstreamResponse.status,
-  })
-  return observeImagesResponse(upstreamResponse, {
-    model: actualModel,
-    operation,
-    providerConfig,
-    onMetadata: (metadata) =>
-      debugJson(logger, `provider.images.${operation}.response.body`, {
-        provider,
-        ...metadata,
-      }),
-  })
 }
 
 export async function forwardCopilotImagesWithLogging(
@@ -102,10 +108,10 @@ export async function forwardXaiImagesWithLogging(
   operation: CodexImagesOperation,
   payload: Record<string, unknown>,
   { logger, provider }: ProviderImagesForwardLogContext,
-  body?: ReadableStream<Uint8Array>,
+  body: ReadableStream<Uint8Array>,
 ): Promise<Response> {
   const upstreamRequest = new Request(request.url, {
-    body: body ?? new TextEncoder().encode(JSON.stringify(payload)),
+    body,
     duplex: "half",
     headers: {
       accept: "application/json",

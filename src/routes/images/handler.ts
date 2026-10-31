@@ -16,7 +16,7 @@ export async function handleImages(
   try {
     return await withImageEditRequest(c, operation, async (multipart) => {
       const parsed = multipart ?? (await prepareImageJsonRequest(c.req.raw))
-      return await routeImagesRequest(c, operation, parsed)
+      return await routeImagesRequest(operation, parsed)
     })
   } catch (error) {
     const invalidRequest = imageEditRequestErrorResponse(c, error)

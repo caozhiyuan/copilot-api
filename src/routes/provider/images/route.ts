@@ -15,10 +15,7 @@ import {
   imageEditRequestErrorResponse,
   withImageEditRequest,
 } from "~/routes/images/multipart-edits"
-import {
-  handleCodexImages,
-  type ParsedImagesRequest,
-} from "~/routes/images/shared"
+import type { ParsedImagesRequest } from "~/routes/images/shared"
 import type { CodexImagesOperation } from "~/services/codex/images"
 
 const logger = createHandlerLogger("provider-images-handler")
@@ -55,15 +52,6 @@ async function handleProviderImages(
           request,
           operation,
           context,
-        )
-      }
-      if (providerConfig.name === "codex") {
-        return await handleCodexImages(
-          c,
-          operation,
-          providerConfig,
-          request,
-          model,
         )
       }
       return await forwardProviderImagesWithLogging(
