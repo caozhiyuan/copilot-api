@@ -256,7 +256,7 @@ describe("explicit image provider routing", () => {
       },
     )
 
-    test.each(["grok-imagine-image-2.0", "xai/future-image"])(
+    test.each(["xai/grok-imagine-image-2.0", "xai/future-image"])(
       `keeps the explicit xAI target for ${operation} model %s`,
       async (model) => {
         xaiProviderConfig = null
@@ -266,6 +266,32 @@ describe("explicit image provider routing", () => {
         })
         expect(response.status).toBe(404)
         expect(fetchMock).not.toHaveBeenCalled()
+      },
+    )
+
+    test.each(["gpt-image-2.5-flare", "grok-imagine-image-2.0"])(
+      `preserves bare model %s on the normal Codex ${operation} path`,
+      async (model) => {
+        const resolve = mock(imageRouteDependencies.resolveProviderConfig)
+        const copilotAvailable = mock(() => true)
+        imageRouteDependencies.resolveProviderConfig = resolve
+        imageRouteDependencies.isGitHubCopilotAvailable = copilotAvailable
+        const response = await postJson(`/v1/images/${operation}`, {
+          model,
+          prompt: "preserve the raw model",
+        })
+        expect(response.status).toBe(200)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        const [url, init] = fetchMock.mock.calls[0]
+        expect(url).toBe(
+          `https://chatgpt.com/backend-api/codex/images/${operation}`,
+        )
+        expect(await new Response(init?.body).json()).toEqual({
+          model,
+          prompt: "preserve the raw model",
+        })
+        expect(resolve.mock.calls.map(([name]) => name)).toEqual(["codex"])
+        expect(copilotAvailable).not.toHaveBeenCalled()
       },
     )
 

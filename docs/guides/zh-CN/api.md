@@ -63,7 +63,7 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 顶层图片路由先应用 model mapping。仅省略、空白模型或裸 `gpt-image-2` 会按 **Codex → GitHub Copilot → xAI** 选择首个可用 provider 的默认图片模型。可用性依据 provider 启用状态及凭据判断，不查询模型目录；没有可用 provider 时返回 `404`。
 
-显式 `provider/model` 别名固定目标 provider，保留上游模型名，包括内置目录中未列出的型号；目标不可用时返回对应错误，不会切换到其他 provider。裸 `gpt-image-2.5-flare` 固定走 GitHub Copilot，裸 `grok-imagine-image-2.0` 固定走 xAI，其他裸模型名保持原样发往 Codex。provider 作用域路径保留传入模型；内置 provider 的作用域路径仅在模型省略或空白时补充默认型号，并移除与路径匹配的 `provider/` 前缀。自定义 provider 接收原生 Images JSON 或 multipart 请求。使用最终上游模型记账。显式配置的 `imageGenerationModel`、`imageEditModel` 在顶层路由仍然优先。
+显式 `provider/model` 别名固定目标 provider，保留上游模型名，包括内置目录中未列出的型号；目标不可用时返回对应错误，不会切换到其他 provider。其他裸模型名保持原样发往 Codex，不会按型号名自动指定 GitHub Copilot 或 xAI；这两类目标通过 provider 别名、model mapping 或 provider 作用域路径指定。provider 作用域路径保留传入模型；内置 provider 的作用域路径仅在模型省略或空白时补充默认型号，并移除与路径匹配的 `provider/` 前缀。自定义 provider 接收原生 Images JSON 或 multipart 请求。使用最终上游模型记账。显式配置的 `imageGenerationModel`、`imageEditModel` 在顶层路由仍然优先。
 
 JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域路由遇到无效 JSON 时统一返回 `400`（`invalid_request_error`），不再兜底转发给 Codex。大请求仍保持流式处理，上传过程中发现错误时中止转发。multipart 图片编辑继续支持。
 

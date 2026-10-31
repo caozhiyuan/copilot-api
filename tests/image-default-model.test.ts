@@ -78,8 +78,11 @@ describe("default image models", () => {
   test.each([
     { requested: codex, expected: codex },
     { requested: copilot, expected: copilot },
-    { requested: "gpt-image-2.5-flare", expected: copilot },
-    { requested: "grok-imagine-image-2.0", expected: xai },
+    { requested: "gpt-image-2.5-flare", expected: "codex/gpt-image-2.5-flare" },
+    {
+      requested: "grok-imagine-image-2.0",
+      expected: "codex/grok-imagine-image-2.0",
+    },
     { requested: xai, expected: xai },
     { requested: "gpt-image-1", expected: "codex/gpt-image-1" },
     { requested: "future-image-model", expected: "codex/future-image-model" },

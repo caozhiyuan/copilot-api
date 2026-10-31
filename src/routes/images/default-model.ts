@@ -20,11 +20,7 @@ export async function resolveImageRequestModel(
     const alias = parseProviderModelAlias(requested)
     if (alias) return `${alias.provider}/${alias.model}`
 
-    const provider =
-      IMAGE_PROVIDER_PRIORITY.find(
-        (provider) => requested === DEFAULT_IMAGE_MODELS[provider],
-      ) ?? "codex"
-    return `${provider}/${requested}`
+    return `codex/${requested}`
   }
 
   for (const provider of IMAGE_PROVIDER_PRIORITY) {
