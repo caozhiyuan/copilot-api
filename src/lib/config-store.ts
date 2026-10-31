@@ -26,6 +26,7 @@ export interface AppConfig {
   >
   useMessagesApi?: boolean
   useResponsesApiWebSocket?: boolean
+  codexMultiAgentV1?: boolean
   // Copilot model IDs that must not request output.encrypted_content.
   noEncryptedOutputModels?: Array<string>
   upstreamTransport?: UpstreamTransportConfig
@@ -173,6 +174,7 @@ export const defaultConfig: AppConfig = {
   modelResponsesApiCompactThresholds,
   useMessagesApi: true,
   useResponsesApiWebSocket: true,
+  codexMultiAgentV1: false,
   noEncryptedOutputModels: [],
   upstreamTransport: defaultUpstreamTransportConfig,
   useResponsesApiWebSearch: true,
@@ -314,10 +316,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
   const contextManagement = normalizeContextManagementConfig(
     config.contextManagement,
   )
-  const opencodeModelContextWindow = positiveIntegerOrDefault(
-    config.opencodeModelContextWindow,
-    defaultOpencodeModelContextWindow,
-  )
   const {
     changed: upstreamTransportMigrated,
     migrated: migratedUpstreamTransport,
@@ -351,8 +349,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
   const hasResponsesApiCompactThresholdChanges =
     missingResponsesApiCompactThresholdModels.length > 0
   const hasContextManagementChanges = missingContextManagementKeys.length > 0
-  const hasOpencodeModelContextWindowChanges =
-    config.opencodeModelContextWindow !== opencodeModelContextWindow
   const hasUpstreamTransportChanges = Object.entries(upstreamTransport).some(
     ([key, value]) =>
       migratedUpstreamTransport[key as keyof UpstreamTransportConfig] !== value,
@@ -364,7 +360,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
     && !hasReasoningEffortChanges
     && !hasResponsesApiCompactThresholdChanges
     && !hasContextManagementChanges
-    && !hasOpencodeModelContextWindowChanges
     && !hasUpstreamTransportChanges
     && !upstreamTransportMigrated
     && !agentModelsMigrated
@@ -394,7 +389,6 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
         ...defaultContextManagementConfig,
         ...contextManagement,
       },
-      opencodeModelContextWindow,
       extraPrompts: {
         ...defaultExtraPrompts,
         ...extraPrompts,

@@ -464,6 +464,8 @@ describe('configuration validation and editing helpers', () => {
     'true',
     '{',
     '{"useMessagesApi":"yes"}',
+    '{"codexMultiAgentV1":"true"}',
+    '{"codexMultiAgentV1":null}',
     '{"contextManagement":{"messages":null}}',
     '{"upstreamTransport":{"headersTimeoutMs":0}}',
     '{"opencodeModelContextWindow":1.2}',
@@ -481,6 +483,11 @@ describe('configuration validation and editing helpers', () => {
     '{"anthropicApiKey":"••••••"}',
   ])('rejects invalid known config: %s', (content) => {
     expect(() => validateConfigContent(content)).toThrow()
+  })
+
+  test.each([false, true])('accepts Codex Multi-Agent V1 = %j', (value) => {
+    const config = { codexMultiAgentV1: value }
+    expect(validateConfigContent(JSON.stringify(config))).toEqual(config)
   })
 
   test.each([{ models: [] }, { models: ['gpt-6-astra'] }])(

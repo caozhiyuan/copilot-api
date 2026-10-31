@@ -28,6 +28,12 @@ export const configFields = [
     unit: 'tokens',
   },
   {
+    id: 'codexMultiAgentV1',
+    path: 'codexMultiAgentV1',
+    section: 'general',
+    type: 'boolean',
+  },
+  {
     id: 'claudeTokenMultiplier',
     path: 'claudeTokenMultiplier',
     section: 'general',

@@ -1241,7 +1241,18 @@ describe("Responses Lite to Messages translation", () => {
     ])
   })
 
-  test("restores namespace on Responses function calls", () => {
+  test.each<[string, string, Record<string, unknown>]>([
+    ["workspace", "read_file", { path: "README.md" }],
+    ["multi_agent_v1", "spawn_agent", { message: "Review the code" }],
+    [
+      "multi_agent_v1",
+      "send_input",
+      { target: "agent-1", message: "Continue" },
+    ],
+    ["multi_agent_v1", "wait_agent", { targets: ["agent-1"] }],
+    ["multi_agent_v1", "close_agent", { target: "agent-1" }],
+    ["multi_agent_v1", "resume_agent", { id: "agent-1" }],
+  ])("restores Responses function %s.%s", (namespace, name, args) => {
     const translation = translate({
       input: [
         {
@@ -1249,15 +1260,15 @@ describe("Responses Lite to Messages translation", () => {
           tools: [
             {
               type: "namespace",
-              name: "workspace",
+              name: namespace,
               tools: [
                 {
                   type: "function",
-                  name: "read_file",
-                  description: "Read a workspace file",
+                  name,
+                  description: `Run ${namespace}.${name}`,
                   parameters: {
                     type: "object",
-                    properties: { path: { type: "string" } },
+                    additionalProperties: true,
                   },
                   strict: false,
                 },
@@ -1270,7 +1281,7 @@ describe("Responses Lite to Messages translation", () => {
       ],
     })
     expect(translation.messagesPayload.tools?.[0]?.name).toBe(
-      "workspace__read_file",
+      `${namespace}__${name}`,
     )
 
     const response: AnthropicResponse = {
@@ -1278,8 +1289,8 @@ describe("Responses Lite to Messages translation", () => {
         {
           type: "tool_use",
           id: "call-read",
-          name: "workspace__read_file",
-          input: { path: "README.md" },
+          name: `${namespace}__${name}`,
+          input: args,
         },
       ],
       id: "msg_namespace",
@@ -1295,9 +1306,9 @@ describe("Responses Lite to Messages translation", () => {
     expect(result.output[0]).toMatchObject({
       type: "function_call",
       call_id: "call-read",
-      name: "read_file",
-      namespace: "workspace",
-      arguments: JSON.stringify({ path: "README.md" }),
+      name,
+      namespace,
+      arguments: JSON.stringify(args),
     })
   })
 

@@ -356,6 +356,25 @@ describe('Desktop config editor', () => {
     ).toBeUndefined()
   })
 
+  test('edits, saves and resets Codex Multi-Agent V1 through the visual form', async () => {
+    await render(true)
+    await click('Request settings')
+    expect(field('codexMultiAgentV1').checked).toBe(false)
+    await act(async () => field('codexMultiAgentV1').click())
+    await click('Save and apply')
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(save.mock.calls[0][0].content)).toMatchObject({
+      codexMultiAgentV1: true,
+      future: { keep: true },
+    })
+    await click('Reset to default')
+    expect(field('codexMultiAgentV1').checked).toBe(false)
+    await click('Save and apply')
+    expect(JSON.parse(save.mock.calls[1][0].content)).not.toHaveProperty(
+      'codexMultiAgentV1',
+    )
+  })
+
   test('edits and resets encrypted output model exclusions through the visual form', async () => {
     await render(true)
     await click('Model rules')

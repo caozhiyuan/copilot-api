@@ -541,6 +541,11 @@ const en: Locale = {
         description:
           'Limit context tokens shown in the OpenCode model catalog.',
       },
+      codexMultiAgentV1: {
+        label: 'Codex Multi-Agent V1',
+        description:
+          'Use V1 for providers without encrypted multi-agent message support. Default: V2. Test in a new Codex session; CLI feature overrides may take precedence.',
+      },
       claudeTokenMultiplier: {
         label: 'Claude token multiplier',
         description: 'Used only for local Claude count_tokens estimation.',

@@ -3306,6 +3306,71 @@ describe("model routes", () => {
     expect(headers.get("accept")).toBe("*/*")
   })
 
+  test.each([undefined, false, true, null, "true", 1, {}, []])(
+    "applies Codex Multi-Agent V1 setting %j consistently without changing other fields",
+    async (configured) => {
+      enableCodexCatalog()
+      codexCatalogModels = [
+        { ...createDefaultCodexCatalogModels()[0], multi_agent_version: "v2" },
+        { slug: "gpt-v1", multi_agent_version: "v1" },
+        { slug: "gpt-disabled", multi_agent_version: null },
+        { slug: "gpt-unspecified" },
+      ]
+      const upstream = structuredClone(codexCatalogModels)
+      codexCatalogMetadata = { custom_metadata: { preserved: true } }
+      const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
+      copilotModels.data[0].supported_endpoints = ["/v1/messages"]
+      state.models = copilotModels
+      enabledProviders.push("custom")
+      providerConfigs.custom = {
+        ...createProviderConfig("custom", "https://custom.example"),
+        models: { "gpt-native": {} },
+      }
+      const app = createApp()
+      const headers = { "user-agent": "codex-cli/0.165.0" }
+      const baselineResponse = await app.request("/models", { headers })
+      expect(baselineResponse.status).toBe(200)
+      const baseline = (await baselineResponse.json()) as CodexModelsResponse
+      for (const slug of [
+        "gpt-native",
+        "codex/gpt-native",
+        "custom/gpt-native",
+        "claude-sonnet-4-6",
+        "custom/qwen-plus",
+      ]) {
+        expect(baseline.models.map((model) => model.slug)).toContain(slug)
+      }
+      expect(
+        baseline.models.find((model) => model.slug === "claude-sonnet-4-6")
+          ?.multi_agent_version,
+      ).toBe("v2")
+
+      setRouteConfig({ codexMultiAgentV1: configured })
+      for (const endpoint of ["/models", "/v1/models", "/codex/v1/models"]) {
+        const response = await app.request(endpoint, { headers })
+        expect(response.status).toBe(200)
+        const actual = (await response.json()) as CodexModelsResponse
+        const expected = {
+          ...baseline,
+          models: baseline.models
+            .filter((model) =>
+              endpoint.startsWith("/codex/") ?
+                upstream.some((item) => item.slug === model.slug)
+              : true,
+            )
+            .map((model) => ({
+              ...model,
+              ...(configured === true && model.multi_agent_version === "v2" ?
+                { multi_agent_version: "v1" as const }
+              : {}),
+            })),
+        }
+        expect(actual).toEqual(expected)
+      }
+      expect(codexCatalogModels).toEqual(upstream)
+    },
+  )
+
   test("merges Messages-backed models into the Codex response_lite catalog", async () => {
     const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
     copilotModels.data[0].supported_endpoints = ["/v1/messages"]

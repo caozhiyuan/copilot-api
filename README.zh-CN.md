@@ -76,6 +76,8 @@ curl http://localhost:4141/v1/models
 
 接下来可按你的客户端选择指南：[与 Claude Code 一起使用](docs/guides/zh-CN/claude-code.md#using-with-claude-code)、[与 OpenCode 一起使用](docs/guides/zh-CN/opencode.md#using-with-opencode)、[与 Codex 一起使用](docs/guides/zh-CN/codex.md#using-with-codex)、[与 DeepSeek Harness 一起使用](docs/guides/zh-CN/dsh.md#using-with-deepseek-harness)，或通过 [Docker](docs/guides/zh-CN/docker.md#using-with-docker) 运行。
 
+**Codex 多 Agent 兼容性：** 可通过 [`codexMultiAgentV1`](docs/guides/zh-CN/configuration.md#codex-多-agent-兼容性) 在目录中声明 V1，默认仍为 V2。应用网关配置后需**新建 Codex 会话**。运行中刷新目录不会切换会话已确定的版本，恢复旧会话也会沿用已记录的版本；CLI 显式配置可能优先。
+
 <a id="compatibility"></a>
 
 ## 兼容性

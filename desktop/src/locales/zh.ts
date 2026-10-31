@@ -507,6 +507,11 @@ const zh: Locale = {
         label: 'OpenCode 上下文上限',
         description: '限制 OpenCode 模型目录展示的上下文 Token 数。',
       },
+      codexMultiAgentV1: {
+        label: 'Codex 多 Agent V1',
+        description:
+          '上游不支持加密多 Agent 消息时使用 V1，默认 V2。请在新的 Codex 会话中测试；CLI 显式 feature 配置可能优先。',
+      },
       claudeTokenMultiplier: {
         label: 'Claude Token 估算系数',
         description: '仅用于本地 Claude count_tokens 估算。',

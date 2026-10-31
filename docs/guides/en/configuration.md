@@ -29,6 +29,7 @@
     },
     "useMessagesApi": true,
     "useResponsesApiWebSocket": true,
+    "codexMultiAgentV1": false,
     "noEncryptedOutputModels": [],
     "upstreamTransport": {
       "headersTimeoutMs": 300000,
@@ -87,7 +88,7 @@
     - `defaultReasoningEffort` (optional): Default Codex reasoning level. When not configured, use `max` if available, otherwise the first supported level. Synthetic Codex models always enable parallel tool calls.
     - `reasoningField` (optional): Assistant thinking field sent upstream on OpenAI-compatible `/v1/messages` requests. Supports `reasoning` and `reasoning_content`; defaults to `reasoning_content`. Use `reasoning` for OpenRouter-style models; OpenCode Go Hy-family models use this field based on the models.dev family metadata.
 - **smallModels:** Per-provider model IDs for Codex task-title `/v1/responses` requests. `codex` and `copilot` default to `gpt-6-luna`; other providers switch only when named explicitly (e.g. `smallModels.dashscope`). Use a model supported by that provider; an empty string disables switching. The request must have matching user `input_text` in one of its last two input items. `copilot` also controls tool-less Claude Code warmups for non-token-based-billing accounts. The old `smallModel` key is ignored.
-- **opencodeModelContextWindow:** Token ceiling for `limit.context` and an existing `limit.input` in the OpenCode model catalog (`GET /v1/models` with an OpenCode User-Agent). Defaults to `400000`; each value above the ceiling is reduced to it, while smaller values and a missing input limit stay unchanged. Does not change `limit.output`, upstream limits, or other clients' catalogs. Positive numeric values are rounded down to an integer; missing, invalid, zero, or negative values fall back to the default. Startup merges persist the normalized value to `config.json`.
+- **opencodeModelContextWindow:** Token ceiling for `limit.context` and an existing `limit.input` in the OpenCode model catalog (`GET /v1/models` with an OpenCode User-Agent). Defaults to `400000`; each value above the ceiling is reduced to it, while smaller values and a missing input limit stay unchanged. Does not change `limit.output`, upstream limits, or other clients' catalogs. Positive numeric values are rounded down to an integer; missing, invalid, zero, or negative values fall back to the default. Normalization applies when reading the setting, without rewriting its stored value.
 - **contextManagement:** Controls whether the proxy adds Responses API `context_management` compaction instructions. `messages` applies when Anthropic-style `/v1/messages` requests are translated to Responses API, including `openai-responses` provider message routes, and defaults to `true`. `responses` applies to native `/v1/responses` traffic, including `provider/model` aliases and the built-in `codex` provider, and defaults to `false`. Enable `responses` only after checking that your client supports context management compaction. When enabled, the request includes `context_management` in the body and keeps only the latest compaction carrier on follow-up turns. The proxy only adds context management and compacts history for `gpt-*` models; both configuration switches have no effect on non-GPT models such as Grok. **Note:** Context management is also forcibly disabled for GPT-5.6 and above models (e.g. `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`) because enabling it breaks prompt cache hits on those models. These overrides take precedence over the `contextManagement` and `modelResponsesApiCompactThresholds` settings.
  - **modelResponsesApiCompactThresholds:** Per-model Responses API `compact_threshold` overrides used when the proxy adds `context_management`. These values take precedence over the fallback threshold from `resolveResponsesCompactThreshold` (`max_prompt_tokens * ratio`, or the default fallback). Defaults set `gpt-5.4` and `gpt-5.5` to `217600` (`272000 * 0.8`). Models not listed continue to use the normal fallback logic.
 - **noEncryptedOutputModels:** Copilot model IDs for which the gateway removes `output.encrypted_content` from Responses request `include`. Defaults to `[]`; an empty or omitted list leaves the field unchanged for all models. Entries match the final upstream model ID exactly after model mapping, for both HTTP and WebSocket requests. Other include values, including `reasoning.encrypted_content`, are preserved. This setting applies only to GitHub Copilot, not the built-in `codex` or third-party providers.
@@ -114,6 +115,16 @@
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
 
+
+### Codex Multi-Agent compatibility
+
+`codexMultiAgentV1` defaults to `false`: synthesized Codex models advertise `multi_agent_version: "v2"`. Set it to `true` to advertise `"v1"`, including upstream models and aliases that would otherwise advertise V2. Existing upstream V1 or unset capabilities remain unchanged. Only the boolean `true` enables V1; missing or invalid values fall back to V2.
+
+V1 uses plain-text task/message arguments and can improve compatibility with upstream providers that do not support encrypted Multi-Agent messages. This setting does not remove encrypted content from requests. Enable it in Desktop **Advanced config → Request settings → Codex Multi-Agent V1**, or edit `config.json` and restart the gateway.
+
+After applying the gateway configuration, refresh the remote model catalog (or regenerate your local `model_catalog.json`) and start a **new Codex session**. Once Codex selects a session's Multi-Agent version, later catalog refreshes do not switch it. Resuming prioritizes the recorded session version. This setting does not convert existing encrypted history or repair encrypted arguments already stored in an old session.
+
+Explicit Codex CLI feature overrides may take precedence over both the recorded session version and model catalog metadata.
 
 ### Desktop configuration editor
 
