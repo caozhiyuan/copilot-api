@@ -24,7 +24,10 @@ import {
   type ResponsesReasoningEffort,
 } from "~/lib/reasoning-effort"
 
-import { isMessagesReasoningId } from "./messages-translation"
+import {
+  isMessagesReasoningId,
+  stripEncryptedAgentMessageContent,
+} from "./messages-translation"
 
 export const RESPONSES_ENDPOINT = "/responses"
 export const RESPONSES_WS_ENDPOINT = "ws:/responses"
@@ -180,9 +183,7 @@ export const normalizeAgentMessages = (payload: ResponsesPayload): number => {
       // "Encrypted function output content could not be decrypted or decoded."
       // "Portable encrypted function call arguments require their original
       // tool declaration or saved encryption schema."
-      content: agentMessage.content.filter(
-        (part) => part.type !== "encrypted_content",
-      ),
+      content: stripEncryptedAgentMessageContent(agentMessage.content),
     } satisfies ResponseInputMessage
   })
 
