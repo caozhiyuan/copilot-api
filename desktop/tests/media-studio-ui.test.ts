@@ -42,11 +42,10 @@ let getVideo = mock(
 )
 let cancel = mock((_id: string): Promise<void> => Promise.resolve())
 let save = mock((): Promise<boolean> => Promise.resolve(true))
-let fetchModels = mock(
-  (): Promise<unknown> =>
-    Promise.resolve({
-      data: [{ id: 'codex/gpt-image-2' }],
-    }),
+let fetchModels = mock((): Promise<unknown> =>
+  Promise.resolve({
+    data: [{ id: 'codex/gpt-image-2' }],
+  }),
 )
 let timers: ReturnType<typeof spyOn<typeof globalThis, 'setTimeout'>>
 
