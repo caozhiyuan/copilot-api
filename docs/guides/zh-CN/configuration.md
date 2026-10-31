@@ -31,6 +31,7 @@
     },
     "useMessagesApi": true,
     "useResponsesApiWebSocket": true,
+    "codexMultiAgentV1": false,
     "noEncryptedOutputModels": [],
     "upstreamTransport": {
       "headersTimeoutMs": 300000,
@@ -118,6 +119,14 @@
 
 内置 GitHub Copilot 也支持统一管理：`providers["github-copilot"]` 只需配置 `enabled`，可选 `agentsModels`，无需 URL、API Key 或协议类型。旧配置没有这一项时默认启用，继续使用已有 GitHub 登录凭据。使用 `copilot-api provider disable github-copilot` / `copilot-api provider enable github-copilot`，或在 Providers 页面切换后保存并重启网关。禁用会跳过 Copilot 初始化，从所有客户端的模型列表移除其模型并拒绝 Copilot 请求，其他启用的 provider 可继续使用。
 
+
+### Codex 多 Agent 兼容性
+
+`codexMultiAgentV1` 默认 `false`：合成的 Codex 模型声明 `multi_agent_version: "v2"`。设为 `true` 后声明 `"v1"`，同时将上游模型及其别名中的 V2 声明改为 V1。上游原有的 V1 或未启用能力保持不变。缺失或非布尔值回退为 `false`，启动合并配置时会将规范化后的值写入 `config.json`。
+
+V1 使用明文任务和消息参数，可改善不支持加密多 Agent 消息的上游兼容性。此开关不会删除请求中的加密内容。可在桌面端 **高级配置 → 请求设置 → Codex 多 Agent V1** 中开启，或编辑 `config.json` 后重启网关。
+
+切换后请在**新的 Codex 会话**中测试，恢复旧会话可能沿用之前的多 Agent 版本。Codex CLI 显式 feature 配置可能优先于模型目录元数据。如果使用本地 `model_catalog.json`，请重新生成。
 
 ### 桌面端配置编辑器
 

@@ -29,6 +29,7 @@
     },
     "useMessagesApi": true,
     "useResponsesApiWebSocket": true,
+    "codexMultiAgentV1": false,
     "noEncryptedOutputModels": [],
     "upstreamTransport": {
       "headersTimeoutMs": 300000,
@@ -114,6 +115,14 @@
 
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
 
+
+### Codex Multi-Agent compatibility
+
+`codexMultiAgentV1` defaults to `false`: synthesized Codex models advertise `multi_agent_version: "v2"`. Set it to `true` to advertise `"v1"`, including upstream models and aliases that would otherwise advertise V2. Existing upstream V1 or unset capabilities remain unchanged. Missing or non-boolean values fall back to `false`; startup merges persist the normalized value in `config.json`.
+
+V1 uses plain-text task/message arguments and can improve compatibility with upstream providers that do not support encrypted Multi-Agent messages. This setting does not remove encrypted content from requests. Enable it in Desktop **Advanced config → Request settings → Codex Multi-Agent V1**, or edit `config.json` and restart the gateway.
+
+Test version changes in a **new Codex session**, since resumed sessions can retain their previous Multi-Agent version. Explicit Codex CLI feature overrides may take precedence over model catalog metadata. Regenerate a local `model_catalog.json` if you use one.
 
 ### Desktop configuration editor
 

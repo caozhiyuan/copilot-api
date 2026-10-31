@@ -80,6 +80,8 @@ enabled = false
 >
 > Set `GITHUB_COPILOT_API_KEY` as a system-level user environment variable so the Codex app can read it too. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.
 
+For upstream providers that cannot handle encrypted Multi-Agent messages, enable the gateway's [`codexMultiAgentV1` option](configuration.md#codex-multi-agent-compatibility) in `config.json` or Desktop Advanced config. V2 remains the default. Test in a new Codex session and check explicit CLI feature overrides, which may take precedence over the catalog.
+
 ### Auto Review Model Mapping
 
 When using `approvals_reviewer = "auto_review"` through the top-level GitHub Copilot route, add this mapping to the gateway's `config.json`:

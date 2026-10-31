@@ -106,6 +106,7 @@ export const appConfigSchema = z.looseObject({
   modelReasoningEfforts: z.record(z.string(), reasoningEffort).optional(),
   useMessagesApi: z.boolean().optional(),
   useResponsesApiWebSocket: z.boolean().optional(),
+  codexMultiAgentV1: z.boolean().optional(),
   noEncryptedOutputModels: z.array(nonEmptyString).optional(),
   upstreamTransport: z
     .looseObject({

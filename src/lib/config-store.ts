@@ -26,6 +26,7 @@ export interface AppConfig {
   >
   useMessagesApi?: boolean
   useResponsesApiWebSocket?: boolean
+  codexMultiAgentV1?: boolean
   // Copilot model IDs that must not request output.encrypted_content.
   noEncryptedOutputModels?: Array<string>
   upstreamTransport?: UpstreamTransportConfig
@@ -173,6 +174,7 @@ export const defaultConfig: AppConfig = {
   modelResponsesApiCompactThresholds,
   useMessagesApi: true,
   useResponsesApiWebSocket: true,
+  codexMultiAgentV1: false,
   noEncryptedOutputModels: [],
   upstreamTransport: defaultUpstreamTransportConfig,
   useResponsesApiWebSearch: true,
@@ -318,6 +320,7 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
     config.opencodeModelContextWindow,
     defaultOpencodeModelContextWindow,
   )
+  const codexMultiAgentV1 = config.codexMultiAgentV1 === true
   const {
     changed: upstreamTransportMigrated,
     migrated: migratedUpstreamTransport,
@@ -353,6 +356,8 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
   const hasContextManagementChanges = missingContextManagementKeys.length > 0
   const hasOpencodeModelContextWindowChanges =
     config.opencodeModelContextWindow !== opencodeModelContextWindow
+  const hasCodexMultiAgentV1Changes =
+    config.codexMultiAgentV1 !== codexMultiAgentV1
   const hasUpstreamTransportChanges = Object.entries(upstreamTransport).some(
     ([key, value]) =>
       migratedUpstreamTransport[key as keyof UpstreamTransportConfig] !== value,
@@ -365,6 +370,7 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
     && !hasResponsesApiCompactThresholdChanges
     && !hasContextManagementChanges
     && !hasOpencodeModelContextWindowChanges
+    && !hasCodexMultiAgentV1Changes
     && !hasUpstreamTransportChanges
     && !upstreamTransportMigrated
     && !agentModelsMigrated
@@ -395,6 +401,7 @@ function mergeDefaultConfig(inputConfig: AppConfig): {
         ...contextManagement,
       },
       opencodeModelContextWindow,
+      codexMultiAgentV1,
       extraPrompts: {
         ...defaultExtraPrompts,
         ...extraPrompts,

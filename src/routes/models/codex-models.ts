@@ -1,6 +1,7 @@
 import type { Context } from "hono"
 
 import {
+  getConfig,
   getModelMappings,
   getRawProviderConfig,
   listEnabledProviders,
@@ -293,6 +294,16 @@ function createCodexCatalogResponse(
   explicitSlugs: ReadonlySet<string>,
   fallback: CodexModel["model_messages"],
 ): Response {
+  if (getConfig().codexMultiAgentV1) {
+    response = {
+      ...response,
+      models: response.models.map((model) =>
+        model.multi_agent_version === "v2" ?
+          { ...model, multi_agent_version: "v1" }
+        : model,
+      ),
+    }
+  }
   const body = serializeCodexModelCatalog(response, {
     headers: c.req.raw.headers,
     modern: isModernCodexClient(c.req.url, c.req.raw.headers),
@@ -371,7 +382,7 @@ export function createSyntheticCodexModel(
     // Gateway adapters use request-level effort, regardless of template capabilities.
     supports_reasoning_effort_updates: false,
     tool_mode: "code_mode_only",
-    multi_agent_version: "v2",
+    multi_agent_version: getConfig().codexMultiAgentV1 ? "v1" : "v2",
     multi_agent_reasoning_effort: null,
     shell_type: template.shell_type,
     experimental_supported_tools: [],

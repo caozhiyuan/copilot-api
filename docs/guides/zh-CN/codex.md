@@ -82,6 +82,8 @@ enabled = false
 >
 > `GITHUB_COPILOT_API_KEY` 需设置为系统级用户环境变量，以便 Codex 应用也能读取。填写任一[网关 API Key](cli.md#auth-命令选项)；未配置 Key 时，填写任意非空占位值即可。未设置时，Codex 会报 `Missing environment variable` 错误。
 
+如果上游不支持加密多 Agent 消息，可在网关 `config.json` 或桌面端高级配置中开启 [`codexMultiAgentV1`](configuration.md#codex-多-agent-兼容性)。默认仍使用 V2。请在新的 Codex 会话中测试，并检查是否有优先于目录的 CLI 显式 feature 配置。
+
 ### 自动审核模型映射
 
 通过顶层 GitHub Copilot 路由使用 `approvals_reviewer = "auto_review"` 时，在网关 `config.json` 中加入以下映射：
