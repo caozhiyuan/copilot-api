@@ -9,7 +9,6 @@
     "../src/services/xai/images.ts",
     "src/lib/auto-start-server.ts",
     "src/lib/button-styles.ts",
-    "src/lib/media-models.ts",
     "src/lib/server-url.ts",
     "src/locales/**/*",
     "src/types/**/*",

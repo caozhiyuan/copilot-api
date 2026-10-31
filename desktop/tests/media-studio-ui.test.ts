@@ -42,10 +42,11 @@ let getVideo = mock(
 )
 let cancel = mock((_id: string): Promise<void> => Promise.resolve())
 let save = mock((): Promise<boolean> => Promise.resolve(true))
-let fetchModels = mock((): Promise<unknown> =>
-  Promise.resolve({
-    data: [{ id: 'codex/gpt-image-2' }],
-  }),
+let fetchModels = mock(
+  (): Promise<unknown> =>
+    Promise.resolve({
+      data: [{ id: 'codex/gpt-image-2' }],
+    }),
 )
 let timers: ReturnType<typeof spyOn<typeof globalThis, 'setTimeout'>>
 
@@ -185,62 +186,37 @@ const file = (name = 'source.png') =>
   new File([new Uint8Array([137, 80, 78, 71])], name, { type: 'image/png' })
 
 describe('media creation page', () => {
-  test.each<{ ids: string[]; expected: string }>([
-    {
-      ids: [
-        'xai/grok-imagine-image-2.0',
-        'github-copilot/gpt-image-2.5-flare',
-        'codex/gpt-image-2',
-      ],
-      expected: 'codex/gpt-image-2',
-    },
-    {
-      ids: ['xai/grok-imagine-image-2.0', 'github-copilot/gpt-image-2.5-flare'],
-      expected: 'github-copilot/gpt-image-2.5-flare',
-    },
-    {
-      ids: ['xai/grok-imagine-image-2.0'],
-      expected: 'xai/grok-imagine-image-2.0',
-    },
-    { ids: [], expected: '' },
-  ])(
-    'selects the available default image model $expected',
-    async ({ ids, expected }) => {
-      fetchModels.mockResolvedValueOnce({ data: ids.map((id) => ({ id })) })
-      await render()
-      const model =
-        container.querySelector<HTMLInputElement>('input:not([type])')!
-      expect(model.value).toBe(expected)
-      await prompt()
-      await click('Create')
-      expect(createImages.mock.calls[0][1]).toMatchObject({
-        provider: 'default',
-        model: expected,
-      })
-    },
-  )
+  test('uses the backend automatic model without fetching the catalog', async () => {
+    await render()
+    const model =
+      container.querySelector<HTMLInputElement>('input:not([type])')!
+    expect(model.value).toBe('gpt-image-2')
+    expect(fetchModels).not.toHaveBeenCalled()
+    await prompt()
+    await click('Create')
+    expect(createImages.mock.calls[0][1]).toMatchObject({
+      provider: 'default',
+      model: 'gpt-image-2',
+    })
+  })
 
-  test('keeps a user model when discovery finishes later', async () => {
-    let finish: ((value: unknown) => void) | undefined
-    fetchModels.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+  test('keeps a user model when the server restarts', async () => {
     await render()
     const model =
       container.querySelector<HTMLInputElement>('input:not([type])')!
     await change(model, 'github-copilot/gpt-image-2.5-flare')
-    await act(async () => {
-      finish?.({ data: [{ id: 'codex/gpt-image-2' }] })
-      await Promise.resolve()
-    })
+    await render(false)
+    await render(true)
     expect(model.value).toBe('github-copilot/gpt-image-2.5-flare')
+    expect(fetchModels).not.toHaveBeenCalled()
   })
 
-  test('allows gateway defaults when model discovery fails', async () => {
-    fetchModels.mockRejectedValueOnce(new Error('discovery unavailable'))
+  test('allows clearing the model to use gateway defaults', async () => {
     await render()
+    await change(
+      container.querySelector<HTMLInputElement>('input:not([type])')!,
+      '',
+    )
     await prompt()
     await click('Create')
     expect(createImages.mock.calls[0][1]).toMatchObject({
@@ -342,7 +318,7 @@ describe('media creation page', () => {
     await click('Create')
     expect(createImages.mock.calls[0][1]).toMatchObject({
       provider: 'default',
-      model: 'codex/gpt-image-2',
+      model: 'gpt-image-2',
       mode: 'generate',
       size: '1536x1024',
       quality: 'high',
@@ -447,7 +423,7 @@ describe('media creation page', () => {
     await prompt()
     const model =
       container.querySelector<HTMLInputElement>('input:not([type])')!
-    expect(model.value).toBe('codex/gpt-image-2')
+    expect(model.value).toBe('gpt-image-2')
     await change(model, 'github-copilot/gpt-image-2.5-flare')
     await click('Create')
     expect(createImages.mock.calls[0][1]).toMatchObject({

@@ -8,7 +8,6 @@ import {
 } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { primaryButtonClass } from '../lib/button-styles'
-import { selectMediaImageModel } from '../lib/media-models'
 import {
   serializeMediaFile,
   serializeVideoMediaFile,
@@ -87,8 +86,7 @@ export default function MediaStudioPage({
   const { t } = useLanguage()
   const formId = useId()
   const [mode, setMode] = useState<Mode>('generate')
-  const [model, setModel] = useState('')
-  const modelEdited = useRef(false)
+  const [model, setModel] = useState('gpt-image-2')
   const [prompts, setPrompts] = useState<Record<Mode, string>>({
     generate: '',
     edit: '',
@@ -127,21 +125,6 @@ export default function MediaStudioPage({
   const resultPrompt = result?.prompt ?? ''
   const videoPending = video?.status === 'pending'
   const hasResults = result !== null
-
-  useEffect(() => {
-    if (!serverRunning) return
-    let active = true
-    void window.electronAPI
-      .fetchModels()
-      .then((catalog) => {
-        if (active && !modelEdited.current)
-          setModel(selectMediaImageModel(catalog))
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [serverRunning])
 
   function stopWaiting() {
     const id = generationRequest.current
@@ -378,10 +361,7 @@ export default function MediaStudioPage({
                   className={fieldClass}
                   value={model}
                   placeholder={t('studio.gateway')}
-                  onChange={(e) => {
-                    modelEdited.current = true
-                    setModel(e.target.value)
-                  }}
+                  onChange={(e) => setModel(e.target.value)}
                 />
               </Field>
             : <p className="break-all rounded-lg bg-sunken px-3 py-2 font-mono text-xs text-ink-soft">
