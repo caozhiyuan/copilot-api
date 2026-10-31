@@ -529,7 +529,30 @@ describe("persisted request timing", () => {
         )
         .get(),
     ).toBeDefined()
+    expect(
+      migrated
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name = 'idx_token_usage_events_upstream_request'",
+        )
+        .get(),
+    ).toBeDefined()
     migrated.close?.()
+    for (let index = 0; index < 2; index++) {
+      recordTokenUsageEvent({
+        source: "provider",
+        providerName: "xai",
+        endpoint: "videos_generations",
+        model: "grok-imagine-video-1.5",
+        cost: 1.13,
+        upstreamRequestId: "migrated-video-job",
+      })
+    }
+    expect((await events()).total).toBe(3)
+    expect((await summary()).totals.costs).toContainEqual({
+      amount: 1.13,
+      currency: "USD",
+      total_cost_nanos: 1_130_000_000,
+    })
   })
 })
 

@@ -5,6 +5,7 @@ import { forwardError } from "~/lib/error"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { recordVideoResultUsage } from "~/lib/token-usage/videos"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 import {
   forwardXaiVideos,
@@ -16,6 +17,7 @@ const logger = createHandlerLogger("videos-handler")
 const SUPPORTED_VIDEO_MODEL = "grok-imagine-video-1.5"
 
 export const videoRouteDependencies = {
+  debugJson,
   resolveMappedModel,
   resolveProviderConfig,
 }
@@ -94,6 +96,19 @@ async function handleVideos(
     debugJson(logger, `videos.${operation}.response`, {
       statusCode: upstreamResponse.status,
     })
+    if (videoRequest.operation === "result") {
+      await recordVideoResultUsage(upstreamResponse, {
+        providerConfig,
+        requestId: videoRequest.requestId,
+        defaultModel: SUPPORTED_VIDEO_MODEL,
+        onBody: (body) =>
+          videoRouteDependencies.debugJson(
+            logger,
+            "videos.result.response.body",
+            { body },
+          ),
+      })
+    }
     return createProviderProxyResponse(upstreamResponse)
   } catch (error) {
     if (error instanceof XaiVideosRequestError && !c.req.raw.signal.aborted) {

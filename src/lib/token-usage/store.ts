@@ -20,6 +20,7 @@ export type TokenUsageEndpoint =
   | "messages"
   | "provider_messages"
   | "responses"
+  | "videos_generations"
 
 export type TokenUsagePeriod =
   | "today"
@@ -83,6 +84,7 @@ export interface PersistedTokenUsageEvent extends TokenUsageTiming {
   trace_id: string
   user_agent: string
   user_id: string
+  upstream_request_id?: string | null
 }
 
 export interface TokenUsageTotals {
@@ -239,9 +241,14 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
   ensureColumn(db, "total_cost_nanos", "INTEGER")
   ensureColumn(db, "cost_source", "TEXT")
   ensureColumn(db, "request_id", "TEXT")
+  ensureColumn(db, "upstream_request_id", "TEXT")
   ensureColumn(db, "first_token_ms", "REAL")
   ensureColumn(db, "duration_ms", "REAL")
   ensureColumn(db, "request_outcome", "TEXT")
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_events_upstream_request
+    ON token_usage_events(source, provider_name, endpoint, upstream_request_id)
+  `)
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_events_request_id
     ON token_usage_events(request_id)
@@ -347,11 +354,13 @@ async function writeTokenUsageEvent(
         total_cost_nanos,
         cost_source,
         request_id,
+        upstream_request_id,
         first_token_ms,
         duration_ms,
         request_outcome,
         user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(source, provider_name, endpoint, upstream_request_id) DO NOTHING
     `,
   ).run(
     event.created_at_ms,
@@ -373,6 +382,7 @@ async function writeTokenUsageEvent(
     event.total_cost_nanos,
     event.cost_source,
     event.request_id,
+    event.upstream_request_id ?? null,
     event.first_token_ms,
     event.duration_ms,
     event.request_outcome,

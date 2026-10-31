@@ -9,6 +9,7 @@ import {
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 
 import { createProviderTokenUsageRecorder, type UsageTokens } from "./index"
+import { xaiUsdTicksToCost } from "./pricing"
 import { normalizeToken, type ImageTokenDetails } from "./store"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -36,16 +37,10 @@ export function normalizeImagesUsage(
   if (!isRecord(usage)) return {}
   const inputDetails = tokenDetails(usage.input_tokens_details)
   const outputDetails = tokenDetails(usage.output_tokens_details)
-  const ticks = usage.cost_in_usd_ticks
   return {
     cost:
-      (
-        provider.toLowerCase() === "xai"
-        && typeof ticks === "number"
-        && Number.isFinite(ticks)
-        && ticks >= 0
-      ) ?
-        ticks / 10_000_000_000
+      provider.toLowerCase() === "xai" ?
+        xaiUsdTicksToCost(usage.cost_in_usd_ticks)
       : undefined,
     input_tokens:
       token(usage.input_tokens)

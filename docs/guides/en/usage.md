@@ -39,6 +39,12 @@ Verbose logs include image response JSON metadata except `data` and streamed ima
 
 Image requests also include request IDs, total duration, completion/cancellation outcomes, and plugin lifecycle events. Image TTFT remains unset. JSON requests with an early `model` stream upstream, including model rewrites. Late models and xAI format conversion use temporary files for large bodies/strings, with a 512 MiB staging limit and automatic cleanup; verbose JSON logging observes the forwarding stream without buffering the full body.
 
+### Video costs
+
+When an xAI video result query returns `status: "done"` with valid `usage.cost_in_usd_ticks`, the cost is saved in SQLite's `token_usage_events` under `videos_generations` and included in event, model, daily, and session summaries. The conversion is `10^10` ticks = 1 USD: `11300000000` ticks records 1.13 USD. Token fields remain zero when the upstream does not report tokens.
+
+SQLite deduplicates by provider, endpoint, and upstream task ID, so repeated queries and queries after a restart record the same task only once. Unfinished or failed jobs and results without a valid cost do not create cost events. With `--verbose`, the complete query response body is logged as `videos.result.response.body` in `videos-handler-YYYY-MM-DD.log`.
+
 ### Usage Viewer Screenshot
 
 <p align="center">

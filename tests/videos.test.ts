@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { createConsola } from "consola"
 import { Hono } from "hono"
 import fs from "node:fs"
 import os from "node:os"
@@ -9,6 +10,18 @@ import {
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import { PATHS } from "~/lib/paths"
+import { requestContext } from "~/lib/request-context"
+import { openSqliteDatabase } from "~/lib/sqlite"
+import { state } from "~/lib/state"
+import {
+  closeUsageStore,
+  getTokenUsageDailySummary,
+  getTokenUsageEventsPage,
+  getTokenUsageSessionsPage,
+  getTokenUsageSummary,
+  recordTokenUsageEvent,
+} from "~/lib/token-usage"
+import { xaiUsdTicksToCost } from "~/lib/token-usage/pricing"
 import { videoRouteDependencies, videoRoutes } from "~/routes/videos/route"
 import { createServer } from "~/server"
 import { forwardXaiVideos, XaiVideosRequestError } from "~/services/xai/videos"
@@ -17,6 +30,8 @@ const model = "xai/grok-imagine-video-1.5"
 const originalFetch = globalThis.fetch
 const originalConfigPath = PATHS.CONFIG_PATH
 const originalDependencies = { ...videoRouteDependencies }
+const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
+const originalVerbose = state.verbose
 const fetchMock = mock(
   (_input: Parameters<typeof fetch>[0], _init?: RequestInit) =>
     Promise.resolve(Response.json({ request_id: "video-job" })),
@@ -26,6 +41,20 @@ const resolveProviderMock = mock((_name: string) =>
 )
 let providerConfig: ResolvedProviderConfig
 let tempDir: string
+const doneResult = {
+  status: "done",
+  video: {
+    url: "https://vidgen.x.ai/clip.mp4",
+    duration: 8,
+    respect_moderation: true,
+  },
+  model: "grok-imagine-video-1.5",
+  usage: { cost_in_usd_ticks: 11_300_000_000 },
+  progress: 100,
+}
+
+const events = () =>
+  getTokenUsageEventsPage({ period: "today", page: 1, pageSize: 20 })
 
 function writeConfig(upstreamTransport: Record<string, number> = {}): void {
   fs.writeFileSync(PATHS.CONFIG_PATH, JSON.stringify({ upstreamTransport }))
@@ -55,7 +84,10 @@ function generate(
   })
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await closeUsageStore()
+  process.env.COPILOT_API_SQLITE_DB_PATH = ":memory:"
+  state.verbose = false
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "copilot-api-videos-"))
   PATHS.CONFIG_PATH = path.join(tempDir, "config.json")
   writeConfig()
@@ -77,7 +109,12 @@ beforeEach(() => {
   globalThis.fetch = Object.assign(fetchMock, { preconnect: () => {} })
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await closeUsageStore()
+  if (originalDbPath === undefined)
+    Reflect.deleteProperty(process.env, "COPILOT_API_SQLITE_DB_PATH")
+  else process.env.COPILOT_API_SQLITE_DB_PATH = originalDbPath
+  state.verbose = originalVerbose
   globalThis.fetch = originalFetch
   Object.assign(videoRouteDependencies, originalDependencies)
   PATHS.CONFIG_PATH = originalConfigPath
@@ -85,10 +122,285 @@ afterEach(() => {
   if (!tempDir.startsWith(path.join(os.tmpdir(), "copilot-api-videos-"))) {
     throw new Error("Invalid test directory")
   }
-  fs.rmSync(tempDir, { recursive: true, force: true })
+  Bun.gc(true)
+  await fs.promises.rm(tempDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 20,
+  })
 })
 
 describe("video routes", () => {
+  test("persists native video costs in SQLite and usage summaries without tokens", async () => {
+    const dbPath = path.join(tempDir, "usage.sqlite")
+    process.env.COPILOT_API_SQLITE_DB_PATH = dbPath
+    const body = JSON.stringify(doneResult, null, 2)
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(body, { headers: { "content-type": "application/json" } }),
+      ),
+    )
+    const response = await requestContext.run(
+      {
+        traceId: "video-trace",
+        startTime: Date.now(),
+        userAgent: "video-client",
+        sessionAffinity: "video-session",
+        parentSessionId: undefined,
+      },
+      () => createApp().request("/v1/videos/video-job"),
+    )
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe(body)
+    const page = await events()
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]).toMatchObject({
+      source: "provider",
+      endpoint: "videos_generations",
+      provider_name: "xai",
+      model: "grok-imagine-video-1.5",
+      trace_id: "video-trace",
+      user_agent: "video-client",
+      session_id: "video-session",
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      cost: {
+        amount: 1.13,
+        currency: "USD",
+        source: "upstream",
+        total_cost_nanos: 1_130_000_000,
+      },
+    })
+    const summary = await getTokenUsageSummary("today")
+    expect(summary.totals.request_count).toBe(1)
+    expect(summary.totals.costs[0]?.amount).toBe(1.13)
+    expect(summary.byModel[0]?.costs[0]?.amount).toBe(1.13)
+    expect(
+      (await getTokenUsageDailySummary("today")).days[0]?.totals.costs[0]
+        ?.amount,
+    ).toBe(1.13)
+    expect(
+      (
+        await getTokenUsageSessionsPage({
+          period: "today",
+          page: 1,
+          pageSize: 20,
+        })
+      ).items[0]?.costs[0]?.amount,
+    ).toBe(1.13)
+
+    await closeUsageStore()
+    const db = await openSqliteDatabase(dbPath)
+    try {
+      expect(
+        db
+          .prepare(
+            "SELECT upstream_request_id, cost_currency, total_cost_nanos, cost_source FROM token_usage_events",
+          )
+          .get(),
+      ).toEqual({
+        upstream_request_id: "video-job",
+        cost_currency: "USD",
+        total_cost_nanos: 1_130_000_000,
+        cost_source: "upstream",
+      })
+    } finally {
+      db.close?.()
+    }
+  })
+
+  test("deduplicates concurrent result queries and still deduplicates after reopening SQLite", async () => {
+    process.env.COPILOT_API_SQLITE_DB_PATH = path.join(tempDir, "usage.sqlite")
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(Response.json(doneResult)),
+    )
+    await Promise.all(
+      [
+        "/videos/video-job",
+        "/v1/videos/video-job",
+        "/videos/video-job?trace=two",
+      ].map(async (url) => {
+        const response = await createApp().request(url)
+        expect(await response.json()).toEqual(doneResult)
+      }),
+    )
+    expect((await events()).total).toBe(1)
+    await closeUsageStore()
+    await (await createApp().request("/videos/video-job")).text()
+    expect((await events()).total).toBe(1)
+    await (await createApp().request("/videos/another-job")).text()
+    expect((await events()).total).toBe(2)
+    expect((await getTokenUsageSummary("today")).totals.costs[0]?.amount).toBe(
+      2.26,
+    )
+  })
+
+  test("keeps ordinary usage events when no upstream task ID is supplied", async () => {
+    for (let index = 0; index < 2; index++) {
+      recordTokenUsageEvent({
+        source: "provider",
+        providerName: "xai",
+        endpoint: "responses",
+        model: "grok-4",
+        cost: 0.25,
+      })
+    }
+    expect((await events()).total).toBe(2)
+    expect((await getTokenUsageSummary("today")).totals.costs[0]?.amount).toBe(
+      0.5,
+    )
+  })
+
+  test("counts a completed zero-dollar video without estimating token costs", async () => {
+    providerConfig.models = {
+      "grok-imagine-video-1.5": { pricing: { input: 100, output: 100 } },
+    }
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        Response.json({ ...doneResult, usage: { cost_in_usd_ticks: 0 } }),
+      ),
+    )
+    await (await createApp().request("/videos/video-job")).text()
+    const page = await events()
+    expect(page.total).toBe(1)
+    expect(page.items[0]?.cost?.amount).toBe(0)
+  })
+
+  test.each([
+    undefined,
+    null,
+    [],
+    "text",
+    {},
+    { cost_in_usd_ticks: -1 },
+    { cost_in_usd_ticks: "11300000000" },
+  ])("ignores missing or invalid video usage %#", async (usage) => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(Response.json({ ...doneResult, usage })),
+    )
+    await (await createApp().request("/videos/video-job")).text()
+    expect((await events()).total).toBe(0)
+  })
+
+  test.each([undefined, "pending", "failed", "expired"])(
+    "does not bill a %s video even when usage is present",
+    async (status) => {
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(Response.json({ ...doneResult, status })),
+      )
+      await (await createApp().request("/videos/video-job")).text()
+      expect((await events()).total).toBe(0)
+    },
+  )
+
+  test.each(["", "{", "null", "[]", "42", '"text"'])(
+    "preserves invalid result JSON without creating usage: %s",
+    async (body) => {
+      fetchMock.mockImplementation(() => Promise.resolve(new Response(body)))
+      const response = await createApp().request("/videos/video-job")
+      expect(await response.text()).toBe(body)
+      expect((await events()).total).toBe(0)
+    },
+  )
+
+  test.each([undefined, "", "  ", 42])(
+    "uses the supported model when the result omits a valid model: %s",
+    async (resultModel) => {
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(Response.json({ ...doneResult, model: resultModel })),
+      )
+      await (await createApp().request("/videos/video-job")).text()
+      expect((await events()).items[0]?.model).toBe("grok-imagine-video-1.5")
+    },
+  )
+
+  test("does not bill failed HTTP responses or submission acknowledgements", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(Response.json(doneResult, { status: 500 })),
+    )
+    const result = await createApp().request("/videos/video-job")
+    expect(result.status).toBe(500)
+    expect(await result.json()).toEqual(doneResult)
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(Response.json(doneResult)),
+    )
+    await (await generate()).text()
+    expect((await events()).total).toBe(0)
+  })
+
+  test("preserves result body read failures without recording usage", async () => {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("Video result interrupted"))
+            },
+          }),
+        ),
+      ),
+    )
+    const response = await createApp().request("/videos/video-job")
+    expect(response.status).toBe(200)
+    const error: unknown = await response
+      .text()
+      .catch((cause: unknown) => cause)
+    expect(String(error)).toContain("Video result interrupted")
+    expect((await events()).total).toBe(0)
+  })
+
+  test("logs full query result bodies only when verbose is enabled", async () => {
+    const records: Array<{ label: string; value: unknown }> = []
+    const debugLogger = createConsola({
+      level: 5,
+      throttle: 0,
+      reporters: [
+        {
+          log(logObj) {
+            records.push({
+              label: String(logObj.args[0]),
+              value: JSON.parse(String(logObj.args[1])) as unknown,
+            })
+          },
+        },
+      ],
+    })
+    videoRouteDependencies.debugJson = (_logger, label, value) =>
+      originalDependencies.debugJson(debugLogger, label, value)
+    const body = JSON.stringify(
+      { ...doneResult, details: "完整视频结果 ".repeat(5000) },
+      null,
+      2,
+    )
+    fetchMock.mockImplementation(() => Promise.resolve(new Response(body)))
+    await (await createApp().request("/videos/video-job")).text()
+    expect(records).toEqual([])
+
+    state.verbose = true
+    await (await createApp().request("/videos/video-job")).text()
+    expect(records).toEqual([
+      { label: "videos.result.response.body", value: { body } },
+    ])
+    await (await generate()).text()
+    expect(records).toHaveLength(1)
+    const errorBody = "<html>Upstream unavailable</html>"
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(new Response(errorBody, { status: 503 })),
+    )
+    await (await createApp().request("/videos/video-job")).text()
+    expect(records[1]).toEqual({
+      label: "videos.result.response.body",
+      value: { body: errorBody },
+    })
+    expect((await events()).total).toBe(1)
+  })
+
+  test.each([undefined, null, "11300000000", -1, NaN, Infinity, -Infinity])(
+    "rejects invalid xAI cost ticks: %s",
+    (ticks) => expect(xaiUsdTicksToCost(ticks)).toBeUndefined(),
+  )
   test.each(["/videos", "/v1/videos"])(
     "registers authenticated submit and result endpoints at %s",
     async (prefix) => {

@@ -44,6 +44,7 @@ export type {
 } from "./store"
 
 export interface TokenUsageEventInput extends UsageTokens {
+  upstreamRequestId?: string | null
   serviceTier?: string | null
   endpoint: TokenUsageEndpoint
   fallbackSessionId?: string | null
@@ -156,6 +157,7 @@ function toPersistedEvent(
       USER_AGENT_MAX_LENGTH,
     ),
     user_id: resolveUserId(input),
+    upstream_request_id: input.upstreamRequestId?.trim() || null,
   }
 }
 

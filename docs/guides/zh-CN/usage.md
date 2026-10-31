@@ -41,6 +41,12 @@ xAI 使用上游 `usage.cost_in_usd_ticks` 报告的费用（`10^10` ticks = 1 U
 
 图片请求也记录请求 ID、总耗时、完成/取消状态，并触发插件生命周期事件；图片首 token 延迟仍为空。JSON 的 `model` 位于前部时直接流式转发，模型改写也按块处理；模型位于后部及 xAI 格式转换时，大请求体/字符串使用临时文件暂存，暂存请求上限为 512 MiB，使用后自动清理。verbose JSON 日志在转发过程中提取元数据，不完整缓存请求体。
 
+### 视频费用
+
+查询 xAI 视频任务返回 `status: "done"` 且包含有效 `usage.cost_in_usd_ticks` 时，费用会写入 SQLite 的 `token_usage_events`，端点标记为 `videos_generations`，并进入事件、模型、日期和 session 汇总。换算规则为 `10^10` ticks = 1 USD，例如 `11300000000` ticks 记录为 1.13 USD；上游未报告 token 时，各 token 字段为 0。
+
+SQLite 按 provider、端点和上游任务 ID 去重，同一任务重复查询或重启后查询都只记录一次。未完成、失败或缺少有效费用的任务不新增费用记录。开启 `--verbose` 后，查询响应的完整 body 写入 `videos-handler-YYYY-MM-DD.log` 中的 `videos.result.response.body`。
+
 ### Usage Viewer 截图
 
 <p align="center">
