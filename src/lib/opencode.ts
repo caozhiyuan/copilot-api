@@ -16,6 +16,8 @@ const execAsync = (command: string): Promise<string> => {
   })
 }
 
+const OPENCODE_PACKAGE_NAMES = ["@opencode/cli", "opencode-ai"] as const
+
 let opencodeVersionCache: string | undefined
 
 const getGlobalNpmRoot = async (): Promise<string> => {
@@ -23,17 +25,49 @@ const getGlobalNpmRoot = async (): Promise<string> => {
   return stdout.trim()
 }
 
+const readPackageVersion = async (packageJsonPath: string): Promise<string> => {
+  const packageJson = await readFile(packageJsonPath, "utf8")
+  const parsedPackage: unknown = JSON.parse(packageJson)
+
+  if (
+    !parsedPackage
+    || typeof parsedPackage !== "object"
+    || !("version" in parsedPackage)
+    || typeof parsedPackage.version !== "string"
+  ) {
+    throw new Error(`Invalid opencode package metadata: ${packageJsonPath}`)
+  }
+
+  const version = parsedPackage.version.trim()
+  if (!version) {
+    throw new Error(`Invalid opencode package version: ${packageJsonPath}`)
+  }
+
+  return version
+}
+
+export const resolveOpencodeVersionFromNpmRoot = async (
+  npmRootPath: string,
+): Promise<string> => {
+  let lastError: unknown
+
+  for (const packageName of OPENCODE_PACKAGE_NAMES) {
+    try {
+      return await readPackageVersion(
+        path.join(npmRootPath, ...packageName.split("/"), "package.json"),
+      )
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError
+}
+
 async function resolveOpencodeVersion(): Promise<void> {
   try {
     const npmRootPath = await getGlobalNpmRoot()
-    const opencodePackagePath = path.join(
-      npmRootPath,
-      "opencode-ai",
-      "package.json",
-    )
-    const packageJson = await readFile(opencodePackagePath, "utf8")
-    const { version } = JSON.parse(packageJson) as { version: string }
-    opencodeVersionCache = version
+    opencodeVersionCache = await resolveOpencodeVersionFromNpmRoot(npmRootPath)
   } catch (error) {
     consola.warn(`Failed to resolve opencode version`, error)
   }
