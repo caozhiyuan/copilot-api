@@ -57,7 +57,6 @@ api_key_model_discovery = true
 default_mode_request_user_input = true
 standalone_web_search = true
 daemon_auto_start = false
-apps = false
 prevent_idle_sleep = true
 defer_mailbox_preemption = true
 instant_interrupt = false

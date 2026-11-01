@@ -3408,7 +3408,7 @@ describe("model routes", () => {
       use_responses_lite: true,
       prefer_websockets: false,
       apply_patch_tool_type: "freeform",
-      supports_search_tool: false,
+      supports_search_tool: true,
       supports_parallel_tool_calls: true,
       tool_mode: "code_mode_only",
       multi_agent_version: "v2",
@@ -3417,10 +3417,11 @@ describe("model routes", () => {
   })
 
   test.each([false, true])(
-    "disables effort updates for synthesized models while preserving catalog aliases (full catalog=%j)",
+    "enables deferred tools on synthesized models while preserving catalog aliases (full catalog=%j)",
     async (fullCatalog) => {
       enableCodexCatalog()
       codexCatalogModels[0].supports_reasoning_effort_updates = true
+      codexCatalogModels[0].supports_search_tool = false
       const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
       copilotModels.data[0].supported_endpoints = ["/v1/messages"]
       state.models = copilotModels
@@ -3450,11 +3451,16 @@ describe("model routes", () => {
       ]) {
         expect(body.models.find((model) => model.slug === slug)).toMatchObject({
           supports_reasoning_effort_updates: true,
+          supports_search_tool: false,
         })
       }
       expect(
         body.models.find((model) => model.slug === "claude-sonnet-4-6"),
-      ).toMatchObject({ supports_reasoning_effort_updates: false })
+      ).toMatchObject({
+        supports_reasoning_effort_updates: false,
+        supports_search_tool: true,
+        tool_mode: "code_mode_only",
+      })
     },
   )
 
@@ -4082,11 +4088,18 @@ describe("model routes", () => {
       input_modalities: ["text", "image"],
       default_reasoning_level: "high",
       supports_parallel_tool_calls: true,
-      supports_search_tool: false,
+      supports_search_tool: true,
     })
     expect(body.models.map((model) => model.slug)).toContain(
       "chat/chat-provider",
     )
+    expect(
+      body.models.find((model) => model.slug === "chat/chat-provider"),
+    ).toMatchObject({
+      supports_search_tool: true,
+      tool_mode: "code_mode_only",
+      use_responses_lite: true,
+    })
   })
 
   test("uses the cached input modalities for each Kimi Codex model", async () => {
