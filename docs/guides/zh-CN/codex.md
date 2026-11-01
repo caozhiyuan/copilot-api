@@ -73,15 +73,13 @@ enabled = false
 > [!NOTE]
 > `name` 一定要配置为 `"OpenAI"`。
 >
-> **延迟子 Agent 消息抢占（Mailbox Preemption）：** 在 `[features]` 中设置 `defer_mailbox_preemption = true`。默认情况下，主 Agent 收到子 Agent 消息后，可能在当前模型输出 reasoning/commentary 等完整输出项时提前结束 SSE 读取，无需等待 `response.completed`，就发起下一次模型请求。
+> **多 Agent 混用：** 在网关配置或桌面端高级配置中开启 [`codexMultiAgentV1`](configuration.md#codex-多-agent-兼容性)，使用 V1 明文任务消息混用 GPT 与第三方模型，避开 V2 的 GPT 原生加密消息兼容限制。默认 V2，切换后需新建会话。
 >
-> 开启后，不再因收到子 Agent 消息而提前结束当前模型响应；消息将在正常的下一次输入处理时机交付，可减少旧请求尚未结束、新请求就已启动的短暂并发。通过 GitHub Copilot 使用 Codex 时，若遇到 `Encrypted function output content could not be decrypted or decoded` 异常，可尝试开启此项。
+> **GitHub Copilot 多 Agent V2：** 在 `[features]` 中启用 `defer_mailbox_preemption = true`，避免子 Agent 消息抢占、提前中断当前响应。
 >
 > 使用 Codex 需先通过 ChatGPT 或 API Key 登录。`requires_openai_auth = true` 用于在 UI 中显示登录账号信息，ChatGPT 登录时还可显示额度和订阅信息；请求鉴权仍优先使用 `env_key`。如需绕过 Codex 客户端的账号限制，可尝试设为 `false`。注意：设为 `false` 后，桌面应用会隐藏 Remote（**Settings → Connections** 中的 **Control this Mac**）（[openai/codex#36879](https://github.com/openai/codex/issues/36879)）。
 >
 > `GITHUB_COPILOT_API_KEY` 需设置为系统级用户环境变量，以便 Codex 应用也能读取。填写任一[网关 API Key](cli.md#auth-命令选项)；未配置 Key 时，填写任意非空占位值即可。未设置时，Codex 会报 `Missing environment variable` 错误。
-
-如果上游不支持加密多 Agent 消息，可在网关 `config.json` 或桌面端高级配置中开启 [`codexMultiAgentV1`](configuration.md#codex-多-agent-兼容性)。默认仍使用 V2。应用网关配置，刷新远程目录（或重新生成本地目录），然后**新建 Codex 会话**。运行中刷新目录不会切换会话已确定的版本，恢复旧会话会沿用已记录的版本；已有加密历史不会被转换。CLI 显式 feature 配置可能优先于已记录的版本和目录元数据。
 
 ### 自动审核模型映射
 
