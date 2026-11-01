@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 
 import Header from '../components/Header'
+import ServerLogPanel from '../components/ServerLogPanel'
 import SubscriptionsPage from './SubscriptionsPage'
 import {
   TokenUsageCostMetric,
@@ -360,8 +361,6 @@ export default function DashboardPage({
   const [serverError, setServerError] = useState('')
   const [copied, setCopied] = useState<string>('')
 
-  const [logs, setLogs] = useState<string[]>([])
-  const logEndRef = useRef<HTMLDivElement>(null)
   const intentionalStop = useRef(false)
   useEffect(() => {
     if (!started && !TABS_REACHABLE_WHILE_STOPPED.includes(tab))
@@ -426,38 +425,12 @@ export default function DashboardPage({
               )),
           )
           setStarted(false)
-          void window.electronAPI
-            .getLogs()
-            .then(setLogs)
-            .catch(() => {})
         }
         intentionalStop.current = false
       }
     })
     return unsubscribe
   }, [])
-
-  useEffect(() => {
-    void window.electronAPI
-      .getLogs()
-      .then(setLogs)
-      .catch(() => {})
-  }, [])
-
-  // Subscribe to live logs.
-  useEffect(() => {
-    const unsubscribe = window.electronAPI.onServerLog((log) => {
-      setLogs((prev) => [...prev, log])
-    })
-    return unsubscribe
-  }, [])
-
-  // Auto-scroll the log view.
-  useEffect(() => {
-    if (tab === 'logs' || (!started && (startError || serverError))) {
-      logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [logs, tab, started, startError, serverError])
 
   // Fetch dashboard and token usage data after the server starts.
   useEffect(() => {
@@ -502,7 +475,6 @@ export default function DashboardPage({
     setStarting(true)
     setStartError('')
     setServerError('')
-    setLogs([])
     try {
       const status = await window.electronAPI.startServer(
         portNum,
@@ -513,17 +485,9 @@ export default function DashboardPage({
         setStarted(true)
       } else {
         setStartError(status.error ?? t('dashboard.serverUnexpectedStop'))
-        void window.electronAPI
-          .getLogs()
-          .then(setLogs)
-          .catch(() => {})
       }
     } catch (err) {
       setStartError((err as Error).message)
-      void window.electronAPI
-        .getLogs()
-        .then(setLogs)
-        .catch(() => {})
     } finally {
       setStarting(false)
     }
@@ -560,7 +524,6 @@ export default function DashboardPage({
     setRestarting(true)
     setStartError('')
     setServerError('')
-    setLogs([])
     try {
       await window.electronAPI.stopServer()
       const status = await window.electronAPI.startServer(
@@ -587,18 +550,10 @@ export default function DashboardPage({
         setModels([])
         setLastDashboardRefreshAt(null)
         setStartError(status.error ?? t('dashboard.serverUnexpectedStop'))
-        void window.electronAPI
-          .getLogs()
-          .then(setLogs)
-          .catch(() => {})
       }
     } catch (err) {
       setStarted(false)
       setStartError((err as Error).message)
-      void window.electronAPI
-        .getLogs()
-        .then(setLogs)
-        .catch(() => {})
     } finally {
       setRestarting(false)
     }
@@ -787,12 +742,7 @@ export default function DashboardPage({
     }
     if (tab === 'tokenUsage') {
       void fetchTokenUsageData()
-      return
     }
-    void window.electronAPI
-      .getLogs()
-      .then(setLogs)
-      .catch(() => {})
   }
 
   const handleCopy = (text: string, key: string) => {
@@ -1041,28 +991,7 @@ export default function DashboardPage({
                 : t('dashboard.startServer')}
               </button>
             </div>
-            {shouldShowFailureLogs && (
-              <div className="w-full max-w-2xl bg-black rounded-xl p-4 flex flex-col overflow-hidden min-h-0">
-                <div className="flex items-center justify-between mb-3 shrink-0">
-                  <span className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">
-                    {t('dashboard.serverLog')}
-                  </span>
-                </div>
-                <div className="max-h-60 overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed">
-                  {logs.length === 0 ?
-                    <span className="text-ink-soft">
-                      {t('dashboard.noLogs')}
-                    </span>
-                  : logs.map((line, i) => (
-                      <div key={i} className="whitespace-pre-wrap break-all">
-                        {line.trimEnd()}
-                      </div>
-                    ))
-                  }
-                  <div ref={logEndRef} />
-                </div>
-              </div>
-            )}
+            {shouldShowFailureLogs && <ServerLogPanel variant="failure" />}
           </div>
         )}
 
@@ -1406,33 +1335,8 @@ export default function DashboardPage({
         )}
 
         {/* Logs tab */}
-        {started && tab === 'logs' && (
-          <div className="p-4 h-full flex flex-col">
-            <div className="flex-1 bg-black rounded-xl p-4 flex flex-col overflow-hidden min-h-0">
-              <div className="flex items-center justify-between mb-3 shrink-0">
-                <span className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">
-                  {t('dashboard.serverLog')}
-                </span>
-                <button
-                  onClick={() => setLogs([])}
-                  className="text-[13px] text-ink-soft hover:text-ink-faint transition-colors"
-                >
-                  {t('dashboard.clear')}
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed">
-                {logs.length === 0 ?
-                  <span className="text-ink-soft">{t('dashboard.noLogs')}</span>
-                : logs.map((line, i) => (
-                    <div key={i} className="whitespace-pre-wrap break-all">
-                      {line.trimEnd()}
-                    </div>
-                  ))
-                }
-                <div ref={logEndRef} />
-              </div>
-            </div>
-          </div>
+        {started && !restarting && tab === 'logs' && (
+          <ServerLogPanel variant="page" />
         )}
       </div>
     </div>

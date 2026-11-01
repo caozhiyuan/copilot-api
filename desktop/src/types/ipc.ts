@@ -101,6 +101,11 @@ export interface ServerStatus {
   error?: string
 }
 
+export interface ServerLogRecord {
+  sequence: number
+  text: string
+}
+
 export interface ServerAuthInfo {
   enabled: boolean
   headerName?: string
@@ -418,10 +423,11 @@ declare global {
       saveServerKeys: (
         keys: ServerKeysConfigUpdate,
       ) => Promise<ServerKeysConfig>
-      getLogs: () => Promise<string[]>
+      getLogs: () => Promise<ServerLogRecord[]>
+      clearLogs: () => Promise<number>
       onAuthSuccess: (callback: (result: AuthResult) => void) => () => void
       onServerStatus: (callback: (status: ServerStatus) => void) => () => void
-      onServerLog: (callback: (log: string) => void) => () => void
+      onServerLog: (callback: (log: ServerLogRecord) => void) => () => void
       platform: NodeJS.Platform
       windowReload: () => void
       windowMinimize: () => void

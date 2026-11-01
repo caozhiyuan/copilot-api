@@ -3,6 +3,7 @@
   "include": [
     "electron.vite.config.*",
     "electron/**/*",
+    "shared/**/*",
     "tests/**/*",
     "src/App.tsx",
     "src/pages/MediaStudioPage.tsx",
@@ -44,6 +45,7 @@
     "src/lib/token-usage-format.ts",
     "src/lib/model-mappings-editor.ts",
     "src/lib/provider-model-options.ts",
+    "src/components/ServerLogPanel.tsx",
     "src/components/ProviderModelPicker.tsx",
     "src/components/ProviderManagementModal.tsx",
     "src/components/ProviderManagementPanel.tsx",

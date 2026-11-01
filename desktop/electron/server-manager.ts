@@ -7,6 +7,7 @@ import { StringDecoder } from 'node:string_decoder'
 
 import type {
   DesktopProxySettings,
+  ServerLogRecord,
   ServerRuntime,
   ServerStatus,
 } from '../src/types/ipc'
@@ -21,6 +22,7 @@ import { applyDesktopProxySettingsToEnv } from './electron-proxy-config'
 import { detectBunRuntime } from './bun-runtime'
 import { tMain } from './i18n'
 import { buildServerStartArgs, buildServerStartEnv } from './server-start-args'
+import { BoundedLogBuffer, truncateLogText } from '../shared/log-buffer'
 
 interface ServerProcess extends EventEmitter {
   stdout: NodeJS.ReadableStream | null
@@ -32,11 +34,10 @@ let serverProcess: ServerProcess | null = null
 let currentPort = 4141
 let currentHost = ''
 let statusCallback: ((status: ServerStatus) => void) | null = null
-let logCallback: ((log: string) => void) | null = null
-// Ring buffer for logs, capped at 2000 entries for log panel replay.
-const LOG_BUFFER_MAX = 2000
+let logCallback: ((log: ServerLogRecord) => void) | null = null
 const STOP_TIMEOUT_MS = 5000
-const logBuffer: string[] = []
+let nextLogSequence = 0
+const logBuffer = new BoundedLogBuffer<ServerLogRecord>((log) => log.text)
 const ESC_CHAR_CODE = 27
 const BEL_CHAR_CODE = 7
 const CSI_CHAR_CODE = 0x9b
@@ -131,12 +132,13 @@ function stripAnsi(input: string): string {
 }
 
 function emitLog(message: string): void {
-  const sanitizedMessage = stripAnsi(message)
+  const sanitizedMessage = truncateLogText(stripAnsi(message))
   if (sanitizedMessage.length === 0) return
 
-  logBuffer.push(sanitizedMessage)
-  if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift()
-  logCallback?.(sanitizedMessage)
+  nextLogSequence += 1
+  const log = { sequence: nextLogSequence, text: sanitizedMessage }
+  logBuffer.append(log)
+  logCallback?.(log)
 }
 
 function createLogStream() {
@@ -159,7 +161,7 @@ export function onStatusChange(cb: (status: ServerStatus) => void): void {
   statusCallback = cb
 }
 
-export function onLog(cb: (log: string) => void): void {
+export function onLog(cb: (log: ServerLogRecord) => void): void {
   logCallback = cb
 }
 
@@ -291,7 +293,7 @@ async function launchServer(
   }
 
   // Clear the previous log buffer before each new server start.
-  logBuffer.length = 0
+  logBuffer.clear()
 
   const env = buildServerStartEnv(process.env)
   const proxyEnabled =
@@ -514,6 +516,12 @@ export function getServerBaseUrl(): string {
   )
 }
 
-export function getLogs(): string[] {
-  return [...logBuffer]
+export function getLogs(): ServerLogRecord[] {
+  return logBuffer.values()
+}
+
+export function clearLogs(): number {
+  const watermark = nextLogSequence
+  logBuffer.clear()
+  return watermark
 }

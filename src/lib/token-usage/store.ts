@@ -1024,7 +1024,8 @@ function getModelTimingRows(
     WITH selected_requests AS (
       SELECT DISTINCT request_id FROM token_usage_events
       WHERE created_at_ms >= ? AND created_at_ms < ? AND request_id IS NOT NULL
-    ), requests AS (
+    -- The bucket join would otherwise re-run request grouping for every day.
+    ), requests AS MATERIALIZED (
       SELECT e.request_id, MIN(e.model) AS model,
         MIN(e.created_at_ms) AS first_usage_at_ms,
         MAX(e.created_at_ms) AS last_usage_at_ms,

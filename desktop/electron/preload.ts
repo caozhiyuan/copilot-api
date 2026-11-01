@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppUpdateStatus, XaiAuthInfo } from '../src/types/ipc'
+import type {
+  AppUpdateStatus,
+  ServerLogRecord,
+  XaiAuthInfo,
+} from '../src/types/ipc'
 import type {
   ImageCreationInput,
   SaveMediaInput,
@@ -130,6 +134,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveServerKeys: (keys: unknown) =>
     ipcRenderer.invoke('auth:save-server-keys', keys),
   getLogs: () => ipcRenderer.invoke('server:get-logs'),
+  clearLogs: () => ipcRenderer.invoke('server:clear-logs'),
 
   onAuthSuccess: (callback: (result: unknown) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, result: unknown) =>
@@ -145,8 +150,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.off('server:status', handler)
   },
 
-  onServerLog: (callback: (log: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, log: string) =>
+  onServerLog: (callback: (log: ServerLogRecord) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, log: ServerLogRecord) =>
       callback(log)
     ipcRenderer.on('server:log', handler)
     return () => ipcRenderer.off('server:log', handler)

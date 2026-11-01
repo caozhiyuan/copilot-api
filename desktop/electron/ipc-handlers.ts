@@ -69,6 +69,7 @@ import {
   getHost,
   getServerBaseUrl,
   getLogs,
+  clearLogs,
   isRunning,
 } from './server-manager'
 import { readSettings, writeSettings } from './settings-store'
@@ -852,6 +853,7 @@ export function registerIpcHandlers(
 
   // Server: Return the in-memory log buffer
   ipcMain.handle('server:get-logs', () => getLogs())
+  ipcMain.handle('server:clear-logs', () => clearLogs())
 
   // Window controls (used by the custom title bar menu)
   ipcMain.on('window:reload', () => mainWindow.reload())

@@ -116,6 +116,7 @@ await mock.module('../electron/server-manager', () => ({
   getHost: () => '127.0.0.1',
   getServerBaseUrl: () => 'http://127.0.0.1:4141',
   getLogs: () => [],
+  clearLogs: () => 0,
 }))
 
 const { registerIpcHandlers } = await import('../electron/ipc-handlers')

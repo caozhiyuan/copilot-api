@@ -10,6 +10,7 @@ import type {
   AppUpdateStatus,
   DesktopAuthMode,
   ProviderManagementConfig,
+  ServerLogRecord,
   ServerStatus,
   TokenUsageEventRecord,
   TokenUsageEventsPage,
@@ -71,6 +72,12 @@ let fetchCopilotUsage: ReturnType<typeof mock<() => Promise<unknown>>>
 let fetchUsageSummary: ReturnType<
   typeof mock<(period: TokenUsagePeriod) => Promise<unknown>>
 >
+let getLogs: ReturnType<typeof mock<() => Promise<Array<ServerLogRecord>>>>
+let onServerLog: ReturnType<
+  typeof mock<(callback: (log: ServerLogRecord) => void) => () => void>
+>
+let serverStatusListener: ((status: ServerStatus) => void) | null
+let logUnsubscribeCount = 0
 let openAuthConfig: ReturnType<
   typeof mock<(returnTab: 'dashboard' | 'providers') => void>
 >
@@ -105,6 +112,12 @@ beforeEach(async () => {
   fetchUsageSummary = mock((_period: TokenUsagePeriod) =>
     Promise.resolve(structuredClone(summary)),
   )
+  getLogs = mock(() => Promise.resolve([]))
+  logUnsubscribeCount = 0
+  onServerLog = mock((_callback: (log: ServerLogRecord) => void) => () => {
+    logUnsubscribeCount += 1
+  })
+  serverStatusListener = null
   currentAuthMode = 'provider'
   openAuthConfig = mock((_returnTab: 'dashboard' | 'providers') => {})
   Object.defineProperty(win, 'electronAPI', {
@@ -132,9 +145,12 @@ beforeEach(async () => {
         Promise.resolve({ ...structuredClone(summary), days: [] }),
       fetchTokenUsageEvents: () => Promise.resolve(createEventsPage(6)),
       fetchTokenUsageSessions: () => Promise.resolve(emptySessionsPage()),
-      getLogs: () => Promise.resolve([]),
-      onServerStatus: () => () => {},
-      onServerLog: () => () => {},
+      getLogs,
+      onServerStatus: (callback: (status: ServerStatus) => void) => {
+        serverStatusListener = callback
+        return () => {}
+      },
+      onServerLog,
       getAppUpdateStatus: (): Promise<AppUpdateStatus> =>
         Promise.resolve({
           phase: 'disabled',
@@ -268,6 +284,43 @@ async function clickButton(label: string) {
 }
 
 describe('dashboard overview', () => {
+  test('subscribes to logs only while the log panel is visible', async () => {
+    getLogs.mockResolvedValue([{ sequence: 1, text: 'initial log' }])
+    await render('provider')
+
+    expect(onServerLog).not.toHaveBeenCalled()
+    expect(getLogs).not.toHaveBeenCalled()
+
+    await clickButton('Logs')
+    await act(async () => {})
+    expect(onServerLog).toHaveBeenCalledTimes(1)
+    expect(getLogs).toHaveBeenCalledTimes(1)
+    expect(container.textContent).toContain('initial log')
+
+    await clickButton('Dashboard')
+    expect(logUnsubscribeCount).toBe(1)
+
+    getLogs.mockResolvedValue([{ sequence: 2, text: 'latest hidden log' }])
+    await clickButton('Logs')
+    await act(async () => {})
+    expect(getLogs).toHaveBeenCalledTimes(2)
+    expect(container.textContent).toContain('latest hidden log')
+
+    await act(async () => {
+      serverStatusListener?.({ running: false, restarting: true })
+    })
+    expect(logUnsubscribeCount).toBe(2)
+
+    getLogs.mockResolvedValue([{ sequence: 3, text: 'new server run' }])
+    await act(async () => {
+      serverStatusListener?.({ running: true, port: 4141 })
+    })
+    await act(async () => {})
+    expect(getLogs).toHaveBeenCalledTimes(3)
+    expect(container.textContent).toContain('new server run')
+    expect(container.textContent).not.toContain('latest hidden log')
+  })
+
   test('loads subscriptions on first open and preserves them across tab switches', async () => {
     getProviderConfig.mockResolvedValue({
       configPath: 'config.json',
