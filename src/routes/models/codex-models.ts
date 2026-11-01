@@ -377,7 +377,8 @@ export function createSyntheticCodexModel(
     default_verbosity: "medium",
     apply_patch_tool_type: "freeform",
     web_search_tool_type: "text_and_image",
-    supports_search_tool: false,
+    // Also enables deferred Apps/MCP tool discovery in Codex Code Mode.
+    supports_search_tool: true,
     use_responses_lite: true,
     // Gateway adapters use request-level effort, regardless of template capabilities.
     supports_reasoning_effort_updates: false,

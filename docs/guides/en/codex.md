@@ -57,7 +57,6 @@ api_key_model_discovery = true
 default_mode_request_user_input = true
 standalone_web_search = true
 daemon_auto_start = false
-apps = false
 prevent_idle_sleep = true
 defer_mailbox_preemption = true
 instant_interrupt = false
@@ -72,15 +71,13 @@ enabled = false
 > [!NOTE]
 > `name` must be set to `"OpenAI"`.
 >
-> **Mailbox Preemption:** Set `defer_mailbox_preemption = true` under `[features]` to defer sub-agent message preemption. By default, receiving a sub-agent message may cause the main agent to stop reading the SSE stream after a complete reasoning/commentary output item and start the next model request without waiting for `response.completed`.
+> **Multi-Agent V1:** Enable [`codexMultiAgentV1`](configuration.md#codex-multi-agent-compatibility) in the gateway configuration or Desktop Advanced config to mix GPT and third-party models with plain text task messages, avoiding V2's encrypted message compatibility constraints. V2 remains the default; start a new session after switching.
 >
-> When enabled, receiving a sub-agent message no longer ends the current model response early. Messages are delivered at the next normal input-processing point, reducing brief overlaps where a new request starts before the previous one finishes. If you encounter `Encrypted function output content could not be decrypted or decoded` when using Codex with GitHub Copilot, try enabling this option.
+> **GitHub Copilot with Multi-Agent V2:** Enable `defer_mailbox_preemption = true` under `[features]` to prevent subagent messages from preempting the current response.
 >
 > Sign in to Codex with ChatGPT or an API key before use. `requires_openai_auth = true` shows account information in the UI, plus quota usage and subscription details for ChatGPT sign-in; request authentication still prioritizes `env_key`. To bypass account restrictions in the Codex client, try setting it to `false`. Note that `false` also hides Remote (**Control this Mac** under **Settings → Connections**) in the desktop app ([openai/codex#36879](https://github.com/openai/codex/issues/36879)).
 >
 > Set `GITHUB_COPILOT_API_KEY` as a system-level user environment variable so the Codex app can read it too. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.
-
-For upstream providers that cannot handle encrypted Multi-Agent messages, enable the gateway's [`codexMultiAgentV1` option](configuration.md#codex-multi-agent-compatibility) in `config.json` or Desktop Advanced config. V2 remains the default. Apply the gateway configuration, refresh the remote catalog (or regenerate your local catalog), and start a **new Codex session**. Catalog refreshes do not switch a running session's already-selected version; resuming restores the recorded version. Existing encrypted history is not converted. Explicit CLI feature overrides may take precedence over both the recorded version and catalog metadata.
 
 ### Auto Review Model Mapping
 
