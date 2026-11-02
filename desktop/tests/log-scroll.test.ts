@@ -1,11 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  LOG_FOLLOW_THRESHOLD_PX,
   decideLogFollowScroll,
   distanceFromLogBottom,
-  logPinBehavior,
   maxLogScrollTop,
-  scrollTopKeepingAnchor,
 } from '../src/components/log-scroll'
 
 describe('log scroll follow', () => {
@@ -25,54 +24,14 @@ describe('log scroll follow', () => {
     ).toBe(0)
   })
 
-  test('glides a short catch-up and snaps a long or interrupted one', () => {
-    expect(
-      logPinBehavior({
-        distance: 100,
-        programmaticInFlight: false,
-        reduceMotion: false,
-      }),
-    ).toBe('smooth')
-    expect(
-      logPinBehavior({
-        distance: 161,
-        programmaticInFlight: false,
-        reduceMotion: false,
-      }),
-    ).toBe('auto')
-    expect(
-      logPinBehavior({
-        distance: 40,
-        programmaticInFlight: true,
-        reduceMotion: false,
-      }),
-    ).toBe('auto')
-    expect(
-      logPinBehavior({
-        distance: 40,
-        programmaticInFlight: false,
-        reduceMotion: true,
-      }),
-    ).toBe('auto')
-  })
-
-  test('shifts scrollTop with an anchored row', () => {
-    expect(
-      scrollTopKeepingAnchor({
-        scrollTop: 200,
-        previousRowTop: 240,
-        nextRowTop: 210,
-      }),
-    ).toBe(170)
-  })
-
   test('stays pinned inside the follow band and lets a real scroll-up detach', () => {
+    expect(LOG_FOLLOW_THRESHOLD_PX).toBe(80)
     expect(
       decideLogFollowScroll({
         follow: true,
         metrics: { scrollTop: 740, scrollHeight: 1000, clientHeight: 200 },
         previousScrollTop: 800,
-        programmatic: null,
+        pinTarget: null,
       }).follow,
     ).toBe(true)
 
@@ -80,17 +39,16 @@ describe('log scroll follow', () => {
       follow: true,
       metrics: { scrollTop: 500, scrollHeight: 1000, clientHeight: 200 },
       previousScrollTop: 800,
-      programmatic: null,
+      pinTarget: null,
     })
-    expect(detached.follow).toBe(false)
-    expect(detached.previousScrollTop).toBe(500)
+    expect(detached).toEqual({ follow: false, pinTarget: null })
 
     expect(
       decideLogFollowScroll({
         follow: false,
         metrics: { scrollTop: 750, scrollHeight: 1000, clientHeight: 200 },
         previousScrollTop: 400,
-        programmatic: null,
+        pinTarget: null,
       }).follow,
     ).toBe(true)
 
@@ -99,57 +57,82 @@ describe('log scroll follow', () => {
         follow: false,
         metrics: { scrollTop: 400, scrollHeight: 1000, clientHeight: 200 },
         previousScrollTop: 200,
-        programmatic: null,
-      }).follow,
-    ).toBe(false)
+        pinTarget: null,
+      }),
+    ).toEqual({ follow: false, pinTarget: null })
   })
 
-  test('ignores growth that does not move the viewport', () => {
+  test('ignores a one-pixel jitter and growth that does not move the viewport', () => {
+    expect(
+      decideLogFollowScroll({
+        follow: true,
+        metrics: { scrollTop: 799, scrollHeight: 1000, clientHeight: 100 },
+        previousScrollTop: 800,
+        pinTarget: null,
+      }).follow,
+    ).toBe(true)
     expect(
       decideLogFollowScroll({
         follow: true,
         metrics: { scrollTop: 100, scrollHeight: 1000, clientHeight: 200 },
         previousScrollTop: 100,
-        programmatic: null,
+        pinTarget: null,
       }).follow,
     ).toBe(true)
   })
 
-  test('tracks a programmatic glide and only detaches when it reverses', () => {
-    const moving = decideLogFollowScroll({
-      follow: true,
-      metrics: { scrollTop: 400, scrollHeight: 1000, clientHeight: 200 },
-      previousScrollTop: 250,
-      programmatic: { top: 800, lastTop: 250 },
-    })
-    expect(moving.follow).toBe(true)
-    expect(moving.programmatic).toEqual({ top: 800, lastTop: 400 })
+  test('tracks a pin and only detaches when the reader leaves it', () => {
+    expect(
+      decideLogFollowScroll({
+        follow: true,
+        metrics: { scrollTop: 400, scrollHeight: 1000, clientHeight: 200 },
+        previousScrollTop: 250,
+        pinTarget: 800,
+      }),
+    ).toEqual({ follow: true, pinTarget: 800 })
 
-    const arrived = decideLogFollowScroll({
-      follow: true,
-      metrics: { scrollTop: 800, scrollHeight: 1000, clientHeight: 200 },
-      previousScrollTop: 700,
-      programmatic: { top: 800, lastTop: 700 },
-    })
-    expect(arrived.follow).toBe(true)
-    expect(arrived.programmatic).toBeNull()
+    expect(
+      decideLogFollowScroll({
+        follow: true,
+        metrics: { scrollTop: 800, scrollHeight: 1000, clientHeight: 200 },
+        previousScrollTop: 700,
+        pinTarget: 800,
+      }),
+    ).toEqual({ follow: true, pinTarget: null })
 
-    const reversed = decideLogFollowScroll({
-      follow: true,
-      metrics: { scrollTop: 300, scrollHeight: 1000, clientHeight: 200 },
-      previousScrollTop: 500,
-      programmatic: { top: 800, lastTop: 500 },
-    })
-    expect(reversed.follow).toBe(false)
-    expect(reversed.programmatic).toBeNull()
+    expect(
+      decideLogFollowScroll({
+        follow: true,
+        metrics: { scrollTop: 300, scrollHeight: 1000, clientHeight: 200 },
+        previousScrollTop: 500,
+        pinTarget: 800,
+      }),
+    ).toEqual({ follow: false, pinTarget: null })
 
-    const clamped = decideLogFollowScroll({
-      follow: true,
-      metrics: { scrollTop: 700, scrollHeight: 900, clientHeight: 200 },
-      previousScrollTop: 800,
-      programmatic: { top: 1000, lastTop: 800 },
-    })
-    expect(clamped.follow).toBe(true)
-    expect(clamped.programmatic).toBeNull()
+    expect(
+      decideLogFollowScroll({
+        follow: true,
+        metrics: { scrollTop: 102, scrollHeight: 1000, clientHeight: 200 },
+        previousScrollTop: 101,
+        pinTarget: 100,
+      }),
+    ).toEqual({ follow: true, pinTarget: 100 })
+
+    expect(
+      decideLogFollowScroll({
+        follow: true,
+        metrics: { scrollTop: 40, scrollHeight: 1000, clientHeight: 200 },
+        previousScrollTop: 100,
+        pinTarget: 100,
+      }),
+    ).toEqual({ follow: false, pinTarget: null })
+    expect(
+      decideLogFollowScroll({
+        follow: true,
+        metrics: { scrollTop: 400, scrollHeight: 1000, clientHeight: 200 },
+        previousScrollTop: 100,
+        pinTarget: 100,
+      }),
+    ).toEqual({ follow: true, pinTarget: null })
   })
 })

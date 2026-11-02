@@ -8,36 +8,16 @@ import {
 } from 'react'
 
 import { useLanguage } from '../contexts/LanguageContext'
-import {
-  BoundedLogBuffer,
-  LOG_UPDATE_INTERVAL_MS,
-  truncateLogText,
-} from '../../shared/log-buffer'
+import { mergeServerLogs } from '../../shared/server-logs'
 import type { ServerLogRecord } from '../types/ipc'
 import {
   LOG_SCROLL_EPSILON_PX,
   decideLogFollowScroll,
-  logPinBehavior,
   maxLogScrollTop,
-  type ProgrammaticLogScroll,
 } from './log-scroll'
 
 /** Evicting rows must not move the viewport through scroll anchoring. */
 const noScrollAnchor = { overflowAnchor: 'none' } as const
-
-interface LogAnchor {
-  sequence: string
-  contentTop: number
-}
-
-function normalizeHistory(
-  history: Array<ServerLogRecord>,
-): Array<ServerLogRecord> {
-  return history.flatMap((log) => {
-    const normalized = truncateLogText(log.text)
-    return normalized.length > 0 ? [{ ...log, text: normalized }] : []
-  })
-}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -46,126 +26,48 @@ function prefersReducedMotion(): boolean {
   )
 }
 
-function rowContentTop(scroller: HTMLElement, row: HTMLElement): number {
-  return (
-    row.getBoundingClientRect().top
-    - scroller.getBoundingClientRect().top
-    + scroller.scrollTop
-  )
-}
-
-function captureLogAnchor(scroller: HTMLElement): LogAnchor | null {
-  const rect = scroller.getBoundingClientRect()
-  if (
-    rect.height <= 0
-    || rect.width <= 0
-    || typeof document.elementFromPoint !== 'function'
-  ) {
-    return null
-  }
-
-  const hit = document.elementFromPoint(rect.left + 4, rect.top + 4)
-  const row = hit?.closest<HTMLElement>('[data-log-sequence]')
-  const sequence = row?.dataset.logSequence
-  if (!row || !sequence || !scroller.contains(row) || !/^\d+$/.test(sequence)) {
-    return null
-  }
-
-  return { sequence, contentTop: rowContentTop(scroller, row) }
-}
-
-function anchoredScrollTop(
-  scroller: HTMLElement,
-  anchor: LogAnchor,
-): number | null {
-  const row = scroller.querySelector<HTMLElement>(
-    `[data-log-sequence="${anchor.sequence}"]`,
-  )
-  if (!row) return null
-  const nextTop =
-    scroller.scrollTop + (rowContentTop(scroller, row) - anchor.contentTop)
-  return Math.min(maxLogScrollTop(scroller), Math.max(0, nextTop))
-}
-
-function usePinnedLogScroll(logs: ReadonlyArray<unknown>) {
+function usePinnedLogScroll(logs: ReadonlyArray<unknown>, ready: boolean) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const previousScrollTopRef = useRef(0)
-  const programmaticRef = useRef<ProgrammaticLogScroll | null>(null)
-  const applyingRef = useRef(false)
-  const anchorRef = useRef<LogAnchor | null>(null)
+  const pinTargetRef = useRef<number | null>(null)
 
   const pinToBottom = () => {
     const node = scrollRef.current
     if (!node || !followRef.current) return
 
     const top = maxLogScrollTop(node)
-    const distance = top - node.scrollTop
-    if (distance <= LOG_SCROLL_EPSILON_PX) {
-      programmaticRef.current = null
+    if (Math.abs(node.scrollTop - top) <= LOG_SCROLL_EPSILON_PX) {
+      pinTargetRef.current = null
       previousScrollTopRef.current = node.scrollTop
       return
     }
-
-    const inFlight = programmaticRef.current
-    if (inFlight && Math.abs(inFlight.top - top) <= LOG_SCROLL_EPSILON_PX)
-      return
-
-    const behavior = logPinBehavior({
-      distance,
-      programmaticInFlight: inFlight !== null,
-      reduceMotion: prefersReducedMotion(),
-    })
-    programmaticRef.current = { top, lastTop: node.scrollTop }
-    applyingRef.current = true
-    try {
-      node.scrollTo({ top, behavior })
-    } finally {
-      applyingRef.current = false
-    }
-    previousScrollTopRef.current = node.scrollTop
-    if (Math.abs(node.scrollTop - top) <= LOG_SCROLL_EPSILON_PX) {
-      programmaticRef.current = null
-    }
-  }
-
-  const restoreAnchor = () => {
-    const node = scrollRef.current
-    const anchor = anchorRef.current
-    if (!node || !anchor || followRef.current) return
-
-    const top = anchoredScrollTop(node, anchor)
     if (
-      top === null
-      || Math.abs(top - node.scrollTop) <= LOG_SCROLL_EPSILON_PX
+      pinTargetRef.current !== null
+      && Math.abs(pinTargetRef.current - top) <= LOG_SCROLL_EPSILON_PX
     ) {
       return
     }
 
-    applyingRef.current = true
-    programmaticRef.current = null
-    try {
-      node.scrollTo({ top, behavior: 'auto' })
-    } finally {
-      applyingRef.current = false
-    }
+    const behavior: ScrollBehavior = prefersReducedMotion() ? 'auto' : 'smooth'
+    pinTargetRef.current = top
+    node.scrollTo({ top, behavior })
     previousScrollTopRef.current = node.scrollTop
+    if (Math.abs(node.scrollTop - top) <= LOG_SCROLL_EPSILON_PX) {
+      pinTargetRef.current = null
+    }
   }
 
   useLayoutEffect(() => {
-    restoreAnchor()
     pinToBottom()
-    const node = scrollRef.current
-    anchorRef.current =
-      node && !followRef.current ? captureLogAnchor(node) : null
-  }, [logs])
+  }, [logs, ready])
 
   const onScroll = () => {
     const node = scrollRef.current
-    if (!node || applyingRef.current) return
+    if (!node) return
 
     const wasFollowing = followRef.current
-    const hadProgrammatic = programmaticRef.current !== null
+    const hadPin = pinTargetRef.current !== null
     const decision = decideLogFollowScroll({
       follow: wasFollowing,
       metrics: {
@@ -174,40 +76,24 @@ function usePinnedLogScroll(logs: ReadonlyArray<unknown>) {
         clientHeight: node.clientHeight,
       },
       previousScrollTop: previousScrollTopRef.current,
-      programmatic: programmaticRef.current,
+      pinTarget: pinTargetRef.current,
     })
     followRef.current = decision.follow
-    previousScrollTopRef.current = decision.previousScrollTop
-    programmaticRef.current = decision.programmatic
+    pinTargetRef.current = decision.pinTarget
+    previousScrollTopRef.current = node.scrollTop
 
-    if (wasFollowing && !decision.follow) {
-      if (hadProgrammatic) {
-        applyingRef.current = true
-        programmaticRef.current = null
-        try {
-          node.scrollTo({ top: node.scrollTop, behavior: 'auto' })
-        } finally {
-          applyingRef.current = false
-        }
-        previousScrollTopRef.current = node.scrollTop
-      }
-      anchorRef.current = captureLogAnchor(node)
+    // Stop a glide that would otherwise pull the reader back to the tail.
+    if (wasFollowing && !decision.follow && hadPin) {
+      node.scrollTo({ top: node.scrollTop, behavior: 'auto' })
       return
     }
-
-    if (!wasFollowing && decision.follow) {
-      anchorRef.current = null
-      pinToBottom()
-      return
-    }
-
-    anchorRef.current = decision.follow ? null : captureLogAnchor(node)
+    if (!wasFollowing && decision.follow) pinToBottom()
   }
 
   const enableFollow = () => {
     followRef.current = true
-    anchorRef.current = null
-    programmaticRef.current = null
+    pinTargetRef.current = null
+    pinToBottom()
   }
 
   return { scrollRef, onScroll, enableFollow }
@@ -244,71 +130,34 @@ export default function ServerLogPanel({
   const { t } = useLanguage()
   const [logs, setLogs] = useState<Array<ServerLogRecord>>([])
   const [ready, setReady] = useState(false)
-  const bufferRef = useRef(
-    new BoundedLogBuffer<ServerLogRecord>((log) => log.text),
-  )
-  const publishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { scrollRef, onScroll, enableFollow } = usePinnedLogScroll(logs)
+  const clearedThroughRef = useRef(0)
+  const { scrollRef, onScroll, enableFollow } = usePinnedLogScroll(logs, ready)
 
   useEffect(() => {
     let active = true
-    let replayReady = false
-    const pendingLive = new BoundedLogBuffer<ServerLogRecord>((log) => log.text)
-
-    const publish = () => {
-      publishTimerRef.current = null
-      setLogs(bufferRef.current.values())
-    }
-    const schedulePublish = () => {
-      if (publishTimerRef.current !== null) return
-      publishTimerRef.current = setTimeout(publish, LOG_UPDATE_INTERVAL_MS)
-    }
-    const append = (log: ServerLogRecord) => {
-      const normalized = truncateLogText(log.text)
-      if (!active || normalized.length === 0) return
-      const normalizedLog = { ...log, text: normalized }
-      if (!replayReady) {
-        pendingLive.append(normalizedLog)
-        return
-      }
-
-      bufferRef.current.append(normalizedLog)
-      schedulePublish()
+    const append = (incoming: Array<ServerLogRecord>) => {
+      setLogs((current) =>
+        mergeServerLogs(current, incoming, clearedThroughRef.current),
+      )
     }
 
-    const unsubscribe = window.electronAPI.onServerLog(append)
+    const unsubscribe = window.electronAPI.onServerLog((log) => {
+      if (active) append([log])
+    })
     void window.electronAPI
       .getLogs()
-      .then((rawHistory) => {
+      .then((history) => {
         if (!active) return
-        const history = normalizeHistory(rawHistory)
-        const watermark = history.at(-1)?.sequence ?? 0
-        const live = pendingLive
-          .values()
-          .filter((log) => log.sequence > watermark)
-        bufferRef.current.clear()
-        for (const log of [...history, ...live]) bufferRef.current.append(log)
-        pendingLive.clear()
-        replayReady = true
+        append(history)
         setReady(true)
-        publish()
       })
       .catch(() => {
-        if (!active) return
-        for (const log of pendingLive.values()) bufferRef.current.append(log)
-        pendingLive.clear()
-        replayReady = true
-        setReady(true)
-        publish()
+        if (active) setReady(true)
       })
 
     return () => {
       active = false
       unsubscribe()
-      if (publishTimerRef.current !== null) {
-        clearTimeout(publishTimerRef.current)
-        publishTimerRef.current = null
-      }
     }
   }, [])
 
@@ -316,17 +165,16 @@ export default function ServerLogPanel({
     void window.electronAPI
       .clearLogs()
       .then((watermark) => {
-        if (publishTimerRef.current !== null) {
-          clearTimeout(publishTimerRef.current)
-          publishTimerRef.current = null
-        }
-        const kept = bufferRef.current
-          .values()
-          .filter((log) => log.sequence > watermark)
-        bufferRef.current.clear()
-        for (const log of kept) bufferRef.current.append(log)
+        // Lines at or below this sequence were discarded by the main process,
+        // even when their event arrives after the clear click.
+        clearedThroughRef.current = Math.max(
+          clearedThroughRef.current,
+          watermark,
+        )
         enableFollow()
-        setLogs(bufferRef.current.values())
+        setLogs((current) =>
+          mergeServerLogs(current, [], clearedThroughRef.current),
+        )
       })
       .catch(() => {})
   }
@@ -344,7 +192,6 @@ export default function ServerLogPanel({
       : logs.map((log) => (
           <div
             key={log.sequence}
-            data-log-sequence={log.sequence}
             className="whitespace-pre-wrap break-all"
             style={noScrollAnchor}
           >

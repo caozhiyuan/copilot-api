@@ -13,6 +13,7 @@ function runManagerScenario(scenario: string): void {
       import childProcess from 'node:child_process'
       import { EventEmitter } from 'node:events'
       import path from 'node:path'
+      import { PassThrough } from 'node:stream'
       let stopExitCode = 0
       let forkError
       let startupExitCode
@@ -20,12 +21,14 @@ function runManagerScenario(scenario: string): void {
       let spawnError
       let spawnOptions
       let forkOptions
+      let captureLogStreams = false
       const electronApp = { isPackaged: false, getAppPath: () => process.cwd() }
       const processes = []
       const createProcess = () => {
         const proc = new EventEmitter()
         Object.assign(proc, {
-          stdout: null, stderr: null,
+          stdout: captureLogStreams ? new PassThrough() : null,
+          stderr: captureLogStreams ? new PassThrough() : null,
           kill() { queueMicrotask(() => proc.emit('exit', stopExitCode)); return true },
         })
         processes.push(proc)
@@ -233,6 +236,28 @@ test('keeps log sequence numbers monotonic across server restarts', () => {
     assert.ok(logs.length > 0)
     assert.ok(logs[0].sequence > previousLast)
     assert.equal(new Set(logs.map((entry) => entry.sequence)).size, logs.length)
+  `)
+})
+
+test('keeps the newest 2000 console lines without truncating a long line', () => {
+  runManagerScenario(`
+    captureLogStreams = true
+    await manager.startServer(0)
+    const proc = processes.at(-1)
+    const longLine = 'H'.repeat(40000)
+    proc.stdout.write(longLine)
+    assert.equal(manager.getLogs().at(-1).text, longLine)
+    for (let i = 0; i < 2000; i++) proc.stdout.write('line ' + i + '\\n')
+    const logs = manager.getLogs()
+    assert.equal(logs.length, 2000)
+    assert.equal(logs[0].text, 'line 0\\n')
+    assert.equal(logs.at(-1).text, 'line 1999\\n')
+    assert.ok(logs.at(-1).sequence > logs[0].sequence)
+    assert.ok(!logs.some((entry) => entry.text === longLine))
+    assert.ok(!logs.some((entry) => entry.text.includes('server.bunFallback')))
+    const copy = manager.getLogs()
+    copy.push({ sequence: 1, text: 'mutated' })
+    assert.equal(manager.getLogs().some((entry) => entry.text === 'mutated'), false)
   `)
 })
 
