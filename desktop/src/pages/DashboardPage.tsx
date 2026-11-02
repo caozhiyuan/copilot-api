@@ -354,6 +354,8 @@ export default function DashboardPage({
     number | null
   >(null)
   const [tokenUsageLoading, setTokenUsageLoading] = useState(false)
+  const [tokenUsageSettled, setTokenUsageSettled] = useState(false)
+  const [providerConfigSettled, setProviderConfigSettled] = useState(false)
   const [tokenUsageEventsLoading, setTokenUsageEventsLoading] = useState(false)
   const [tokenUsageSessionsLoading, setTokenUsageSessionsLoading] =
     useState(false)
@@ -507,6 +509,7 @@ export default function DashboardPage({
     setTokenUsageSessionsPage(1)
     setTokenUsageSessionsError(false)
     setTokenUsageLoading(false)
+    setTokenUsageSettled(false)
     setTokenUsageEventsLoading(false)
     setTokenUsageSessionsLoading(false)
     setModels([])
@@ -545,6 +548,7 @@ export default function DashboardPage({
         setTokenUsageSessionsPage(1)
         setTokenUsageSessionsError(false)
         setTokenUsageLoading(false)
+        setTokenUsageSettled(false)
         setTokenUsageEventsLoading(false)
         setTokenUsageSessionsLoading(false)
         setModels([])
@@ -597,6 +601,8 @@ export default function DashboardPage({
       setProviderConfig(await window.electronAPI.getProviderManagementConfig())
     } catch {
       // Keep the previous list when the config file cannot be read.
+    } finally {
+      setProviderConfigSettled(true)
     }
   }
 
@@ -666,6 +672,7 @@ export default function DashboardPage({
     } finally {
       if (requestId === tokenUsageRequestId.current) {
         setTokenUsageLoading(false)
+        setTokenUsageSettled(true)
       }
       if (eventsRequestId === tokenUsageEventsRequestId.current) {
         setTokenUsageEventsLoading(false)
@@ -758,7 +765,10 @@ export default function DashboardPage({
   const providers = providerConfig?.providers ?? []
   const shouldShowFailureLogs = !started && Boolean(startError || serverError)
   const enabledProviderCount = providers.filter((item) => item.enabled).length
-  const shouldShowProviderOverview = providerConfig !== null
+  const shouldShowProviderOverview =
+    providerConfig !== null || !providerConfigSettled
+  const showUsageSkeleton =
+    !tokenUsage && (!tokenUsageSettled || tokenUsageLoading)
   const sortedProviders = [...providers].sort(
     (left, right) => Number(right.enabled) - Number(left.enabled),
   )
@@ -1029,12 +1039,12 @@ export default function DashboardPage({
               <div className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto md:h-full">
                 {/* Usage snapshot */}
                 <div className="shrink-0 bg-surface border border-line rounded-xl p-3">
-                  <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-x-2">
                     <h3 className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">
                       {t('dashboard.usageSnapshot')}
                     </h3>
                     {topUsageModel && (
-                      <div className="flex min-w-0 items-baseline gap-1.5 text-[12px] text-ink-faint">
+                      <div className="flex min-w-0 shrink items-baseline gap-1.5 overflow-hidden text-[12px] text-ink-faint">
                         <span className="shrink-0">
                           {t('dashboard.usageSnapshotTopModel')}
                         </span>
@@ -1066,48 +1076,56 @@ export default function DashboardPage({
                       {t('dashboard.tabTokenUsage')} →
                     </button>
                   </div>
-                  {tokenUsageLoading && !tokenUsage ?
-                    <div
-                      className="mt-2 grid grid-cols-2 content-start gap-2 sm:grid-cols-4"
-                      aria-label={t('dashboard.loading')}
-                    >
-                      {Array.from({ length: 4 }, (_, index) => (
+                  <div
+                    className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4"
+                    aria-label={
+                      showUsageSkeleton ? t('dashboard.loading') : undefined
+                    }
+                  >
+                    {showUsageSkeleton ?
+                      Array.from({ length: 4 }, (_, index) => (
                         <div
                           key={index}
-                          className="min-h-[58px] animate-pulse rounded-lg border border-line bg-sunken"
+                          className="animate-pulse rounded-lg border border-line bg-sunken px-2.5 py-2"
+                        >
+                          <div className="h-4" />
+                          <div className="mt-1 h-4" />
+                        </div>
+                      ))
+                    : tokenUsage ?
+                      <>
+                        <TokenUsageMetric
+                          label={t('dashboard.tokenUsageRequests')}
+                          value={formatTokenCount(usageTotals.request_count)}
+                          loading={false}
+                          tone="violet"
                         />
-                      ))}
-                    </div>
-                  : tokenUsage ?
-                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <TokenUsageMetric
-                        label={t('dashboard.tokenUsageRequests')}
-                        value={formatTokenCount(usageTotals.request_count)}
-                        loading={false}
-                        tone="violet"
-                      />
-                      <TokenUsageMetric
-                        label={t('dashboard.tokenUsageTotalTokens')}
-                        value={formatTokenCount(calcTokenTotal(usageTotals))}
-                        loading={false}
-                        tone="slate"
-                      />
-                      <TokenUsageMetric
-                        label={t('dashboard.tokenUsageCacheHitRate')}
-                        value={formatCacheHitRate(usageTotals)}
-                        loading={false}
-                        tone="blue"
-                      />
-                      <TokenUsageCostMetric
-                        label={t('dashboard.tokenUsageCost')}
-                        value={formatTokenCosts(usageTotals.costs).join(' ')}
-                        loading={false}
-                      />
-                    </div>
-                  : <div className="mt-2 flex min-h-[52px] items-center text-[13px] text-ink-faint">
-                      {t('dashboard.noTokenUsage')}
-                    </div>
-                  }
+                        <TokenUsageMetric
+                          label={t('dashboard.tokenUsageTotalTokens')}
+                          value={formatTokenCount(calcTokenTotal(usageTotals))}
+                          loading={false}
+                          tone="slate"
+                        />
+                        <TokenUsageMetric
+                          label={t('dashboard.tokenUsageCacheHitRate')}
+                          value={formatCacheHitRate(usageTotals)}
+                          loading={false}
+                          tone="blue"
+                        />
+                        <TokenUsageCostMetric
+                          label={t('dashboard.tokenUsageCost')}
+                          value={formatTokenCosts(usageTotals.costs).join(' ')}
+                          loading={false}
+                        />
+                      </>
+                    : <div className="col-span-2 px-2.5 py-2 text-[13px] text-ink-faint sm:col-span-4">
+                        <div className="flex h-4 items-center">
+                          {t('dashboard.noTokenUsage')}
+                        </div>
+                        <div className="mt-1 h-4" />
+                      </div>
+                    }
+                  </div>
                 </div>
 
                 {/* Provider overview */}
@@ -1118,12 +1136,14 @@ export default function DashboardPage({
                         {t('dashboard.providerOverview')}
                       </h3>
                       <div className="flex shrink-0 items-center gap-2 text-[13px]">
-                        <span className="text-ink-faint">
-                          {t('dashboard.providerOverviewSummary', {
-                            enabled: enabledProviderCount,
-                            total: providers.length,
-                          })}
-                        </span>
+                        {providerConfig !== null && (
+                          <span className="text-ink-faint">
+                            {t('dashboard.providerOverviewSummary', {
+                              enabled: enabledProviderCount,
+                              total: providers.length,
+                            })}
+                          </span>
+                        )}
                         <button
                           onClick={() => setTab('providers')}
                           className="text-accent transition-opacity hover:opacity-70"
@@ -1132,40 +1152,55 @@ export default function DashboardPage({
                         </button>
                       </div>
                     </div>
-                    <div className="h-[140px] space-y-1 overflow-y-auto">
-                      {sortedProviders.map((provider) => (
-                        <div
-                          key={provider.name}
-                          className="flex h-8 items-center gap-2 px-2.5 py-1.5 bg-sunken rounded-lg"
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                              provider.enabled ? 'bg-green-500' : 'bg-line'
-                            }`}
+                    <div
+                      className="h-[140px] space-y-1 overflow-y-auto"
+                      aria-label={
+                        providerConfig === null ?
+                          t('dashboard.loading')
+                        : undefined
+                      }
+                    >
+                      {providerConfig === null ?
+                        Array.from({ length: 3 }, (_, index) => (
+                          <div
+                            key={index}
+                            className="h-8 animate-pulse rounded-lg bg-sunken"
                           />
-                          <span className="text-[13px] font-medium text-ink truncate">
-                            {provider.name}
-                          </span>
-                          <span className="text-[13px] text-ink-faint truncate">
-                            {getProviderTypeLabel(provider.type)}
-                          </span>
-                          {(provider.agentsModels?.length
-                            || !provider.enabled) && (
-                            <div className="ml-auto flex shrink-0 items-center gap-2 text-[13px] text-ink-faint">
-                              {provider.agentsModels?.length ?
-                                <span>
-                                  {t('dashboard.providerOverviewModels', {
-                                    n: provider.agentsModels.length,
-                                  })}
-                                </span>
-                              : null}
-                              {!provider.enabled && (
-                                <span>{t('providers.disabled')}</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        ))
+                      : sortedProviders.map((provider) => (
+                          <div
+                            key={provider.name}
+                            className="flex h-8 items-center gap-2 px-2.5 py-1.5 bg-sunken rounded-lg"
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                provider.enabled ? 'bg-green-500' : 'bg-line'
+                              }`}
+                            />
+                            <span className="text-[13px] font-medium text-ink truncate">
+                              {provider.name}
+                            </span>
+                            <span className="text-[13px] text-ink-faint truncate">
+                              {getProviderTypeLabel(provider.type)}
+                            </span>
+                            {(provider.agentsModels?.length
+                              || !provider.enabled) && (
+                              <div className="ml-auto flex shrink-0 items-center gap-2 text-[13px] text-ink-faint">
+                                {provider.agentsModels?.length ?
+                                  <span>
+                                    {t('dashboard.providerOverviewModels', {
+                                      n: provider.agentsModels.length,
+                                    })}
+                                  </span>
+                                : null}
+                                {!provider.enabled && (
+                                  <span>{t('providers.disabled')}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      }
                     </div>
                   </div>
                 )}
