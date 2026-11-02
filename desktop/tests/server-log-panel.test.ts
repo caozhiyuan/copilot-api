@@ -5,6 +5,7 @@ import type { Root } from 'react-dom/client'
 
 import ServerLogPanel from '../src/components/ServerLogPanel'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
+import { LOG_UPDATE_INTERVAL_MS } from '../shared/log-buffer'
 import type { ServerLogRecord } from '../src/types/ipc'
 
 let win: Window
@@ -112,7 +113,7 @@ describe('server log panel', () => {
     await act(async () => {
       logListener?.({ sequence: 4, text: 'live one' })
       logListener?.({ sequence: 5, text: 'live two' })
-      await wait(70)
+      await wait(LOG_UPDATE_INTERVAL_MS + 50)
     })
     expect(container.textContent).toContain('live one')
     expect(container.textContent).toContain('live two')
@@ -214,9 +215,230 @@ describe('server log panel', () => {
 
     await act(async () => {
       logListener?.({ sequence: 1, text: 'live after subscribe' })
-      await wait(70)
+      await wait(LOG_UPDATE_INTERVAL_MS + 50)
     })
 
     expect(container.textContent).toContain('live after subscribe')
   })
+
+  test('smooth-pins a short gap and snaps when a glide is still in flight', async () => {
+    await renderPanel('page')
+    const view = installScroller({ scrollHeight: 300, clientHeight: 200 })
+
+    await publishLog(1, 'short gap')
+    expect(view.pins.at(-1)).toEqual({ top: 100, behavior: 'smooth' })
+    expect(view.node.scrollTop).toBe(0)
+    expect(view.node.style.overflowAnchor).toBe('none')
+    expect(
+      view.node.querySelector('[data-log-sequence="1"]')?.getAttribute('style'),
+    ).toContain('overflow-anchor')
+
+    view.metrics.scrollHeight = 360
+    await publishLog(2, 'while gliding')
+    expect(view.pins.at(-1)).toEqual({ top: 160, behavior: 'auto' })
+    expect(view.node.scrollTop).toBe(160)
+  })
+
+  test('does not restart a glide whose target has not moved', async () => {
+    await renderPanel('page')
+    const view = installScroller({ scrollHeight: 300, clientHeight: 200 })
+
+    await publishLog(1, 'first')
+    const pinsBefore = view.pins.length
+    await publishLog(2, 'same height')
+
+    expect(view.pins.length).toBe(pinsBefore)
+  })
+
+  test('lets the reader scroll up and resumes inside the follow band', async () => {
+    await renderPanel('page')
+    const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
+    await publishLog(1, 'pinned')
+    expect(view.node.scrollTop).toBe(800)
+
+    await userScroll(view.node, 600)
+    view.metrics.scrollHeight = 1300
+    await publishLog(2, 'while reading')
+    expect(view.node.scrollTop).toBe(600)
+
+    await userScroll(view.node, 1050)
+    expect(view.pins.at(-1)).toEqual({ top: 1100, behavior: 'smooth' })
+  })
+
+  test('keeps following when eviction clamps the viewport onto the bottom', async () => {
+    await renderPanel('page')
+    const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
+    await publishLog(1, 'pinned')
+
+    view.metrics.scrollHeight = 900
+    await userScroll(view.node, 700)
+    view.metrics.scrollHeight = 1100
+    await publishLog(2, 'still pinned')
+
+    expect(view.node.scrollTop).toBe(900)
+  })
+
+  test('cancels an in-flight glide when the reader scrolls away', async () => {
+    await renderPanel('page')
+    const view = installScroller({ scrollHeight: 350, clientHeight: 200 })
+    view.node.scrollTop = 50
+
+    await publishLog(1, 'gliding')
+    expect(view.pins.at(-1)).toEqual({ top: 150, behavior: 'smooth' })
+
+    await userScroll(view.node, 0)
+    view.metrics.scrollHeight = 800
+    await publishLog(2, 'should stay put')
+
+    expect(view.node.scrollTop).toBe(0)
+  })
+
+  test('pins again after clear once the reader had scrolled away', async () => {
+    await renderPanel('page')
+    const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
+    await publishLog(1, 'pinned')
+    await userScroll(view.node, 100)
+
+    await act(async () => {
+      findClearButton().click()
+      await Promise.resolve()
+    })
+
+    expect(view.node.scrollTop).toBe(800)
+  })
+
+  test('pins the failure log with the same follow behavior', async () => {
+    await renderPanel('failure')
+    const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
+    await publishLog(1, 'failure log')
+
+    expect(view.node.className).toContain('max-h-60')
+    expect(view.node.scrollTop).toBe(800)
+    expect(view.node.style.overflowAnchor).toBe('none')
+  })
+
+  test('snaps when the reader prefers reduced motion', async () => {
+    const matchMedia = window.matchMedia.bind(window)
+    window.matchMedia = (query: string) => ({
+      matches: query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })
+    try {
+      await renderPanel('page')
+      const view = installScroller({ scrollHeight: 300, clientHeight: 200 })
+      await publishLog(1, 'reduced motion')
+      expect(view.pins.at(-1)).toEqual({ top: 100, behavior: 'auto' })
+      expect(view.node.scrollTop).toBe(100)
+    } finally {
+      window.matchMedia = matchMedia
+    }
+  })
+
+  test('keeps the visible row in place when older entries disappear', async () => {
+    await renderPanel('page')
+    const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
+    await publishLog(1, 'anchor row')
+    await userScroll(view.node, 200)
+
+    const row = view.node.querySelector<HTMLElement>('[data-log-sequence="1"]')
+    if (!row) throw new Error('Missing anchored row')
+    let rowTop = 40
+    stubAnchorGeometry(view.node, row, () => rowTop)
+    await userScroll(view.node, 200)
+
+    rowTop = 10
+    await publishLog(2, 'appended while reading')
+
+    expect(view.node.scrollTop).toBe(170)
+    expect(view.pins.at(-1)).toEqual({ top: 170, behavior: 'auto' })
+  })
 })
+
+interface PinCall {
+  top?: number
+  behavior?: ScrollBehavior
+}
+
+function logScroller(): HTMLDivElement {
+  const node = container.querySelector('.overflow-y-auto')
+  if (!node) throw new Error('Missing log scroller')
+  return node as HTMLDivElement
+}
+
+function installScroller(initial: {
+  scrollHeight: number
+  clientHeight: number
+}) {
+  const node = logScroller()
+  const metrics = { ...initial }
+  const pins: Array<PinCall> = []
+  Object.defineProperty(node, 'scrollHeight', {
+    configurable: true,
+    get: () => metrics.scrollHeight,
+  })
+  Object.defineProperty(node, 'clientHeight', {
+    configurable: true,
+    get: () => metrics.clientHeight,
+  })
+  node.scrollTo = ((options?: ScrollToOptions) => {
+    pins.push({ top: options?.top, behavior: options?.behavior })
+    if (options?.behavior !== 'smooth' && typeof options?.top === 'number') {
+      node.scrollTop = options.top
+      node.dispatchEvent(new Event('scroll', { bubbles: true }))
+    }
+  }) as typeof node.scrollTo
+  return { node, pins, metrics }
+}
+
+async function publishLog(sequence: number, text: string) {
+  await act(async () => {
+    logListener?.({ sequence, text })
+    await wait(LOG_UPDATE_INTERVAL_MS + 50)
+  })
+}
+
+async function userScroll(node: HTMLElement, top: number) {
+  await act(async () => {
+    node.scrollTop = top
+    node.dispatchEvent(new Event('scroll', { bubbles: true }))
+  })
+}
+
+function stubAnchorGeometry(
+  node: HTMLElement,
+  row: HTMLElement,
+  rowTop: () => number,
+) {
+  node.getBoundingClientRect = () => ({
+    x: 0,
+    y: 0,
+    width: 300,
+    height: 200,
+    top: 0,
+    left: 0,
+    right: 300,
+    bottom: 200,
+    toJSON: () => ({}),
+  })
+  row.getBoundingClientRect = () => {
+    const top = rowTop()
+    return {
+      x: 0,
+      y: top,
+      width: 300,
+      height: 20,
+      top,
+      left: 0,
+      right: 300,
+      bottom: top + 20,
+      toJSON: () => ({}),
+    }
+  }
+  document.elementFromPoint = () => row
+}
