@@ -5,7 +5,6 @@ import type { Root } from 'react-dom/client'
 
 import ServerLogPanel from '../src/components/ServerLogPanel'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
-import { LOG_UPDATE_INTERVAL_MS } from '../shared/log-buffer'
 import type { ServerLogRecord } from '../src/types/ipc'
 
 let win: Window
@@ -13,10 +12,6 @@ let root: Root
 let container: HTMLDivElement
 let logListener: ((log: ServerLogRecord) => void) | null
 const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
 
 beforeEach(async () => {
   win = new Window({ url: 'http://localhost' })
@@ -94,7 +89,7 @@ async function reopenPanel(variant: 'failure' | 'page') {
 }
 
 describe('server log panel', () => {
-  test('replays history, batches live logs, and clears stored and displayed logs', async () => {
+  test('shows history and live lines, then clears stored and displayed logs', async () => {
     let storedLogs: Array<ServerLogRecord> = [
       { sequence: 1, text: 'history log' },
       { sequence: 2, text: '' },
@@ -109,11 +104,11 @@ describe('server log panel', () => {
     })
     await renderPanel('page')
     expect(container.textContent).toContain('history log')
+    expect(container.textContent).toContain('another history log')
 
     await act(async () => {
       logListener?.({ sequence: 4, text: 'live one' })
       logListener?.({ sequence: 5, text: 'live two' })
-      await wait(LOG_UPDATE_INTERVAL_MS + 50)
     })
     expect(container.textContent).toContain('live one')
     expect(container.textContent).toContain('live two')
@@ -125,6 +120,7 @@ describe('server log panel', () => {
     expect(container.textContent).not.toContain('history log')
     expect(container.textContent).not.toContain('live one')
     expect(container.textContent).not.toContain('live two')
+    expect(container.textContent).toContain('No logs yet')
 
     await reopenPanel('page')
     expect(container.textContent).not.toContain('history log')
@@ -132,7 +128,7 @@ describe('server log panel', () => {
     expect(container.textContent).not.toContain('live one')
   })
 
-  test('keeps a log emitted after the cleared sequence', async () => {
+  test('keeps a log emitted after the cleared sequence and drops a late stale one', async () => {
     let storedLogs: Array<ServerLogRecord> = [
       { sequence: 1, text: 'history log' },
     ]
@@ -155,6 +151,7 @@ describe('server log panel', () => {
       logListener?.({ sequence: 2, text: 'after clear' })
       resolveClear?.(1)
       await Promise.resolve()
+      logListener?.({ sequence: 1, text: 'history log' })
     })
 
     expect(container.textContent).toContain('after clear')
@@ -182,7 +179,7 @@ describe('server log panel', () => {
     expect(container.textContent).toContain('history log')
   })
 
-  test('uses sequence watermarks without dropping distinct identical logs', async () => {
+  test('keeps distinct identical lines that arrive before history loads', async () => {
     let resolveHistory: ((logs: Array<ServerLogRecord>) => void) | undefined
     window.electronAPI.getLogs = mock(
       () =>
@@ -191,6 +188,7 @@ describe('server log panel', () => {
         }),
     )
     await renderPanel('failure')
+    expect(container.textContent).toContain('Loading')
 
     await act(async () => {
       logListener?.({ sequence: 2, text: 'shared log' })
@@ -205,56 +203,47 @@ describe('server log panel', () => {
 
     expect(container.textContent?.match(/shared log/g)).toHaveLength(2)
     expect(container.textContent).toContain('new live log')
+    expect(container.textContent).toContain('history log')
   })
 
-  test('keeps live entries queued when replay loading fails', async () => {
+  test('shows live lines when history loading fails', async () => {
     window.electronAPI.getLogs = mock(() =>
-      Promise.reject(new Error('replay unavailable')),
+      Promise.reject(new Error('history unavailable')),
     )
     await renderPanel('page')
 
     await act(async () => {
       logListener?.({ sequence: 1, text: 'live after subscribe' })
-      await wait(LOG_UPDATE_INTERVAL_MS + 50)
     })
 
     expect(container.textContent).toContain('live after subscribe')
   })
 
-  test('smooth-pins a short gap and snaps when a glide is still in flight', async () => {
+  test('smooth-pins new lines and does not restart a glide to the same target', async () => {
     await renderPanel('page')
     const view = installScroller({ scrollHeight: 300, clientHeight: 200 })
 
     await publishLog(1, 'short gap')
     expect(view.pins.at(-1)).toEqual({ top: 100, behavior: 'smooth' })
-    expect(view.node.scrollTop).toBe(0)
     expect(view.node.style.overflowAnchor).toBe('none')
     expect(
-      view.node.querySelector('[data-log-sequence="1"]')?.getAttribute('style'),
+      view.node.querySelector('.whitespace-pre-wrap')?.getAttribute('style'),
     ).toContain('overflow-anchor')
 
-    view.metrics.scrollHeight = 360
-    await publishLog(2, 'while gliding')
-    expect(view.pins.at(-1)).toEqual({ top: 160, behavior: 'auto' })
-    expect(view.node.scrollTop).toBe(160)
-  })
-
-  test('does not restart a glide whose target has not moved', async () => {
-    await renderPanel('page')
-    const view = installScroller({ scrollHeight: 300, clientHeight: 200 })
-
-    await publishLog(1, 'first')
     const pinsBefore = view.pins.length
     await publishLog(2, 'same height')
-
     expect(view.pins.length).toBe(pinsBefore)
+
+    view.metrics.scrollHeight = 360
+    await publishLog(3, 'while gliding')
+    expect(view.pins.at(-1)).toEqual({ top: 160, behavior: 'smooth' })
   })
 
   test('lets the reader scroll up and resumes inside the follow band', async () => {
     await renderPanel('page')
     const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
     await publishLog(1, 'pinned')
-    expect(view.node.scrollTop).toBe(800)
+    await settlePin(view.node, 800)
 
     await userScroll(view.node, 600)
     view.metrics.scrollHeight = 1300
@@ -265,17 +254,18 @@ describe('server log panel', () => {
     expect(view.pins.at(-1)).toEqual({ top: 1100, behavior: 'smooth' })
   })
 
-  test('keeps following when eviction clamps the viewport onto the bottom', async () => {
+  test('keeps following when the viewport is clamped onto the bottom', async () => {
     await renderPanel('page')
     const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
     await publishLog(1, 'pinned')
+    await settlePin(view.node, 800)
 
     view.metrics.scrollHeight = 900
     await userScroll(view.node, 700)
     view.metrics.scrollHeight = 1100
     await publishLog(2, 'still pinned')
 
-    expect(view.node.scrollTop).toBe(900)
+    expect(view.pins.at(-1)).toEqual({ top: 900, behavior: 'smooth' })
   })
 
   test('cancels an in-flight glide when the reader scrolls away', async () => {
@@ -291,12 +281,14 @@ describe('server log panel', () => {
     await publishLog(2, 'should stay put')
 
     expect(view.node.scrollTop).toBe(0)
+    expect(view.pins.at(-1)).toEqual({ top: 0, behavior: 'auto' })
   })
 
   test('pins again after clear once the reader had scrolled away', async () => {
     await renderPanel('page')
     const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
     await publishLog(1, 'pinned')
+    await settlePin(view.node, 800)
     await userScroll(view.node, 100)
 
     await act(async () => {
@@ -304,7 +296,7 @@ describe('server log panel', () => {
       await Promise.resolve()
     })
 
-    expect(view.node.scrollTop).toBe(800)
+    expect(view.pins.at(-1)).toEqual({ top: 800, behavior: 'smooth' })
   })
 
   test('pins the failure log with the same follow behavior', async () => {
@@ -313,7 +305,7 @@ describe('server log panel', () => {
     await publishLog(1, 'failure log')
 
     expect(view.node.className).toContain('max-h-60')
-    expect(view.node.scrollTop).toBe(800)
+    expect(view.pins.at(-1)).toEqual({ top: 800, behavior: 'smooth' })
     expect(view.node.style.overflowAnchor).toBe('none')
   })
 
@@ -338,25 +330,6 @@ describe('server log panel', () => {
     } finally {
       window.matchMedia = matchMedia
     }
-  })
-
-  test('keeps the visible row in place when older entries disappear', async () => {
-    await renderPanel('page')
-    const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
-    await publishLog(1, 'anchor row')
-    await userScroll(view.node, 200)
-
-    const row = view.node.querySelector<HTMLElement>('[data-log-sequence="1"]')
-    if (!row) throw new Error('Missing anchored row')
-    let rowTop = 40
-    stubAnchorGeometry(view.node, row, () => rowTop)
-    await userScroll(view.node, 200)
-
-    rowTop = 10
-    await publishLog(2, 'appended while reading')
-
-    expect(view.node.scrollTop).toBe(170)
-    expect(view.pins.at(-1)).toEqual({ top: 170, behavior: 'auto' })
   })
 })
 
@@ -399,7 +372,13 @@ function installScroller(initial: {
 async function publishLog(sequence: number, text: string) {
   await act(async () => {
     logListener?.({ sequence, text })
-    await wait(LOG_UPDATE_INTERVAL_MS + 50)
+  })
+}
+
+async function settlePin(node: HTMLElement, top: number) {
+  await act(async () => {
+    node.scrollTop = top
+    node.dispatchEvent(new Event('scroll', { bubbles: true }))
   })
 }
 
@@ -408,37 +387,4 @@ async function userScroll(node: HTMLElement, top: number) {
     node.scrollTop = top
     node.dispatchEvent(new Event('scroll', { bubbles: true }))
   })
-}
-
-function stubAnchorGeometry(
-  node: HTMLElement,
-  row: HTMLElement,
-  rowTop: () => number,
-) {
-  node.getBoundingClientRect = () => ({
-    x: 0,
-    y: 0,
-    width: 300,
-    height: 200,
-    top: 0,
-    left: 0,
-    right: 300,
-    bottom: 200,
-    toJSON: () => ({}),
-  })
-  row.getBoundingClientRect = () => {
-    const top = rowTop()
-    return {
-      x: 0,
-      y: top,
-      width: 300,
-      height: 20,
-      top,
-      left: 0,
-      right: 300,
-      bottom: top + 20,
-      toJSON: () => ({}),
-    }
-  }
-  document.elementFromPoint = () => row
 }
