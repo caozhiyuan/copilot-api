@@ -1,7 +1,11 @@
 export const LOG_BUFFER_MAX_ENTRIES = 2_000
 export const LOG_BUFFER_MAX_TEXT_LENGTH = 2 * 1024 * 1024
 export const LOG_ENTRY_MAX_TEXT_LENGTH = 32 * 1024
-export const LOG_UPDATE_INTERVAL_MS = 50
+/**
+ * Coalesce desktop log paints. Long enough that a follow-scroll is not
+ * restarted on every burst, short enough that new lines still feel live.
+ */
+export const LOG_UPDATE_INTERVAL_MS = 120
 
 const LOG_TRUNCATION_MARKER = '\n… [truncated]'
 
