@@ -58,9 +58,6 @@ describe("builtin provider model registry", () => {
         cachedInput: 0.1,
         input: 2,
         output: 10,
-          },
-          { cacheCreationInput: 5, cachedInput: 0.2, input: 4, output: 15 },
-        ],
       },
     })
   })
@@ -138,8 +135,6 @@ describe("builtin provider model registry", () => {
       builtinProviderModelRegistry.getModelConfig("codex", "gpt-5.6-sol"),
     ).toEqual({
       pricing: {
-        tiers: [
-          {
         cacheCreationInput: 5,
         cachedInput: 0.4,
         input: 4,
