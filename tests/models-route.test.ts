@@ -1797,12 +1797,6 @@ describe("model routes", () => {
         limit: { context: 400_000, input: 400_000, output: 128_000 },
         cost: [
           { input: 0.1, output: 0.5, cache: { read: 0.01, write: 0.125 } },
-          {
-            input: 0.2,
-            output: 0.75,
-            cache: { read: 0.02, write: 0.25 },
-            tier: { type: "context", size: 272_001 },
-          },
         ],
       },
     )

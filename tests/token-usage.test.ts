@@ -461,18 +461,17 @@ describe("token usage storage", () => {
     })
   })
 
-  test("uses GPT-5.6 Terra and Luna long-context and cache-write prices", () => {
+  test("keeps GPT-5.6 Terra and Luna standard prices above 272K", () => {
     const expectedCosts = [
-      { model: "gpt-5.6-terra", totalCostNanos: 1_140_800_000 },
-      { model: "gpt-5.6-luna", totalCostNanos: 114_080_000 },
+      { model: "gpt-5.6-terra", totalCostNanos: 582_400_000 },
+      { model: "gpt-5.6-luna", totalCostNanos: 58_240_000 },
     ]
 
     for (const { model, totalCostNanos } of expectedCosts) {
       expect(
         resolveTokenUsageCost({
-          cache_creation_input_tokens: 2_000,
           cache_read_input_tokens: 2_000,
-          input_tokens: 269_000,
+          input_tokens: 273_000,
           model,
           output_tokens: 3_000,
           providerName: "codex",
@@ -486,26 +485,17 @@ describe("token usage storage", () => {
     }
   })
 
-  test("prices GPT-6.1 Sol cache usage at the 272K input tier boundary", () => {
-    const expectedCosts = [
-      {
-        cache_creation_input_tokens: 1_000,
-        cache_read_input_tokens: 2_000,
-        input_tokens: 269_000,
-        totalCostNanos: 570_700_000,
-      },
-      {
-        cache_creation_input_tokens: 1_000,
-        cache_read_input_tokens: 2_000,
-        input_tokens: 269_001,
-        totalCostNanos: 1_126_404_000,
-      },
-    ]
-
-    for (const { totalCostNanos, ...usage } of expectedCosts) {
+  test("keeps GPT-6.1 Sol prices flat across the 272K boundary", () => {
+    for (const { inputTokens, totalCostNanos } of [
+      { inputTokens: 269_999, totalCostNanos: 570_198_000 },
+      { inputTokens: 270_000, totalCostNanos: 570_200_000 },
+      { inputTokens: 270_001, totalCostNanos: 570_202_000 },
+      { inputTokens: 400_000, totalCostNanos: 830_200_000 },
+    ]) {
       expect(
         resolveTokenUsageCost({
-          ...usage,
+          cache_read_input_tokens: 2_000,
+          input_tokens: inputTokens,
           model: "gpt-6.1-sol",
           output_tokens: 3_000,
           providerName: "codex",
@@ -519,14 +509,15 @@ describe("token usage storage", () => {
     }
   })
 
-  test("prices GPT-6.1 Terra cache usage at the 272K input tier boundary", () => {
+  test("keeps GPT-6.1 Terra prices flat across the 272K boundary", () => {
     for (const { inputTokens, totalCostNanos } of [
-      { inputTokens: 269_000, totalCostNanos: 285_350_000 },
-      { inputTokens: 269_001, totalCostNanos: 563_202_000 },
+      { inputTokens: 269_999, totalCostNanos: 285_099_000 },
+      { inputTokens: 270_000, totalCostNanos: 285_100_000 },
+      { inputTokens: 270_001, totalCostNanos: 285_101_000 },
+      { inputTokens: 400_000, totalCostNanos: 415_100_000 },
     ]) {
       expect(
         resolveTokenUsageCost({
-          cache_creation_input_tokens: 1_000,
           cache_read_input_tokens: 2_000,
           input_tokens: inputTokens,
           model: "gpt-6.1-terra",

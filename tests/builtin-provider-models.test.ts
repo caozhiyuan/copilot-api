@@ -54,16 +54,10 @@ describe("builtin provider model registry", () => {
       builtinProviderModelRegistry.getModelConfig(" Codex ", " GPT-6.1-SOL "),
     ).toMatchObject({
       pricing: {
-        tiers: [
-          {
-            cacheCreationInput: 2.5,
-            cachedInput: 0.1,
-            input: 2,
-            maxInputTokens: 272_000,
-            output: 10,
-          },
-          { cacheCreationInput: 5, cachedInput: 0.2, input: 4, output: 15 },
-        ],
+        cacheCreationInput: 2.5,
+        cachedInput: 0.1,
+        input: 2,
+        output: 10,
       },
     })
   })
@@ -129,26 +123,25 @@ describe("builtin provider model registry", () => {
     expect(config?.defaultReasoningEffort).toBeUndefined()
   })
 
+  test("does not apply long-context pricing tiers to built-in Codex models", () => {
+    for (const model of builtinProviderModelRegistry.getModelIds("codex")) {
+      const pricing = builtinProviderModelRegistry.getModelConfig(
+        "codex",
+        model,
+      )?.pricing
+      expect(pricing?.tiers).toBeUndefined()
+    }
+  })
+
   test("keeps GPT entries pricing-only", () => {
     expect(
       builtinProviderModelRegistry.getModelConfig("codex", "gpt-5.6-sol"),
     ).toEqual({
       pricing: {
-        tiers: [
-          {
-            cacheCreationInput: 5,
-            cachedInput: 0.4,
-            input: 4,
-            maxInputTokens: 272_000,
-            output: 20,
-          },
-          {
-            cacheCreationInput: 10,
-            cachedInput: 0.8,
-            input: 8,
-            output: 30,
-          },
-        ],
+        cacheCreationInput: 5,
+        cachedInput: 0.4,
+        input: 4,
+        output: 20,
       },
     })
 
@@ -156,21 +149,10 @@ describe("builtin provider model registry", () => {
       builtinProviderModelRegistry.getModelConfig("codex", "gpt-6.1-sol"),
     ).toEqual({
       pricing: {
-        tiers: [
-          {
-            cacheCreationInput: 2.5,
-            cachedInput: 0.1,
-            input: 2,
-            maxInputTokens: 272_000,
-            output: 10,
-          },
-          {
-            cacheCreationInput: 5,
-            cachedInput: 0.2,
-            input: 4,
-            output: 15,
-          },
-        ],
+        cacheCreationInput: 2.5,
+        cachedInput: 0.1,
+        input: 2,
+        output: 10,
       },
     })
 
@@ -178,21 +160,10 @@ describe("builtin provider model registry", () => {
       builtinProviderModelRegistry.getModelConfig("codex", "gpt-6.1-terra"),
     ).toEqual({
       pricing: {
-        tiers: [
-          {
-            cacheCreationInput: 1.25,
-            cachedInput: 0.05,
-            input: 1,
-            maxInputTokens: 272_000,
-            output: 5,
-          },
-          {
-            cacheCreationInput: 2.5,
-            cachedInput: 0.1,
-            input: 2,
-            output: 7.5,
-          },
-        ],
+        cacheCreationInput: 1.25,
+        cachedInput: 0.05,
+        input: 1,
+        output: 5,
       },
     })
   })
@@ -202,7 +173,12 @@ describe("builtin provider model registry", () => {
       "codex",
       "gpt-6-luna",
     )
-    expect(luna?.pricing?.tiers).toHaveLength(2)
+    expect(luna?.pricing).toEqual({
+      cacheCreationInput: 0.125,
+      cachedInput: 0.01,
+      input: 0.1,
+      output: 0.5,
+    })
     for (const modelId of ["codex-auto-review", "gpt-reserve"]) {
       expect(builtinProviderModelRegistry.getModelIds("codex")).toContain(
         modelId,

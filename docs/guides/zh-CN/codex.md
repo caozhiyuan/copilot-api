@@ -27,8 +27,8 @@ model_provider = "copilot_api"
 model_reasoning_summary = "auto"
 plan_mode_reasoning_effort = "max"
 # 上下文窗口和自动压缩阈值（单位：token）可自行调整。
-# 按 OpenAI API 定价，GPT 模型（如 gpt-6.1-sol）输入超过 272000 token 时，
-# 输入及缓存费用翻倍，输出费用为 1.5 倍。
+# ChatGPT 账号登录的 Codex，输入超过 272000 token 不加收长上下文费用。
+# API Key 调用则适用独立的 OpenAI API 定价。
 model_context_window = 400000
 # 沙箱策略。可改用 "workspace-write" 以启用限制。
 sandbox_mode = "danger-full-access"
@@ -121,6 +121,8 @@ Codex 模型选择界面会展示网关已配置 provider 提供的模型：
 
 ### Codex provider 价格估算
 
-内置 `codex` provider 展示的费用为按 [OpenAI API 价格](https://developers.openai.com/api/docs/pricing)计算的价格估算，不代表 Codex 套餐的实际扣费或额度消耗。倍率根据请求中的 `service_tier` 统一计算，不按模型过滤：`fast` / `priority` 使用 2×，`ultrafast` 使用 6×，其余 tier 使用标准价格。上游响应返回 `default` 不会覆盖请求中的 tier。
+内置 `codex` provider 展示的是按照 [ChatGPT Enterprise Token 美元费率表](https://help.openai.com/en/articles/20001415-chatgpt-rate-card-enterprise-token-based-pricing)计算的 **USD 费用估算**，不代表订阅套餐实际扣费、Credit 扣减或额度消耗。**使用 ChatGPT 账号登录的 Codex**，即使输入超过 272K tokens，也按相同的输入、缓存输入和输出标准费率计算，**不会因长上下文加价**；Codex 也不单独收取缓存写入费用。[Enterprise Credit 费率表](https://help.openai.com/en/articles/11481834-chatgpt-rate-card-business-enterpriseedu-credit-based-pricing) 同样明确了该长上下文例外。使用 API Key 的 Codex 则适用 [OpenAI API 定价](https://developers.openai.com/api/docs/pricing)，可能产生长上下文附加费用。
+
+上述 USD 估算根据请求中的 `service_tier` 统一计算：`fast` / `priority` 使用 2×，`ultrafast` 使用 6×，其余 tier 使用标准价格，不按模型过滤。订阅内含额度和 Credit 消耗可能采用不同的倍率。上游响应返回 `default` 不会覆盖请求中的 tier。
 
 ---
