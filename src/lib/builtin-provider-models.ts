@@ -29,21 +29,10 @@ type BuiltinProviderModelCatalog = Record<
 >
 
 const CODEX_LUNA_PRICING: TokenUsagePricingConfig = {
-  tiers: [
-    {
-      cacheCreationInput: 0.125,
-      cachedInput: 0.01,
-      input: 0.1,
-      maxInputTokens: 272_000,
-      output: 0.5,
-    },
-    {
-      cacheCreationInput: 0.25,
-      cachedInput: 0.02,
-      input: 0.2,
-      output: 0.75,
-    },
-  ],
+  cacheCreationInput: 0.125,
+  cachedInput: 0.01,
+  input: 0.1,
+  output: 0.5,
 }
 
 export class BuiltinProviderModelRegistry {
@@ -55,83 +44,41 @@ export class BuiltinProviderModelRegistry {
   }
 
   private static readonly catalog: BuiltinProviderModelCatalog = {
+    // ChatGPT-signed-in Codex has no >272K long-context pricing multiplier.
+    // https://help.openai.com/en/articles/20001415-chatgpt-rate-card-enterprise-token-based-pricing
     codex: {
       "codex-auto-review": { pricing: CODEX_LUNA_PRICING },
       "gpt-reserve": { pricing: CODEX_LUNA_PRICING },
       "gpt-5.6-sol": {
         pricing: {
-          tiers: [
-            {
-              cacheCreationInput: 5,
-              cachedInput: 0.4,
-              input: 4,
-              maxInputTokens: 272_000,
-              output: 20,
-            },
-            {
-              cacheCreationInput: 10,
-              cachedInput: 0.8,
-              input: 8,
-              output: 30,
-            },
-          ],
+          cacheCreationInput: 5,
+          cachedInput: 0.4,
+          input: 4,
+          output: 20,
         },
       },
       "gpt-5.6-terra": {
         pricing: {
-          tiers: [
-            {
-              cacheCreationInput: 2.5,
-              cachedInput: 0.2,
-              input: 2,
-              maxInputTokens: 272_000,
-              output: 12,
-            },
-            {
-              cacheCreationInput: 5,
-              cachedInput: 0.4,
-              input: 4,
-              output: 18,
-            },
-          ],
+          cacheCreationInput: 2.5,
+          cachedInput: 0.2,
+          input: 2,
+          output: 12,
         },
       },
       "gpt-5.6-luna": {
         pricing: {
-          tiers: [
-            {
-              cacheCreationInput: 0.25,
-              cachedInput: 0.02,
-              input: 0.2,
-              maxInputTokens: 272_000,
-              output: 1.2,
-            },
-            {
-              cacheCreationInput: 0.5,
-              cachedInput: 0.04,
-              input: 0.4,
-              output: 1.8,
-            },
-          ],
+          cacheCreationInput: 0.25,
+          cachedInput: 0.02,
+          input: 0.2,
+          output: 1.2,
         },
       },
       "gpt-6-astra": {
         pricing: {
-          tiers: [
-            {
-              cacheCreationInput: 12.5,
-              cachedInput: 1,
-              input: 10,
-              maxInputTokens: 272_000,
-              output: 50,
-            },
-            {
-              cacheCreationInput: 25,
-              cachedInput: 2,
-              input: 20,
-              output: 75,
-            },
-          ],
+          cacheCreationInput: 12.5,
+          cachedInput: 1,
+          input: 10,
+          output: 50,
         },
       },
       "gpt-6-luna": {
@@ -139,59 +86,26 @@ export class BuiltinProviderModelRegistry {
       },
       "gpt-6-sol": {
         pricing: {
-          tiers: [
-            {
-              cacheCreationInput: 2.5,
-              cachedInput: 0.2,
-              input: 2,
-              maxInputTokens: 272_000,
-              output: 10,
-            },
-            {
-              cacheCreationInput: 5,
-              cachedInput: 0.4,
-              input: 4,
-              output: 15,
-            },
-          ],
+          cacheCreationInput: 2.5,
+          cachedInput: 0.2,
+          input: 2,
+          output: 10,
         },
       },
       "gpt-6.1-sol": {
         pricing: {
-          tiers: [
-            {
-              cacheCreationInput: 2.5,
-              cachedInput: 0.1,
-              input: 2,
-              maxInputTokens: 272_000,
-              output: 10,
-            },
-            {
-              cacheCreationInput: 5,
-              cachedInput: 0.2,
-              input: 4,
-              output: 15,
-            },
-          ],
+          cacheCreationInput: 2.5,
+          cachedInput: 0.1,
+          input: 2,
+          output: 10,
         },
       },
       "gpt-6.1-terra": {
         pricing: {
-          tiers: [
-            {
-              cacheCreationInput: 1.25,
-              cachedInput: 0.05,
-              input: 1,
-              maxInputTokens: 272_000,
-              output: 5,
-            },
-            {
-              cacheCreationInput: 2.5,
-              cachedInput: 0.1,
-              input: 2,
-              output: 7.5,
-            },
-          ],
+          cacheCreationInput: 1.25,
+          cachedInput: 0.05,
+          input: 1,
+          output: 5,
         },
       },
     },

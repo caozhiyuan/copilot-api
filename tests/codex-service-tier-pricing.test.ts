@@ -47,7 +47,7 @@ describe("Codex service tier price estimates", () => {
     }
   }
 
-  test("applies the tier multiplier after long-context pricing", () => {
+  test("does not apply long-context surcharges to ChatGPT-signed-in Codex", () => {
     expect(
       resolveTokenUsageCost({
         ...usage,
@@ -57,7 +57,7 @@ describe("Codex service tier price estimates", () => {
     ).toEqual({
       currency: "USD",
       source: "builtin",
-      total_cost_nanos: 32_651_100_000,
+      total_cost_nanos: 16_327_050_000,
     })
   })
 
@@ -127,7 +127,7 @@ describe("Codex service tier price estimates", () => {
     ).toBe(100_000)
   })
 
-  test("applies GPT-5.6 Sol Fast rates after the long-context boundary", () => {
+  test("keeps GPT-5.6 Sol Fast rates flat after the 272K boundary", () => {
     expect(
       resolveTokenUsageCost({
         ...usage,
@@ -138,7 +138,7 @@ describe("Codex service tier price estimates", () => {
     ).toEqual({
       currency: "USD",
       source: "builtin",
-      total_cost_nanos: 4_353_480_000,
+      total_cost_nanos: 2_176_940_000,
     })
   })
 })

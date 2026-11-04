@@ -25,9 +25,9 @@ model_provider = "copilot_api"
 model_reasoning_summary = "auto"
 plan_mode_reasoning_effort = "max"
 # Adjust the context window and auto-compaction threshold (in tokens) as needed.
-# Under OpenAI API pricing, GPT models such as gpt-6.1-sol charge 2x input and
-# cache rates and 1.5x output rates when input exceeds 272000 tokens.
-model_context_window = 400000
+# ChatGPT-signed-in Codex has no long-context surcharge above 272000 tokens.
+# API-key usage follows separate OpenAI API pricing.
+model_context_window = 500000
 # Sandbox policy. Use "workspace-write" to restrict it.
 sandbox_mode = "danger-full-access"
 approvals_reviewer = "auto_review"
@@ -119,6 +119,8 @@ Codex's model picker includes models from the gateway's configured providers:
 
 ### Codex Provider Price Estimates
 
-Costs shown for the built-in `codex` provider are price estimates based on [OpenAI API pricing](https://developers.openai.com/api/docs/pricing), not actual Codex subscription charges or allowance consumption. The request's `service_tier` determines the uniform multiplier: `fast` / `priority` use 2×, and `ultrafast` uses 6×, without filtering by model. Other tiers use Standard prices. An upstream response reporting `default` does not override the requested tier.
+Costs shown for the built-in `codex` provider are **USD estimates** using the standard model rates in the [ChatGPT Enterprise token-based rate card](https://help.openai.com/en/articles/20001415-chatgpt-rate-card-enterprise-token-based-pricing), not actual subscription charges, credit deductions, or allowance consumption. For **Codex signed in with ChatGPT**, the same input, cached-input, and output rates apply even above 272K input tokens: **there is no long-context surcharge** and Codex does not charge for cache writes. The [credit-based Enterprise rate card](https://help.openai.com/en/articles/11481834-chatgpt-rate-card-business-enterpriseedu-credit-based-pricing) confirms the same long-context exception. Codex using an API key instead follows [OpenAI API pricing](https://developers.openai.com/api/docs/pricing), including any applicable long-context charges.
+
+For these USD estimates, the request's `service_tier` determines the uniform multiplier: `fast` / `priority` use 2×, and `ultrafast` uses 6×, without filtering by model. Other tiers use Standard prices. Included subscription allowances and credits may use different multipliers. An upstream response reporting `default` does not override the requested tier.
 
 ---
