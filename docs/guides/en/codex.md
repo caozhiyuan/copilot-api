@@ -27,7 +27,7 @@ plan_mode_reasoning_effort = "max"
 # Adjust the context window and auto-compaction threshold (in tokens) as needed.
 # ChatGPT-signed-in Codex has no long-context surcharge above 272000 tokens.
 # API-key usage follows separate OpenAI API pricing.
-model_context_window = 500000
+model_context_window = 400000
 # Sandbox policy. Use "workspace-write" to restrict it.
 sandbox_mode = "danger-full-access"
 approvals_reviewer = "auto_review"
