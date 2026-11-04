@@ -235,6 +235,17 @@ export interface ResponseInputAdditionalTools {
   type: "additional_tools"
 }
 
+export interface ResponseInputConfigurationUpdate {
+  type: "configuration_update"
+  id?: string | null
+  reasoning?: {
+    effort?: Reasoning["effort"]
+  }
+  text?: {
+    format: Exclude<ResponsesTextFormat, { type: "json_object" }>
+  }
+}
+
 export type ResponseInputItem =
   | ResponseInputMessage
   | ResponseInputAgentMessage
@@ -248,6 +259,7 @@ export type ResponseInputItem =
   | ResponseInputCompaction
   | ResponseInputCompactionTrigger
   | ResponseInputAdditionalTools
+  | ResponseInputConfigurationUpdate
   | Record<string, unknown>
 
 export type ResponseInputContent =

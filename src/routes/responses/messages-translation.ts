@@ -9,6 +9,7 @@ import { findEndpointModel } from "~/lib/models"
 import { getModelsDevModelMaxOutputTokens } from "~/lib/models-dev-cache"
 import { getRawProviderConfig } from "~/lib/provider-config"
 import { parseProviderModelAlias } from "~/lib/provider-model"
+import { resolveSupportedReasoningEffort } from "~/lib/reasoning-effort"
 import { requestContext } from "~/lib/request-context"
 import type {
   AnthropicAssistantContentBlock,
@@ -29,6 +30,7 @@ import type {
 import type {
   NamespaceTool,
   ResponseInputAgentMessage,
+  ResponseInputConfigurationUpdate,
   ResponseInputItem,
   ResponseInputMessage,
   ResponseInputReasoning,
@@ -176,9 +178,10 @@ export function translateResponsesToMessages(
 ): ResponsesToMessagesTranslation {
   removeWebSearchTool(payload)
   const registry = createToolRegistry(payload, options.model)
+  const configuration = resolveInputConfiguration(payload)
   const normalized = normalizeResponsesInput(payload.input)
   const outputFormatInstruction = buildOutputFormatInstruction(
-    payload.text?.format,
+    configuration.textFormat,
   )
   // The tips describe the code-mode `functions.exec` wrapper, so they are
   // wrong for clients that expose `exec_command` as a real tool.
@@ -212,7 +215,10 @@ export function translateResponsesToMessages(
 
   applyEphemeralCacheControl(messages, system)
 
-  const reasoningEffort = translateReasoningEffort(payload.reasoning?.effort)
+  const reasoningEffort = translateReasoningEffort(
+    configuration.reasoningEffort,
+    options.model,
+  )
   const metadataUserId = resolveMetadataUserId(payload)
   const messagesPayload: AnthropicMessagesPayload = {
     model: options.model,
@@ -420,6 +426,34 @@ export function decodeCustomToolInput(input: unknown): string {
 export function toResponseId(messageId: string): string {
   const normalized = messageId.replace(/^msg[-_]?/u, "")
   return `resp_${normalized || createStableHash(messageId)}`
+}
+
+function resolveInputConfiguration(payload: ResponsesPayload): {
+  reasoningEffort: Reasoning["effort"]
+  textFormat: ResponsesTextFormat | null | undefined
+} {
+  let reasoningEffort = payload.reasoning?.effort
+  let textFormat = payload.text?.format
+  if (!Array.isArray(payload.input)) {
+    return { reasoningEffort, textFormat }
+  }
+
+  // Configuration persists across turns, including history removed by
+  // compaction. Resolve it before normalizing the input, without changing
+  // the original payload. The message translator skips these control items.
+  for (const item of payload.input) {
+    if (getItemType(item) !== "configuration_update") continue
+
+    const update = item as ResponseInputConfigurationUpdate
+    if (update.reasoning?.effort !== undefined) {
+      reasoningEffort = update.reasoning.effort
+    }
+    if (update.text?.format !== undefined) {
+      textFormat = update.text.format
+    }
+  }
+
+  return { reasoningEffort, textFormat }
 }
 
 function normalizeResponsesInput(
@@ -737,6 +771,7 @@ function translateInputItems(
         })
         break
       }
+      case "configuration_update":
       case "additional_tools": {
         break
       }
@@ -1220,18 +1255,39 @@ function translateStopReason(stopReason: AnthropicResponse["stop_reason"]): {
 
 function translateReasoningEffort(
   effort: Reasoning["effort"],
+  model: string,
 ):
   | NonNullable<AnthropicMessagesPayload["output_config"]>["effort"]
   | undefined {
-  if (effort === "minimal") return "low"
+  if (typeof effort !== "string") return undefined
+
+  // Match the request handlers' capability policy after applying updates.
+  // Configured provider aliases take precedence over namespaced Copilot IDs.
+  const alias = parseProviderModelAlias(model)
+  const providerConfig = alias ? getRawProviderConfig(alias.provider) : null
+  const copilotModel = providerConfig ? undefined : findEndpointModel(model)
+  const configuredEfforts =
+    alias ? providerConfig?.models?.[alias.model]?.reasoningEfforts : undefined
+  const builtinModelConfig =
+    alias ?
+      getProviderModelConfig(alias.provider, alias.model, providerConfig)
+    : undefined
+  const supportedEfforts =
+    copilotModel ? copilotModel.capabilities.supports?.reasoning_effort
+    : configuredEfforts && configuredEfforts.length > 0 ? configuredEfforts
+    : builtinModelConfig?.reasoningEfforts
+  const normalizedEffort =
+    resolveSupportedReasoningEffort(effort, supportedEfforts) ?? effort
+
+  if (normalizedEffort === "minimal") return "low"
   if (
-    effort === "low"
-    || effort === "medium"
-    || effort === "high"
-    || effort === "xhigh"
-    || effort === "max"
+    normalizedEffort === "low"
+    || normalizedEffort === "medium"
+    || normalizedEffort === "high"
+    || normalizedEffort === "xhigh"
+    || normalizedEffort === "max"
   ) {
-    return effort
+    return normalizedEffort
   }
   return undefined
 }

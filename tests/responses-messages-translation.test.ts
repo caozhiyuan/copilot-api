@@ -1,4 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
+
+import type { ProviderConfig } from "~/lib/config"
+import * as providerConfig from "~/lib/provider-config"
+import * as providerModelCatalog from "~/lib/provider-model-catalog"
+import { createFallbackModel } from "~/lib/provider-model"
+import { state } from "~/lib/state"
 
 import type {
   AnthropicMessagesPayload,
@@ -6,6 +12,7 @@ import type {
   AnthropicTextBlock,
 } from "~/lib/types/anthropic"
 import type {
+  Reasoning,
   ResponsesPayload,
   ResponseStreamEvent,
 } from "~/lib/types/responses"
@@ -1500,6 +1507,244 @@ describe("Responses Lite to Messages translation", () => {
     ).toEqual({ effort: "max" })
   })
 
+  test("applies configuration updates in order without changing the original request", () => {
+    const payload: ResponsesPayload = {
+      model: "gemini-4-argon",
+      reasoning: { effort: "low" },
+      input: [
+        { role: "user", content: "First question", type: "message" },
+        { type: "configuration_update", reasoning: { effort: "medium" } },
+        { role: "assistant", content: "First answer", type: "message" },
+        { type: "configuration_update", reasoning: { effort: "high" } },
+        { role: "user", content: "Continue", type: "message" },
+      ],
+    }
+    const original = structuredClone(payload)
+    const translation = translateResponsesToMessages(payload, {
+      model: payload.model,
+    })
+
+    expect(translation.messagesPayload.output_config).toEqual({
+      effort: "high",
+    })
+    expect(translation.messagesPayload.messages).toHaveLength(3)
+    expect(
+      translateToOpenAI(translation.messagesPayload).reasoning_effort,
+    ).toBe("high")
+    expect(translation.originalPayload).toBe(payload)
+    expect(payload).toEqual(original)
+  })
+
+  test("keeps independent configuration fields across partial and empty updates", () => {
+    const translation = translate({
+      reasoning: { effort: "low" },
+      text: {
+        format: {
+          type: "json_schema",
+          name: "initial_schema",
+          schema: {
+            type: "object",
+            properties: { old_field: { type: "string" } },
+          },
+        },
+      },
+      input: [
+        { role: "user", content: "Give me the result", type: "message" },
+        { type: "configuration_update", reasoning: { effort: "high" } },
+        {
+          type: "configuration_update",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "current_schema",
+              schema: {
+                type: "object",
+                properties: { current_field: { type: "number" } },
+                required: ["current_field"],
+              },
+            },
+          },
+        },
+        { type: "configuration_update" },
+        { type: "configuration_update", reasoning: {} },
+      ],
+    })
+
+    expect(translation.messagesPayload.output_config).toEqual({
+      effort: "high",
+    })
+    expect(translation.messagesPayload.messages).toHaveLength(2)
+    const text = trailingUserMessageText(translation)
+    expect(text).toContain('"current_schema"')
+    expect(text).toContain('"current_field"')
+    expect(text).not.toContain('"initial_schema"')
+    expect(text).not.toContain('"old_field"')
+  })
+
+  test("preserves top-level settings when updates omit both settings", () => {
+    const translation = translate({
+      reasoning: { effort: "medium" },
+      text: { format: { type: "json_object" } },
+      input: [
+        { type: "configuration_update" },
+        { type: "configuration_update", reasoning: {} },
+        { role: "user", content: "Continue", type: "message" },
+      ],
+    })
+
+    expect(translation.messagesPayload.output_config).toEqual({
+      effort: "medium",
+    })
+    expect(trailingUserMessageText(translation)).toContain(
+      "Respond with a single JSON object.",
+    )
+  })
+
+  test.each(["none", null] as const)(
+    "uses the existing effort mapping for a configuration update to %j",
+    (effort) => {
+      const translation = translate({
+        reasoning: { effort: "high" },
+        input: [
+          { type: "configuration_update", reasoning: { effort } },
+          { role: "user", content: "Continue", type: "message" },
+        ],
+      })
+
+      expect(translation.messagesPayload.output_config).toBeUndefined()
+      expect(
+        translateToOpenAI(translation.messagesPayload).reasoning_effort,
+      ).toBeUndefined()
+    },
+  )
+
+  test("removes a schema constraint when a later update restores text output", () => {
+    const translation = translate({
+      text: {
+        format: {
+          type: "json_schema",
+          name: "previous_schema",
+          schema: { type: "object" },
+        },
+      },
+      input: [
+        { role: "user", content: "Answer normally", type: "message" },
+        { type: "configuration_update", text: { format: { type: "text" } } },
+      ],
+    })
+
+    expect(translation.messagesPayload.messages).toHaveLength(1)
+    expect(trailingUserMessageText(translation)).toBe("Answer normally")
+    expect(JSON.stringify(translation.messagesPayload)).not.toContain(
+      "previous_schema",
+    )
+  })
+
+  test("keeps configuration updates that precede a replayed compaction", () => {
+    const translation = translate({
+      reasoning: { effort: "low" },
+      input: [
+        { role: "user", content: "Old question", type: "message" },
+        { type: "configuration_update", reasoning: { effort: "high" } },
+        {
+          type: "configuration_update",
+          text: {
+            format: {
+              type: "json_schema",
+              name: "handoff_schema",
+              schema: { type: "object" },
+            },
+          },
+        },
+        {
+          id: "compaction-config",
+          type: "compaction",
+          encrypted_content: encodeMessagesCompaction("Existing handoff"),
+        },
+        { role: "user", content: "Continue the task", type: "message" },
+      ],
+    })
+
+    expect(translation.messagesPayload.output_config).toEqual({
+      effort: "high",
+    })
+    expect(trailingUserMessageText(translation)).toContain('"handoff_schema"')
+    const messages = JSON.stringify(translation.messagesPayload.messages)
+    expect(messages).toContain("Existing handoff")
+    expect(messages).toContain("Continue the task")
+    expect(messages).not.toContain("Old question")
+    expect(messages).not.toContain("configuration_update")
+  })
+
+  test("preserves tool calls and results around configuration updates", () => {
+    const translation = translate({
+      tools: [{ type: "function", name: "getWeather", parameters: null }],
+      input: [
+        { role: "user", content: "Check the weather", type: "message" },
+        { type: "configuration_update", reasoning: { effort: "medium" } },
+        {
+          type: "function_call",
+          call_id: "call-config-weather",
+          name: "getWeather",
+          arguments: '{"city":"Paris"}',
+        },
+        { type: "configuration_update", reasoning: { effort: "high" } },
+        {
+          type: "function_call_output",
+          call_id: "call-config-weather",
+          output: "Sunny",
+        },
+        { role: "user", content: "Summarize it", type: "message" },
+      ],
+    })
+    const openAIPayload = translateToOpenAI(translation.messagesPayload)
+
+    expect(openAIPayload.reasoning_effort).toBe("high")
+    expect(openAIPayload.messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "tool",
+      "user",
+    ])
+    expect(openAIPayload.messages[1]).toMatchObject({
+      tool_calls: [
+        {
+          id: "call-config-weather",
+          function: { name: "getWeather", arguments: '{"city":"Paris"}' },
+        },
+      ],
+    })
+    expect(openAIPayload.messages[2]).toMatchObject({
+      tool_call_id: "call-config-weather",
+      content: "Sunny",
+    })
+    expect(JSON.stringify(openAIPayload.messages)).not.toContain(
+      "configuration_update",
+    )
+  })
+
+  test("rejects configuration updates without a translatable message", () => {
+    expect(() =>
+      translate({
+        input: [
+          { type: "configuration_update", reasoning: { effort: "high" } },
+        ],
+      }),
+    ).toThrow("Responses input must contain at least one translatable message")
+  })
+
+  test("rejects configuration updates placed after a compaction trigger", () => {
+    expect(() =>
+      translate({
+        input: [
+          { role: "user", content: "Compact the task", type: "message" },
+          { type: "compaction_trigger" },
+          { type: "configuration_update", reasoning: { effort: "high" } },
+        ],
+      }),
+    ).toThrow("compaction_trigger must be the final Responses input item")
+  })
+
   test("appends a JSON schema instruction as the trailing user message", () => {
     const translation = translate({
       input: [{ role: "user", content: "Give me a title", type: "message" }],
@@ -2327,4 +2572,157 @@ describe("Responses Lite to Messages translation", () => {
       expect(failed.response.status).toBe("failed")
     }
   })
+})
+
+describe("Configuration update reasoning capabilities", () => {
+  let originalModels = state.models
+  let providers: Record<string, ProviderConfig> = {}
+  let catalogModels: Record<
+    string,
+    NonNullable<ReturnType<typeof providerModelCatalog.getProviderModelConfig>>
+  > = {}
+  let restoreProviderLookups = () => {}
+
+  const translateEffort = (model: string, effort: Reasoning["effort"]) =>
+    translateResponsesToMessages(
+      {
+        model,
+        reasoning: { effort: "high" },
+        input: [
+          { type: "configuration_update", reasoning: { effort } },
+          { role: "user", content: "Continue", type: "message" },
+        ],
+      },
+      { model },
+    ).messagesPayload
+
+  beforeEach(() => {
+    originalModels = state.models
+    state.models = undefined
+    providers = {}
+    catalogModels = {}
+    const providerLookup = spyOn(
+      providerConfig,
+      "getRawProviderConfig",
+    ).mockImplementation((name) => providers[name] ?? null)
+    const catalogLookup = spyOn(
+      providerModelCatalog,
+      "getProviderModelConfig",
+    ).mockImplementation(
+      (provider, model) => catalogModels[`${provider}/${model}`],
+    )
+    restoreProviderLookups = () => {
+      providerLookup.mockRestore()
+      catalogLookup.mockRestore()
+    }
+  })
+
+  afterEach(() => {
+    restoreProviderLookups()
+    state.models = originalModels
+  })
+
+  test.each([
+    { effort: "medium", expectedEffort: "low" },
+    { effort: "max", expectedEffort: "high" },
+    { effort: "none", expectedEffort: "low" },
+  ] as const)(
+    "normalizes an updated Copilot effort %j",
+    ({ effort, expectedEffort }) => {
+      const model = createFallbackModel("gemini-4-argon")
+      model.capabilities.supports.reasoning_effort = ["low", "high"]
+      state.models = { object: "list", data: [model] }
+
+      const payload = translateEffort(model.id, effort)
+
+      expect(payload.output_config).toEqual({ effort: expectedEffort })
+      expect(translateToOpenAI(payload).reasoning_effort).toBe(expectedEffort)
+    },
+  )
+
+  test.each([{ supportedEfforts: undefined }, { supportedEfforts: [] }])(
+    "preserves the none effort mapping when Copilot capabilities are %j",
+    ({ supportedEfforts }) => {
+      const model = createFallbackModel("gemini-4-argon")
+      model.capabilities.supports.reasoning_effort = supportedEfforts
+      state.models = { object: "list", data: [model] }
+
+      expect(translateEffort(model.id, "none").output_config).toBeUndefined()
+    },
+  )
+
+  test("uses exact namespaced Copilot capabilities without a configured provider", () => {
+    const model = createFallbackModel("custom/org/gemini-4-argon")
+    model.capabilities.supports.reasoning_effort = ["low", "high"]
+    state.models = { object: "list", data: [model] }
+    catalogModels[model.id] = { reasoningEfforts: ["medium", "max"] }
+
+    expect(translateEffort(model.id, "max").output_config).toEqual({
+      effort: "high",
+    })
+  })
+
+  test("prefers configured provider aliases over namespaced Copilot capabilities", () => {
+    const model = createFallbackModel("custom/org/gemini-4-argon")
+    model.capabilities.supports.reasoning_effort = ["low", "high"]
+    state.models = { object: "list", data: [model] }
+    providers.custom = {
+      models: {
+        "org/gemini-4-argon": { reasoningEfforts: ["medium", "max"] },
+      },
+    }
+    catalogModels[model.id] = { reasoningEfforts: ["medium", "max"] }
+
+    expect(translateEffort(model.id, "max").output_config).toEqual({
+      effort: "max",
+    })
+  })
+
+  test("prefers explicitly configured provider efforts over catalog efforts", () => {
+    const model = "custom/org/gemini-4-argon"
+    providers.custom = {
+      models: { "org/gemini-4-argon": { reasoningEfforts: ["low", "high"] } },
+    }
+    catalogModels[model] = { reasoningEfforts: ["medium", "max"] }
+
+    expect(translateEffort(model, "medium").output_config).toEqual({
+      effort: "low",
+    })
+  })
+
+  test.each([{ reasoningEfforts: undefined }, { reasoningEfforts: [] }])(
+    "uses provider catalog efforts when configured efforts are %j",
+    ({ reasoningEfforts }) => {
+      const model = "custom/org/gemini-4-argon"
+      providers.custom = {
+        models: { "org/gemini-4-argon": { reasoningEfforts } },
+      }
+      catalogModels[model] = { reasoningEfforts: ["low", "high"] }
+
+      expect(translateEffort(model, "max").output_config).toEqual({
+        effort: "high",
+      })
+    },
+  )
+
+  test("uses provider catalog efforts without an explicit provider configuration", () => {
+    const model = "custom/org/gemini-4-argon"
+    catalogModels[model] = { reasoningEfforts: ["low", "high"] }
+
+    expect(translateEffort(model, "max").output_config).toEqual({
+      effort: "high",
+    })
+  })
+
+  test.each([
+    { effort: "max", expected: { effort: "max" } },
+    { effort: "none", expected: undefined },
+  ] as const)(
+    "keeps the existing mapping without any provider reasoning metadata: %j",
+    ({ effort, expected }) => {
+      expect(
+        translateEffort("custom/org/unknown-model", effort).output_config,
+      ).toEqual(expected)
+    },
+  )
 })

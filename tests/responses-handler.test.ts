@@ -4,8 +4,13 @@ import { Hono, type Context } from "hono"
 import type {
   AnthropicMessagesPayload,
   AnthropicResponse,
+  AnthropicStreamEventData,
 } from "~/lib/types/anthropic"
-import type { ResponsesResult } from "~/lib/types/responses"
+import type {
+  ResponsesPayload,
+  ResponsesResult,
+  ResponseStreamEvent,
+} from "~/lib/types/responses"
 import type { CompletionPayloadOptions } from "~/routes/messages/handler"
 import { MESSAGES_TOOL_CALL_TIPS } from "~/routes/responses/messages-translation"
 import type { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
@@ -2117,6 +2122,222 @@ describe("responses handler token usage", () => {
     expect(page.items[0]?.total_nano_aiu).toBe(1234)
     expect(page.items[0]?.total_tokens).toBe(7)
   })
+})
+
+describe("responses handler configuration updates", () => {
+  for (const stream of [false, true]) {
+    test(`accepts Gemini configuration updates with ${stream ? "streaming" : "non-streaming"} output`, async () => {
+      state.models = {
+        object: "list",
+        data: [
+          {
+            capabilities: {
+              family: "gemini",
+              limits: { max_prompt_tokens: 128000 },
+              object: "model_capabilities",
+              supports: { tool_calls: true },
+              tokenizer: "o200k_base",
+              type: "chat",
+            },
+            id: "gemini-4-argon",
+            model_picker_enabled: true,
+            name: "Gemini 4 Argon",
+            object: "model",
+            preview: false,
+            supported_endpoints: ["/chat/completions"],
+            vendor: "google",
+            version: "test",
+          },
+        ],
+      }
+      const message: AnthropicResponse = {
+        content: [{ type: "text", text: "ready" }],
+        id: "msg-gemini-config",
+        model: "gemini-4-argon",
+        role: "assistant",
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        type: "message",
+        usage: { input_tokens: 8, output_tokens: 2 },
+      }
+      const source: Array<AnthropicStreamEventData> = [
+        {
+          type: "message_start",
+          message: {
+            ...message,
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 8, output_tokens: 0 },
+          },
+        },
+        {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "text", text: "" },
+        },
+        {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "rea" },
+        },
+        {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "dy" },
+        },
+        { type: "content_block_stop", index: 0 },
+        {
+          type: "message_delta",
+          delta: { stop_reason: "end_turn", stop_sequence: null },
+          usage: { output_tokens: 2 },
+        },
+        { type: "message_stop" },
+      ]
+      const handleMessages = mock(
+        (_context: Context, _payload: AnthropicMessagesPayload) =>
+          Promise.resolve(
+            stream ?
+              new Response(
+                source
+                  .map(
+                    (event) =>
+                      `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+                  )
+                  .join(""),
+                { headers: { "content-type": "text/event-stream" } },
+              )
+            : Response.json(message),
+          ),
+      )
+      responsesMessagesDependencies.handleCompletionPayload = handleMessages
+      const payload: ResponsesPayload = {
+        model: "gemini-4-argon",
+        reasoning: { effort: "low" },
+        tools: [
+          {
+            type: "function",
+            name: "status",
+            parameters: { type: "object", properties: {} },
+            strict: false,
+          },
+        ],
+        input: [
+          {
+            type: "configuration_update",
+            reasoning: { effort: "medium" },
+          },
+          { role: "user", type: "message", content: "Check status" },
+          {
+            type: "function_call",
+            call_id: "call-status",
+            name: "status",
+            arguments: "{}",
+          },
+          {
+            type: "configuration_update",
+            reasoning: { effort: "high" },
+          },
+          {
+            type: "function_call_output",
+            call_id: "call-status",
+            output: "ready",
+          },
+          { role: "user", type: "message", content: "Summarize status" },
+        ],
+        stream,
+      }
+      const response = await createApp().request("/v1/responses", {
+        body: JSON.stringify(payload),
+        headers: {
+          "content-type": "application/json",
+          "user-agent": "codex-cli/1.0.0",
+        },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(200)
+      expect(createResponses).not.toHaveBeenCalled()
+      expect(handleMessages).toHaveBeenCalledTimes(1)
+      const forwarded = handleMessages.mock.calls[0]?.[1]
+      expect(forwarded?.model).toBe("gemini-4-argon")
+      expect(forwarded?.stream).toBe(stream)
+      expect(forwarded?.output_config).toEqual({ effort: "high" })
+      expect(forwarded?.messages).toEqual([
+        { role: "user", content: "Check status" },
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "call-status", name: "status", input: {} },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call-status",
+              content: "ready",
+              is_error: false,
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Summarize status",
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+        },
+      ])
+
+      if (!stream) {
+        const body = (await response.json()) as ResponsesResult
+        expect(body).toMatchObject({
+          model: "gemini-4-argon",
+          status: "completed",
+          output_text: "ready",
+        })
+        return
+      }
+
+      expect(response.headers.get("content-type")).toContain(
+        "text/event-stream",
+      )
+      const body = await response.text()
+      const events = body
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)) as ResponseStreamEvent)
+      expect(events.slice(0, 2).map((event) => event.type)).toEqual([
+        "response.created",
+        "response.in_progress",
+      ])
+      expect(
+        events.flatMap((event) =>
+          event.type === "response.output_text.delta" ? [event.delta] : [],
+        ),
+      ).toEqual(["rea", "dy"])
+      expect(events.at(-1)).toMatchObject({
+        type: "response.completed",
+        response: {
+          model: "gemini-4-argon",
+          status: "completed",
+          output_text: "ready",
+        },
+      })
+      expect(
+        events.some((event) =>
+          ["error", "response.failed", "response.incomplete"].includes(
+            event.type,
+          ),
+        ),
+      ).toBe(false)
+    })
+  }
 })
 
 describe("responses handler interrupted streams", () => {
