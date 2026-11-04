@@ -46,7 +46,6 @@
     "src/lib/model-mappings-editor.ts",
     "src/lib/provider-model-options.ts",
     "src/components/ServerLogPanel.tsx",
-    "src/components/log-scroll.ts",
     "src/components/ProviderModelPicker.tsx",
     "src/components/ProviderManagementModal.tsx",
     "src/components/ProviderManagementPanel.tsx",

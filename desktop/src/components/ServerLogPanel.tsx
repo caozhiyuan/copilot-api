@@ -1,60 +1,19 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../contexts/LanguageContext'
 import { mergeServerLogs } from '../../shared/server-logs'
 import type { ServerLogRecord } from '../types/ipc'
-import {
-  LOG_SCROLL_EPSILON_PX,
-  decideLogFollowScroll,
-  maxLogScrollTop,
-} from './log-scroll'
-
-/** Evicting rows must not move the viewport through scroll anchoring. */
-const noScrollAnchor = { overflowAnchor: 'none' } as const
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  )
-}
 
 function usePinnedLogScroll(logs: ReadonlyArray<unknown>, ready: boolean) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
-  const previousScrollTopRef = useRef(0)
-  const pinTargetRef = useRef<number | null>(null)
 
   const pinToBottom = () => {
     const node = scrollRef.current
-    if (!node || !followRef.current) return
-
-    const top = maxLogScrollTop(node)
-    if (Math.abs(node.scrollTop - top) <= LOG_SCROLL_EPSILON_PX) {
-      pinTargetRef.current = null
-      previousScrollTopRef.current = node.scrollTop
-      return
-    }
-    if (
-      pinTargetRef.current !== null
-      && Math.abs(pinTargetRef.current - top) <= LOG_SCROLL_EPSILON_PX
-    ) {
-      return
-    }
-
-    const behavior: ScrollBehavior = prefersReducedMotion() ? 'auto' : 'smooth'
-    pinTargetRef.current = top
-    node.scrollTo({ top, behavior })
-    previousScrollTopRef.current = node.scrollTop
-    if (Math.abs(node.scrollTop - top) <= LOG_SCROLL_EPSILON_PX) {
-      pinTargetRef.current = null
+    if (node && followRef.current) {
+      // Live output follows immediately; restarting smooth animations can lag
+      // indefinitely while the scroll height keeps growing.
+      node.scrollTo({ top: node.scrollHeight, behavior: 'instant' })
     }
   }
 
@@ -67,59 +26,17 @@ function usePinnedLogScroll(logs: ReadonlyArray<unknown>, ready: boolean) {
     if (!node) return
 
     const wasFollowing = followRef.current
-    const hadPin = pinTargetRef.current !== null
-    const decision = decideLogFollowScroll({
-      follow: wasFollowing,
-      metrics: {
-        scrollTop: node.scrollTop,
-        scrollHeight: node.scrollHeight,
-        clientHeight: node.clientHeight,
-      },
-      previousScrollTop: previousScrollTopRef.current,
-      pinTarget: pinTargetRef.current,
-    })
-    followRef.current = decision.follow
-    pinTargetRef.current = decision.pinTarget
-    previousScrollTopRef.current = node.scrollTop
-
-    // Stop a glide that would otherwise pull the reader back to the tail.
-    if (wasFollowing && !decision.follow && hadPin) {
-      node.scrollTo({ top: node.scrollTop, behavior: 'auto' })
-      return
-    }
-    if (!wasFollowing && decision.follow) pinToBottom()
+    followRef.current =
+      node.scrollHeight - node.scrollTop - node.clientHeight <= 80
+    if (!wasFollowing && followRef.current) pinToBottom()
   }
 
   const enableFollow = () => {
     followRef.current = true
-    pinTargetRef.current = null
     pinToBottom()
   }
 
   return { scrollRef, onScroll, enableFollow }
-}
-
-function LogScroller({
-  className,
-  onScroll,
-  scrollRef,
-  children,
-}: {
-  className: string
-  onScroll: () => void
-  scrollRef: RefObject<HTMLDivElement>
-  children: ReactNode
-}) {
-  return (
-    <div
-      ref={scrollRef}
-      onScroll={onScroll}
-      className={className}
-      style={noScrollAnchor}
-    >
-      {children}
-    </div>
-  )
 }
 
 export default function ServerLogPanel({
@@ -179,55 +96,16 @@ export default function ServerLogPanel({
       .catch(() => {})
   }
 
-  const content = (
-    <>
-      {!ready ?
-        <span className="text-ink-faint" style={noScrollAnchor}>
-          {t('dashboard.loading')}
+  const isPage = variant === 'page'
+  const panel = (
+    <div
+      className={`${isPage ? 'flex-1' : 'w-full max-w-2xl'} bg-black rounded-xl p-4 flex flex-col overflow-hidden min-h-0`}
+    >
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <span className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">
+          {t('dashboard.serverLog')}
         </span>
-      : logs.length === 0 ?
-        <span className="text-ink-soft" style={noScrollAnchor}>
-          {t('dashboard.noLogs')}
-        </span>
-      : logs.map((log) => (
-          <div
-            key={log.sequence}
-            className="whitespace-pre-wrap break-all"
-            style={noScrollAnchor}
-          >
-            {log.text.trimEnd()}
-          </div>
-        ))
-      }
-    </>
-  )
-
-  if (variant === 'failure') {
-    return (
-      <div className="w-full max-w-2xl bg-black rounded-xl p-4 flex flex-col overflow-hidden min-h-0">
-        <div className="flex items-center justify-between mb-3 shrink-0">
-          <span className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">
-            {t('dashboard.serverLog')}
-          </span>
-        </div>
-        <LogScroller
-          scrollRef={scrollRef}
-          onScroll={onScroll}
-          className="max-h-60 overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed"
-        >
-          {content}
-        </LogScroller>
-      </div>
-    )
-  }
-
-  return (
-    <div className="p-4 h-full flex flex-col">
-      <div className="flex-1 bg-black rounded-xl p-4 flex flex-col overflow-hidden min-h-0">
-        <div className="flex items-center justify-between mb-3 shrink-0">
-          <span className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">
-            {t('dashboard.serverLog')}
-          </span>
+        {isPage && (
           <button
             type="button"
             onClick={clearLogs}
@@ -236,15 +114,30 @@ export default function ServerLogPanel({
           >
             {t('dashboard.clear')}
           </button>
-        </div>
-        <LogScroller
-          scrollRef={scrollRef}
-          onScroll={onScroll}
-          className="flex-1 overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed"
-        >
-          {content}
-        </LogScroller>
+        )}
+      </div>
+      {/* Native scroll anchoring keeps the visible rows in place when older
+          entries are evicted while the reader has stopped following. */}
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className={`${isPage ? 'flex-1' : 'max-h-60'} overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed`}
+      >
+        {!ready ?
+          <span className="text-ink-faint">{t('dashboard.loading')}</span>
+        : logs.length === 0 ?
+          <span className="text-ink-soft">{t('dashboard.noLogs')}</span>
+        : logs.map((log) => (
+            <div key={log.sequence} className="whitespace-pre-wrap break-all">
+              {log.text.trimEnd()}
+            </div>
+          ))
+        }
       </div>
     </div>
   )
+
+  return isPage ?
+      <div className="p-4 h-full flex flex-col">{panel}</div>
+    : panel
 }

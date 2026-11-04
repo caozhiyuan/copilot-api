@@ -219,31 +219,32 @@ describe('server log panel', () => {
     expect(container.textContent).toContain('live after subscribe')
   })
 
-  test('smooth-pins new lines and does not restart a glide to the same target', async () => {
-    await renderPanel('page')
-    const view = installScroller({ scrollHeight: 300, clientHeight: 200 })
+  test.each(['page', 'failure'] as const)(
+    'shows the latest history and growing live output immediately in the %s panel',
+    async (variant) => {
+      const history = Promise.withResolvers<Array<ServerLogRecord>>()
+      window.electronAPI.getLogs = mock(() => history.promise)
+      await renderPanel(variant)
+      const view = installScroller({ scrollHeight: 10_000, clientHeight: 200 })
 
-    await publishLog(1, 'short gap')
-    expect(view.pins.at(-1)).toEqual({ top: 100, behavior: 'smooth' })
-    expect(view.node.style.overflowAnchor).toBe('none')
-    expect(
-      view.node.querySelector('.whitespace-pre-wrap')?.getAttribute('style'),
-    ).toContain('overflow-anchor')
+      await act(async () => {
+        history.resolve([{ sequence: 1, text: 'history' }])
+      })
+      expect(view.node.scrollTop).toBe(9800)
 
-    const pinsBefore = view.pins.length
-    await publishLog(2, 'same height')
-    expect(view.pins.length).toBe(pinsBefore)
-
-    view.metrics.scrollHeight = 360
-    await publishLog(3, 'while gliding')
-    expect(view.pins.at(-1)).toEqual({ top: 160, behavior: 'smooth' })
-  })
+      for (let sequence = 2; sequence <= 21; sequence += 1) {
+        view.metrics.scrollHeight += 40
+        await publishLog(sequence, `live ${sequence}`)
+        expect(view.node.scrollTop).toBe(view.metrics.scrollHeight - 200)
+      }
+      expect(view.pins.every((pin) => pin.behavior === 'instant')).toBe(true)
+    },
+  )
 
   test('lets the reader scroll up and resumes inside the follow band', async () => {
     await renderPanel('page')
     const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
     await publishLog(1, 'pinned')
-    await settlePin(view.node, 800)
 
     await userScroll(view.node, 600)
     view.metrics.scrollHeight = 1300
@@ -251,85 +252,76 @@ describe('server log panel', () => {
     expect(view.node.scrollTop).toBe(600)
 
     await userScroll(view.node, 1050)
-    expect(view.pins.at(-1)).toEqual({ top: 1100, behavior: 'smooth' })
+    expect(view.node.scrollTop).toBe(1100)
+    expect(view.pins.at(-1)?.behavior).toBe('instant')
   })
 
   test('keeps following when the viewport is clamped onto the bottom', async () => {
     await renderPanel('page')
     const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
     await publishLog(1, 'pinned')
-    await settlePin(view.node, 800)
 
     view.metrics.scrollHeight = 900
     await userScroll(view.node, 700)
     view.metrics.scrollHeight = 1100
     await publishLog(2, 'still pinned')
 
-    expect(view.pins.at(-1)).toEqual({ top: 900, behavior: 'smooth' })
+    expect(view.node.scrollTop).toBe(900)
   })
 
-  test('cancels an in-flight glide when the reader scrolls away', async () => {
+  test('keeps surviving rows available for native anchoring when old logs are evicted', async () => {
+    window.electronAPI.getLogs = mock(() =>
+      Promise.resolve(
+        Array.from({ length: 2000 }, (_, index) => ({
+          sequence: index + 1,
+          text: `line ${index + 1}`,
+        })),
+      ),
+    )
     await renderPanel('page')
-    const view = installScroller({ scrollHeight: 350, clientHeight: 200 })
-    view.node.scrollTop = 50
+    const view = installScroller({ scrollHeight: 40_000, clientHeight: 200 })
+    await userScroll(view.node, 15_000)
+    const row = [...view.node.children].find(
+      (node) => node.textContent === 'line 649',
+    ) as HTMLElement
+    const pinsBefore = view.pins.length
 
-    await publishLog(1, 'gliding')
-    expect(view.pins.at(-1)).toEqual({ top: 150, behavior: 'smooth' })
+    await act(async () => {
+      for (let sequence = 2001; sequence <= 2020; sequence += 1) {
+        logListener?.({ sequence, text: `line ${sequence}` })
+      }
+    })
 
-    await userScroll(view.node, 0)
-    view.metrics.scrollHeight = 800
-    await publishLog(2, 'should stay put')
-
-    expect(view.node.scrollTop).toBe(0)
-    expect(view.pins.at(-1)).toEqual({ top: 0, behavior: 'auto' })
+    expect(view.node.children).toHaveLength(2000)
+    expect(view.node.firstElementChild?.textContent).toBe('line 21')
+    expect(
+      [...view.node.children].find((node) => node.textContent === 'line 649'),
+    ).toBe(row)
+    expect(view.node.style.overflowAnchor).not.toBe('none')
+    expect(row.style.overflowAnchor).not.toBe('none')
+    expect(view.pins).toHaveLength(pinsBefore)
   })
 
   test('pins again after clear once the reader had scrolled away', async () => {
     await renderPanel('page')
     const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
     await publishLog(1, 'pinned')
-    await settlePin(view.node, 800)
     await userScroll(view.node, 100)
+    window.electronAPI.clearLogs = mock(() => {
+      view.metrics.scrollHeight = 200
+      return Promise.resolve(1)
+    })
 
     await act(async () => {
       findClearButton().click()
       await Promise.resolve()
     })
 
-    expect(view.pins.at(-1)).toEqual({ top: 800, behavior: 'smooth' })
-  })
-
-  test('pins the failure log with the same follow behavior', async () => {
-    await renderPanel('failure')
-    const view = installScroller({ scrollHeight: 1000, clientHeight: 200 })
-    await publishLog(1, 'failure log')
-
-    expect(view.node.className).toContain('max-h-60')
-    expect(view.pins.at(-1)).toEqual({ top: 800, behavior: 'smooth' })
-    expect(view.node.style.overflowAnchor).toBe('none')
-  })
-
-  test('snaps when the reader prefers reduced motion', async () => {
-    const matchMedia = window.matchMedia.bind(window)
-    window.matchMedia = (query: string) => ({
-      matches: query.includes('prefers-reduced-motion'),
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    })
-    try {
-      await renderPanel('page')
-      const view = installScroller({ scrollHeight: 300, clientHeight: 200 })
-      await publishLog(1, 'reduced motion')
-      expect(view.pins.at(-1)).toEqual({ top: 100, behavior: 'auto' })
-      expect(view.node.scrollTop).toBe(100)
-    } finally {
-      window.matchMedia = matchMedia
-    }
+    expect(view.node.scrollTop).toBe(0)
+    expect(container.textContent).toContain('No logs yet')
+    view.metrics.scrollHeight = 500
+    await publishLog(2, 'after clear')
+    expect(view.node.scrollTop).toBe(300)
   })
 })
 
@@ -362,7 +354,10 @@ function installScroller(initial: {
   node.scrollTo = ((options?: ScrollToOptions) => {
     pins.push({ top: options?.top, behavior: options?.behavior })
     if (options?.behavior !== 'smooth' && typeof options?.top === 'number') {
-      node.scrollTop = options.top
+      node.scrollTop = Math.max(
+        0,
+        Math.min(options.top, metrics.scrollHeight - metrics.clientHeight),
+      )
       node.dispatchEvent(new Event('scroll', { bubbles: true }))
     }
   }) as typeof node.scrollTo
@@ -372,13 +367,6 @@ function installScroller(initial: {
 async function publishLog(sequence: number, text: string) {
   await act(async () => {
     logListener?.({ sequence, text })
-  })
-}
-
-async function settlePin(node: HTMLElement, top: number) {
-  await act(async () => {
-    node.scrollTop = top
-    node.dispatchEvent(new Event('scroll', { bubbles: true }))
   })
 }
 
