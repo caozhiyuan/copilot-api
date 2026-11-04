@@ -125,9 +125,11 @@ describe("builtin provider model registry", () => {
 
   test("does not apply long-context pricing tiers to built-in Codex models", () => {
     for (const model of builtinProviderModelRegistry.getModelIds("codex")) {
-      expect(
-        builtinProviderModelRegistry.getModelConfig("codex", model)?.pricing?.tiers,
-      ).toBeUndefined()
+      const pricing = builtinProviderModelRegistry.getModelConfig(
+        "codex",
+        model,
+      )?.pricing
+      expect(pricing?.tiers).toBeUndefined()
     }
   })
 
