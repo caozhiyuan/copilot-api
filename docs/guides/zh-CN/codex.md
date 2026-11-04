@@ -29,7 +29,7 @@ plan_mode_reasoning_effort = "max"
 # 上下文窗口和自动压缩阈值（单位：token）可自行调整。
 # ChatGPT 账号登录的 Codex，输入超过 272000 token 不加收长上下文费用。
 # API Key 调用则适用独立的 OpenAI API 定价。
-model_context_window = 500000
+model_context_window = 400000
 # 沙箱策略。可改用 "workspace-write" 以启用限制。
 sandbox_mode = "danger-full-access"
 approvals_reviewer = "auto_review"
