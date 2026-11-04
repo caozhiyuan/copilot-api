@@ -125,8 +125,9 @@ describe("builtin provider model registry", () => {
 
   test("does not apply long-context pricing tiers to built-in Codex models", () => {
     for (const model of builtinProviderModelRegistry.getModelIds("codex")) {
-      expect(builtinProviderModelRegistry.getModelConfig("codex", model)?.pricing?.tiers)
-        .toBeUndefined()
+      expect(
+        builtinProviderModelRegistry.getModelConfig("codex", model)?.pricing?.tiers,
+      ).toBeUndefined()
     }
   })
 
@@ -170,7 +171,12 @@ describe("builtin provider model registry", () => {
       "codex",
       "gpt-6-luna",
     )
-    expect(luna?.pricing?.tiers).toHaveLength(2)
+    expect(luna?.pricing).toEqual({
+      cacheCreationInput: 0.125,
+      cachedInput: 0.01,
+      input: 0.1,
+      output: 0.5,
+    })
     for (const modelId of ["codex-auto-review", "gpt-reserve"]) {
       expect(builtinProviderModelRegistry.getModelIds("codex")).toContain(
         modelId,
