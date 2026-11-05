@@ -81,10 +81,15 @@ describe('media requests', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       'http://[::1]:5151/v1/images/generations',
     )
-    expect(fetchMock.mock.calls[0][1]?.headers).toEqual({
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
       'x-api-key': 'gateway-key',
       'content-type': 'application/json',
+      originator: 'codex_cli_rs',
+      version: '0.166.0',
     })
+    expect(
+      new Headers(fetchMock.mock.calls[0][1]?.headers).get('user-agent'),
+    ).toMatch(/^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/)
     expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
       model: 'gpt-image-2',
       prompt: 'A boat',
@@ -283,10 +288,15 @@ describe('media requests', () => {
       expect(fetchMock.mock.calls[0][0]).toBe(
         `http://[::1]:5151${provider === 'codex' ? '/codex' : ''}/v1/images/edits`,
       )
-      expect(init.headers).toEqual({
+      expect(init.headers).toMatchObject({
         'x-api-key': 'gateway-key',
         'content-type': 'application/json',
+        originator: 'codex_cli_rs',
+        version: '0.166.0',
       })
+      expect(new Headers(init.headers).get('user-agent')).toMatch(
+        /^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/,
+      )
       expect(JSON.parse(init.body as string)).toEqual({
         model: 'gpt-image-2',
         prompt: 'A boat',
@@ -369,6 +379,10 @@ describe('media requests', () => {
     expect(await api.createVideo('one', videoInput)).toMatchObject({
       requestId: 'job id',
       status: 'pending',
+    })
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual({
+      'x-api-key': 'gateway-key',
+      'content-type': 'application/json',
     })
     expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
       model: 'xai/grok-imagine-video-1.5',

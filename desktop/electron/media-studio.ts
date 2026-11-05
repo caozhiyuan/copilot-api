@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { rename, rm, writeFile } from 'node:fs/promises'
+import { machine, release, type } from 'node:os'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -29,6 +30,14 @@ import {
   type VideoCreationInput,
   type VideoCreationResult,
 } from '../src/types/media'
+
+// Match the Codex CLI client identity on Desktop image requests.
+const CODEX_CLI_VERSION = '0.166.0'
+const CODEX_IMAGE_HEADERS = {
+  originator: 'codex_cli_rs',
+  'user-agent': `codex_cli_rs/${CODEX_CLI_VERSION} (${type()} ${release()}; ${machine()}) unknown`,
+  version: CODEX_CLI_VERSION,
+}
 
 type MediaFetch = (
   input: string | URL | Request,
@@ -324,7 +333,10 @@ export function createMediaStudioClient(options: MediaClientOptions) {
         await request(id, `${prefix}/v1/images/${operation}`, {
           method: 'POST',
           body,
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            ...CODEX_IMAGE_HEADERS,
+          },
         }),
       )
     },
