@@ -19,6 +19,10 @@ export interface Locale {
     size: string
     quality: string
     count: string
+    outputFormat: string
+    frameCount: string
+    frameDurationMs: string
+    gifHint: string
     auto: string
     low: string
     medium: string

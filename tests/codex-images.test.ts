@@ -749,9 +749,16 @@ describe("Codex images URL", () => {
 })
 
 describe("Codex images forwarding", () => {
-  test.each(["default", "codex"] as const)(
-    "sends desktop %s image edits through an HTTP gateway as JSON",
-    async (provider) => {
+  test.each([
+    { provider: "default", mode: "generate", outputFormat: "png" },
+    { provider: "default", mode: "generate", outputFormat: "gif" },
+    { provider: "default", mode: "edit", outputFormat: "png" },
+    { provider: "codex", mode: "generate", outputFormat: "png" },
+    { provider: "codex", mode: "generate", outputFormat: "gif" },
+    { provider: "codex", mode: "edit", outputFormat: "png" },
+  ] as const)(
+    "sends desktop images with Codex CLI headers through an HTTP gateway %#",
+    async ({ provider, mode, outputFormat }) => {
       const app = createApp()
       const gateway = Bun.serve({
         hostname: "127.0.0.1",
@@ -762,43 +769,70 @@ describe("Codex images forwarding", () => {
         let upstreamPayload: unknown
         fetchMock.mockImplementationOnce(async (_url, init) => {
           upstreamPayload = await new Response(init?.body).json()
-          return Response.json({ data: [{ b64_json: "iVBORw==" }] })
+          return Response.json({
+            data: [
+              { b64_json: outputFormat === "gif" ? "R0lGODlh" : "iVBORw==" },
+            ],
+          })
         })
         const client = createMediaStudioClient({
           getBaseUrl: () => gateway.url.origin,
           getHeaders: () => Promise.resolve({ "x-api-key": "gateway-key" }),
           fetch: originalFetch,
         })
-        const result = await client.createImages("desktop-edit", {
+        const result = await client.createImages("desktop-image", {
           provider,
-          mode: "edit",
+          mode,
+          outputFormat,
           model: "gpt-image-2",
           prompt: "make the sky purple",
           n: 1,
           size: "auto",
           quality: "auto",
-          images: [
-            {
-              name: "source.png",
-              type: "image/png",
-              bytes: new Uint8Array([137, 80, 78, 71]),
-            },
-          ],
+          images:
+            mode === "edit" ?
+              [
+                {
+                  name: "source.png",
+                  type: "image/png",
+                  bytes: new Uint8Array([137, 80, 78, 71]),
+                },
+              ]
+            : [],
         })
-        expect(result[0]?.url).toBe("data:image/png;base64,iVBORw==")
-        const [url, init] = fetchMock.mock.calls[0] ?? []
-        expect(url).toBe("https://chatgpt.com/backend-api/codex/images/edits")
-        expect(new Headers(init?.headers).get("content-type")).toBe(
-          "application/json",
+        expect(result[0]?.url).toBe(
+          outputFormat === "gif" ?
+            "data:image/gif;base64,R0lGODlh"
+          : "data:image/png;base64,iVBORw==",
         )
-        expect(new Headers(init?.headers).get("x-api-key")).toBeNull()
+        const [url, init] = fetchMock.mock.calls[0] ?? []
+        expect(url).toBe(
+          `https://chatgpt.com/backend-api/codex/images/${mode === "edit" ? "edits" : "generations"}`,
+        )
+        const headers = new Headers(init?.headers)
+        expect(headers.get("content-type")).toBe("application/json")
+        expect(headers.get("authorization")).toBe("Bearer codex-access-token")
+        expect(headers.get("chatgpt-account-id")).toBe("account-123")
+        expect(headers.get("x-api-key")).toBeNull()
+        expect(headers.get("originator")).toBe("codex_cli_rs")
+        expect(headers.get("version")).toBe("0.167.0")
+        expect(headers.get("user-agent")).toMatch(
+          /^codex_cli_rs\/0\.167\.0 \(.+; .+\) unknown$/,
+        )
         expect(upstreamPayload).toEqual({
           model: "gpt-image-2",
           prompt: "make the sky purple",
           n: 1,
           size: "auto",
           quality: "auto",
-          images: [{ image_url: "data:image/png;base64,iVBORw==" }],
+          ...(mode === "edit" && {
+            images: [{ image_url: "data:image/png;base64,iVBORw==" }],
+          }),
+          ...(outputFormat === "gif" && {
+            output_format: "gif",
+            frame_count: 9,
+            frame_duration_ms: 200,
+          }),
         })
       } finally {
         await gateway.stop(true)

@@ -2,6 +2,7 @@ import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { rename, rm, writeFile } from 'node:fs/promises'
+import { machine, release, type } from 'node:os'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -29,6 +30,14 @@ import {
   type VideoCreationInput,
   type VideoCreationResult,
 } from '../src/types/media'
+
+// Match the Codex CLI client identity on Desktop image requests.
+const CODEX_CLI_VERSION = '0.167.0'
+const CODEX_IMAGE_HEADERS = {
+  originator: 'codex_cli_rs',
+  'user-agent': `codex_cli_rs/${CODEX_CLI_VERSION} (${type()} ${release()}; ${machine()}) unknown`,
+  version: CODEX_CLI_VERSION,
+}
 
 type MediaFetch = (
   input: string | URL | Request,
@@ -234,6 +243,11 @@ export function createMediaStudioClient(options: MediaClientOptions) {
       input: ImageCreationInput,
     ): Promise<CreatedImage[]> {
       const prompt = validatePrompt(input.prompt)
+      const {
+        outputFormat = 'png',
+        frameCount = 9,
+        frameDurationMs = 200,
+      } = input
       if (
         !['generate', 'edit'].includes(input.mode)
         || !['default', 'codex', 'xai'].includes(input.provider)
@@ -243,18 +257,50 @@ export function createMediaStudioClient(options: MediaClientOptions) {
         || !Number.isInteger(input.n)
         || input.n < 1
         || input.n > 4
+        || !['png', 'gif'].includes(outputFormat)
       )
         throw new Error('Invalid image options')
+      if (outputFormat === 'gif') {
+        if (input.mode !== 'generate')
+          throw new Error('GIF output is only supported for image generation')
+        if (
+          !Number.isInteger(frameCount)
+          || frameCount < 2
+          || frameCount > 64
+          || !Number.isInteger(frameDurationMs)
+          || frameDurationMs < 20
+          || frameDurationMs > 2000
+        )
+          throw new Error('Invalid GIF animation options')
+      }
       validateUploads(input.images, 5)
       if (input.mode === 'edit' && !input.images.length)
         throw new Error('Select an image to edit')
       const model = input.model.trim() || getDefaultImageModel(input.provider)
+      if (
+        outputFormat === 'gif'
+        && (input.provider === 'xai'
+          || model?.startsWith('xai/')
+          || model?.startsWith('grok-imagine-image'))
+      )
+        throw new Error('xAI image generation does not support GIF output')
+      if (
+        outputFormat === 'gif'
+        && (model?.startsWith('github-copilot/gpt-image-2.5-flare')
+          || model?.startsWith('gpt-image-2.5-flare'))
+      )
+        throw new Error('GPT Image 2.5 Flare does not support GIF output')
       const payload = {
         ...(model ? { model } : {}),
         prompt,
         n: input.n,
         size: input.size,
         quality: input.quality,
+        ...(outputFormat === 'gif' && {
+          output_format: 'gif',
+          frame_count: frameCount,
+          frame_duration_ms: frameDurationMs,
+        }),
       }
       const operation = input.mode === 'edit' ? 'edits' : 'generations'
       const prefix = input.provider === 'default' ? '' : `/${input.provider}`
@@ -287,7 +333,10 @@ export function createMediaStudioClient(options: MediaClientOptions) {
         await request(id, `${prefix}/v1/images/${operation}`, {
           method: 'POST',
           body,
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            ...CODEX_IMAGE_HEADERS,
+          },
         }),
       )
     },

@@ -17,6 +17,11 @@ const en: Locale = {
     size: 'Image size',
     quality: 'Quality',
     count: 'Images',
+    outputFormat: 'Output format',
+    frameCount: 'Frame count',
+    frameDurationMs: 'Frame duration (ms)',
+    gifHint:
+      'Use a model that supports animated GIF output, such as codex/gpt-image-2.',
     auto: 'Auto',
     low: 'Low',
     medium: 'Medium',
