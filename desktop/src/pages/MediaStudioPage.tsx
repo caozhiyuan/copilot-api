@@ -96,10 +96,6 @@ export default function MediaStudioPage({
   const [size, setSize] = useState<ImageCreationInput['size']>('auto')
   const [quality, setQuality] = useState<ImageCreationInput['quality']>('auto')
   const [count, setCount] = useState('1')
-  const [outputFormat, setOutputFormat] =
-    useState<ImageCreationInput['outputFormat']>('png')
-  const [frameCount, setFrameCount] = useState('9')
-  const [frameDurationMs, setFrameDurationMs] = useState('200')
   const [editFiles, setEditFiles] = useState<File[]>([])
   const [firstFrame, setFirstFrame] = useState<File[]>([])
   const [duration, setDuration] = useState('8')
@@ -278,12 +274,6 @@ export default function MediaStudioPage({
           quality,
           n: Number(count),
           images: uploads,
-          ...(mode === 'generate'
-            && outputFormat === 'gif' && {
-              outputFormat,
-              frameCount: Number(frameCount),
-              frameDurationMs: Number(frameDurationMs),
-            }),
         })
         if (generationRequest.current !== id) return
         setPollError('')
@@ -546,69 +536,6 @@ export default function MediaStudioPage({
                 </label>
               </>
             }
-            {mode === 'generate' && (
-              <>
-                <Field label={t('studio.outputFormat')}>
-                  <select
-                    className={selectClass}
-                    value={outputFormat}
-                    onChange={(e) =>
-                      setOutputFormat(
-                        e.target.value as ImageCreationInput['outputFormat'],
-                      )
-                    }
-                  >
-                    <option value="png">PNG</option>
-                    <option value="gif">GIF</option>
-                  </select>
-                </Field>
-                {outputFormat === 'gif' && (
-                  <>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Field label={t('studio.frameCount')}>
-                        <input
-                          type="number"
-                          min={2}
-                          max={64}
-                          value={frameCount}
-                          required
-                          onChange={(e) => setFrameCount(e.target.value)}
-                          onBlur={() =>
-                            setFrameCount(
-                              frameCount === '' ? '' : (
-                                String(Number(frameCount))
-                              ),
-                            )
-                          }
-                          className={fieldClass}
-                        />
-                      </Field>
-                      <Field label={t('studio.frameDurationMs')}>
-                        <input
-                          type="number"
-                          min={20}
-                          max={2000}
-                          value={frameDurationMs}
-                          required
-                          onChange={(e) => setFrameDurationMs(e.target.value)}
-                          onBlur={() =>
-                            setFrameDurationMs(
-                              frameDurationMs === '' ? '' : (
-                                String(Number(frameDurationMs))
-                              ),
-                            )
-                          }
-                          className={fieldClass}
-                        />
-                      </Field>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-ink-faint">
-                      {t('studio.gifHint')}
-                    </p>
-                  </>
-                )}
-              </>
-            )}
           </fieldset>
           <div className="shrink-0 space-y-2 border-t border-line-soft pt-3">
             <p className="text-[11px] leading-4 text-ink-faint">

@@ -334,120 +334,22 @@ describe('media creation page', () => {
     })
     expect(container.textContent).toContain('Saved')
   })
-  test('defaults to PNG and exposes GIF animation defaults only when selected', async () => {
+  test('keeps GIF generation hidden while Codex support is unavailable', async () => {
     await render()
-    expect(select(2).value).toBe('png')
+    expect(container.querySelectorAll('select')).toHaveLength(2)
     expect(container.querySelectorAll('input[type=number]')).toHaveLength(1)
-    await change(select(2), 'gif')
-    expect(number(1).value).toBe('9')
-    expect(number(2).value).toBe('200')
-    expect(container.textContent).toContain('codex/gpt-image-2')
-    await prompt()
-    await click('Create')
-    expect(createImages.mock.calls[0][1]).toMatchObject({
-      outputFormat: 'gif',
-      frameCount: 9,
-      frameDurationMs: 200,
-    })
-  })
-  test('generates, previews and saves a GIF with custom animation options', async () => {
-    const url = 'data:image/gif;base64,R0lGODlh'
-    createImages.mockResolvedValueOnce([{ url }])
-    await render()
-    await change(select(2), 'gif')
-    await change(number(1), '16')
-    await change(number(2), '125')
-    await prompt('A boat rocking in a seamless loop')
-    await click('Create')
-    expect(createImages.mock.calls[0][1]).toMatchObject({
-      mode: 'generate',
-      outputFormat: 'gif',
-      frameCount: 16,
-      frameDurationMs: 125,
-    })
-    expect(container.querySelector('figure img')?.getAttribute('src')).toBe(url)
-    await click('View original')
-    expect(
-      container.querySelector('[role=dialog] img')?.getAttribute('src'),
-    ).toBe(url)
-    await act(async () =>
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })),
-    )
-    await click('Save')
-    expect(save).toHaveBeenCalledWith({ kind: 'image', url })
-    expect(container.textContent).toContain('Saved')
-  })
-  test.each([
-    [1, '1'],
-    [1, '65'],
-    [1, '2.5'],
-    [1, ''],
-    [2, '19'],
-    [2, '2001'],
-    [2, '20.5'],
-    [2, ''],
-  ])('validates GIF field %i with value %s', async (index, value) => {
-    await render()
-    await prompt()
-    await change(select(2), 'gif')
-    await change(number(Number(index)), String(value))
-    expect(container.querySelector('form')!.checkValidity()).toBe(false)
-    await click('Create')
-    expect(createImages).not.toHaveBeenCalled()
-  })
-  test.each([
-    [1, '2', '64'],
-    [2, '20', '2000'],
-  ])(
-    'allows clearing, retyping and normalizing GIF field %i',
-    async (index, min, max) => {
-      await render()
-      await change(select(2), 'gif')
-      const input = number(Number(index))
-      expect(input.min).toBe(String(min))
-      expect(input.max).toBe(String(max))
-      await act(async () => input.focus())
-      await change(input, '')
-      await act(async () => input.blur())
-      expect(input.value).toBe('')
-      await act(async () => input.focus())
-      await change(input, `0${max}`)
-      await act(async () => input.blur())
-      expect(input.value).toBe(String(max))
-      expect(input.checkValidity()).toBe(true)
-    },
-  )
-  test('omits GIF options for PNG, editing and video while preserving the GIF draft', async () => {
-    await render()
-    await change(select(2), 'gif')
-    await change(number(1), '16')
-    await change(number(2), '120')
-    await change(select(2), 'png')
-    expect(container.querySelectorAll('input[type=number]')).toHaveLength(1)
+    expect(container.textContent).not.toContain('Output format')
+    expect(container.textContent).not.toContain('GIF')
     await prompt()
     await click('Create')
     expect(createImages.mock.calls[0][1]).not.toHaveProperty('outputFormat')
     expect(createImages.mock.calls[0][1]).not.toHaveProperty('frameCount')
     expect(createImages.mock.calls[0][1]).not.toHaveProperty('frameDurationMs')
-    await change(select(2), 'gif')
-    await click('Edit image')
-    expect(container.querySelectorAll('select')).toHaveLength(2)
-    expect(container.querySelectorAll('input[type=number]')).toHaveLength(1)
-    await prompt()
-    await upload([file()])
-    await click('Create')
-    expect(createImages.mock.calls[1][1]).not.toHaveProperty('outputFormat')
-    expect(createImages.mock.calls[1][1]).not.toHaveProperty('frameCount')
-    expect(createImages.mock.calls[1][1]).not.toHaveProperty('frameDurationMs')
     await click('Generate video')
     expect(container.textContent).not.toContain('Output format')
     await prompt()
     await click('Create')
     expect(createVideo.mock.calls[0][1]).not.toHaveProperty('outputFormat')
-    await click('Generate image')
-    expect(select(2).value).toBe('gif')
-    expect(number(1).value).toBe('16')
-    expect(number(2).value).toBe('120')
   })
   test('submits with Enter and keeps Shift+Enter for a newline', async () => {
     await render()
