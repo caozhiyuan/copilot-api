@@ -35,6 +35,7 @@ const DEFAULT_PROVIDER_APIS = new Map([
   ["google", "https://generativelanguage.googleapis.com/v1beta"],
 ])
 const MIN_RELEASE_DATE = Date.parse("2026-05-01")
+const HY_REASONING_FIELD_CUTOFF = Date.parse("2026-11-01")
 const REASONING_EFFORTS = new Set<CodexReasoningEffort>([
   "none",
   "minimal",
@@ -221,9 +222,14 @@ function mapReasoningField(
   const interleaved = model.interleaved
   const field = isRecord(interleaved) ? interleaved.field : interleaved
   if (field === "reasoning_content") return field
-  // models.dev omits `interleaved` for the Hy family, whose Chat Completions
-  // history expects the OpenRouter-style `reasoning` field.
-  if (model.family === "Hy") return "reasoning"
+  // Older Hy releases expect the OpenRouter-style `reasoning` history field.
+  if (
+    model.family === "Hy"
+    && typeof model.release_date === "string"
+    && Date.parse(model.release_date) < HY_REASONING_FIELD_CUTOFF
+  ) {
+    return "reasoning"
+  }
   return undefined
 }
 

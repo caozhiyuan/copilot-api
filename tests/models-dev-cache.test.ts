@@ -56,6 +56,64 @@ afterEach(async () => {
   tempDir = undefined
 })
 
+test.each([
+  { releaseDate: "2026-10-31", expected: "reasoning" as const },
+  { releaseDate: "2026-11-01", expected: undefined },
+  { releaseDate: "2026-11-02", expected: undefined },
+  { releaseDate: undefined, expected: undefined },
+  { releaseDate: "invalid", expected: undefined },
+])(
+  "limits the Hy reasoning field fallback by release date $releaseDate",
+  ({ releaseDate, expected }) => {
+    installModelsDevCatalog({
+      "opencode-go": {
+        models: {
+          hy: { id: "hy", family: "Hy", release_date: releaseDate },
+        },
+      },
+    })
+
+    const config = getModelsDevModelConfig("opencode-go", "hy")
+    expect(config).toBeDefined()
+    expect(config?.reasoningField).toBe(expected)
+    expect(
+      builtinProviderModelRegistry.getModelConfig("opencode-go", "hy")
+        ?.reasoningField,
+    ).toBe(expected)
+  },
+)
+
+test("preserves explicit reasoning metadata and scopes the date fallback to Hy", () => {
+  installModelsDevCatalog({
+    "opencode-go": {
+      models: {
+        explicit: {
+          id: "explicit",
+          family: "Hy",
+          release_date: "2026-10-31",
+          interleaved: { field: "reasoning_content" },
+        },
+        recent: {
+          id: "recent",
+          family: "Hy",
+          release_date: "2026-11-01",
+          interleaved: { field: "reasoning_content" },
+        },
+        other: { id: "other", family: "Other", release_date: "2026-10-31" },
+      },
+    },
+  })
+
+  for (const id of ["explicit", "recent"]) {
+    expect(getModelsDevModelConfig("opencode-go", id)?.reasoningField).toBe(
+      "reasoning_content",
+    )
+  }
+  expect(
+    getModelsDevModelConfig("opencode-go", "other")?.reasoningField,
+  ).toBeUndefined()
+})
+
 test("filters older releases consistently across models.dev lists, protocols, limits and pricing", () => {
   const models = {
     ...modelsDevReleaseModelsFixture,
