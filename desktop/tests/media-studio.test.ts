@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
+  CODEX_CLI_VERSION,
   createMediaStudioClient,
   mediaFileExtension,
   parseCreatedImages,
@@ -49,6 +50,10 @@ const client = () =>
     getHeaders: () => Promise.resolve({ 'x-api-key': 'gateway-key' }),
     fetch: fetchMock,
   })
+const escapedCodexCliVersion = CODEX_CLI_VERSION.replaceAll('.', '\\.')
+const codexCliUserAgentPattern = new RegExp(
+  `^codex_cli_rs/${escapedCodexCliVersion} \\(.+; .+\\) unknown$`,
+)
 
 beforeEach(() => {
   fetchMock.mockClear()
@@ -85,11 +90,11 @@ describe('media requests', () => {
       'x-api-key': 'gateway-key',
       'content-type': 'application/json',
       originator: 'codex_cli_rs',
-      version: '0.166.0',
+      version: CODEX_CLI_VERSION,
     })
     expect(
       new Headers(fetchMock.mock.calls[0][1]?.headers).get('user-agent'),
-    ).toMatch(/^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/)
+    ).toMatch(codexCliUserAgentPattern)
     expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
       model: 'gpt-image-2',
       prompt: 'A boat',
@@ -292,10 +297,10 @@ describe('media requests', () => {
         'x-api-key': 'gateway-key',
         'content-type': 'application/json',
         originator: 'codex_cli_rs',
-        version: '0.166.0',
+        version: CODEX_CLI_VERSION,
       })
       expect(new Headers(init.headers).get('user-agent')).toMatch(
-        /^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/,
+        codexCliUserAgentPattern,
       )
       expect(JSON.parse(init.body as string)).toEqual({
         model: 'gpt-image-2',

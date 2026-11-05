@@ -32,7 +32,7 @@ import {
 } from '../src/types/media'
 
 // Match the Codex CLI client identity on Desktop image requests.
-const CODEX_CLI_VERSION = '0.166.0'
+export const CODEX_CLI_VERSION = '0.166.0'
 const CODEX_IMAGE_HEADERS = {
   originator: 'codex_cli_rs',
   'user-agent': `codex_cli_rs/${CODEX_CLI_VERSION} (${type()} ${release()}; ${machine()}) unknown`,
