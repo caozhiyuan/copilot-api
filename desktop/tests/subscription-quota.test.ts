@@ -410,6 +410,22 @@ describe('subscriptions page', () => {
     )
   }
 
+  test('shows only the Codex card and queries only its quota for a Codex-only setup', async () => {
+    window.electronAPI.getProviderManagementConfig = mock(() =>
+      Promise.resolve({
+        configPath: 'config.json',
+        providers: [{ name: 'codex', type: 'openai-responses', enabled: true }],
+      }),
+    )
+
+    await renderPage(0)
+
+    expect(container.querySelectorAll('.quota-provider-card')).toHaveLength(1)
+    expect(container.textContent).toContain('Codex')
+    expect(container.textContent).not.toContain('GitHub Copilot')
+    expect(fetchUsage.mock.calls).toEqual([['codex']])
+  })
+
   test('offers provider management when no subscription provider is enabled', async () => {
     window.electronAPI.getProviderManagementConfig = mock(() =>
       Promise.resolve({

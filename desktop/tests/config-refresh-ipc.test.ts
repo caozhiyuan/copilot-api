@@ -227,6 +227,48 @@ beforeEach(async () => {
 
 afterEach(() => mock.restore())
 
+describe('desktop provider management IPC', () => {
+  const config = {
+    configPath: 'config.json',
+    providers: [
+      { name: 'github-copilot', type: 'github-copilot', enabled: true },
+      { name: 'codex', type: 'openai-responses', enabled: true },
+    ],
+  }
+
+  test.each([
+    ['without GitHub credentials', null, ['codex']],
+    [
+      'with GitHub credentials',
+      'github-test-token',
+      ['github-copilot', 'codex'],
+    ],
+  ] satisfies Array<[string, string | null, string[]]>)(
+    'returns the same provider list on read and save %s',
+    async (_label, token, names) => {
+      spyOn(auth, 'readToken').mockResolvedValue(token)
+      spyOn(providerManagement, 'getProviderManagementConfig').mockReturnValue(
+        config,
+      )
+      spyOn(providerManagement, 'saveProviderManagementConfig').mockReturnValue(
+        config,
+      )
+
+      const expected = {
+        ...config,
+        providers: config.providers.filter((provider) =>
+          names.includes(provider.name),
+        ),
+      }
+      expect(await invoke('config:get-provider-management')).toEqual(expected)
+      expect(await invoke('config:save-provider-management', {})).toEqual(
+        expected,
+      )
+      expect(fetch).toHaveBeenCalledTimes(1)
+    },
+  )
+})
+
 describe('desktop model discovery IPC', () => {
   test('requests image models for the Dashboard with gateway auth and preserves the catalog', async () => {
     spyOn(fs.promises, 'readFile').mockResolvedValue(

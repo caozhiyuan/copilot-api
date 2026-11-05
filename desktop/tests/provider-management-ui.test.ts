@@ -1197,6 +1197,23 @@ describe('provider management UI', () => {
     })
   })
 
+  test('shows only Codex when it is the only authorized provider', async () => {
+    getConfig.mockResolvedValue({
+      ...fixture,
+      providers: [{ name: 'codex', type: 'openai-responses', enabled: true }],
+    })
+
+    await render()
+
+    expect(
+      [...container.querySelectorAll('nav button')].map((node) =>
+        node.getAttribute('aria-label'),
+      ),
+    ).toEqual(['codex'])
+    expect(container.querySelector('h3')?.textContent).toBe('codex')
+    expect(container.textContent).not.toContain('github-copilot')
+  })
+
   test('lists enabled providers before disabled ones', async () => {
     getConfig.mockImplementation(() =>
       Promise.resolve({

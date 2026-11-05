@@ -28,10 +28,8 @@ import { loadModelsDevProviderOptions } from '../../src/lib/models-dev-cache'
 import { PATHS } from '../../src/lib/paths'
 import { invalidateConfigCache } from '../../src/lib/config-store'
 import { loadProviderModelOptions } from './provider-model-options'
-import {
-  getProviderManagementConfig,
-  saveProviderManagementConfig,
-} from '../../src/lib/provider-management'
+import { saveProviderManagementConfig } from '../../src/lib/provider-management'
+import { getDesktopProviderManagementConfig } from './provider-management'
 import {
   isValidServerHost,
   resolveEffectiveServerHost,
@@ -651,10 +649,12 @@ export function registerIpcHandlers(
   )
   ipcMain.handle('config:get-provider-management', () => {
     invalidateConfigCache()
-    return getProviderManagementConfig()
+    return getDesktopProviderManagementConfig()
   })
   ipcMain.handle('config:save-provider-management', (_event, input: unknown) =>
-    saveAndRefreshConfig(() => saveProviderManagementConfig(input)),
+    saveAndRefreshConfig(() =>
+      getDesktopProviderManagementConfig(saveProviderManagementConfig(input)),
+    ),
   )
   ipcMain.handle('config:get-provider-model-options', () =>
     loadProviderModelOptions(),
