@@ -275,6 +275,12 @@ export function createMediaStudioClient(options: MediaClientOptions) {
           || model?.startsWith('grok-imagine-image'))
       )
         throw new Error('xAI image generation does not support GIF output')
+      if (
+        outputFormat === 'gif'
+        && (model?.startsWith('github-copilot/gpt-image-2.5-flare')
+          || model?.startsWith('gpt-image-2.5-flare'))
+      )
+        throw new Error('GPT Image 2.5 Flare does not support GIF output')
       const payload = {
         ...(model ? { model } : {}),
         prompt,

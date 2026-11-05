@@ -201,6 +201,52 @@ describe('media requests', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     },
   )
+  test.each([
+    'gpt-image-2.5-flare',
+    ' gpt-image-2.5-flare-2026-09-08 ',
+    'github-copilot/gpt-image-2.5-flare',
+    'github-copilot/gpt-image-2.5-flare-2026-09-08',
+  ])('rejects GIF but permits PNG for %s', async (model) => {
+    await expect(
+      client().createImages('gif', {
+        ...imageInput,
+        model,
+        outputFormat: 'gif',
+      }),
+    ).rejects.toThrow('GPT Image 2.5 Flare does not support GIF output')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await client().createImages('png', {
+      ...imageInput,
+      model,
+      outputFormat: 'png',
+    })
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+      model: model.trim(),
+      prompt: 'A boat',
+      size: '1024x1024',
+      quality: 'high',
+      n: 2,
+    })
+  })
+  test.each(['codex/gpt-image-2', 'custom/animated-image'])(
+    'forwards GIF options for %s',
+    async (model) => {
+      await client().createImages('gif', {
+        ...imageInput,
+        model,
+        outputFormat: 'gif',
+      })
+      expect(
+        JSON.parse(fetchMock.mock.calls[0][1]?.body as string),
+      ).toMatchObject({
+        model,
+        output_format: 'gif',
+        frame_count: 9,
+        frame_duration_ms: 200,
+      })
+    },
+  )
   test('keeps PNG requests unchanged even with stale animation options', async () => {
     await client().createImages('png', {
       ...imageInput,
