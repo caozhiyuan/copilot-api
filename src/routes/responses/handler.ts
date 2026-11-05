@@ -1,3 +1,8 @@
+import {
+  preparePlaintextV2,
+  restorePlaintextV2Response,
+  restorePlaintextV2Chunk,
+} from "~/lib/plaintext-v2"
 import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
@@ -37,6 +42,7 @@ import type {
   ResponseStreamEvent,
 } from "~/lib/types/responses"
 import { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
+import { createResponsesErrorServerSentEventChunk } from "~/services/responses-websocket-helpers"
 
 import { handleResponsesViaMessages } from "./messages-handler"
 import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
@@ -65,7 +71,7 @@ export const responsesHandlerDependencies = {
 }
 
 export const handleResponses = async (c: Context) => {
-  const payload = await c.req.json<ResponsesPayload>()
+  let payload = await c.req.json<ResponsesPayload>()
   setPluginRequestModel(payload.model)
   const requestedModel = payload.model
   payload.model = responsesHandlerDependencies.resolveMappedModel(payload.model)
@@ -173,6 +179,16 @@ export const handleResponses = async (c: Context) => {
     model: payload.model,
   })
 
+  const plaintextV2 = preparePlaintextV2(
+    payload,
+    process.env.CAPI_PLAINTEXT_V2_MODELS,
+  )
+  if (plaintextV2.error)
+    return c.json(
+      { error: { type: "invalid_request_error", message: plaintextV2.error } },
+      400,
+    )
+  payload = plaintextV2.payload
   const normalizedAgentMessageCount = normalizeGuardianAgentMessages(payload)
   if (normalizedAgentMessageCount > 0) {
     logger.debug(
@@ -249,11 +265,10 @@ export const handleResponses = async (c: Context) => {
       const iterator = response[Symbol.asyncIterator]()
 
       try {
-        for await (const chunk of {
+        for await (const originalChunk of {
           [Symbol.asyncIterator]: () => iterator,
         }) {
-          debugJson(logger, "Responses stream chunk:", chunk)
-          const parsedEvent = parseResponsesStreamEvent(chunk)
+          const parsedEvent = parseResponsesStreamEvent(originalChunk)
           recordResponsesFirstToken(parsedEvent)
           if (
             parsedEvent?.type === "response.completed"
@@ -267,6 +282,21 @@ export const handleResponses = async (c: Context) => {
               ),
             }
           }
+
+          let chunk: typeof originalChunk
+          try {
+            chunk = restorePlaintextV2Chunk(originalChunk, plaintextV2.active)
+          } catch {
+            const errorChunk = createResponsesErrorServerSentEventChunk(
+              "Invalid plaintext collaboration response from upstream",
+            )
+            await writeSSEIfConnected(stream, {
+              event: errorChunk.event,
+              data: errorChunk.data ?? "",
+            })
+            break
+          }
+          debugJson(logger, "Responses stream chunk:", chunk)
 
           const processedData = fixStreamIds(
             (chunk as { data?: string }).data ?? "",
@@ -291,13 +321,14 @@ export const handleResponses = async (c: Context) => {
     value: response,
     tailLength: 400,
   })
-  const result = response as ResponsesResult
+  const rawResult = response as ResponsesResult
   recordUsage({
-    ...normalizeResponsesUsage(result.usage),
+    ...normalizeResponsesUsage(rawResult.usage),
     total_nano_aiu: normalizeOptionalToken(
-      result.copilot_usage?.total_nano_aiu,
+      rawResult.copilot_usage?.total_nano_aiu,
     ),
   })
+  const result = restorePlaintextV2Response(rawResult, plaintextV2.active)
   return c.json(result)
 }
 

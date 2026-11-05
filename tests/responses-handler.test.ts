@@ -189,6 +189,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await closeUsageStore()
   Reflect.deleteProperty(process.env, DB_PATH_ENV)
+  Reflect.deleteProperty(process.env, "CAPI_PLAINTEXT_V2_MODELS")
 
   state.copilotToken = originalState.copilotToken
   state.accountType = originalState.accountType
@@ -208,6 +209,137 @@ afterEach(async () => {
   )
   Object.assign(responsesUtilsDependencies, defaultResponsesUtilsDependencies)
   Object.assign(taskTitleDependencies, defaultTaskTitleDependencies)
+})
+
+describe("plaintext V2 Responses integration", () => {
+  const tool = {
+    type: "namespace",
+    name: "collaboration",
+    tools: [
+      {
+        type: "function",
+        name: "send_message",
+        parameters: {
+          properties: { message: { type: "string", encrypted: true } },
+        },
+      },
+    ],
+  }
+  const call = {
+    type: "function_call",
+    name: "send_message",
+    namespace: "capi_plaintext_v2",
+    arguments: '{"message":"hello"}',
+    call_id: "call-1",
+  }
+  const request = (input: unknown, stream = false) =>
+    createApp().request("/v1/responses", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "gpt-test", tools: [tool], input, stream }),
+    })
+
+  test("rewrites the request and non-streaming response", async () => {
+    process.env.CAPI_PLAINTEXT_V2_MODELS = "gpt-test"
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve({
+        ...createResponsesResult(payload.model),
+        output: [call],
+      } as unknown as ResponsesResult),
+    )
+    const response = await request("hello")
+    expect(response.status).toBe(200)
+    expect(createResponses.mock.calls[0][0].tools?.[0]).toMatchObject({
+      name: "capi_plaintext_v2",
+    })
+    const body = (await response.json()) as { output: Array<unknown> }
+    expect(body.output[0]).toMatchObject({
+      namespace: "collaboration",
+      encrypted_function_args: [],
+    })
+  })
+
+  test("restores streaming events", async () => {
+    process.env.CAPI_PLAINTEXT_V2_MODELS = "gpt-test"
+    createResponses.mockImplementation(() =>
+      Promise.resolve(
+        streamChunks([
+          {
+            data: JSON.stringify({
+              type: "response.output_item.done",
+              item: call,
+            }),
+          },
+        ]),
+      ),
+    )
+    const response = await request("hello", true)
+    const text = await response.text()
+    expect(text).toContain('"namespace":"collaboration"')
+    expect(text).toContain('"encrypted_function_args":[]')
+  })
+
+  test("rejects old encrypted agent messages before forwarding", async () => {
+    process.env.CAPI_PLAINTEXT_V2_MODELS = "gpt-test"
+    const response = await request([
+      {
+        type: "agent_message",
+        content: [{ type: "encrypted_content", encrypted_content: "old" }],
+      },
+    ])
+    expect(response.status).toBe(400)
+    expect(createResponses).not.toHaveBeenCalled()
+  })
+
+  test("reports invalid terminal calls and records their usage", async () => {
+    process.env.CAPI_PLAINTEXT_V2_MODELS = "gpt-test"
+    createResponses.mockImplementation(() =>
+      Promise.resolve(
+        streamChunks([
+          {
+            data: JSON.stringify({
+              type: "response.completed",
+              response: {
+                ...createResponsesResult("gpt-test"),
+                output: [{ ...call, arguments: "bad" }],
+                usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7 },
+              },
+            }),
+          },
+        ]),
+      ),
+    )
+    const response = await request("hello", true)
+    expect(await response.text()).toContain('"type":"error"')
+    const usageResponse = await createApp().request(
+      "/token-usage/events?period=day&page=1&page_size=10",
+    )
+    const page = (await usageResponse.json()) as {
+      items: Array<{ total_tokens: number }>
+    }
+    expect(page.items[0]?.total_tokens).toBe(7)
+  })
+
+  test("records non-streaming usage even when response validation fails", async () => {
+    process.env.CAPI_PLAINTEXT_V2_MODELS = "gpt-test"
+    createResponses.mockImplementation((payload) =>
+      Promise.resolve({
+        ...createResponsesResult(payload.model),
+        output: [{ ...call, arguments: "bad" }],
+        usage: { input_tokens: 5, output_tokens: 2, total_tokens: 7 },
+      } as unknown as ResponsesResult),
+    )
+    const response = await request("hello")
+    expect(response.status).toBe(500)
+    const usageResponse = await createApp().request(
+      "/token-usage/events?period=day&page=1&page_size=10",
+    )
+    const page = (await usageResponse.json()) as {
+      items: Array<{ total_tokens: number }>
+    }
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]?.total_tokens).toBe(7)
+  })
 })
 
 describe("Codex task title model routing on Responses", () => {

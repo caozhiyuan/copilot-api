@@ -79,6 +79,12 @@ enabled = false
 >
 > Set `GITHUB_COPILOT_API_KEY` as a system-level user environment variable so the Codex app can read it too. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.
 
+### Optional plaintext collaboration for Copilot Responses
+
+For new Multi-Agent V2 sessions, set `CAPI_PLAINTEXT_V2_MODELS` on the gateway process to a comma-separated list of exact resolved Copilot model IDs, for example `gpt-6.1-sol,gpt-6-astra`. It is disabled when unset. This applies only to the native Copilot Responses route; configure every model used by the participating agents. Restart the gateway to change its environment and start new sessions.
+
+The gateway asks for collaboration tool messages as plaintext and restores the client-facing namespace. These messages are readable in conversation histories and logs. Reasoning and compaction content are unaffected. Existing encrypted agent messages are rejected rather than decrypted or removed; retain a separate unmodified gateway for old sessions. The adapter does not repair other encrypted content or guarantee upstream availability.
+
 ### Auto Review Model Mapping
 
 When using `approvals_reviewer = "auto_review"` through the top-level GitHub Copilot route, add this mapping to the gateway's `config.json`:
