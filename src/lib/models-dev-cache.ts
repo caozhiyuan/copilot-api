@@ -222,7 +222,8 @@ function mapReasoningField(
   const interleaved = model.interleaved
   const field = isRecord(interleaved) ? interleaved.field : interleaved
   if (field === "reasoning_content") return field
-  // Older Hy releases expect the OpenRouter-style `reasoning` history field.
+  // Hy releases before 2026-11-01 expect the OpenRouter-style `reasoning`
+  // history field; newer releases such as hy4 use the default field.
   if (
     model.family === "Hy"
     && typeof model.release_date === "string"
