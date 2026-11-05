@@ -85,11 +85,11 @@ describe('media requests', () => {
       'x-api-key': 'gateway-key',
       'content-type': 'application/json',
       originator: 'codex_cli_rs',
-      version: '0.166.0',
+      version: '0.167.0',
     })
     expect(
       new Headers(fetchMock.mock.calls[0][1]?.headers).get('user-agent'),
-    ).toMatch(/^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/)
+    ).toMatch(/^codex_cli_rs\/0\.167\.0 \(.+; .+\) unknown$/)
     expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
       model: 'gpt-image-2',
       prompt: 'A boat',
@@ -292,10 +292,10 @@ describe('media requests', () => {
         'x-api-key': 'gateway-key',
         'content-type': 'application/json',
         originator: 'codex_cli_rs',
-        version: '0.166.0',
+        version: '0.167.0',
       })
       expect(new Headers(init.headers).get('user-agent')).toMatch(
-        /^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/,
+        /^codex_cli_rs\/0\.167\.0 \(.+; .+\) unknown$/,
       )
       expect(JSON.parse(init.body as string)).toEqual({
         model: 'gpt-image-2',

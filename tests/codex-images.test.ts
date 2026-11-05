@@ -815,9 +815,9 @@ describe("Codex images forwarding", () => {
         expect(headers.get("chatgpt-account-id")).toBe("account-123")
         expect(headers.get("x-api-key")).toBeNull()
         expect(headers.get("originator")).toBe("codex_cli_rs")
-        expect(headers.get("version")).toBe("0.166.0")
+        expect(headers.get("version")).toBe("0.167.0")
         expect(headers.get("user-agent")).toMatch(
-          /^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/,
+          /^codex_cli_rs\/0\.167\.0 \(.+; .+\) unknown$/,
         )
         expect(upstreamPayload).toEqual({
           model: "gpt-image-2",
