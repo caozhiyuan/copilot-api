@@ -11,6 +11,7 @@ import type {
   ProviderManagementConfig,
   ProviderManagementUpdate,
   ProviderModelOptions,
+  ServerLogRecord,
   ServerStatus,
   TokenUsagePeriod,
   TokenUsageSessionsPage,
@@ -973,6 +974,7 @@ describe('provider management UI', () => {
     'keeps manual restart controls disabled until startup finishes (running=%s)',
     async (running) => {
       let notify: ((status: ServerStatus) => void) | undefined
+      let emitLog: ((log: ServerLogRecord) => void) | undefined
       const pendingStart = Promise.withResolvers<ServerStatus>()
       Object.assign(window.electronAPI, {
         getServerStatus: () =>
@@ -983,6 +985,10 @@ describe('provider management UI', () => {
           return () => {
             notify = undefined
           }
+        },
+        onServerLog: (callback: (log: ServerLogRecord) => void) => {
+          emitLog = callback
+          return () => {}
         },
         stopServer: () => {
           notify?.({ running: false })
@@ -1011,6 +1017,12 @@ describe('provider management UI', () => {
         container.querySelector('[role="tab"][aria-selected="true"]')
           ?.textContent,
       ).toBe('Logs')
+      expect(container.textContent).toContain('Server logs')
+
+      await act(async () => {
+        emitLog?.({ sequence: 1, text: 'runtime starting' })
+      })
+      expect(container.textContent).toContain('runtime starting')
 
       await act(async () => {
         pendingStart.resolve(

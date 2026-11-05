@@ -77,6 +77,7 @@ let onServerLog: ReturnType<
   typeof mock<(callback: (log: ServerLogRecord) => void) => () => void>
 >
 let serverStatusListener: ((status: ServerStatus) => void) | null
+let logListener: ((log: ServerLogRecord) => void) | null
 let logUnsubscribeCount = 0
 let openAuthConfig: ReturnType<
   typeof mock<(returnTab: 'dashboard' | 'providers') => void>
@@ -114,8 +115,13 @@ beforeEach(async () => {
   )
   getLogs = mock(() => Promise.resolve([]))
   logUnsubscribeCount = 0
-  onServerLog = mock((_callback: (log: ServerLogRecord) => void) => () => {
-    logUnsubscribeCount += 1
+  logListener = null
+  onServerLog = mock((callback: (log: ServerLogRecord) => void) => {
+    logListener = callback
+    return () => {
+      logUnsubscribeCount += 1
+      if (logListener === callback) logListener = null
+    }
   })
   serverStatusListener = null
   currentAuthMode = 'provider'
@@ -284,7 +290,7 @@ async function clickButton(label: string) {
 }
 
 describe('dashboard overview', () => {
-  test('subscribes to logs only while the log panel is visible', async () => {
+  test('streams logs during a restart and refreshes history when startup finishes', async () => {
     getLogs.mockResolvedValue([{ sequence: 1, text: 'initial log' }])
     await render('provider')
 
@@ -306,17 +312,26 @@ describe('dashboard overview', () => {
     expect(getLogs).toHaveBeenCalledTimes(2)
     expect(container.textContent).toContain('latest hidden log')
 
+    const emitLog = logListener
     await act(async () => {
       serverStatusListener?.({ running: false, restarting: true })
     })
-    expect(logUnsubscribeCount).toBe(2)
+    expect(container.textContent).toContain('Server logs')
+    expect(container.textContent).toContain('latest hidden log')
+    expect(logUnsubscribeCount).toBe(1)
 
-    getLogs.mockResolvedValue([{ sequence: 3, text: 'new server run' }])
+    await act(async () => {
+      emitLog?.({ sequence: 3, text: 'starting new server' })
+    })
+    expect(container.textContent).toContain('starting new server')
+
+    getLogs.mockResolvedValue([{ sequence: 4, text: 'new server run' }])
     await act(async () => {
       serverStatusListener?.({ running: true, port: 4141 })
     })
     await act(async () => {})
     expect(getLogs).toHaveBeenCalledTimes(3)
+    expect(logUnsubscribeCount).toBe(2)
     expect(container.textContent).toContain('new server run')
     expect(container.textContent).not.toContain('latest hidden log')
   })

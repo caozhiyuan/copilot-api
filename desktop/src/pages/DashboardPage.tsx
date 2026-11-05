@@ -302,6 +302,7 @@ export default function DashboardPage({
   )
   const [stopping, setStopping] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [logPanelSession, setLogPanelSession] = useState(0)
 
   const [tab, setTab] = useState<DashboardTab>(initialTab)
   const [advancedConfigOpened, setAdvancedConfigOpened] = useState(false)
@@ -364,6 +365,15 @@ export default function DashboardPage({
   const [copied, setCopied] = useState<string>('')
 
   const intentionalStop = useRef(false)
+  const wasRestarting = useRef(false)
+  // Keep the live log subscription open while restarting, then load the new
+  // process's history when the restart finishes.
+  useEffect(() => {
+    if (wasRestarting.current && !restarting) {
+      setLogPanelSession((session) => session + 1)
+    }
+    wasRestarting.current = restarting
+  }, [restarting])
   useEffect(() => {
     if (!started && !TABS_REACHABLE_WHILE_STOPPED.includes(tab))
       setTab('dashboard')
@@ -1369,9 +1379,9 @@ export default function DashboardPage({
           </div>
         )}
 
-        {/* Logs tab */}
-        {started && !restarting && tab === 'logs' && (
-          <ServerLogPanel variant="page" />
+        {/* Keep the panel mounted so startup lines stream in during a restart. */}
+        {started && tab === 'logs' && (
+          <ServerLogPanel key={logPanelSession} variant="page" />
         )}
       </div>
     </div>
