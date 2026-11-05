@@ -37,6 +37,9 @@ export interface ImageCreationInput {
   size: (typeof IMAGE_SIZES)[number]
   quality: (typeof IMAGE_QUALITIES)[number]
   n: number
+  outputFormat?: 'png' | 'gif'
+  frameCount?: number
+  frameDurationMs?: number
   images: MediaUpload[]
 }
 

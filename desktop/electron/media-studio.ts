@@ -234,6 +234,11 @@ export function createMediaStudioClient(options: MediaClientOptions) {
       input: ImageCreationInput,
     ): Promise<CreatedImage[]> {
       const prompt = validatePrompt(input.prompt)
+      const {
+        outputFormat = 'png',
+        frameCount = 9,
+        frameDurationMs = 200,
+      } = input
       if (
         !['generate', 'edit'].includes(input.mode)
         || !['default', 'codex', 'xai'].includes(input.provider)
@@ -243,18 +248,44 @@ export function createMediaStudioClient(options: MediaClientOptions) {
         || !Number.isInteger(input.n)
         || input.n < 1
         || input.n > 4
+        || !['png', 'gif'].includes(outputFormat)
       )
         throw new Error('Invalid image options')
+      if (outputFormat === 'gif') {
+        if (input.mode !== 'generate')
+          throw new Error('GIF output is only supported for image generation')
+        if (
+          !Number.isInteger(frameCount)
+          || frameCount < 2
+          || frameCount > 64
+          || !Number.isInteger(frameDurationMs)
+          || frameDurationMs < 20
+          || frameDurationMs > 2000
+        )
+          throw new Error('Invalid GIF animation options')
+      }
       validateUploads(input.images, 5)
       if (input.mode === 'edit' && !input.images.length)
         throw new Error('Select an image to edit')
       const model = input.model.trim() || getDefaultImageModel(input.provider)
+      if (
+        outputFormat === 'gif'
+        && (input.provider === 'xai'
+          || model?.startsWith('xai/')
+          || model?.startsWith('grok-imagine-image'))
+      )
+        throw new Error('xAI image generation does not support GIF output')
       const payload = {
         ...(model ? { model } : {}),
         prompt,
         n: input.n,
         size: input.size,
         quality: input.quality,
+        ...(outputFormat === 'gif' && {
+          output_format: 'gif',
+          frame_count: frameCount,
+          frame_duration_ms: frameDurationMs,
+        }),
       }
       const operation = input.mode === 'edit' ? 'edits' : 'generations'
       const prefix = input.provider === 'default' ? '' : `/${input.provider}`

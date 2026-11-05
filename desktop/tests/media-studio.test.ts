@@ -100,6 +100,123 @@ describe('media requests', () => {
     )
   })
   test.each(['default', 'codex'] as const)(
+    'generates GIFs with default animation options through %s',
+    async (provider) => {
+      response = () => Response.json({ data: [{ b64_json: 'R0lGODlh' }] })
+      const result = await client().createImages('gif', {
+        ...imageInput,
+        provider,
+        outputFormat: 'gif',
+      })
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        `http://[::1]:5151${provider === 'codex' ? '/codex' : ''}/v1/images/generations`,
+      )
+      expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+        model: 'gpt-image-2',
+        prompt: 'A boat',
+        size: '1024x1024',
+        quality: 'high',
+        n: 2,
+        output_format: 'gif',
+        frame_count: 9,
+        frame_duration_ms: 200,
+      })
+      expect(result[0].url).toBe('data:image/gif;base64,R0lGODlh')
+      expect(mediaFileExtension({ kind: 'image', url: result[0].url })).toBe(
+        'gif',
+      )
+    },
+  )
+  test.each([
+    [2, 20],
+    [64, 2000],
+    [16, 125],
+  ])(
+    'sends GIF animation options %i / %i',
+    async (frameCount, frameDurationMs) => {
+      await client().createImages('gif', {
+        ...imageInput,
+        outputFormat: 'gif',
+        frameCount,
+        frameDurationMs,
+      })
+      expect(
+        JSON.parse(fetchMock.mock.calls[0][1]?.body as string),
+      ).toMatchObject({
+        output_format: 'gif',
+        frame_count: frameCount,
+        frame_duration_ms: frameDurationMs,
+      })
+    },
+  )
+  test.each([
+    { frameCount: 1 },
+    { frameCount: 65 },
+    { frameCount: 2.5 },
+    { frameCount: Number.NaN },
+    { frameCount: null },
+    { frameDurationMs: 19 },
+    { frameDurationMs: 2001 },
+    { frameDurationMs: 20.5 },
+    { frameDurationMs: Number.NaN },
+    { frameDurationMs: '200' },
+  ])(
+    'rejects invalid GIF animation options before fetching %#',
+    async (override) => {
+      await expect(
+        client().createImages('gif', {
+          ...imageInput,
+          outputFormat: 'gif',
+          ...override,
+        } as ImageCreationInput),
+      ).rejects.toThrow('Invalid GIF animation options')
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+  test('rejects GIF output for image edits before fetching', async () => {
+    await expect(
+      client().createImages('gif', {
+        ...imageInput,
+        mode: 'edit',
+        outputFormat: 'gif',
+        images: [image],
+      }),
+    ).rejects.toThrow('GIF output is only supported for image generation')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  test.each([
+    { provider: 'xai' },
+    { model: 'xai/grok-imagine-image-2.0' },
+    { model: ' grok-imagine-image-2.0 ' },
+  ] as const)(
+    'rejects xAI GIF requests instead of silently returning a still image %#',
+    async (override) => {
+      await expect(
+        client().createImages('gif', {
+          ...imageInput,
+          outputFormat: 'gif',
+          ...override,
+        }),
+      ).rejects.toThrow('xAI image generation does not support GIF output')
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+  test('keeps PNG requests unchanged even with stale animation options', async () => {
+    await client().createImages('png', {
+      ...imageInput,
+      outputFormat: 'png',
+      frameCount: 0,
+      frameDurationMs: 0,
+    })
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+      model: 'gpt-image-2',
+      prompt: 'A boat',
+      size: '1024x1024',
+      quality: 'high',
+      n: 2,
+    })
+  })
+  test.each(['default', 'codex'] as const)(
     'sends multiple edit images as JSON to %s',
     async (provider) => {
       await client().createImages('one', {
@@ -176,6 +293,8 @@ describe('media requests', () => {
     { n: 1.5 },
     { size: 'bad' },
     { quality: 'bad' },
+    { outputFormat: 'jpeg' },
+    { outputFormat: null },
     { provider: 'bad' },
     { mode: 'bad' },
     { mode: 'edit' },
