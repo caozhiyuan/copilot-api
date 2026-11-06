@@ -79,6 +79,39 @@ enabled = false
 >
 > Set `GITHUB_COPILOT_API_KEY` as a system-level user environment variable so the Codex app can read it too. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.
 
+### Set the `GITHUB_COPILOT_API_KEY` Environment Variable
+
+If gateway authentication is disabled, you can use `dummy` as a non-empty placeholder. If gateway authentication is enabled, replace it with a real gateway API key. Restart Codex after configuring the variable.
+
+**macOS (zsh, Codex CLI):** Persist the variable in your shell configuration and apply it to the current terminal:
+
+```sh
+echo 'export GITHUB_COPILOT_API_KEY=dummy' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Codex Desktop launched from the Dock or Finder may not read `~/.zshrc`. To make the variable available to subsequently launched GUI apps in the current login session, also run:
+
+```sh
+launchctl setenv GITHUB_COPILOT_API_KEY dummy
+```
+
+`launchctl setenv` generally needs to be rerun after logging out and back in. Fully quit and restart Codex afterward.
+
+**Windows (PowerShell):** Persist the user environment variable:
+
+```powershell
+[Environment]::SetEnvironmentVariable('GITHUB_COPILOT_API_KEY', 'dummy', 'User')
+```
+
+To use Codex immediately in the current PowerShell session, also run:
+
+```powershell
+$env:GITHUB_COPILOT_API_KEY = 'dummy'
+```
+
+The persistent value is available to new terminal sessions. Fully close and restart VS Code or Codex Desktop; sign out and back in to Windows if the app still cannot see it.
+
 ### Auto Review Model Mapping
 
 When using `approvals_reviewer = "auto_review"` through the top-level GitHub Copilot route, add this mapping to the gateway's `config.json`:
