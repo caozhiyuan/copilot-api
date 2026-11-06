@@ -26,6 +26,14 @@
 
 https://github.com/caozhiyuan/copilot-api/releases
 
+macOS 安装包目前未经过 Apple Developer ID 签名和公证。如果从官方 Release 下载 DMG，将 `Copilot API.app` 拖到「应用程序」（`/Applications`）后，打开时提示“已损坏，无法打开”，可在确认下载来源可信后，在终端移除该应用的下载隔离属性：
+
+```sh
+sudo xattr -dr com.apple.quarantine "/Applications/Copilot API.app"
+```
+
+之后重新打开应用。此命令只针对指定的 App，不会全局禁用 macOS Gatekeeper；如果仍然无法启动，请重新下载并检查安装包是否确实损坏。
+
 Linux 用户需要先为下载的 AppImage 添加执行权限：
 
 ```sh
