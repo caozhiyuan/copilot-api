@@ -105,6 +105,7 @@ function handleFinish(
       }
     }
 
+    flushPendingToolCalls(state, events)
     flushDeferredContent(state, events)
 
     state.pendingMessageDelta = {
@@ -169,6 +170,16 @@ function handleToolCalls(
 
     for (const toolCall of delta.tool_calls) {
       if (toolCall.id && toolCall.function?.name) {
+        // Keep the current tool open: its arguments may arrive after this call.
+        if (isToolBlockOpen(state)) {
+          state.toolCalls[toolCall.index] = {
+            id: toolCall.id,
+            name: toolCall.function.name,
+            arguments: toolCall.function.arguments ?? "",
+          }
+          continue
+        }
+
         // New tool call starting.
         if (state.contentBlockOpen) {
           // Close any previously open block.
@@ -205,17 +216,56 @@ function handleToolCalls(
         // Tool call can still be empty
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (toolCallInfo) {
-          events.push({
-            type: "content_block_delta",
-            index: toolCallInfo.anthropicBlockIndex,
-            delta: {
-              type: "input_json_delta",
-              partial_json: toolCall.function.arguments,
-            },
-          })
+          if (toolCallInfo.anthropicBlockIndex === undefined) {
+            toolCallInfo.arguments =
+              (toolCallInfo.arguments ?? "") + toolCall.function.arguments
+          } else {
+            events.push({
+              type: "content_block_delta",
+              index: toolCallInfo.anthropicBlockIndex,
+              delta: {
+                type: "input_json_delta",
+                partial_json: toolCall.function.arguments,
+              },
+            })
+          }
         }
       }
     }
+  }
+}
+
+function flushPendingToolCalls(
+  state: AnthropicStreamState,
+  events: Array<AnthropicStreamEventData>,
+): void {
+  for (const toolCall of Object.values(state.toolCalls)) {
+    if (toolCall.anthropicBlockIndex !== undefined) continue
+
+    const index = state.contentBlockIndex++
+    toolCall.anthropicBlockIndex = index
+    events.push({
+      type: "content_block_start",
+      index,
+      content_block: {
+        type: "tool_use",
+        id: toolCall.id,
+        name: toolCall.name,
+        input: {},
+      },
+    })
+    if (toolCall.arguments) {
+      events.push({
+        type: "content_block_delta",
+        index,
+        delta: {
+          type: "input_json_delta",
+          partial_json: toolCall.arguments,
+        },
+      })
+    }
+    events.push({ type: "content_block_stop", index })
+    toolCall.arguments = undefined
   }
 }
 

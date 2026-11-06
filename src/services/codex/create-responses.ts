@@ -488,6 +488,11 @@ const buildCodexResponsesWebSocketPoolKey = (
   headers: Record<string, string>,
   baseUrl: string,
 ): string => {
+  // Keep thread-id in the fingerprint, but ignore per-request IDs for Codex.
+  const codexThreadId =
+    /codex/iu.test(headers["user-agent"] ?? "") ?
+      headers["thread-id"]?.trim()
+    : undefined
   const authFingerprint = createHash("sha256")
     .update(
       `${state.codexAccessToken ?? "missing-token"}:${state.codexAccountId ?? "missing-account"}`,
@@ -498,7 +503,11 @@ const buildCodexResponsesWebSocketPoolKey = (
     .update(
       JSON.stringify(
         Object.entries(headers)
-          .filter(([headerName]) => shouldIncludeHeader(headerName))
+          .filter(
+            ([headerName]) =>
+              shouldIncludeHeader(headerName)
+              && !(codexThreadId && headerName === "x-client-request-id"),
+          )
           .sort(([left], [right]) => left.localeCompare(right)),
       ),
     )
