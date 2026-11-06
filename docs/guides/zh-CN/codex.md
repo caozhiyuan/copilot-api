@@ -83,20 +83,23 @@ enabled = false
 
 ### 设置 `GITHUB_COPILOT_API_KEY` 环境变量
 
-编辑或新建 Codex 用户目录下的 `.env` 文件：
+网关未配置 API Key 时，可使用 `dummy` 占位；启用鉴权时请换成实际 API Key。
 
-| 系统 | 文件路径 |
-| --- | --- |
-| macOS / Linux | `~/.codex/.env` |
-| Windows | `%USERPROFILE%\.codex\.env` |
+**macOS（终端）：**
 
-若设置了 `CODEX_HOME`，则使用该目录下的 `.env`。在文件中添加以下内容；已有同名变量时修改原行：
-
-```dotenv
-GITHUB_COPILOT_API_KEY=dummy
+```sh
+launchctl setenv GITHUB_COPILOT_API_KEY dummy
 ```
 
-网关未配置 API Key 时使用 `dummy` 占位；启用鉴权时请换成实际 API Key。保存后完全退出并重新打开 Codex（macOS 使用 `⌘Q`）；Codex CLI 和桌面应用均会读取此文件。
+此命令设置当前用户登录会话的环境变量，供之后从 Dock/Finder 启动的应用读取。设置后完全退出（`⌘Q`）并重新打开 Codex；使用 CLI 时也需完全退出并重新打开终端应用。注销或重启 macOS 后需重新执行。
+
+**Windows（CMD / PowerShell）：**
+
+```sh
+setx GITHUB_COPILOT_API_KEY dummy
+```
+
+此命令保存当前用户的环境变量。设置后完全退出并重新打开 Codex 或终端，使新环境变量生效。
 
 ### 自动审核模型映射
 

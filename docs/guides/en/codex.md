@@ -81,20 +81,23 @@ enabled = false
 
 ### Set the `GITHUB_COPILOT_API_KEY` Environment Variable
 
-Edit or create the `.env` file in your Codex user directory:
+Use `dummy` as a placeholder if gateway API key authentication is disabled; otherwise use your actual gateway API key.
 
-| System | File path |
-| --- | --- |
-| macOS / Linux | `~/.codex/.env` |
-| Windows | `%USERPROFILE%\.codex\.env` |
+**macOS (Terminal):**
 
-If `CODEX_HOME` is set, use the `.env` file in that directory instead. Add the following line, or update the existing entry for this variable:
-
-```dotenv
-GITHUB_COPILOT_API_KEY=dummy
+```sh
+launchctl setenv GITHUB_COPILOT_API_KEY dummy
 ```
 
-Use `dummy` as a placeholder if gateway API key authentication is disabled; otherwise use your actual gateway API key. Save the file, then fully quit and reopen Codex (use `⌘Q` on macOS). Both Codex CLI and the desktop app load this file.
+This sets the variable for your current login session, including apps subsequently launched from Dock or Finder. Fully quit (`⌘Q`) and reopen Codex; for CLI use, fully quit and reopen your terminal app as well. Run the command again after logging out or restarting macOS.
+
+**Windows (Command Prompt / PowerShell):**
+
+```sh
+setx GITHUB_COPILOT_API_KEY dummy
+```
+
+This saves a user environment variable. Fully quit and reopen Codex or your terminal to pick up the new value.
 
 ### Auto Review Model Mapping
 
