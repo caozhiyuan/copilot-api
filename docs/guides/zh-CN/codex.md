@@ -93,6 +93,16 @@ launchctl setenv GITHUB_COPILOT_API_KEY dummy
 
 此命令设置当前用户登录会话的环境变量，供之后从 Dock/Finder 启动的应用读取。设置后完全退出（`⌘Q`）并重新打开 Codex；使用 CLI 时也需完全退出并重新打开终端应用。注销或重启 macOS 后需重新执行。
 
+**Linux（终端）：**
+
+在所用 shell 的启动文件中加入以下行（Bash 为 `~/.bashrc`，Zsh 为 `~/.zshrc`），然后重新打开终端：
+
+```sh
+export GITHUB_COPILOT_API_KEY=dummy
+```
+
+该配置会长期生效。修改已有值后还需完全退出并重新打开 Codex。
+
 **Windows（CMD / PowerShell）：**
 
 ```sh

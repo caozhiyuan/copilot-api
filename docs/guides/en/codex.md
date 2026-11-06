@@ -91,6 +91,16 @@ launchctl setenv GITHUB_COPILOT_API_KEY dummy
 
 This sets the variable for your current login session, including apps subsequently launched from Dock or Finder. Fully quit (`⌘Q`) and reopen Codex; for CLI use, fully quit and reopen your terminal app as well. Run the command again after logging out or restarting macOS.
 
+**Linux (Terminal):**
+
+Add the following line to your shell startup file (`~/.bashrc` for Bash or `~/.zshrc` for Zsh), then open a new terminal:
+
+```sh
+export GITHUB_COPILOT_API_KEY=dummy
+```
+
+The setting persists across new terminal sessions. Fully quit and reopen Codex after changing an existing value.
+
 **Windows (Command Prompt / PowerShell):**
 
 ```sh
