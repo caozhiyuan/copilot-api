@@ -77,7 +77,24 @@ enabled = false
 >
 > Sign in to Codex with ChatGPT or an API key before use. `requires_openai_auth = true` shows account information in the UI, plus quota usage and subscription details for ChatGPT sign-in; request authentication still prioritizes `env_key`. To bypass account restrictions in the Codex client, try setting it to `false`. Note that `false` also hides Remote (**Control this Mac** under **Settings → Connections**) in the desktop app ([openai/codex#36879](https://github.com/openai/codex/issues/36879)).
 >
-> Set `GITHUB_COPILOT_API_KEY` as a system-level user environment variable so the Codex app can read it too. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.
+> `GITHUB_COPILOT_API_KEY` authenticates requests to the gateway. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.
+
+### Set the `GITHUB_COPILOT_API_KEY` Environment Variable
+
+Edit or create the `.env` file in your Codex user directory:
+
+| System | File path |
+| --- | --- |
+| macOS / Linux | `~/.codex/.env` |
+| Windows | `%USERPROFILE%\.codex\.env` |
+
+If `CODEX_HOME` is set, use the `.env` file in that directory instead. Add the following line, or update the existing entry for this variable:
+
+```dotenv
+GITHUB_COPILOT_API_KEY=dummy
+```
+
+Use `dummy` as a placeholder if gateway API key authentication is disabled; otherwise use your actual gateway API key. Save the file, then fully quit and reopen Codex (use `⌘Q` on macOS). Both Codex CLI and the desktop app load this file.
 
 ### Auto Review Model Mapping
 
