@@ -83,36 +83,22 @@ enabled = false
 
 ### 设置 `GITHUB_COPILOT_API_KEY` 环境变量
 
-如果网关没有配置 API Key，可以将 `dummy` 作为非空占位值；如果启用了网关鉴权，请替换为实际的 API Key。设置后重启 Codex。
+网关未配置 API Key 时，可使用 `dummy` 占位；启用鉴权时请换成实际 API Key。
 
-**macOS（zsh，Codex CLI）：** 在终端永久写入用户 Shell 配置，并使当前终端立即生效：
+**macOS（zsh）：**
 
 ```sh
 echo 'export GITHUB_COPILOT_API_KEY=dummy' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-从 Dock 或 Finder 启动的 Codex 桌面应用不一定读取 `~/.zshrc`。如需让之后启动的 GUI 应用也能读取，可额外执行：
+**Windows（CMD / PowerShell）：**
 
 ```sh
-launchctl setenv GITHUB_COPILOT_API_KEY dummy
+setx GITHUB_COPILOT_API_KEY dummy
 ```
 
-`launchctl setenv` 对当前登录会话有效，重新登录后通常需要再次设置；执行后请完全退出并重新打开 Codex。
-
-**Windows（PowerShell）：** 设置永久用户环境变量：
-
-```powershell
-[Environment]::SetEnvironmentVariable('GITHUB_COPILOT_API_KEY', 'dummy', 'User')
-```
-
-如果要在当前 PowerShell 窗口立即运行 Codex，还需执行：
-
-```powershell
-$env:GITHUB_COPILOT_API_KEY = 'dummy'
-```
-
-永久变量会在新启动的终端中生效。VS Code 或 Codex 桌面应用请完全退出后重开；仍未生效时可重新登录 Windows。
+设置后重新打开终端或 Codex，使新环境变量生效。
 
 ### 自动审核模型映射
 
