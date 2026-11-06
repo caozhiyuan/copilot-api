@@ -81,36 +81,22 @@ enabled = false
 
 ### Set the `GITHUB_COPILOT_API_KEY` Environment Variable
 
-If gateway authentication is disabled, you can use `dummy` as a non-empty placeholder. If gateway authentication is enabled, replace it with a real gateway API key. Restart Codex after configuring the variable.
+Use `dummy` as a placeholder if gateway API key authentication is disabled; otherwise use your actual gateway API key.
 
-**macOS (zsh, Codex CLI):** Persist the variable in your shell configuration and apply it to the current terminal:
+**macOS (zsh):**
 
 ```sh
 echo 'export GITHUB_COPILOT_API_KEY=dummy' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-Codex Desktop launched from the Dock or Finder may not read `~/.zshrc`. To make the variable available to subsequently launched GUI apps in the current login session, also run:
+**Windows (Command Prompt / PowerShell):**
 
 ```sh
-launchctl setenv GITHUB_COPILOT_API_KEY dummy
+setx GITHUB_COPILOT_API_KEY dummy
 ```
 
-`launchctl setenv` generally needs to be rerun after logging out and back in. Fully quit and restart Codex afterward.
-
-**Windows (PowerShell):** Persist the user environment variable:
-
-```powershell
-[Environment]::SetEnvironmentVariable('GITHUB_COPILOT_API_KEY', 'dummy', 'User')
-```
-
-To use Codex immediately in the current PowerShell session, also run:
-
-```powershell
-$env:GITHUB_COPILOT_API_KEY = 'dummy'
-```
-
-The persistent value is available to new terminal sessions. Fully close and restart VS Code or Codex Desktop; sign out and back in to Windows if the app still cannot see it.
+Restart the terminal or Codex to pick up the new environment variable.
 
 ### Auto Review Model Mapping
 
