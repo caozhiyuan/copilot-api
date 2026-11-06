@@ -81,6 +81,39 @@ enabled = false
 >
 > `GITHUB_COPILOT_API_KEY` 需设置为系统级用户环境变量，以便 Codex 应用也能读取。填写任一[网关 API Key](cli.md#auth-命令选项)；未配置 Key 时，填写任意非空占位值即可。未设置时，Codex 会报 `Missing environment variable` 错误。
 
+### 设置 `GITHUB_COPILOT_API_KEY` 环境变量
+
+如果网关没有配置 API Key，可以将 `dummy` 作为非空占位值；如果启用了网关鉴权，请替换为实际的 API Key。设置后重启 Codex。
+
+**macOS（zsh，Codex CLI）：** 在终端永久写入用户 Shell 配置，并使当前终端立即生效：
+
+```sh
+echo 'export GITHUB_COPILOT_API_KEY=dummy' >> ~/.zshrc
+source ~/.zshrc
+```
+
+从 Dock 或 Finder 启动的 Codex 桌面应用不一定读取 `~/.zshrc`。如需让之后启动的 GUI 应用也能读取，可额外执行：
+
+```sh
+launchctl setenv GITHUB_COPILOT_API_KEY dummy
+```
+
+`launchctl setenv` 对当前登录会话有效，重新登录后通常需要再次设置；执行后请完全退出并重新打开 Codex。
+
+**Windows（PowerShell）：** 设置永久用户环境变量：
+
+```powershell
+[Environment]::SetEnvironmentVariable('GITHUB_COPILOT_API_KEY', 'dummy', 'User')
+```
+
+如果要在当前 PowerShell 窗口立即运行 Codex，还需执行：
+
+```powershell
+$env:GITHUB_COPILOT_API_KEY = 'dummy'
+```
+
+永久变量会在新启动的终端中生效。VS Code 或 Codex 桌面应用请完全退出后重开；仍未生效时可重新登录 Windows。
+
 ### 自动审核模型映射
 
 通过顶层 GitHub Copilot 路由使用 `approvals_reviewer = "auto_review"` 时，在网关 `config.json` 中加入以下映射：
