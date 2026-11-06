@@ -32,6 +32,14 @@ The settings screen also exposes `OAuth App`, `API Home`, `SQLite DB Path`, `Ent
 
 https://github.com/caozhiyuan/copilot-api/releases
 
+The macOS build currently has no Apple Developer ID signature or notarization. If macOS reports that `Copilot API.app` "is damaged and can't be opened", first download the DMG from the official Release and move the app into `/Applications`. After verifying the download source, remove the quarantine attribute for this app in Terminal:
+
+```sh
+sudo xattr -dr com.apple.quarantine "/Applications/Copilot API.app"
+```
+
+Then try opening the app again. This command only affects the specified app; it does not disable Gatekeeper globally. If the app still fails to launch, re-download the installer and check whether the file is actually damaged.
+
 On Linux, make the downloaded AppImage executable before launching it:
 
 ```sh
