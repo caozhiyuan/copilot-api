@@ -79,26 +79,24 @@ enabled = false
 >
 > 使用 Codex 需先通过 ChatGPT 或 API Key 登录。`requires_openai_auth = true` 用于在 UI 中显示登录账号信息，ChatGPT 登录时还可显示额度和订阅信息；请求鉴权仍优先使用 `env_key`。如需绕过 Codex 客户端的账号限制，可尝试设为 `false`。注意：设为 `false` 后，桌面应用会隐藏 Remote（**Settings → Connections** 中的 **Control this Mac**）（[openai/codex#36879](https://github.com/openai/codex/issues/36879)）。
 >
-> `GITHUB_COPILOT_API_KEY` 需设置为系统级用户环境变量，以便 Codex 应用也能读取。填写任一[网关 API Key](cli.md#auth-命令选项)；未配置 Key 时，填写任意非空占位值即可。未设置时，Codex 会报 `Missing environment variable` 错误。
+> `GITHUB_COPILOT_API_KEY` 用于网关鉴权。填写任一[网关 API Key](cli.md#auth-命令选项)；未配置 Key 时，填写任意非空占位值即可。未设置时，Codex 会报 `Missing environment variable` 错误。
 
 ### 设置 `GITHUB_COPILOT_API_KEY` 环境变量
 
-网关未配置 API Key 时，可使用 `dummy` 占位；启用鉴权时请换成实际 API Key。
+编辑或新建 Codex 用户目录下的 `.env` 文件：
 
-**macOS（zsh）：**
+| 系统 | 文件路径 |
+| --- | --- |
+| macOS / Linux | `~/.codex/.env` |
+| Windows | `%USERPROFILE%\.codex\.env` |
 
-```sh
-echo 'export GITHUB_COPILOT_API_KEY=dummy' >> ~/.zshrc
-source ~/.zshrc
+若设置了 `CODEX_HOME`，则使用该目录下的 `.env`。在文件中添加以下内容；已有同名变量时修改原行：
+
+```dotenv
+GITHUB_COPILOT_API_KEY=dummy
 ```
 
-**Windows（CMD / PowerShell）：**
-
-```sh
-setx GITHUB_COPILOT_API_KEY dummy
-```
-
-设置后重新打开终端或 Codex，使新环境变量生效。
+网关未配置 API Key 时使用 `dummy` 占位；启用鉴权时请换成实际 API Key。保存后完全退出并重新打开 Codex（macOS 使用 `⌘Q`）；Codex CLI 和桌面应用均会读取此文件。
 
 ### 自动审核模型映射
 
