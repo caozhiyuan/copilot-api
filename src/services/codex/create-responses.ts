@@ -89,17 +89,6 @@ const STRIPPED_CODEX_WEBSOCKET_HEADERS = new Set([
   "x-codex-turn-state",
 ])
 
-const CODEX_WEBSOCKET_AFFINITY_HEADERS = new Set([
-  "thread-id",
-  "openai-beta",
-  "x-codex-beta-features",
-  "x-codex-guardian",
-  "x-codex-routing-hint",
-  "x-codex-safety-buffering-enabled",
-  "x-codex-safety-buffering-faster-model",
-  "x-openai-account-routing-override",
-])
-
 const shouldForwardCodexRequestHeader = (headerName: string): boolean => {
   const headerNameLower = headerName.toLowerCase()
   return (
@@ -510,27 +499,26 @@ const buildCodexResponsesWebSocketPoolKey = (
     )
     .digest("hex")
     .slice(0, 16)
-  const headerFingerprint = createHash("sha256")
-    .update(
-      JSON.stringify(
-        Object.entries(headers)
-          .filter(([headerName]) =>
-            codexThreadId ?
-              CODEX_WEBSOCKET_AFFINITY_HEADERS.has(headerName)
-            : shouldIncludeHeader(headerName),
-          )
-          .sort(([left], [right]) => left.localeCompare(right)),
-      ),
-    )
-    .digest("hex")
-    .slice(0, 16)
+  const affinityKey =
+    codexThreadId ?
+      `thread:${codexThreadId}`
+    : createHash("sha256")
+        .update(
+          JSON.stringify(
+            Object.entries(headers)
+              .filter(([headerName]) => shouldIncludeHeader(headerName))
+              .sort(([left], [right]) => left.localeCompare(right)),
+          ),
+        )
+        .digest("hex")
+        .slice(0, 16)
 
   return [
     "codex",
     resolveCodexResponsesUrl(baseUrl),
     payload.model,
     authFingerprint,
-    headerFingerprint,
+    affinityKey,
   ]
     .map(encodePoolKeyPart)
     .join("|")

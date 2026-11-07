@@ -60,6 +60,8 @@ describe("Codex WebSocket headers", () => {
       headers.set("originator", "another-client")
       headers.set("version", "2.0")
       headers.set("x-custom-metadata", "request-2")
+      headers.set("openai-beta", "test-feature")
+      headers.set("x-openai-account-routing-override", "us")
       const second = prepareCodexResponsesWebSocketRequest(
         { model: "gpt-5.4" },
         headers,
@@ -122,30 +124,6 @@ describe("Codex WebSocket headers", () => {
     },
   )
 
-  test.each([
-    "openai-beta",
-    "x-codex-beta-features",
-    "x-codex-guardian",
-    "x-codex-safety-buffering-enabled",
-    "x-codex-safety-buffering-faster-model",
-    "x-openai-account-routing-override",
-  ])("isolates thread sockets when %s changes", (headerName) => {
-    const headers = new Headers({
-      "user-agent": "codex-tui/0.167.0",
-      "thread-id": "thread-1",
-      [headerName]: "first-value",
-    })
-    const first = prepareCodexResponsesWebSocketRequest(
-      { model: "gpt-5.4" },
-      headers,
-    )
-    headers.set(headerName, "second-value")
-    expect(
-      prepareCodexResponsesWebSocketRequest({ model: "gpt-5.4" }, headers)
-        .poolKey,
-    ).not.toBe(first.poolKey)
-  })
-
   test("isolates thread sockets by upstream destination and credentials", () => {
     const headers = new Headers({
       "user-agent": "codex-tui/0.167.0",
@@ -203,33 +181,39 @@ describe("Codex WebSocket headers", () => {
     },
   )
 
-  test("uses the requested model for routing and overrides an incoming hint", () => {
-    const inbound = new Headers({
-      "user-agent": "codex-tui/0.167.0",
-      "thread-id": "thread-1",
-      "x-codex-routing-hint": "model=stale-model",
-    })
-    const firstRequest = prepareCodexResponsesWebSocketRequest(
-      { model: "gpt-5.4" },
-      inbound,
-    )
-    const secondRequest = prepareCodexResponsesWebSocketRequest(
-      { model: "gpt-5.3-codex" },
-      inbound,
-    )
-    const priorityRequest = prepareCodexResponsesWebSocketRequest(
-      { model: "gpt-5.4", service_tier: "priority" },
-      inbound,
-    )
+  test.each([
+    ["codex-tui/0.167.0", true],
+    ["opencode/1.0", false],
+  ])(
+    "uses the requested model for routing with UA=%s",
+    (userAgent, reuseThread) => {
+      const inbound = new Headers({
+        "user-agent": userAgent,
+        "thread-id": "thread-1",
+        "x-codex-routing-hint": "model=stale-model",
+      })
+      const firstRequest = prepareCodexResponsesWebSocketRequest(
+        { model: "gpt-5.4" },
+        inbound,
+      )
+      const secondRequest = prepareCodexResponsesWebSocketRequest(
+        { model: "gpt-5.3-codex" },
+        inbound,
+      )
+      const priorityRequest = prepareCodexResponsesWebSocketRequest(
+        { model: "gpt-5.4", service_tier: "priority" },
+        inbound,
+      )
 
-    expect(firstRequest.headers["x-codex-routing-hint"]).toBe("model=gpt-5.4")
-    expect(secondRequest.headers["x-codex-routing-hint"]).toBe(
-      "model=gpt-5.3-codex",
-    )
-    expect(firstRequest.poolKey).not.toBe(secondRequest.poolKey)
-    expect(firstRequest.poolKey).not.toBe(priorityRequest.poolKey)
-    expect(inbound.get("x-codex-routing-hint")).toBe("model=stale-model")
-  })
+      expect(firstRequest.headers["x-codex-routing-hint"]).toBe("model=gpt-5.4")
+      expect(secondRequest.headers["x-codex-routing-hint"]).toBe(
+        "model=gpt-5.3-codex",
+      )
+      expect(firstRequest.poolKey).not.toBe(secondRequest.poolKey)
+      expect(firstRequest.poolKey === priorityRequest.poolKey).toBe(reuseThread)
+      expect(inbound.get("x-codex-routing-hint")).toBe("model=stale-model")
+    },
+  )
 
   test.each(["true", "false", ""])(
     "strips internal headers from the handshake when responses-lite is %s",
