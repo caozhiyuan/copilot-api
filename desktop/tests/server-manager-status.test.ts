@@ -190,7 +190,7 @@ test('rejects an invalid host without stopping the healthy server', () => {
 test('starts the packaged JavaScript directly with supported Bun and preserves proxy flags', () => {
   runManagerScenario(`
     delete process.env.NODE_USE_SYSTEM_CA
-    bunRuntime = { available: true, version: '1.4.0', path: '/local/bun' }
+    bunRuntime = { available: true, version: '1.4.4', path: '/local/bun' }
     electronApp.isPackaged = true
     Object.defineProperty(process, 'resourcesPath', { value: '/app resources' })
     const status = await manager.startServer(0, {
@@ -208,7 +208,7 @@ test('starts the packaged JavaScript directly with supported Bun and preserves p
     assert.equal(spawnOptions[2].env.COPILOT_API_GITHUB_TOKEN, undefined)
     assert.equal(spawnOptions[2].windowsHide, true)
     assert.deepEqual(spawnOptions[2].stdio, ['ignore', 'pipe', 'pipe'])
-    assert.ok(manager.getLogs().some((entry) => entry.text.includes('Bun 1.4.0')))
+    assert.ok(manager.getLogs().some((entry) => entry.text.includes('Bun 1.4.4')))
   `)
 })
 
@@ -219,7 +219,7 @@ test('uses bundled Node when Bun is unavailable or explicitly disabled', () => {
     assert.equal(spawnOptions, undefined)
     assert.equal(forkOptions[2].env.NODE_USE_SYSTEM_CA, '1')
     assert.ok(manager.getLogs().some((entry) => entry.text.includes('server.bunFallback')))
-    bunRuntime = { available: true, version: '1.4.0', path: '/local/bun' }
+    bunRuntime = { available: true, version: '1.4.4', path: '/local/bun' }
     await manager.startServer(0, { runtime: 'node' })
     assert.equal(spawnOptions, undefined)
     assert.equal(forkOptions[2].env.NODE_USE_SYSTEM_CA, '1')
@@ -275,7 +275,7 @@ test('clearing stored logs drops history and keeps later sequences', () => {
 
 test('keeps migrated system proxy settings on bundled Node when Bun is available', () => {
   runManagerScenario(`
-    bunRuntime = { available: true, version: '1.4.0', path: '/local/bun' }
+    bunRuntime = { available: true, version: '1.4.4', path: '/local/bun' }
     const { normalizeSettings } = await import('./electron/settings-store')
     const settings = normalizeSettings({ proxy: { mode: 'system' } })
     const status = await manager.startServer(0, {
@@ -292,7 +292,7 @@ test('keeps migrated system proxy settings on bundled Node when Bun is available
 
 test('reports a Bun spawn error without an unhandled error event', () => {
   runManagerScenario(`
-    bunRuntime = { available: true, version: '1.4.0', path: '/removed/bun' }
+    bunRuntime = { available: true, version: '1.4.4', path: '/removed/bun' }
     spawnError = new Error('spawn ENOENT')
     const status = await manager.startServer(0)
     assert.equal(status.running, false)
@@ -303,7 +303,7 @@ test('reports a Bun spawn error without an unhandled error event', () => {
 
 test('forces an unresponsive external process to exit before completing a stop', () => {
   runManagerScenario(`
-    bunRuntime = { available: true, version: '1.4.0', path: '/local/bun' }
+    bunRuntime = { available: true, version: '1.4.4', path: '/local/bun' }
     await manager.startServer(0)
     const proc = processes.at(-1)
     proc.exitCode = null

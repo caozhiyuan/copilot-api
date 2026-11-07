@@ -27,8 +27,8 @@ On the GitHub Copilot path, the gateway prefers Copilot's native Anthropic-style
 
 ## Prerequisites
 
-- Bun >= 1.4.0 (recommended)
-- Node.js >= 22.13.0 if you plan to run the published CLI with `npx`
+- Bun >= 1.4.4 (recommended)
+- Node.js `^22.23.4 || ^24.22.1 || >=26.12.1` if you plan to run the published CLI with `npx`
 - GitHub account with Copilot subscription only if you want to use the GitHub Copilot provider
 - An API key or OAuth login for at least one configured provider if you want to run without GitHub Copilot
 
@@ -43,7 +43,7 @@ bun install
 ## Running from Source
 
 > [!NOTE]
-> Building from source with `tsdown@0.23` requires Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`. This is a build-time requirement only; the published CLI supports Node.js >= 22.13.0.
+> Building from source with `tsdown@0.23` requires Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`. This is a build-time requirement only; the published CLI requires Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`.
 
 The project can be run from source in several ways:
 
@@ -65,7 +65,7 @@ bun run start start
 
 ## Running the npm package with Bun (recommended)
 
-Install [Bun >= 1.4.0](https://bun.sh/docs/installation), then run the published npm package directly:
+Install [Bun >= 1.4.4](https://bun.sh/docs/installation), then run the published npm package directly:
 
 ```sh
 bunx --bun @jeffreycao/copilot-api start
@@ -123,7 +123,7 @@ bunx --bun @jeffreycao/copilot-api start
 
 ## Using with npx
 
-Node.js >= 22.13.0 is supported as an alternative:
+Node.js `^22.23.4 || ^24.22.1 || >=26.12.1` is supported as an alternative:
 
 ```sh
 npx @jeffreycao/copilot-api@latest start

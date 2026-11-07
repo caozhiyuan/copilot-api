@@ -41,7 +41,7 @@ chmod +x Copilot-API-*-linux-x86_64.AppImage
 ./Copilot-API-*-linux-x86_64.AppImage
 ```
 
-新安装时，**设置 → 启动参数 → 服务运行时** 默认选择 **Bun（推荐）**。升级时，未包含运行时选项的已有配置继续使用内置 Node.js，以保留系统代理和 PAC 行为；可在设置中主动切换到 Bun。应用会检测本地 `PATH`、`BUN_INSTALL`、用户 Bun 安装目录及常见桌面安装位置，仅使用稳定版 Bun >= 1.4.0；未安装、版本过低或无法执行时会回退到 Electron 内置的 Node.js。设置页显示检测结果，服务日志显示实际运行时；选择 **Node.js（内置）** 可以始终使用内置 Node，无需额外安装 Node.js。
+新安装时，**设置 → 启动参数 → 服务运行时** 默认选择 **Bun（推荐）**。升级时，未包含运行时选项的已有配置继续使用内置 Node.js，以保留系统代理和 PAC 行为；可在设置中主动切换到 Bun。应用会检测本地 `PATH`、`BUN_INSTALL`、用户 Bun 安装目录及常见桌面安装位置，仅使用稳定版 Bun >= 1.4.4；未安装、版本过低或无法执行时会回退到 Electron 内置的 Node.js。设置页显示检测结果，服务日志显示实际运行时；选择 **Node.js（内置）** 可以始终使用内置 Node，无需额外安装 Node.js。
 
 Windows、macOS 和 Linux 均支持通过 nvm 下的 `npm install -g bun` 安装 Bun。检测会检查当前 `NVM_BIN` 或 `NVM_SYMLINK`、显式配置的 npm 全局安装前缀，以及 `NVM_DIR`/`NVM_HOME` 或常见默认 nvm 目录（含 XDG 路径）下的各 Node 版本。桌面环境没有当前版本信息时，按 Node 版本从新到旧查找可用的 Bun；Windows 会直接运行 npm 包内的原生 `bun.exe`。
 
@@ -49,7 +49,7 @@ Bun 直接运行桌面应用随包发布的 JavaScript（`bun --no-orphans --no-
 
 Bun 模式下，**网络 → 自定义代理** 会向子进程传递 HTTP/HTTPS 代理与绕过规则。Bun 不使用 Electron 的系统代理或 PAC 配置；需要代理时请配置自定义代理，或选择 Node.js 保持 Electron 的系统网络行为。桌面界面与更新仍使用 Electron 中选择的代理模式。修改服务运行时并保存会自动重启运行中的服务。
 
-下载对应平台的安装包后，在应用内授权或配置 provider，选择端口并启动服务，再把你的客户端指向应用里显示的本地端点即可。推荐安装 Bun >= 1.4.0；未安装时可使用内置 Node.js。token usage 历史记录使用所选运行时的 SQLite。
+下载对应平台的安装包后，在应用内授权或配置 provider，选择端口并启动服务，再把你的客户端指向应用里显示的本地端点即可。推荐安装 Bun >= 1.4.4；未安装时可使用内置 Node.js。token usage 历史记录使用所选运行时的 SQLite。
 
 打包后的应用会在启动 15 秒后，以及每 6 小时检查 GitHub 最新稳定版。也可以通过 **设置 → 应用更新 → 检查更新** 手动触发。Windows NSIS 和 Linux AppImage 会自动下载更新，并使用 release 元数据中的 SHA-512 校验安装包。下载完成后点击 **重启并安装**；安装前会停止本地 API 服务，中断进行中的请求。正常关闭应用不会安装待更新版本。
 

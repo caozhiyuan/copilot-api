@@ -72,7 +72,7 @@ curl http://localhost:4141/v1/models
 ```
 
 > [!NOTE]
-> token usage 存储需要 Node.js >= 22.13.0 或 Bun。详见[通过 npx 使用](docs/guides/zh-CN/getting-started.md#using-with-npx)。
+> token usage 存储需要 Bun >= 1.4.4，或带内置 `node:sqlite` 的 Node.js（22.13.0 起可用）。请使用上方安全公告中的已修补 Node.js 版本。详见[通过 npx 使用](docs/guides/zh-CN/getting-started.md#using-with-npx)。
 
 接下来可按你的客户端选择指南：[与 Claude Code 一起使用](docs/guides/zh-CN/claude-code.md#using-with-claude-code)、[与 OpenCode 一起使用](docs/guides/zh-CN/opencode.md#using-with-opencode)、[与 Codex 一起使用](docs/guides/zh-CN/codex.md#using-with-codex)、[与 DeepSeek Harness 一起使用](docs/guides/zh-CN/dsh.md#using-with-deepseek-harness)，或通过 [Docker](docs/guides/zh-CN/docker.md#using-with-docker) 运行。
 

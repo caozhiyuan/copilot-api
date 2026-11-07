@@ -11,20 +11,22 @@ import {
 import { normalizeSettings } from '../electron/settings-store'
 
 describe('Bun runtime detection', () => {
-  test.each(['1.4.0', '1.4.3', '1.5.0', '2.0.0', '1.4.0+build.1', ' 1.4.0\n'])(
+  test.each(['1.4.4', '1.4.5', '1.5.0', '2.0.0', '1.4.4+build.1', ' 1.4.4\n'])(
     'accepts supported stable version %s',
     (version) => {
       expect(isSupportedBunVersion(version)).toBe(true)
     },
   )
   test.each([
+    '1.4.0',
+    '1.4.3',
     '1.3.99',
     '0.4.0',
-    '1.4.0-canary.1',
+    '1.4.4-canary.1',
     '1.4',
     'garbage',
     '',
-    '1.4.0\n2.0.0',
+    '1.4.4\n2.0.0',
   ])('rejects unsupported or invalid version %s', (version) => {
     expect(isSupportedBunVersion(version)).toBe(false)
   })
@@ -196,12 +198,12 @@ describe('Bun runtime detection', () => {
         },
         getVersion: async (candidate) => {
           if (candidate !== executable) throw new Error('ENOENT')
-          return '1.4.0'
+          return '1.4.4'
         },
       })
       expect(result).toEqual({
         available: true,
-        version: '1.4.0',
+        version: '1.4.4',
         path: executable,
       })
     })
@@ -229,13 +231,13 @@ describe('Bun runtime detection', () => {
       getVersion: async (candidate) => {
         checked.push(candidate)
         if (candidate.endsWith('/v24.9.0/bin/bun')) return '1.3.14'
-        if (candidate.endsWith('/v24.2.0/bin/bun')) return '1.4.0'
+        if (candidate.endsWith('/v24.2.0/bin/bun')) return '1.4.4'
         throw new Error('ENOENT')
       },
     })
     expect(result).toEqual({
       available: true,
-      version: '1.4.0',
+      version: '1.4.4',
       path: '/users/test/.nvm/versions/node/v24.2.0/bin/bun',
     })
     expect(
@@ -307,12 +309,12 @@ describe('Bun runtime detection', () => {
       getVersion: async (candidate) => {
         checked.push(candidate)
         if (candidate === '/missing/bun') throw new Error('ENOENT')
-        return candidate === '/old/bun' ? '1.3.14' : '1.4.0\n'
+        return candidate === '/old/bun' ? '1.3.14' : '1.4.4\n'
       },
     })
     expect(result).toEqual({
       available: true,
-      version: '1.4.0',
+      version: '1.4.4',
       path: '/supported/bun',
     })
     expect(checked).toEqual(['/missing/bun', '/old/bun', '/supported/bun'])

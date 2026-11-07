@@ -357,7 +357,7 @@ const en: Locale = {
   },
   server: {
     bunFallback:
-      'Bun >= 1.4.0 was not found; using the bundled Node.js runtime. Install or upgrade Bun to enable it.',
+      'Bun >= 1.4.4 was not found; using the bundled Node.js runtime. Install or upgrade Bun to enable it.',
     runtime: 'Server runtime: {{runtime}}',
     spawnFailed: 'Failed to launch the server process: {{message}}',
     tokenNotFound: 'Token not found',
@@ -424,15 +424,15 @@ const en: Locale = {
     sectionStartup: 'Startup',
     serverRuntime: 'Server runtime',
     serverRuntimeDesc:
-      'Prefer Bun >= 1.4.0 when installed; otherwise use bundled Node.js. Saving restarts the running server.',
+      'Prefer Bun >= 1.4.4 when installed; otherwise use bundled Node.js. Saving restarts the running server.',
     runtimeBun: 'Bun (recommended)',
     runtimeNode: 'Node.js (bundled)',
     bunDetecting: 'Checking for local Bun…',
     bunAvailable: 'Bun {{version}} detected.',
     bunUnsupported:
-      'Bun {{version}} is unsupported. Install Bun >= 1.4.0; bundled Node.js will be used until then.',
+      'Bun {{version}} is unsupported. Install Bun >= 1.4.4; bundled Node.js will be used until then.',
     bunUnavailable:
-      'Bun >= 1.4.0 was not found. Bundled Node.js will be used until Bun is installed.',
+      'Bun >= 1.4.4 was not found. Bundled Node.js will be used until Bun is installed.',
     bunProxyNote:
       'Bun does not use Electron’s system proxy. Select a custom proxy in Network if needed, or use Node.js for the system proxy.',
     oauthApp: 'OAuth App',
