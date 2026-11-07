@@ -103,7 +103,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
     instructions: translateSystemPrompt(payload.system, payload.model),
     temperature: 1, // reasoning high temperature fixed to 1
     top_p: payload.top_p ?? null,
-    max_output_tokens: Math.max(payload.max_tokens, 12800),
+    max_output_tokens: payload.max_tokens,
     tools: translatedTools,
     metadata: payload.metadata ? { ...payload.metadata } : null,
     //prompt_cache_retention: "24h",  not work in gpt-5.4

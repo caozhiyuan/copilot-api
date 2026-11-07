@@ -434,7 +434,7 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
 
       expect(result.temperature).toBe(1)
       expect(result.top_p).toBeNull()
-      expect(result.max_output_tokens).toBe(12800)
+      expect(result.max_output_tokens).toBe(1024)
       expect(result.reasoning?.summary).toBe("auto")
       expect(result.include).toEqual(["reasoning.encrypted_content"])
       expect(result.input).toEqual([
@@ -450,6 +450,18 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
           phase: "final_answer",
         },
       ])
+    },
+  )
+
+  it.each([1, 64, 1024, 12800, 32768])(
+    "preserves the explicit output token limit %i",
+    (maxTokens) => {
+      const result = translateAnthropicMessagesToResponsesPayload({
+        model: "gpt-5.4",
+        max_tokens: maxTokens,
+        messages: [{ role: "user", content: "Hello" }],
+      })
+      expect(result.max_output_tokens).toBe(maxTokens)
     },
   )
 

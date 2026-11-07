@@ -55,7 +55,9 @@ const calculateContentPartsTokens = (
   let tokens = 0
   for (const part of contentParts) {
     if (part.type === "image_url") {
-      tokens += encoder.encode(part.image_url.url).length + 85
+      // Local estimate only: low detail uses the base cost; other modes assume
+      // four high-detail tiles. Never tokenize URLs or Base64 as image text.
+      tokens += part.image_url.detail === "low" ? 85 : 85 + 170 * 4
     } else if (part.type === "file") {
       tokens += encoder.encode(part.file.file_data).length
       if (part.file.filename) {

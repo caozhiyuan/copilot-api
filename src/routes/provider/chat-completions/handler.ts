@@ -3,6 +3,7 @@ import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
 
+import { guardChatCompletionsStream } from "~/lib/chat-completions-stream"
 import {
   type ModelConfig,
   type ResolvedProviderConfig,
@@ -24,7 +25,6 @@ import {
   type UsageTokens,
 } from "~/lib/token-usage"
 import type {
-  ChatCompletionChunk,
   ChatCompletionResponse,
   ChatCompletionsPayload,
 } from "~/lib/types/chat-completions"
@@ -176,14 +176,14 @@ const streamProviderChatCompletions = (
     let usage: UsageTokens = {}
 
     try {
-      for await (const chunk of events(upstreamResponse)) {
+      for await (const {
+        message: chunk,
+        completion: parsedChunk,
+      } of guardChatCompletionsStream(events(upstreamResponse))) {
         debugJson(logger, "provider.chat_completions.stream_chunk", chunk)
-        if (chunk.data && chunk.data !== "[DONE]") {
-          const parsedChunk = parseChatCompletionChunkData(chunk.data)
-          recordChatCompletionFirstToken(parsedChunk)
-          if (parsedChunk?.usage) {
-            usage = normalizeOpenAIUsage(parsedChunk.usage)
-          }
+        recordChatCompletionFirstToken(parsedChunk)
+        if (parsedChunk?.usage) {
+          usage = normalizeOpenAIUsage(parsedChunk.usage)
         }
 
         await writeSSEIfConnected(stream, {
@@ -195,14 +195,4 @@ const streamProviderChatCompletions = (
       options.recordUsage(usage)
     }
   })
-}
-
-const parseChatCompletionChunkData = (
-  data: string,
-): ChatCompletionChunk | null => {
-  try {
-    return JSON.parse(data) as ChatCompletionChunk
-  } catch {
-    return null
-  }
 }

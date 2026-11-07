@@ -4,6 +4,9 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
+import { requestContext, type RequestTiming } from "~/lib/request-context"
+import { requestEventsMiddleware } from "~/lib/request-events"
+import { traceIdMiddleware } from "~/lib/trace"
 import type { ChatCompletionChunk } from "~/lib/types/chat-completions"
 
 process.env.COPILOT_API_HOME = mkdtempSync(
@@ -23,11 +26,13 @@ const originalCreateChatCompletions =
 const createChatCompletions = mock(originalCreateChatCompletions)
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
+let requestTiming: RequestTiming | undefined
 
 beforeEach(async () => {
   process.env[DB_PATH_ENV] = ":memory:"
   await closeUsageStore()
   createChatCompletions.mockReset()
+  requestTiming = undefined
   chatCompletionsHandlerDependencies.createChatCompletions =
     createChatCompletions
 })
@@ -57,7 +62,12 @@ test("native chat completions stream records usage when the upstream iterator th
   )
   const response = await requestCompletion()
   expect(response.status).toBe(200)
-  expect(await response.text()).toContain("partial")
+  const body = await response.text()
+  expect(body).toContain("partial")
+  expect(body).toContain("event: error")
+  expect(body).toContain('"code":"upstream_stream_error"')
+  expect(body).not.toContain("[DONE]")
+  expect(requestTiming?.outcome).toBe("error")
 
   const usageEvents = await getTokenUsageEventsPage({
     page: 1,
@@ -96,6 +106,8 @@ test("native chat completions stream records usage after an invalid JSON chunk",
   expect(response.status).toBe(200)
   const body = await response.text()
   expect(body).toContain("after")
+  expect(body).not.toContain("event: error")
+  expect(requestTiming?.outcome).toBe("completed")
 
   const usageEvents = await getTokenUsageEventsPage({
     page: 1,
@@ -110,10 +122,102 @@ test("native chat completions stream records usage after an invalid JSON chunk",
   })
 })
 
+test("native chat completions reports missing DONE and retains partial usage", async () => {
+  createChatCompletions.mockResolvedValueOnce(
+    streamChunks([
+      chunk({
+        content: "partial",
+        usage: { prompt_tokens: 6, completion_tokens: 3, total_tokens: 9 },
+      }),
+    ]),
+  )
+  const response = await requestCompletion()
+  const body = await response.text()
+  expect(body).toContain("partial")
+  expect(body).toContain("event: error")
+  expect(body).toContain('"code":"incomplete_stream"')
+  expect(requestTiming?.outcome).toBe("error")
+  const events = await getTokenUsageEventsPage({
+    page: 1,
+    pageSize: 10,
+    period: "today",
+  })
+  expect(events.items).toHaveLength(1)
+  expect(events.items[0]).toMatchObject({ input_tokens: 6, output_tokens: 3 })
+})
+
+test("native chat completions tracks JSON-only upstream errors as failures", async () => {
+  createChatCompletions.mockResolvedValueOnce(
+    streamChunks([
+      { data: '{"error":{"message":"overloaded","type":"api_error"}}' },
+      { data: "[DONE]" },
+    ]),
+  )
+  const response = await requestCompletion()
+  const body = await response.text()
+  expect(body).toContain("event: error")
+  expect(body).toContain("overloaded")
+  expect(body).not.toContain("incomplete_stream")
+  expect(requestTiming?.outcome).toBe("error")
+})
+
+test("native chat completions drains final usage after the client disconnects", async () => {
+  let releaseUsage = () => {}
+  const usageReady = new Promise<void>((resolve) => {
+    releaseUsage = resolve
+  })
+  let finishUpstream = () => {}
+  const upstreamFinished = new Promise<void>((resolve) => {
+    finishUpstream = resolve
+  })
+  async function* upstream() {
+    try {
+      yield { data: '{"choices":[{"delta":{"content":"partial"}}]}' }
+      await usageReady
+      yield chunk({
+        content: "",
+        usage: { prompt_tokens: 12, completion_tokens: 7, total_tokens: 19 },
+      })
+      yield { data: "[DONE]" }
+    } finally {
+      finishUpstream()
+    }
+  }
+  createChatCompletions.mockResolvedValueOnce(upstream())
+  const response = await requestCompletion()
+  const reader = response.body!.getReader()
+  try {
+    expect((await reader.read()).done).toBe(false)
+    await reader.cancel()
+  } finally {
+    releaseUsage()
+  }
+  await upstreamFinished
+  // The route records usage after the source iterator has returned.
+  for (let attempt = 0; attempt < 50 && !requestTiming?.hasUsage; attempt++) {
+    await Bun.sleep(1)
+  }
+  expect(requestTiming?.hasUsage).toBe(true)
+  expect(requestTiming?.outcome).toBe("cancelled")
+  const events = await getTokenUsageEventsPage({
+    page: 1,
+    pageSize: 10,
+    period: "today",
+  })
+  expect(events.items).toHaveLength(1)
+  expect(events.items[0]).toMatchObject({ input_tokens: 12, output_tokens: 7 })
+})
+
 const requestCompletion = async (): Promise<Response> => {
   const app = new Hono()
-  app.post("/", handleCompletion)
-  return app.request("/", {
+  app.use(traceIdMiddleware)
+  app.use(requestEventsMiddleware(undefined, 4141))
+  app.use(async (_c, next) => {
+    requestTiming = requestContext.getStore()?.requestTiming
+    await next()
+  })
+  app.post("/v1/chat/completions", handleCompletion)
+  return app.request("/v1/chat/completions", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

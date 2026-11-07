@@ -92,6 +92,7 @@ function handleFinish(
 ) {
   const { events, chunk } = context
   if (choice.finish_reason && choice.finish_reason.length > 0) {
+    closeThinkingBlockIfOpen(state, events, choice.delta.reasoning_opaque ?? "")
     if (state.contentBlockOpen) {
       const toolBlockOpen = isToolBlockOpen(state)
       context.events.push({
@@ -507,6 +508,7 @@ function handleThinkingText(
 function closeThinkingBlockIfOpen(
   state: AnthropicStreamState,
   events: Array<AnthropicStreamEventData>,
+  signature = "",
 ): void {
   if (state.thinkingBlockOpen) {
     events.push(
@@ -515,7 +517,7 @@ function closeThinkingBlockIfOpen(
         index: state.contentBlockIndex,
         delta: {
           type: "signature_delta",
-          signature: "",
+          signature,
         },
       },
       {

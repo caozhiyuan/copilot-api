@@ -3,6 +3,7 @@ import type { Context } from "hono"
 
 import { streamSSE, type SSEMessage } from "hono/streaming"
 
+import { guardChatCompletionsStream } from "~/lib/chat-completions-stream"
 import { resolveMappedModel } from "~/lib/config"
 import { recordChatCompletionFirstToken } from "~/lib/first-token"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
@@ -19,7 +20,6 @@ import {
 import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
 import { handleProviderChatCompletionsForProvider } from "~/routes/provider/chat-completions/handler"
 import type {
-  ChatCompletionChunk,
   ChatCompletionResponse,
   ChatCompletionsPayload,
 } from "~/lib/types/chat-completions"
@@ -111,9 +111,11 @@ export async function handleCompletion(c: Context) {
     let usage: UsageTokens = {}
 
     try {
-      for await (const chunk of response) {
+      for await (const {
+        message: chunk,
+        completion: parsedChunk,
+      } of guardChatCompletionsStream(response)) {
         debugJson(logger, "Streaming chunk:", chunk)
-        const parsedChunk = parseChatCompletionChunk(chunk)
         recordChatCompletionFirstToken(parsedChunk)
         if (parsedChunk?.usage || parsedChunk?.copilot_usage) {
           usage = {
@@ -134,18 +136,3 @@ export async function handleCompletion(c: Context) {
 const isNonStreaming = (
   response: Awaited<ReturnType<typeof createChatCompletions>>,
 ): response is ChatCompletionResponse => Object.hasOwn(response, "choices")
-
-const parseChatCompletionChunk = (
-  chunk: unknown,
-): ChatCompletionChunk | null => {
-  const data = (chunk as { data?: string }).data
-  if (!data || data === "[DONE]") {
-    return null
-  }
-
-  try {
-    return JSON.parse(data) as ChatCompletionChunk
-  } catch {
-    return null
-  }
-}

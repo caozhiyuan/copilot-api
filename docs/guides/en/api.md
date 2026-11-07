@@ -117,6 +117,8 @@ These endpoints are designed to be compatible with the Anthropic Messages API.
 | `POST /v1/messages`              | `POST` | Creates a model response for a given conversation. Supports `provider/model` aliases for configured providers, including translation through `openai-compatible` and native Google Gemini (`google`) providers. |
 | `POST /v1/messages/count_tokens` | `POST` | Calculates the number of tokens for a given set of messages. Supports `provider/model` aliases for configured providers. |
 
+When token counting falls back to local estimation, image URLs and Base64 data are not tokenized as text: each image has a base estimate of 85 tokens for `low` detail, or 765 tokens for `high`, `auto`, or unspecified detail, before any configured model multiplier. Actual usage depends on the upstream model and image dimensions; use the response usage for actual token counts.
+
 ### Usage Monitoring Endpoints
 
 Endpoints for monitoring subscription usage and quotas.

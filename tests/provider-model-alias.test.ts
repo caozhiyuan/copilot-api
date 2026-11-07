@@ -23,6 +23,7 @@ import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
 
 const actualConfigModule = await import("~/lib/config")
 const actualTokenUsageModule = await import("~/lib/token-usage")
+const actualTokenizerModule = await import("~/lib/tokenizer")
 
 let providerConfig: ResolvedProviderConfig | null = null
 let modelMappings: Record<string, string> = {}
@@ -42,6 +43,7 @@ const getTokenCount = mock(
 )
 const noopTokenUsageRecorder = () => {}
 let restoreTokenUsageRecorder = () => {}
+let restoreTokenizer = () => {}
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
@@ -50,10 +52,6 @@ await mock.module("~/lib/config", () => ({
   getRawProviderConfig: (name: string) =>
     providerConfig && name === providerConfig.name ? providerConfig : null,
   resolveMappedModel: (model: string) => modelMappings[model] ?? model,
-}))
-
-await mock.module("~/lib/tokenizer", () => ({
-  getTokenCount,
 }))
 
 const { messageRoutes } = await import("~/routes/messages/route")
@@ -112,6 +110,11 @@ const createApp = () => {
 }
 
 beforeEach(() => {
+  const tokenizer = spyOn(
+    actualTokenizerModule,
+    "getTokenCount",
+  ).mockImplementation(getTokenCount)
+  restoreTokenizer = () => tokenizer.mockRestore()
   const recorder = spyOn(
     actualTokenUsageModule,
     "createProviderTokenUsageRecorder",
@@ -139,6 +142,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  restoreTokenizer()
   restoreTokenUsageRecorder()
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   providerConfig = null

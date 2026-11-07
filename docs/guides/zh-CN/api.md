@@ -121,6 +121,8 @@ curl http://localhost:4141/v1/videos/YOUR_REQUEST_ID \
 | `POST /v1/messages`                                           | `POST` | 为给定对话创建模型响应。支持已配置 provider 的 `provider/model` 别名，包括通过 `openai-compatible` 和 Google Gemini 原生协议（`google`）provider 做翻译。 |
 | `POST /v1/messages/count_tokens`                              | `POST` | 计算一组消息的 token 数。支持已配置 provider 的 `provider/model` 别名。                          |
 
+Token 计数回退到本地估算时，不会把图片的 URL 或 Base64 当作文本计数：`low` 细节的基础估值为每张 85 tokens，`high`、`auto` 或未指定细节为每张 765 tokens，之后应用已配置的模型倍率。实际用量取决于上游模型和图片尺寸，以响应中的 usage 为准。
+
 ### 使用量监控端点
 
 用于监控 Copilot 用量与额度的新端点。

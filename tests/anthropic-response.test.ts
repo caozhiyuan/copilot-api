@@ -1096,6 +1096,128 @@ describe("OpenAI usage-only stream translation", () => {
     expect(translatedStream.at(-1)).toEqual({ type: "message_stop" })
   })
 
+  test.each(["stop", "length"] as const)(
+    "closes a reasoning-only block before completing with %s",
+    (finishReason) => {
+      for (const sameChunk of [true, false]) {
+        for (const separateUsage of [true, false]) {
+          const streamState: AnthropicStreamState = {
+            messageStartSent: false,
+            messageCompleted: false,
+            contentBlockIndex: 0,
+            contentBlockOpen: false,
+            toolCalls: {},
+            thinkingBlockOpen: false,
+          }
+          const makeChunk = (
+            delta: Delta,
+            finish: ChatCompletionChunk["choices"][number]["finish_reason"],
+          ): ChatCompletionChunk => ({
+            id: "cmpl-reasoning-only",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "kimi-k3",
+            choices: [
+              { index: 0, delta, finish_reason: finish, logprobs: null },
+            ],
+          })
+          const finishChunk = makeChunk(
+            {
+              ...(sameChunk ? { reasoning_content: "thought" } : {}),
+              reasoning_opaque: "thinking-signature",
+            },
+            finishReason,
+          )
+          const usage = {
+            prompt_tokens: 12,
+            completion_tokens: 4,
+            total_tokens: 16,
+          }
+          if (!separateUsage) finishChunk.usage = usage
+          const chunks =
+            sameChunk ?
+              [finishChunk]
+            : [makeChunk({ reasoning_content: "thought" }, null), finishChunk]
+          const events = chunks.flatMap((chunk) =>
+            translateChunkToAnthropicEvents(chunk, streamState),
+          )
+          expect(streamState.thinkingBlockOpen).toBe(false)
+          if (separateUsage) {
+            expect(streamState.messageCompleted).toBe(false)
+            events.push(
+              ...translateChunkToAnthropicEvents(
+                { ...finishChunk, choices: [], usage },
+                streamState,
+              ),
+            )
+          }
+          events.push(...flushPendingAnthropicStreamEvents(streamState))
+          expect(events.map((event) => event.type)).toEqual([
+            "message_start",
+            "content_block_start",
+            "content_block_delta",
+            "content_block_delta",
+            "content_block_stop",
+            "message_delta",
+            "message_stop",
+          ])
+          expect(events[3]).toEqual({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "signature_delta", signature: "thinking-signature" },
+          })
+          expect(events[5]).toMatchObject({
+            delta: {
+              stop_reason:
+                finishReason === "length" ? "max_tokens" : "end_turn",
+            },
+            usage: { input_tokens: 12, output_tokens: 4 },
+          })
+          expect(streamState.contentBlockIndex).toBe(1)
+          expect(streamState.messageCompleted).toBe(true)
+        }
+      }
+    },
+  )
+
+  test("closes reasoning-only output without a signature when flushing a valid finish", () => {
+    const streamState: AnthropicStreamState = {
+      messageStartSent: false,
+      messageCompleted: false,
+      contentBlockIndex: 0,
+      contentBlockOpen: false,
+      toolCalls: {},
+      thinkingBlockOpen: false,
+    }
+    const events = translateChunkToAnthropicEvents(
+      {
+        id: "cmpl-thinking-finish",
+        object: "chat.completion.chunk",
+        created: 0,
+        model: "kimi-k3",
+        choices: [
+          {
+            index: 0,
+            delta: { reasoning: "thought" },
+            finish_reason: "length",
+            logprobs: null,
+          },
+        ],
+      },
+      streamState,
+    )
+    expect(streamState.thinkingBlockOpen).toBe(false)
+    expect(streamState.messageCompleted).toBe(false)
+    expect(events.at(-1)).toEqual({ type: "content_block_stop", index: 0 })
+    expect(events.at(-2)).toMatchObject({
+      delta: { type: "signature_delta", signature: "" },
+    })
+    expect(
+      flushPendingAnthropicStreamEvents(streamState).map((event) => event.type),
+    ).toEqual(["message_delta", "message_stop"])
+    expect(streamState.messageCompleted).toBe(true)
+  })
+
   test("should keep the stream incomplete when interrupted during thinking output", () => {
     const openAIStream: Array<ChatCompletionChunk> = [
       {
