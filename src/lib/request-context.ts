@@ -6,6 +6,7 @@ export interface RequestTiming {
   firstTokenMs: number | null
   durationMs: number | null
   outcome: "completed" | "cancelled" | "error" | null
+  protocolFailed?: boolean
   hasUsage: boolean
   recordFirstToken: () => void
 }

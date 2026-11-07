@@ -274,11 +274,15 @@ export const handleResponses = async (c: Context) => {
             idTracker,
           )
 
-          await writeSSEIfConnected(stream, {
-            id: (chunk as { id?: string }).id,
-            event: (chunk as { event?: string }).event,
-            data: processedData,
-          })
+          await writeSSEIfConnected(
+            stream,
+            {
+              id: (chunk as { id?: string }).id,
+              event: (chunk as { event?: string }).event,
+              data: processedData,
+            },
+            parsedEvent?.type,
+          )
         }
       } finally {
         await iterator.return?.()

@@ -70,6 +70,9 @@ export function requestEventsMiddleware(
     let status = 0
     const finish = (outcome: GatewayPluginEvents["request.end"]["outcome"]) => {
       if (finished) return
+      if (outcome === "completed" && timing.protocolFailed) {
+        outcome = "error"
+      }
       finished = true
       timing.durationMs = performance.now() - started
       timing.outcome = outcome

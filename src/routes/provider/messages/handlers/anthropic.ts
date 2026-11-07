@@ -99,10 +99,14 @@ export const streamProviderMessages = ({
             )
           : [{ data, event: eventName }]
         for (const streamEvent of streamEvents) {
-          await writeSSEIfConnected(stream, {
-            event: streamEvent.event,
-            data: streamEvent.data,
-          })
+          await writeSSEIfConnected(
+            stream,
+            {
+              event: streamEvent.event,
+              data: streamEvent.data,
+            },
+            parsed?.type,
+          )
         }
       }
     } catch (error) {
