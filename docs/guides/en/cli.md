@@ -8,6 +8,8 @@ Copilot API now uses a subcommand structure with these main commands:
 
 - `start`: Start the gateway server. If a GitHub token is available, the server starts with Copilot enabled. If no GitHub token is available, it starts in provider-only mode when at least one enabled provider exists; otherwise it guides you through provider setup.
 - `auth`: Run provider login or configuration without starting the server. Use it for GitHub Copilot login, Codex OAuth, or third-party provider API key setup.
+- `provider`: Enable or disable a provider that is already in `config.json`, without starting the server. `copilot-api provider enable <name>` and `copilot-api provider disable <name>` write the change immediately. Restart a running server to apply it.
+- `mcp`: Start the MCP `tool_search` bridge on stdio. `copilot-api mcp` does not start the HTTP gateway.
 - `debug`: Display diagnostic information including version, runtime details, file paths, and authentication status. Useful for troubleshooting and support.
 
 ## Command Line Options
@@ -29,7 +31,7 @@ The following command line options are available for the `start` command:
 | Option         | Description                                                                   | Default    | Alias |
 | -------------- | ----------------------------------------------------------------------------- | ---------- | ----- |
 | --host         | Host to listen on; non-loopback hosts require a configured gateway API key   | 127.0.0.1 | none  |
-| --port         | Port to listen on                                                             | 4141       | -p    |
+| --port         | TCP port to listen on. Integers from 1 to 65535 are accepted; other values exit with an error | 4141       | -p    |
 | --verbose      | Enable verbose logging                                                        | false      | -v    |
 | --github-token | Provide GitHub token directly (must be generated using the `auth` subcommand); prefer `COPILOT_API_GITHUB_TOKEN`, since arguments are visible in the process list | none       | -g    |
 | --show-token   | Show GitHub and Copilot tokens on fetch and refresh                           | false      | none  |
@@ -58,6 +60,25 @@ Use `copilot-api auth login --provider custom` to add or update another third-pa
 
 Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `copilot-api auth keys` (one operation per invocation): add a key with `--add <key>`, remove one with `--remove <key>`, list all with `--list`, or clear them all with `--clear`. Clients authenticate with any configured key via `x-api-key` or `Authorization: Bearer`. Without keys, loopback listeners start with authentication bypassed and print an info message; non-loopback listeners refuse to start.
 
+### Provider Command
+
+`provider` changes the `enabled` flag of a configured provider:
+
+```sh
+copilot-api provider enable dashscope
+copilot-api provider disable github-copilot
+```
+
+The name must already exist in `config.json`. Restart the running server after enabling or disabling a provider.
+
+### MCP Command
+
+`mcp` starts the stdio MCP server that bridges Responses `tool_search`. It is a separate process from `start` and does not listen on the gateway port:
+
+```sh
+copilot-api mcp
+```
+
 ### Debug Command Options
 
 | Option | Description               | Default | Alias |
@@ -66,7 +87,7 @@ Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `c
 
 ## Example Usage
 
-Common commands for the npm package (Bun >= 1.4.0 recommended):
+Common commands for the npm package (Bun >= 1.4.4 recommended):
 
 ```sh
 # Start the gateway

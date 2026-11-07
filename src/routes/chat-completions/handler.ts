@@ -27,6 +27,10 @@ import { createChatCompletions } from "~/services/copilot/create-chat-completion
 
 const logger = createHandlerLogger("chat-completions-handler")
 
+export const chatCompletionsHandlerDependencies = {
+  createChatCompletions,
+}
+
 export async function handleCompletion(c: Context) {
   let payload = await c.req.json<ChatCompletionsPayload>()
   setPluginRequestModel(payload.model)
@@ -84,11 +88,12 @@ export async function handleCompletion(c: Context) {
     model: payload.model,
   })
 
-  const response = await createChatCompletions(payload, {
-    clientSignal: c.req.raw.signal,
-    requestId,
-    sessionId,
-  })
+  const response =
+    await chatCompletionsHandlerDependencies.createChatCompletions(payload, {
+      clientSignal: c.req.raw.signal,
+      requestId,
+      sessionId,
+    })
 
   if (isNonStreaming(response)) {
     debugJson(logger, "Non-streaming response:", response)
@@ -105,22 +110,24 @@ export async function handleCompletion(c: Context) {
   return streamSSE(c, async (stream) => {
     let usage: UsageTokens = {}
 
-    for await (const chunk of response) {
-      debugJson(logger, "Streaming chunk:", chunk)
-      const parsedChunk = parseChatCompletionChunk(chunk)
-      recordChatCompletionFirstToken(parsedChunk)
-      if (parsedChunk?.usage || parsedChunk?.copilot_usage) {
-        usage = {
-          ...normalizeOpenAIUsage(parsedChunk.usage),
-          total_nano_aiu: normalizeOptionalToken(
-            parsedChunk.copilot_usage?.total_nano_aiu,
-          ),
+    try {
+      for await (const chunk of response) {
+        debugJson(logger, "Streaming chunk:", chunk)
+        const parsedChunk = parseChatCompletionChunk(chunk)
+        recordChatCompletionFirstToken(parsedChunk)
+        if (parsedChunk?.usage || parsedChunk?.copilot_usage) {
+          usage = {
+            ...normalizeOpenAIUsage(parsedChunk.usage),
+            total_nano_aiu: normalizeOptionalToken(
+              parsedChunk.copilot_usage?.total_nano_aiu,
+            ),
+          }
         }
+        await writeSSEIfConnected(stream, chunk as SSEMessage)
       }
-      await writeSSEIfConnected(stream, chunk as SSEMessage)
+    } finally {
+      recordUsage(usage)
     }
-
-    recordUsage(usage)
   })
 }
 

@@ -10,6 +10,8 @@ Copilot API 现在使用子命令结构，主要命令包括：
 
 - `start`：启动 AI gateway 服务。如果已有 GitHub token，则启用 Copilot 路径；如果没有 GitHub token，但存在至少一个启用中的 provider，则按 provider-only 模式启动；如果两者都没有，会引导你配置 provider。
 - `auth`：仅执行 provider 登录或配置流程，不启动服务。可用于 GitHub Copilot 登录、Codex OAuth，或第三方 provider API key 配置。
+- `provider`：启用或禁用 `config.json` 里已经存在的 provider，不启动服务。`copilot-api provider enable <name>` 和 `copilot-api provider disable <name>` 会立刻写入配置。正在运行的服务需要重启后才会生效。
+- `mcp`：在 stdio 上启动 MCP `tool_search` 桥。`copilot-api mcp` 不会启动 HTTP gateway。
 - `debug`：显示诊断信息，包括版本、运行时详情、文件路径以及认证状态，便于排障与支持。
 
 <a id="command-line-options"></a>
@@ -33,7 +35,7 @@ Copilot API 现在使用子命令结构，主要命令包括：
 | 选项 | 说明 | 默认值 | 别名 |
 | --- | --- | --- | --- |
 | --host | 监听主机；非回环地址要求已配置网关 API Key | 127.0.0.1 | 无 |
-| --port | 监听端口 | 4141 | -p |
+| --port | 监听的 TCP 端口。只接受 1 到 65535 的整数，其他值会报错并退出 | 4141 | -p |
 | --verbose | 启用详细日志 | false | -v |
 | --github-token | 直接提供 GitHub token（必须通过 `auth` 子命令生成）；建议使用 `COPILOT_API_GITHUB_TOKEN`，命令行参数会出现在进程列表中 | 无 | -g |
 | --show-token | 在获取和刷新时显示 GitHub 与 Copilot token | false | 无 |
@@ -62,6 +64,25 @@ OpenCode Go 的模型列表（`/opencode-go/v1/models` 及 `/v1/models` 中的�
 
 网关 API Key 存放在 `config.json` 的 `auth.apiKeys` 中，可通过 `copilot-api auth keys` 管理（每次只执行一种操作）：`--add <key>` 添加、`--remove <key>` 删除、`--list` 列出全部、`--clear` 清空。客户端通过 `x-api-key` 或 `Authorization: Bearer` 使用任意已配置的 Key 认证。未配置任何 Key 时，回环监听会以“不校验认证”的方式启动并输出一条 info 级别提示；非回环监听则拒绝启动。
 
+### Provider 命令
+
+`provider` 修改已配置 provider 的 `enabled` 标志：
+
+```sh
+copilot-api provider enable dashscope
+copilot-api provider disable github-copilot
+```
+
+名称必须已经存在于 `config.json`。启用或禁用后，需要重启正在运行的服务。
+
+### MCP 命令
+
+`mcp` 启动 Responses `tool_search` 的 stdio MCP 服务。它和 `start` 是分开的进程，不会监听 gateway 端口：
+
+```sh
+copilot-api mcp
+```
+
 ### Debug 命令选项
 
 | 选项 | 说明 | 默认值 | 别名 |
@@ -72,7 +93,7 @@ OpenCode Go 的模型列表（`/opencode-go/v1/models` 及 `/v1/models` 中的�
 
 ## 使用示例
 
-npm 包常用命令（推荐 Bun >= 1.4.0）：
+npm 包常用命令（推荐 Bun >= 1.4.4）：
 
 ```sh
 # 基础启动

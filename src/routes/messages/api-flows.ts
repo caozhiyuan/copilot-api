@@ -294,68 +294,77 @@ export const handleWithResponsesApi = async (
       })
       let usage: UsageTokens = {}
 
-      for await (const chunk of response) {
-        const eventName = chunk.event
-        if (eventName === "ping") {
-          await writeSSEIfConnected(stream, {
-            event: "ping",
-            data: '{"type":"ping"}',
-          })
-          continue
-        }
+      try {
+        for await (const chunk of response) {
+          const eventName = chunk.event
+          if (eventName === "ping") {
+            await writeSSEIfConnected(stream, {
+              event: "ping",
+              data: '{"type":"ping"}',
+            })
+            continue
+          }
 
-        const data = chunk.data
-        if (!data) {
-          continue
-        }
+          const data = chunk.data
+          if (!data || data === "[DONE]") {
+            continue
+          }
 
-        debugLazy(logger, () => ["Responses raw stream event:", data])
+          debugLazy(logger, () => ["Responses raw stream event:", data])
 
-        const responseEvent = JSON.parse(data) as ResponseStreamEvent
-        recordResponsesFirstToken(responseEvent)
-        if (
-          responseEvent.type === "response.completed"
-          || responseEvent.type === "response.failed"
-          || responseEvent.type === "response.incomplete"
-        ) {
-          usage = {
-            ...normalizeResponsesUsage(responseEvent.response.usage),
-            total_nano_aiu: normalizeOptionalToken(
-              responseEvent.copilot_usage?.total_nano_aiu,
-            ),
+          let responseEvent: ResponseStreamEvent
+          try {
+            responseEvent = JSON.parse(data) as ResponseStreamEvent
+          } catch (error) {
+            logger.warn(
+              "Responses stream event is not valid JSON; stopping translation",
+              error,
+            )
+            break
+          }
+
+          recordResponsesFirstToken(responseEvent)
+          const nextUsage = usageFromResponsesStreamEvent(responseEvent)
+          if (nextUsage) {
+            usage = nextUsage
+          }
+
+          const events = translateResponsesStreamEvent(
+            responseEvent,
+            streamState,
+          )
+          for (const event of events) {
+            const eventData = JSON.stringify(event)
+            debugLazy(logger, () => ["Translated Anthropic event:", eventData])
+            await writeSSEIfConnected(stream, {
+              event: event.type,
+              data: eventData,
+            })
+          }
+
+          if (streamState.messageCompleted) {
+            logger.debug("Message completed, ending stream")
+            break
           }
         }
-
-        const events = translateResponsesStreamEvent(responseEvent, streamState)
-        for (const event of events) {
-          const eventData = JSON.stringify(event)
-          debugLazy(logger, () => ["Translated Anthropic event:", eventData])
-          await writeSSEIfConnected(stream, {
-            event: event.type,
-            data: eventData,
-          })
-        }
-
-        if (streamState.messageCompleted) {
-          logger.debug("Message completed, ending stream")
-          break
+      } finally {
+        try {
+          if (!streamState.messageCompleted) {
+            logger.warn(
+              "Responses stream ended without completion; sending error event",
+            )
+            const errorEvent = buildErrorEvent(
+              "Responses stream ended without completion, retry your request.",
+            )
+            await writeSSEIfConnected(stream, {
+              event: errorEvent.type,
+              data: JSON.stringify(errorEvent),
+            })
+          }
+        } finally {
+          recordUsage(usage)
         }
       }
-
-      if (!streamState.messageCompleted) {
-        logger.warn(
-          "Responses stream ended without completion; sending error event",
-        )
-        const errorEvent = buildErrorEvent(
-          "Responses stream ended without completion, retry your request.",
-        )
-        await writeSSEIfConnected(stream, {
-          event: errorEvent.type,
-          data: JSON.stringify(errorEvent),
-        })
-      }
-
-      recordUsage(usage)
     })
   }
 
@@ -576,4 +585,35 @@ const parseAnthropicStreamEvent = (
   } catch {
     return null
   }
+}
+
+const usageFromResponsesStreamEvent = (
+  event: ResponseStreamEvent,
+): UsageTokens | null => {
+  if (!("response" in event)) {
+    return null
+  }
+
+  const copilotUsage =
+    "copilot_usage" in event ? event.copilot_usage : undefined
+  if (!event.response.usage && !copilotUsage) {
+    return null
+  }
+
+  const usage: UsageTokens = {
+    ...normalizeResponsesUsage(event.response.usage),
+    total_nano_aiu: normalizeOptionalToken(copilotUsage?.total_nano_aiu),
+  }
+  if (
+    !usage.input_tokens
+    && !usage.output_tokens
+    && !usage.total_tokens
+    && !usage.cache_read_input_tokens
+    && !usage.cache_creation_input_tokens
+    && usage.total_nano_aiu === undefined
+  ) {
+    return null
+  }
+
+  return usage
 }
