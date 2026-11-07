@@ -372,6 +372,16 @@ describe("persisted request timing", () => {
       { event: undefined, parsedType: "error", outcome: "error" },
       { event: undefined, parsedType: "response.failed", outcome: "error" },
       {
+        event: "error",
+        parsedType: "message_stop",
+        outcome: "error",
+      },
+      {
+        event: "response.failed",
+        parsedType: "response.completed",
+        outcome: "error",
+      },
+      {
         event: "response.completed",
         parsedType: undefined,
         outcome: "completed",

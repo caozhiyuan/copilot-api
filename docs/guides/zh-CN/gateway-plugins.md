@@ -98,7 +98,7 @@ unsubscribe()
 | `request.actual_model` | 网关准备调用上游，确定或切换实际目标模型时 | 公共字段，带 `actualModel` |
 | `request.session` | 请求进行中，现有会话解析逻辑确定或更新会话时 | 公共请求字段，带已确定的 `sessionId` |
 | `request.first_token` | 现有流解析逻辑观察到思考开始或首个非空模型输出时 | 公共字段，加 `firstTokenMs` |
-| `request.end` | 响应体结束、出错、被取消，或客户端中断时 | 公共字段，加 `durationMs`、`firstTokenMs`、`status`、`outcome` |
+| `request.end` | 响应体结束、HTTP/处理错误、SSE 协议失败、被取消，或客户端中断时 | 公共字段，加 `durationMs`、`firstTokenMs`、`status`、`outcome` |
 | `usage.recorded` | 现有用量记录逻辑生成有效用量事件时 | 现有用量字段，加 `requestId`、`userAgent`、`sessionId` 和 `actualModel` |
 
 公共请求字段：
@@ -131,6 +131,8 @@ unsubscribe()
 `id` 由网关生成，与客户端传入的 trace ID 独立。`port` 是配置的监听端口，不从客户端 Host Header 推断。
 
 `durationMs` 从鉴权后的请求开始计时，持续到响应体结束，包含读取请求体、解压和生成过程。持续时间采用单调时钟，单位为毫秒。响应头返回前中断时，`status` 为 `0`。
+
+`outcome` 为 `completed`、`error` 或 `cancelled`。响应体正常结束且未观察到流式协议失败时为 `completed`；HTTP 状态错误、处理异常，或即使 HTTP 200 的 SSE 流中出现 `error` / `response.failed` 事件时为 `error`；客户端取消时为 `cancelled`，取消优先于协议失败。SSE 协议失败不改变 `status`，因此可能同时出现 `status: 200` 与 `outcome: "error"`；用量库使用相同的 `request_outcome`，详见[请求计时](usage.md#request-timing)。
 
 `model` 保留原始请求模型，`actualModel` 记录模型映射、provider 别名解析、自动选模和端点模型归一化之后，实际发给上游的目标模型（Google 取模型 URL 中的 ID）。目标使用配置中的 provider 名作为前缀，如 `codex/gpt-5.4`、`xai/grok-4` 或 `my-provider/claude-sonnet-4.6`；`github-copilot` 保留不带 provider 前缀的模型 ID。例如请求 `my-alias` 最终经 Codex 调用 `gpt-5.4`，事件中分别为 `model: "my-alias"`、`actualModel: "codex/gpt-5.4"`。`usage.recorded` 的 `actualModel` 使用相同规则，用量库原有模型字段格式不变。
 

@@ -84,13 +84,16 @@ output_tokens_per_second = output_tokens / ((duration_ms - first_token_ms) / 100
 This is a request-side estimate using upstream-reported output tokens, including
 whatever reasoning tokens the upstream counts. It includes thinking after the
 observed start, delivery, and client backpressure. `request_outcome` describes
-HTTP/body completion: an SSE protocol error may still close normally and be
-classified as `completed`; it does not certify model success.
+HTTP/body completion and streaming protocol failures: an `error` or
+`response.failed` SSE event is recorded as `error` even when the response closes
+with HTTP 200. A cancellation remains `cancelled`. It does not certify model
+success.
 
 - Per-event speed requires a completed request with exactly one usage row,
   positive output tokens, and positive generation duration. Non-streaming,
   synthetic-from-complete-result, raw passthrough, and unobservable streams have
-  null TTFT/speed. Cancelled, errored, and unfinished requests have null speed.
+  null TTFT/speed. Cancelled, errored (including SSE protocol failures), and
+  unfinished requests have null speed.
 - Model average TTFT counts each valid completed request once. Model speed is
   the sum of eligible output tokens divided by the sum of their generation
   durations, rather than an average of individual rates. A request with multiple

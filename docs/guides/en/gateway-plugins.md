@@ -112,7 +112,7 @@ rejecting the request.
 | `request.actual_model` | Upstream dispatch selects or changes the resolved target | Common fields with `actualModel` |
 | `request.session` | Existing session resolution identifies or updates the session while the request is active | Common request fields with the resolved `sessionId` |
 | `request.first_token` | Existing stream parsing observes thinking start or the first nonempty model output | Common fields plus `firstTokenMs` |
-| `request.end` | The response body completes, errors, is cancelled, or the client aborts | Common fields plus `durationMs`, `firstTokenMs`, `status`, and `outcome` |
+| `request.end` | The response body completes, an HTTP/handler or SSE protocol error occurs, the request is cancelled, or the client aborts | Common fields plus `durationMs`, `firstTokenMs`, `status`, and `outcome` |
 | `usage.recorded` | The existing usage recorder produces a valid usage event | Existing usage fields plus `requestId`, `userAgent`, `sessionId`, and `actualModel` |
 
 Common request fields:
@@ -149,6 +149,15 @@ Common request fields:
 body ends, including body upload, decompression, and generation. Durations use a
 monotonic clock and are measured in milliseconds. A cancellation before response
 headers has `status` set to `0`.
+
+`outcome` is `completed`, `error`, or `cancelled`. A response body that
+closes without a detected stream protocol failure is `completed`. HTTP error
+statuses, handler/transport errors, and SSE `error` or `response.failed`
+events produce `error`, including when the SSE response closes with HTTP 200.
+Client cancellation produces `cancelled` and takes precedence over a preceding
+protocol failure. Protocol failures do not change `status`, so `status: 200`
+can be paired with `outcome: "error"`. SQLite uses the same
+`request_outcome`; see [Request Timing](usage.md#request-timing).
 
 `model` stays the original client-requested model. `actualModel` is the target
 sent upstream after model mapping, provider alias resolution, automatic model
