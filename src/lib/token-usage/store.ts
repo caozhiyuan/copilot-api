@@ -2,6 +2,10 @@ import consola from "consola"
 import path from "node:path"
 
 import type { RequestTiming } from "~/lib/request-context"
+import {
+  getTokenUsageRetentionDays,
+  resolveTokenUsageRetentionDays,
+} from "~/lib/config-store"
 import { PATHS } from "~/lib/paths"
 import { registerProcessCleanup } from "~/lib/process-cleanup"
 import {
@@ -184,8 +188,12 @@ export type TokenUsageSessionsPage = TokenUsagePage<TokenUsageSessionSummary>
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 const DEFAULT_DB_FILENAME = "copilot-api.sqlite"
 const COST_NANOS_PER_UNIT = 1_000_000_000
+const TOKEN_USAGE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
 
 let writeQueue: Promise<void> = Promise.resolve()
+let retentionTimer: ReturnType<typeof setInterval> | undefined
+let retentionStarted = false
 
 function getDbPath(): string {
   return (
@@ -1372,7 +1380,63 @@ export async function getTokenUsageSessionsPage(input: {
   }
 }
 
+export async function pruneTokenUsageEvents(options?: {
+  nowMs?: number
+  retentionDays?: number | null
+}): Promise<number> {
+  const retentionDays = resolveTokenUsageRetentionDays(
+    options && "retentionDays" in options ?
+      options.retentionDays
+    : getTokenUsageRetentionDays(),
+  )
+  if (retentionDays === null || !isTokenUsageStorageEnabled()) {
+    return 0
+  }
+
+  await flushTokenUsageEvents()
+  const nowMs = options?.nowMs ?? Date.now()
+  const cutoffMs = nowMs - retentionDays * DAY_MS
+  let deleted = 0
+  const task = writeQueue.then(async () => {
+    const db = await getDb()
+    const result = db
+      .prepare("DELETE FROM token_usage_events WHERE created_at_ms < ?")
+      .run(cutoffMs) as { changes?: number }
+    deleted = typeof result.changes === "number" ? result.changes : 0
+  })
+  writeQueue = task.catch((error: unknown) => {
+    consola.warn("Failed to prune token usage", error)
+  })
+  await task
+  return deleted
+}
+
+export async function startTokenUsageRetention(): Promise<void> {
+  if (retentionStarted) return
+  retentionStarted = true
+  try {
+    await pruneTokenUsageEvents()
+  } catch (error) {
+    consola.warn("Failed to prune token usage", error)
+  }
+  retentionTimer = setInterval(() => {
+    void pruneTokenUsageEvents().catch((error: unknown) => {
+      consola.warn("Failed to prune token usage", error)
+    })
+  }, TOKEN_USAGE_RETENTION_INTERVAL_MS)
+  retentionTimer.unref?.()
+}
+
+function stopTokenUsageRetention(): void {
+  if (retentionTimer) {
+    clearInterval(retentionTimer)
+    retentionTimer = undefined
+  }
+  retentionStarted = false
+}
+
 export async function closeUsageStore(): Promise<void> {
+  stopTokenUsageRetention()
   await flushTokenUsageEvents()
   await tokenUsageDbStore.close({
     beforeClose: (db) => {

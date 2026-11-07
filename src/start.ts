@@ -172,6 +172,9 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     plugins,
   })
 
+  const { startTokenUsageRetention } = await import("./lib/token-usage/store")
+  await startTokenUsageRetention()
+
   serve({
     fetch: server.fetch as ServerHandler,
     hostname: binding.hostname,

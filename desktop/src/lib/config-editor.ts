@@ -125,6 +125,7 @@ export const appConfigSchema = z.looseObject({
   messageApiWebSearchModel: z.string().optional(),
   claudeAutoModel: z.string().optional(),
   claudeTokenMultiplier: z.number().positive().optional(),
+  tokenUsageRetentionDays: positiveInteger.optional(),
 })
 
 export function isConfigObject(value: unknown): value is ConfigObject {

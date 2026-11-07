@@ -520,6 +520,11 @@ const zh: Locale = {
         label: 'Claude Token 估算系数',
         description: '仅用于本地 Claude count_tokens 估算。',
       },
+      tokenUsageRetentionDays: {
+        label: 'Token 用量保留天数',
+        description:
+          '保留用量历史的天数。留空表示不删除任何记录。填写正整数后，会在启动时以及每天删除更早的记录。',
+      },
       anthropicApiKey: {
         label: 'Anthropic Token 计数密钥',
         description: '用于精确计数；默认可读取 ANTHROPIC_API_KEY 环境变量。',

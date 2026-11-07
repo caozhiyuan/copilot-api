@@ -41,6 +41,12 @@ export const configFields = [
     step: '0.01',
   },
   {
+    id: 'tokenUsageRetentionDays',
+    path: 'tokenUsageRetentionDays',
+    section: 'general',
+    type: 'number',
+  },
+  {
     id: 'anthropicApiKey',
     path: 'anthropicApiKey',
     section: 'general',

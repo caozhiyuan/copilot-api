@@ -66,6 +66,22 @@ function fixture(running = true) {
 }
 
 describe('desktop configuration document', () => {
+  test('accepts empty or positive token usage retention and rejects other numbers', () => {
+    expect(validateConfigContent('{}')).not.toHaveProperty(
+      'tokenUsageRetentionDays',
+    )
+    expect(
+      validateConfigContent('{"tokenUsageRetentionDays":30}')
+        .tokenUsageRetentionDays,
+    ).toBe(30)
+    expect(() =>
+      validateConfigContent('{"tokenUsageRetentionDays":0}'),
+    ).toThrow('tokenUsageRetentionDays')
+    expect(() =>
+      validateConfigContent('{"tokenUsageRetentionDays":1.5}'),
+    ).toThrow('tokenUsageRetentionDays')
+  })
+
   test('preserves tolerated legacy values only when unchanged from the current disk revision', () => {
     const legacy = {
       auth: { apiKeys: [''], adminApiKey: 'test-admin' },
