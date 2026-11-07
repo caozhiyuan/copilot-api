@@ -9,6 +9,7 @@ import {
   getRefreshDeadlineMs,
   getRefreshPollDelayMs,
   refreshCodexCredentialsOnce,
+  scheduleRefreshRetry,
   type CodexRefreshDependencies,
 } from "~/lib/token"
 
@@ -71,6 +72,26 @@ test("returns zero when refresh is already due", () => {
   const nowMs = 1_000_000
 
   expect(getRefreshPollDelayMs(nowMs - 1, nowMs)).toBe(0)
+})
+
+test("Codex and Copilot refresh failures share exponential backoff with jitter", () => {
+  const nowMs = 1_000_000
+  const first = scheduleRefreshRetry(15_000, nowMs, 0)
+  expect(first).toEqual({
+    delayMs: 15_000,
+    nextRetryDelayMs: 30_000,
+    refreshAtMs: nowMs + 15_000,
+  })
+
+  const jittered = scheduleRefreshRetry(first.nextRetryDelayMs, nowMs, 0.5)
+  expect(jittered.delayMs).toBe(30_000 + 7_500)
+  expect(jittered.nextRetryDelayMs).toBe(60_000)
+  expect(jittered.refreshAtMs).toBe(nowMs + jittered.delayMs)
+
+  const capped = scheduleRefreshRetry(600_000, nowMs, 0.9)
+  expect(capped.delayMs).toBe(600_000)
+  expect(capped.nextRetryDelayMs).toBe(600_000)
+  expect(capped.refreshAtMs).toBe(nowMs + 600_000)
 })
 
 test("shares one in-flight Codex refresh between concurrent callers", async () => {

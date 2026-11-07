@@ -23,6 +23,8 @@ export {
   getTokenUsageSummary,
   normalizeOptionalToken,
   normalizeToken,
+  pruneTokenUsageEvents,
+  startTokenUsageRetention,
 } from "./store"
 
 export type {

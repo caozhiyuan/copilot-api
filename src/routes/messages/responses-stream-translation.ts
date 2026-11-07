@@ -332,8 +332,7 @@ const handleFunctionCallArgumentsDelta = (
     )
   }
 
-  // fix: copolit function call returning infinite line breaks until max_tokens limit
-  // "arguments": "{\"path\":\"xxx\",\"pattern\":\"**/*.ts\",\"} }? Wait extra braces. Need correct. I should run? Wait overcame. Need proper JSON with pattern \"\n\n\n\n\n\n\n\n...
+  // Copilot can stream tool-call arguments as whitespace until max_tokens; more than 20 in a row is treated as a corrupted argument stream.
   const { nextCount, exceeded } = updateWhitespaceRunState(
     functionCallState.consecutiveWhitespaceCount,
     deltaText,

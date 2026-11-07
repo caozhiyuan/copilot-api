@@ -555,6 +555,11 @@ const en: Locale = {
         label: 'Claude token multiplier',
         description: 'Used only for local Claude count_tokens estimation.',
       },
+      tokenUsageRetentionDays: {
+        label: 'Token usage retention',
+        description:
+          'Days of token usage history to keep. Leave empty to keep every record. A positive integer deletes older rows at startup and once a day.',
+      },
       anthropicApiKey: {
         label: 'Anthropic token-counting key',
         description:

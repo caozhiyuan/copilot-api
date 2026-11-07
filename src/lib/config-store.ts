@@ -53,6 +53,8 @@ export interface AppConfig {
   // the override.
   claudeAutoModel?: string
   claudeTokenMultiplier?: number
+  // Days of token_usage_events to keep. Unset means keep every row.
+  tokenUsageRetentionDays?: number
 }
 
 export interface SmallModelsConfig {
@@ -599,6 +601,27 @@ export function isMessagesApiEnabled(): boolean {
 export function isResponsesApiWebSocketEnabled(): boolean {
   const config = getConfig()
   return config.useResponsesApiWebSocket ?? true
+}
+
+export function resolveTokenUsageRetentionDays(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") {
+    return null
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    consola.warn(
+      "Invalid tokenUsageRetentionDays config. Expected a positive integer, or omit the field to keep all usage history.",
+    )
+    return null
+  }
+
+  return value
+}
+
+export function getTokenUsageRetentionDays(
+  config: AppConfig = getConfig(),
+): number | null {
+  return resolveTokenUsageRetentionDays(config.tokenUsageRetentionDays)
 }
 
 export function getOpencodeModelContextWindow(): number {

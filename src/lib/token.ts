@@ -502,6 +502,28 @@ export const getRefreshPollDelayMs = (
   nowMs: number = Date.now(),
 ) => Math.min(Math.max(refreshAtMs - nowMs, 0), REFRESH_POLL_INTERVAL_MS)
 
+export const scheduleRefreshRetry = (
+  retryDelayMs: number,
+  nowMs: number = Date.now(),
+  randomUnit: number = Math.random(),
+): {
+  delayMs: number
+  nextRetryDelayMs: number
+  refreshAtMs: number
+} => {
+  const jitterUnit = Math.min(Math.max(randomUnit, 0), 0.999999)
+  const delayMs = Math.min(
+    retryDelayMs + Math.floor(jitterUnit * RETRY_REFRESH_JITTER_MS),
+    MAX_RETRY_REFRESH_DELAY_MS,
+  )
+
+  return {
+    delayMs,
+    nextRetryDelayMs: Math.min(retryDelayMs * 2, MAX_RETRY_REFRESH_DELAY_MS),
+    refreshAtMs: nowMs + delayMs,
+  }
+}
+
 const runCopilotRefreshLoop = async (
   refreshIn: number,
   signal: AbortSignal,
@@ -531,14 +553,11 @@ const runCopilotRefreshLoop = async (
       }
     } catch (error) {
       consola.error("Failed to refresh Copilot token:", error)
-      const delayMs = Math.min(
-        retryDelayMs + Math.floor(Math.random() * RETRY_REFRESH_JITTER_MS),
-        MAX_RETRY_REFRESH_DELAY_MS,
-      )
-      refreshAtMs = Date.now() + delayMs
-      retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_REFRESH_DELAY_MS)
+      const retry = scheduleRefreshRetry(retryDelayMs)
+      refreshAtMs = retry.refreshAtMs
+      retryDelayMs = retry.nextRetryDelayMs
       consola.warn(
-        `Retrying Copilot token refresh in ${Math.round(delayMs / 1000)}s`,
+        `Retrying Copilot token refresh in ${Math.round(retry.delayMs / 1000)}s`,
       )
     }
   }
@@ -549,6 +568,7 @@ const runCodexRefreshLoop = async (signal: AbortSignal) => {
     (state.codexExpiresAt ?? Date.now()) - EARLY_REFRESH_BUFFER_MS,
     Date.now(),
   )
+  let retryDelayMs = RETRY_REFRESH_DELAY_MS
 
   while (!signal.aborted) {
     const expiresAt = state.codexExpiresAt
@@ -576,12 +596,15 @@ const runCodexRefreshLoop = async (signal: AbortSignal) => {
         credentials.expiresAt - EARLY_REFRESH_BUFFER_MS,
         Date.now(),
       )
+      retryDelayMs = RETRY_REFRESH_DELAY_MS
       consola.debug("Codex credentials refreshed")
     } catch (error) {
       consola.error("Failed to refresh Codex credentials:", error)
-      refreshAtMs = Date.now() + RETRY_REFRESH_DELAY_MS
+      const retry = scheduleRefreshRetry(retryDelayMs)
+      refreshAtMs = retry.refreshAtMs
+      retryDelayMs = retry.nextRetryDelayMs
       consola.warn(
-        `Retrying Codex token refresh in ${RETRY_REFRESH_DELAY_MS / 1000}s`,
+        `Retrying Codex token refresh in ${Math.round(retry.delayMs / 1000)}s`,
       )
     }
   }
