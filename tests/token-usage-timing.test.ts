@@ -11,11 +11,13 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Hono } from "hono"
+import { streamSSE } from "hono/streaming"
 
 import { recordResponsesFirstToken } from "~/lib/first-token"
-import { GatewayPlugins } from "~/lib/gateway-plugins"
+import { GatewayPlugins, type GatewayPluginEvents } from "~/lib/gateway-plugins"
 import { requestContext, type RequestTiming } from "~/lib/request-context"
 import { requestEventsMiddleware } from "~/lib/request-events"
+import { writeSSEIfConnected } from "~/lib/sse"
 import { openSqliteDatabase } from "~/lib/sqlite"
 import {
   closeUsageStore,
@@ -190,7 +192,11 @@ describe("stored User-Agent", () => {
 })
 
 describe("persisted request timing", () => {
-  test("createServer persists timing from the actual Responses parser with no plugins configured", async () => {
+  test.each([
+    { type: "response.completed", named: true },
+    { type: "response.failed", named: true },
+    { type: "response.failed", named: false },
+  ])("tracks actual Responses timing: %j", async ({ type, named }) => {
     const { createServer } = await import("~/server")
     const { responsesHandlerDependencies } = await import(
       "~/routes/responses/handler"
@@ -234,14 +240,14 @@ describe("persisted request timing", () => {
           now = 1300
           reads++
           yield {
-            event: "response.completed",
+            event: named ? type : undefined,
             data: JSON.stringify({
-              type: "response.completed",
+              type,
               sequence_number: 2,
               response: {
                 id: "resp",
                 object: "response",
-                status: "completed",
+                status: type === "response.failed" ? "failed" : "completed",
                 model: "test-model",
                 output: [],
                 usage: {
@@ -268,12 +274,14 @@ describe("persisted request timing", () => {
       })
       const text = await response.text()
       expect(text).toContain('"type":"reasoning"')
-      expect(text).toContain('"type":"response.completed"')
+      expect(text).toContain(`"type":"${type}"`)
+      expect(text.includes(`event: ${type}`)).toBe(named)
       expect(reads).toBe(2)
       expect((await events()).items[0]).toMatchObject({
         first_token_ms: 200,
         duration_ms: 1200,
-        output_tokens_per_second: 50,
+        request_outcome: type === "response.failed" ? "error" : "completed",
+        output_tokens_per_second: type === "response.failed" ? null : 50,
         output_tokens: 50,
       })
     } finally {
@@ -341,6 +349,119 @@ describe("persisted request timing", () => {
       }
     },
   )
+
+  describe.each([false, true])("SSE outcomes with plugins=%s", (enabled) => {
+    const ends: Array<GatewayPluginEvents["request.end"]> = []
+    async function observedApp() {
+      ends.length = 0
+      const plugin = enabled ? new GatewayPlugins(5000) : undefined
+      if (plugin) {
+        plugins.push(plugin)
+        await plugin.register("test", ({ on }) => {
+          on("request.end", (end) => {
+            ends.push(end)
+          })
+        })
+      }
+      return { server: app(plugin), plugin }
+    }
+
+    test.each([
+      { event: "error", parsedType: undefined, outcome: "error" },
+      { event: "response.failed", parsedType: undefined, outcome: "error" },
+      { event: undefined, parsedType: "error", outcome: "error" },
+      { event: undefined, parsedType: "response.failed", outcome: "error" },
+      {
+        event: "response.completed",
+        parsedType: undefined,
+        outcome: "completed",
+      },
+      {
+        event: undefined,
+        parsedType: "response.incomplete",
+        outcome: "completed",
+      },
+    ])(
+      "records protocol outcome after HTTP 200: %j",
+      async ({ event, parsedType, outcome }) => {
+        const { server, plugin } = await observedApp()
+        const data = JSON.stringify({ type: parsedType ?? event })
+        server.post("/v1/responses", (c) =>
+          streamSSE(c, async (stream) => {
+            now = 300
+            first()
+            usage()
+            now = 1300
+            await writeSSEIfConnected(stream, { event, data }, parsedType)
+          }),
+        )
+        const response = await server.request("/v1/responses", {
+          method: "POST",
+        })
+        expect(response.status).toBe(200)
+        expect(await response.text()).toBe(
+          `${event ? `event: ${event}\n` : ""}data: ${data}\n\n`,
+        )
+        expect((await events()).items[0]).toMatchObject({
+          request_outcome: outcome,
+          first_token_ms: 200,
+          duration_ms: 1200,
+          output_tokens: 50,
+          output_tokens_per_second: outcome === "error" ? null : 50,
+        })
+        if (plugin) {
+          await plugin.flush()
+          expect(ends).toHaveLength(1)
+          expect(ends[0]).toMatchObject({ status: 200, outcome })
+        }
+      },
+    )
+
+    test("keeps cancellation after a protocol error and reports the end once", async () => {
+      const { server, plugin } = await observedApp()
+      const aborter = new AbortController()
+      let release = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      server.post("/v1/responses", (c) =>
+        streamSSE(c, async (stream) => {
+          now = 300
+          first()
+          usage()
+          await writeSSEIfConnected(stream, { event: "error", data: "{}" })
+          await gate
+        }),
+      )
+      const response = await server.request("/v1/responses", {
+        method: "POST",
+        signal: aborter.signal,
+      })
+      const reader = response.body!.getReader()
+      try {
+        await reader.read()
+        now = 1300
+        aborter.abort()
+        release()
+        while (!(await reader.read()).done) {
+          /* drain */
+        }
+        expect((await events()).items[0]).toMatchObject({
+          request_outcome: "cancelled",
+          output_tokens: 50,
+          output_tokens_per_second: null,
+        })
+        if (plugin) {
+          await plugin.flush()
+          expect(ends).toHaveLength(1)
+          expect(ends[0].outcome).toBe("cancelled")
+        }
+      } finally {
+        release()
+        reader.releaseLock()
+      }
+    })
+  })
 
   test("late usage carries finished timing and repeated trace IDs do not join unrelated requests", async () => {
     const server = app()

@@ -331,10 +331,14 @@ const streamProviderResponses = async (
         }
       }
 
-      await writeSSEIfConnected(stream, {
-        data: responseChunk.data ?? "",
-        event: responseChunk.event,
-      })
+      await writeSSEIfConnected(
+        stream,
+        {
+          data: responseChunk.data ?? "",
+          event: responseChunk.event,
+        },
+        event?.type,
+      )
     }
 
     try {

@@ -463,10 +463,14 @@ export const handleWithMessagesApi = async (
           } else if (parsedEvent?.type === "error" || eventName === "error") {
             errorSeen = true
           }
-          await writeSSEIfConnected(stream, {
-            event: eventName,
-            data,
-          })
+          await writeSSEIfConnected(
+            stream,
+            {
+              event: eventName,
+              data,
+            },
+            parsedEvent?.type,
+          )
         }
       } catch (error) {
         logger.warn("Messages stream interrupted:", error)
