@@ -341,7 +341,7 @@ const zh: Locale = {
   },
   server: {
     bunFallback:
-      '未检测到 Bun >= 1.4.0，使用内置 Node.js。安装或升级 Bun 后即可启用。',
+      '未检测到 Bun >= 1.4.4，使用内置 Node.js。安装或升级 Bun 后即可启用。',
     runtime: '服务运行时：{{runtime}}',
     spawnFailed: '服务子进程启动失败：{{message}}',
     tokenNotFound: '未找到 token',
@@ -399,14 +399,14 @@ const zh: Locale = {
     sectionStartup: '启动参数',
     serverRuntime: '服务运行时',
     serverRuntimeDesc:
-      '默认优先使用本地 Bun >= 1.4.0，否则使用内置 Node.js。保存后会重启运行中的服务。',
+      '默认优先使用本地 Bun >= 1.4.4，否则使用内置 Node.js。保存后会重启运行中的服务。',
     runtimeBun: 'Bun（推荐）',
     runtimeNode: 'Node.js（内置）',
     bunDetecting: '正在检测本地 Bun…',
     bunAvailable: '已检测到 Bun {{version}}。',
     bunUnsupported:
-      'Bun {{version}} 版本不满足要求。请安装 Bun >= 1.4.0，在此之前使用内置 Node.js。',
-    bunUnavailable: '未检测到 Bun >= 1.4.0，安装前使用内置 Node.js。',
+      'Bun {{version}} 版本不满足要求。请安装 Bun >= 1.4.4，在此之前使用内置 Node.js。',
+    bunUnavailable: '未检测到 Bun >= 1.4.4，安装前使用内置 Node.js。',
     bunProxyNote:
       'Bun 不使用 Electron 的系统代理。需要代理时请在“网络”中配置自定义代理，或选择 Node.js 使用系统代理。',
     oauthApp: 'OAuth App',

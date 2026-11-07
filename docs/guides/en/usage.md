@@ -15,7 +15,7 @@ After starting the server, a URL to the Copilot Usage Dashboard will be displaye
 
 The dashboard provides a user-friendly interface to view your Copilot usage data:
 
-> Token usage history requires Bun or Node.js >= 22.13.0. On older Node.js versions the server runs normally but token usage storage is disabled.
+> Token usage history requires Bun >= 1.4.4 or Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`. Built-in `node:sqlite` has existed since 22.13.0; on older Node.js the server still runs, but token usage storage is disabled.
 
 - **API Endpoint URL**: The dashboard is pre-configured to fetch data from your local server endpoint via a URL query parameter. You can manually switch this to any other compatible API endpoint.
 - **API Key Authentication**: If API Key authentication is enabled, enter a raw API key (sent as the `x-api-key` header) or `Authorization: Bearer <key>`. Credentials are remembered in the browser's local storage per endpoint origin, and switching to a different endpoint origin does not automatically send the previous credential.

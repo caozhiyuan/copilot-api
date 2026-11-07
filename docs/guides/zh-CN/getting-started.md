@@ -33,8 +33,8 @@ AI gateway 会从同一个本地端点暴露 OpenAI / Anthropic 兼容 API，让
 
 ## 前置要求
 
-- Bun >= 1.4.0（推荐）
-- 如果要通过 `npx` 运行已发布 CLI，需要 Node.js >= 22.13.0
+- Bun >= 1.4.4（推荐）
+- 如果要通过 `npx` 运行已发布 CLI，需要 Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`
 - 只有在使用 GitHub Copilot provider 时，才需要已订阅 Copilot 的 GitHub 账号
 - 如果不使用 GitHub Copilot，需要至少一个已配置 provider 的 API key 或 OAuth 登录
 
@@ -53,7 +53,7 @@ bun install
 ## 从源码运行
 
 > [!NOTE]
-> 使用 `tsdown@0.23` 从源码构建时，需要 Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`。这只是构建期要求；已发布 CLI 的运行时要求仍为 Node.js >= 22.13.0。
+> 使用 `tsdown@0.23` 从源码构建时，需要 Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`。这只是构建期要求；已发布 CLI 的运行时要求为 Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`。
 
 本项目可以通过多种方式从源码运行：
 
@@ -75,7 +75,7 @@ bun run start start
 
 ## 使用 Bun 运行 npm 包（推荐）
 
-安装 [Bun >= 1.4.0](https://bun.sh/docs/installation)，即可直接运行已发布的 npm 包：
+安装 [Bun >= 1.4.4](https://bun.sh/docs/installation)，即可直接运行已发布的 npm 包：
 
 ```sh
 bunx --bun @jeffreycao/copilot-api start
@@ -135,7 +135,7 @@ bunx --bun @jeffreycao/copilot-api start
 
 ## 通过 npx 使用
 
-也支持 Node.js >= 22.13.0：
+也支持 Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`：
 
 ```sh
 npx @jeffreycao/copilot-api@latest start

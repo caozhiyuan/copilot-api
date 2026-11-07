@@ -68,7 +68,7 @@ curl http://localhost:4141/v1/models
 ```
 
 > [!NOTE]
-> Token usage storage requires Node.js >= 22.13.0 or Bun. See [Using with npx](docs/guides/en/getting-started.md#using-with-npx) for details.
+> Token usage storage requires Bun >= 1.4.4 or Node.js with built-in `node:sqlite` (22.13.0+). Use a patched Node.js release from the warning above. See [Using with npx](docs/guides/en/getting-started.md#using-with-npx) for details.
 
 From here, jump to the guide for your client: [Claude Code](docs/guides/en/claude-code.md#using-with-claude-code), [OpenCode](docs/guides/en/opencode.md#using-with-opencode), [Codex](docs/guides/en/codex.md#using-with-codex), [DeepSeek Harness](docs/guides/en/dsh.md#using-with-deepseek-harness), or run it with [Docker](docs/guides/en/docker.md#using-with-docker).
 

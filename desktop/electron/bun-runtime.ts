@@ -8,12 +8,18 @@ import type { BunRuntimeStatus } from '../src/types/ipc'
 
 const execFileAsync = promisify(execFile)
 
+const MINIMUM_BUN_VERSION = [1, 4, 4] as const
+
 export function isSupportedBunVersion(version: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:\+[\w.-]+)?$/.exec(version.trim())
   if (!match) return false
-  const major = Number(match[1])
-  const minor = Number(match[2])
-  return major > 1 || (major === 1 && minor >= 4)
+  const parts = [Number(match[1]), Number(match[2]), Number(match[3])]
+  for (const [index, minimum] of MINIMUM_BUN_VERSION.entries()) {
+    const part = parts[index] ?? 0
+    if (part > minimum) return true
+    if (part < minimum) return false
+  }
+  return true
 }
 
 interface BunDetectionOptions {
