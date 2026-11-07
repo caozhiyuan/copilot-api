@@ -61,7 +61,7 @@ if (isMcpFastPath(process.argv)) {
     meta: {
       name: "copilot-api",
       description:
-        "A wrapper around GitHub Copilot API to make it OpenAI compatible, making it usable for other tools.",
+        "Local multi-provider AI gateway with OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages compatibility.",
     },
     subCommands: { auth, start, debug, mcp, provider },
     args: cliArgs,

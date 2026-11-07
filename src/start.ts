@@ -197,7 +197,7 @@ export const start = defineCommand({
       alias: "p",
       type: "string",
       default: "4141",
-      description: "Port to listen on",
+      description: "Port to listen on (1-65535)",
     },
     verbose: {
       alias: "v",
@@ -222,10 +222,15 @@ export const start = defineCommand({
       description: "Initialize proxy from environment variables",
     },
   },
-  run({ args }) {
+  async run({ args }) {
+    const port = parseServerPort(args.port)
+    if (port === null) {
+      return
+    }
+
     return runServer({
       host: args.host,
-      port: Number.parseInt(args.port, 10),
+      port,
       verbose: args.verbose,
       githubToken: args["github-token"],
       showToken: args["show-token"],
@@ -233,3 +238,26 @@ export const start = defineCommand({
     })
   },
 })
+
+export function parseServerPort(value: string): number | null {
+  const trimmed = value.trim()
+  if (!/^[0-9]+$/.test(trimmed)) {
+    rejectServerPort(value)
+    return null
+  }
+
+  const port = Number(trimmed)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    rejectServerPort(value)
+    return null
+  }
+
+  return port
+}
+
+function rejectServerPort(value: string): void {
+  process.stderr.write(
+    `Invalid port ${JSON.stringify(value)}. Usage: copilot-api start --port <1-65535>\n`,
+  )
+  process.exitCode = 1
+}
