@@ -488,29 +488,37 @@ const buildCodexResponsesWebSocketPoolKey = (
   headers: Record<string, string>,
   baseUrl: string,
 ): string => {
+  // Only Codex clients use thread affinity; other clients keep the full fingerprint.
+  const codexThreadId =
+    /codex/iu.test(headers["user-agent"] ?? "") ?
+      headers["thread-id"]?.trim()
+    : undefined
   const authFingerprint = createHash("sha256")
     .update(
       `${state.codexAccessToken ?? "missing-token"}:${state.codexAccountId ?? "missing-account"}`,
     )
     .digest("hex")
     .slice(0, 16)
-  const headerFingerprint = createHash("sha256")
-    .update(
-      JSON.stringify(
-        Object.entries(headers)
-          .filter(([headerName]) => shouldIncludeHeader(headerName))
-          .sort(([left], [right]) => left.localeCompare(right)),
-      ),
-    )
-    .digest("hex")
-    .slice(0, 16)
+  const affinityKey =
+    codexThreadId ?
+      `thread:${codexThreadId}`
+    : createHash("sha256")
+        .update(
+          JSON.stringify(
+            Object.entries(headers)
+              .filter(([headerName]) => shouldIncludeHeader(headerName))
+              .sort(([left], [right]) => left.localeCompare(right)),
+          ),
+        )
+        .digest("hex")
+        .slice(0, 16)
 
   return [
     "codex",
     resolveCodexResponsesUrl(baseUrl),
     payload.model,
     authFingerprint,
-    headerFingerprint,
+    affinityKey,
   ]
     .map(encodePoolKeyPart)
     .join("|")

@@ -4,6 +4,7 @@ import { z } from "zod"
 import type {
   ChatCompletionChunk,
   ChatCompletionResponse,
+  Delta,
 } from "~/lib/types/chat-completions"
 
 import { type AnthropicStreamState } from "~/lib/types/anthropic"
@@ -410,6 +411,117 @@ describe("OpenAI to Anthropic Streaming Response Translation", () => {
 })
 
 describe("OpenAI stream interleaved tool/content translation", () => {
+  test.each([false, true])(
+    "serializes interleaved tool arguments with declarations in one chunk=%s",
+    (sameChunk) => {
+      const streamState: AnthropicStreamState = {
+        messageStartSent: false,
+        messageCompleted: false,
+        contentBlockIndex: 0,
+        contentBlockOpen: false,
+        toolCalls: {},
+        thinkingBlockOpen: false,
+      }
+      const toolCalls: NonNullable<Delta["tool_calls"]> = [
+        {
+          index: 0,
+          id: "call_weather",
+          type: "function",
+          function: { name: "get_weather", arguments: '{"city":' },
+        },
+        {
+          index: 1,
+          id: "call_time",
+          type: "function",
+          function: { name: "get_time", arguments: '{"zone":' },
+        },
+        {
+          index: 2,
+          id: "call_search",
+          type: "function",
+          function: { name: "search", arguments: "" },
+        },
+      ]
+      const deltas: Array<Delta> = [
+        { content: "Checking." },
+        ...(sameChunk ?
+          [{ tool_calls: toolCalls }]
+        : toolCalls.map((toolCall) => ({ tool_calls: [toolCall] }))),
+        { content: "Done." },
+        {
+          tool_calls: [
+            { index: 1, function: { arguments: '"UTC"}' } },
+            { index: 0, function: { arguments: '"Paris"}' } },
+          ],
+        },
+        {
+          tool_calls: [
+            { index: 2, function: { arguments: sameChunk ? "{}" : "" } },
+          ],
+        },
+      ]
+      const chunks: Array<ChatCompletionChunk> = [...deltas, {}].map(
+        (delta, index) => ({
+          id: "chatcmpl-parallel-tools",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "test-model",
+          choices: [
+            {
+              index: 0,
+              delta,
+              finish_reason: index === deltas.length ? "tool_calls" : null,
+              logprobs: null,
+            },
+          ],
+        }),
+      )
+      const translatedChunks = chunks.map((chunk) =>
+        translateChunkToAnthropicEvents(chunk, streamState),
+      )
+      expect(translatedChunks[1]).toContainEqual({
+        type: "content_block_delta",
+        index: 1,
+        delta: { type: "input_json_delta", partial_json: '{"city":' },
+      })
+      const events = translatedChunks.flat()
+      events.push(...flushPendingAnthropicStreamEvents(streamState))
+
+      let openIndex: number | undefined
+      const inputs = new Map<number, string>()
+      const names: Array<string> = []
+      for (const event of events) {
+        if (event.type === "content_block_start") {
+          expect(openIndex).toBeUndefined()
+          openIndex = event.index
+          if (event.content_block.type === "tool_use") {
+            names.push(event.content_block.name)
+            inputs.set(event.index, "")
+          }
+        } else if (event.type === "content_block_delta") {
+          expect(openIndex).toBe(event.index)
+          if (event.delta.type === "input_json_delta") {
+            inputs.set(
+              event.index,
+              inputs.get(event.index)! + event.delta.partial_json,
+            )
+          }
+        } else if (event.type === "content_block_stop") {
+          expect(openIndex).toBe(event.index)
+          openIndex = undefined
+        }
+      }
+      expect(openIndex).toBeUndefined()
+      expect(names).toEqual(["get_weather", "get_time", "search"])
+      expect(
+        [...inputs.values()].map(
+          (input) => JSON.parse(input || "{}") as unknown,
+        ),
+      ).toEqual([{ city: "Paris" }, { zone: "UTC" }, {}])
+      expect(events.at(-1)?.type).toBe("message_stop")
+    },
+  )
+
   test("emits text before a tool call when both start in the same chunk", () => {
     const streamState: AnthropicStreamState = {
       messageStartSent: false,

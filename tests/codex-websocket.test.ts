@@ -509,14 +509,15 @@ test("forwardCodexResponses preserves response lifecycle events", async () => {
   ])
 })
 
-test("Codex refreshes metadata at send time on a reused websocket", async () => {
+test("Codex reuses a thread across client metadata changes and refreshes send metadata", async () => {
   const now = spyOn(Date, "now").mockReturnValue(1_000)
   const clientMetadata = {
     existing: "preserved",
     "x-codex-ws-stream-request-start-ms": "stale",
   }
   const headers = new Headers({
-    "user-agent": "codex-tui/0.155.1 (Linux)",
+    "user-agent": "CoDeX-tui/0.155.1 (Linux)",
+    "thread-id": "thread-1",
     "x-openai-internal-codex-responses-lite": "false",
     "x-codex-turn-state": "turn-state-websocket-123",
     "x-codex-routing-hint": "model=stale-model",
@@ -524,6 +525,13 @@ test("Codex refreshes metadata at send time on a reused websocket", async () => 
 
   try {
     for (const sendTime of [2_000, 4_000]) {
+      headers.set("x-client-request-id", `request-${sendTime}`)
+      headers.set("session-id", `session-${sendTime}`)
+      headers.set("x-codex-window-id", `window-${sendTime}`)
+      if (sendTime === 4_000) {
+        headers.set("user-agent", "codex-desktop/1.0")
+        headers.set("version", "1.0")
+      }
       const response = await forwardCodexResponses(
         {
           client_metadata: clientMetadata,
