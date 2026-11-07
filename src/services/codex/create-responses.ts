@@ -499,9 +499,11 @@ const buildCodexResponsesWebSocketPoolKey = (
   headers: Record<string, string>,
   baseUrl: string,
 ): string => {
-  // Thread affinity is independent of client/request metadata. Keep only
-  // handshake settings that change routing, protocol features, or review behavior.
-  const threadId = headers["thread-id"]?.trim()
+  // Only Codex clients use thread affinity; other clients keep the full fingerprint.
+  const codexThreadId =
+    /codex/iu.test(headers["user-agent"] ?? "") ?
+      headers["thread-id"]?.trim()
+    : undefined
   const authFingerprint = createHash("sha256")
     .update(
       `${state.codexAccessToken ?? "missing-token"}:${state.codexAccountId ?? "missing-account"}`,
@@ -513,7 +515,7 @@ const buildCodexResponsesWebSocketPoolKey = (
       JSON.stringify(
         Object.entries(headers)
           .filter(([headerName]) =>
-            threadId ?
+            codexThreadId ?
               CODEX_WEBSOCKET_AFFINITY_HEADERS.has(headerName)
             : shouldIncludeHeader(headerName),
           )

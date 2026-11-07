@@ -34,8 +34,13 @@ afterEach(() => {
 })
 
 describe("Codex WebSocket headers", () => {
-  test.each(["codex-tui/0.167.0", "CoDeX Desktop/0.167.0", "opencode/1.0", ""])(
-    "reuses a thread despite changing client metadata for UA=%s",
+  test.each([
+    "codex-tui/0.167.0",
+    "CoDeX Desktop/0.167.0",
+    "codex_cli_rs/0.167.0",
+    "Mozilla/5.0 codex_desktop/0.167.0",
+  ])(
+    "reuses a Codex thread despite changing client metadata for UA=%s",
     (userAgent) => {
       const headers = new Headers({
         "user-agent": userAgent,
@@ -51,7 +56,7 @@ describe("Codex WebSocket headers", () => {
       headers.set("x-client-request-id", "request-2")
       headers.set("session-id", "session-2")
       headers.set("x-codex-window-id", "window-2")
-      headers.set("user-agent", "another-client/2.0")
+      headers.set("user-agent", "CoDeX Desktop/2.0")
       headers.set("originator", "another-client")
       headers.set("version", "2.0")
       headers.set("x-custom-metadata", "request-2")
@@ -68,6 +73,32 @@ describe("Codex WebSocket headers", () => {
         prepareCodexResponsesWebSocketRequest({ model: "gpt-5.4" }, headers)
           .poolKey,
       ).not.toBe(second.poolKey)
+    },
+  )
+
+  test.each(["opencode/1.0", "claude-code/2.1", "another-client/2.0", ""])(
+    "keeps the full header fingerprint for non-Codex UA=%s",
+    (userAgent) => {
+      const headers = new Headers({
+        "user-agent": userAgent,
+        "thread-id": "thread-1",
+        "x-client-request-id": "request-1",
+      })
+      const first = prepareCodexResponsesWebSocketRequest(
+        { model: "gpt-5.4" },
+        headers,
+      )
+      headers.set("x-client-request-id", "request-2")
+      expect(
+        prepareCodexResponsesWebSocketRequest({ model: "gpt-5.4" }, headers)
+          .poolKey,
+      ).not.toBe(first.poolKey)
+      headers.set("x-client-request-id", "request-1")
+      headers.set("x-custom-metadata", "request-2")
+      expect(
+        prepareCodexResponsesWebSocketRequest({ model: "gpt-5.4" }, headers)
+          .poolKey,
+      ).not.toBe(first.poolKey)
     },
   )
 
@@ -100,6 +131,7 @@ describe("Codex WebSocket headers", () => {
     "x-openai-account-routing-override",
   ])("isolates thread sockets when %s changes", (headerName) => {
     const headers = new Headers({
+      "user-agent": "codex-tui/0.167.0",
       "thread-id": "thread-1",
       [headerName]: "first-value",
     })
@@ -115,7 +147,10 @@ describe("Codex WebSocket headers", () => {
   })
 
   test("isolates thread sockets by upstream destination and credentials", () => {
-    const headers = new Headers({ "thread-id": "thread-1" })
+    const headers = new Headers({
+      "user-agent": "codex-tui/0.167.0",
+      "thread-id": "thread-1",
+    })
     const payload = { model: "gpt-5.4" }
     const first = prepareCodexResponsesWebSocketRequest(payload, headers)
     expect(

@@ -529,7 +529,7 @@ test("Codex reuses a thread across client metadata changes and refreshes send me
       headers.set("session-id", `session-${sendTime}`)
       headers.set("x-codex-window-id", `window-${sendTime}`)
       if (sendTime === 4_000) {
-        headers.set("user-agent", "another-client/1.0")
+        headers.set("user-agent", "codex-desktop/1.0")
         headers.set("version", "1.0")
       }
       const response = await forwardCodexResponses(
