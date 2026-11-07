@@ -89,6 +89,17 @@ const STRIPPED_CODEX_WEBSOCKET_HEADERS = new Set([
   "x-codex-turn-state",
 ])
 
+const CODEX_WEBSOCKET_AFFINITY_HEADERS = new Set([
+  "thread-id",
+  "openai-beta",
+  "x-codex-beta-features",
+  "x-codex-guardian",
+  "x-codex-routing-hint",
+  "x-codex-safety-buffering-enabled",
+  "x-codex-safety-buffering-faster-model",
+  "x-openai-account-routing-override",
+])
+
 const shouldForwardCodexRequestHeader = (headerName: string): boolean => {
   const headerNameLower = headerName.toLowerCase()
   return (
@@ -488,11 +499,9 @@ const buildCodexResponsesWebSocketPoolKey = (
   headers: Record<string, string>,
   baseUrl: string,
 ): string => {
-  // Keep thread-id in the fingerprint, but ignore per-request IDs for Codex.
-  const codexThreadId =
-    /codex/iu.test(headers["user-agent"] ?? "") ?
-      headers["thread-id"]?.trim()
-    : undefined
+  // Thread affinity is independent of client/request metadata. Keep only
+  // handshake settings that change routing, protocol features, or review behavior.
+  const threadId = headers["thread-id"]?.trim()
   const authFingerprint = createHash("sha256")
     .update(
       `${state.codexAccessToken ?? "missing-token"}:${state.codexAccountId ?? "missing-account"}`,
@@ -503,10 +512,10 @@ const buildCodexResponsesWebSocketPoolKey = (
     .update(
       JSON.stringify(
         Object.entries(headers)
-          .filter(
-            ([headerName]) =>
-              shouldIncludeHeader(headerName)
-              && !(codexThreadId && headerName === "x-client-request-id"),
+          .filter(([headerName]) =>
+            threadId ?
+              CODEX_WEBSOCKET_AFFINITY_HEADERS.has(headerName)
+            : shouldIncludeHeader(headerName),
           )
           .sort(([left], [right]) => left.localeCompare(right)),
       ),

@@ -34,30 +34,33 @@ afterEach(() => {
 })
 
 describe("Codex WebSocket headers", () => {
-  test.each([
-    ["codex-tui/0.167.0", "thread-1", true],
-    ["CoDeX Desktop/0.167.0", "thread-1", true],
-    ["opencode/1.0", "thread-1", false],
-    ["codex-tui/0.167.0", "", false],
-  ])(
-    "keeps request ID pool isolation for UA=%s, thread=%s unless it is a Codex thread",
-    (userAgent, threadId, reuse) => {
+  test.each(["codex-tui/0.167.0", "CoDeX Desktop/0.167.0", "opencode/1.0", ""])(
+    "reuses a thread despite changing client metadata for UA=%s",
+    (userAgent) => {
       const headers = new Headers({
         "user-agent": userAgent,
-        "thread-id": threadId,
+        "thread-id": "thread-1",
         "x-client-request-id": "request-1",
+        "session-id": "session-1",
+        "x-codex-window-id": "window-1",
       })
       const first = prepareCodexResponsesWebSocketRequest(
         { model: "gpt-5.4" },
         headers,
       )
       headers.set("x-client-request-id", "request-2")
+      headers.set("session-id", "session-2")
+      headers.set("x-codex-window-id", "window-2")
+      headers.set("user-agent", "another-client/2.0")
+      headers.set("originator", "another-client")
+      headers.set("version", "2.0")
+      headers.set("x-custom-metadata", "request-2")
       const second = prepareCodexResponsesWebSocketRequest(
         { model: "gpt-5.4" },
         headers,
       )
 
-      expect(first.poolKey === second.poolKey).toBe(reuse)
+      expect(first.poolKey).toBe(second.poolKey)
       expect(first.headers["x-client-request-id"]).toBe("request-1")
       expect(second.headers["x-client-request-id"]).toBe("request-2")
       headers.set("thread-id", "thread-2")
@@ -67,6 +70,72 @@ describe("Codex WebSocket headers", () => {
       ).not.toBe(second.poolKey)
     },
   )
+
+  test.each([undefined, "", "   "])(
+    "keeps the header fingerprint without a non-empty thread ID: %j",
+    (threadId) => {
+      const headers = new Headers({
+        "user-agent": "codex-tui/0.167.0",
+        "x-client-request-id": "request-1",
+      })
+      if (threadId !== undefined) headers.set("thread-id", threadId)
+      const first = prepareCodexResponsesWebSocketRequest(
+        { model: "gpt-5.4" },
+        headers,
+      )
+      headers.set("x-client-request-id", "request-2")
+      expect(
+        prepareCodexResponsesWebSocketRequest({ model: "gpt-5.4" }, headers)
+          .poolKey,
+      ).not.toBe(first.poolKey)
+    },
+  )
+
+  test.each([
+    "openai-beta",
+    "x-codex-beta-features",
+    "x-codex-guardian",
+    "x-codex-safety-buffering-enabled",
+    "x-codex-safety-buffering-faster-model",
+    "x-openai-account-routing-override",
+  ])("isolates thread sockets when %s changes", (headerName) => {
+    const headers = new Headers({
+      "thread-id": "thread-1",
+      [headerName]: "first-value",
+    })
+    const first = prepareCodexResponsesWebSocketRequest(
+      { model: "gpt-5.4" },
+      headers,
+    )
+    headers.set(headerName, "second-value")
+    expect(
+      prepareCodexResponsesWebSocketRequest({ model: "gpt-5.4" }, headers)
+        .poolKey,
+    ).not.toBe(first.poolKey)
+  })
+
+  test("isolates thread sockets by upstream destination and credentials", () => {
+    const headers = new Headers({ "thread-id": "thread-1" })
+    const payload = { model: "gpt-5.4" }
+    const first = prepareCodexResponsesWebSocketRequest(payload, headers)
+    expect(
+      prepareCodexResponsesWebSocketRequest(
+        payload,
+        headers,
+        "https://other.example/backend-api",
+      ).poolKey,
+    ).not.toBe(first.poolKey)
+
+    state.codexAccessToken = "another-token"
+    expect(
+      prepareCodexResponsesWebSocketRequest(payload, headers).poolKey,
+    ).not.toBe(first.poolKey)
+    state.codexAccessToken = "codex-token"
+    state.codexAccountId = "another-account"
+    expect(
+      prepareCodexResponsesWebSocketRequest(payload, headers).poolKey,
+    ).not.toBe(first.poolKey)
+  })
 
   test.each([
     { model: "gpt-5.4", serviceTier: undefined, routingHint: "model=gpt-5.4" },

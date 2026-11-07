@@ -509,7 +509,7 @@ test("forwardCodexResponses preserves response lifecycle events", async () => {
   ])
 })
 
-test("Codex reuses a thread across request IDs and refreshes metadata at send time", async () => {
+test("Codex reuses a thread across client metadata changes and refreshes send metadata", async () => {
   const now = spyOn(Date, "now").mockReturnValue(1_000)
   const clientMetadata = {
     existing: "preserved",
@@ -526,6 +526,12 @@ test("Codex reuses a thread across request IDs and refreshes metadata at send ti
   try {
     for (const sendTime of [2_000, 4_000]) {
       headers.set("x-client-request-id", `request-${sendTime}`)
+      headers.set("session-id", `session-${sendTime}`)
+      headers.set("x-codex-window-id", `window-${sendTime}`)
+      if (sendTime === 4_000) {
+        headers.set("user-agent", "another-client/1.0")
+        headers.set("version", "1.0")
+      }
       const response = await forwardCodexResponses(
         {
           client_metadata: clientMetadata,
