@@ -1,9 +1,6 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
-
-const require = createRequire(import.meta.url)
-const electronExecutable = require('electron') as string
+import { fileURLToPath } from 'node:url'
 
 const MINIMUM_NODE_VERSIONS = [
   [22, 23, 4],
@@ -51,8 +48,22 @@ test.each([
 })
 
 test('bundled Electron uses a patched Node.js runtime', () => {
+  // Resolve outside the test process so other suites' Electron mocks cannot
+  // replace the executable path.
+  const electronPathResult = spawnSync(
+    process.execPath,
+    ['--print', "require('electron')"],
+    {
+      cwd: fileURLToPath(new URL('../', import.meta.url)),
+      encoding: 'utf8',
+      timeout: 10_000,
+    },
+  )
+  expect(electronPathResult.error).toBeUndefined()
+  expect(electronPathResult.status, electronPathResult.stderr).toBe(0)
+
   const result = spawnSync(
-    electronExecutable,
+    electronPathResult.stdout.trim(),
     [
       '-p',
       'JSON.stringify({ electron: process.versions.electron, node: process.versions.node })',
@@ -74,4 +85,4 @@ test('bundled Electron uses a patched Node.js runtime', () => {
     isPatchedNodeVersion(versions.node),
     `Electron ${versions.electron} uses unsupported Node.js ${versions.node}`,
   ).toBe(true)
-})
+}, 25_000)
