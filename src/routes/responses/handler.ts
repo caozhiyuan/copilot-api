@@ -41,6 +41,7 @@ import { handleResponsesViaMessages } from "./messages-handler"
 import { createStreamIdTracker, fixStreamIds } from "./stream-id-sync"
 import { getCodexTaskTitleModel } from "./task-title"
 import {
+  applyDefaultReasoningSummary,
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
   filterReasoningForTransport,
@@ -162,6 +163,7 @@ export const handleResponses = async (c: Context) => {
   }
 
   filterReasoningForTransport(payload, false)
+  applyDefaultReasoningSummary(payload)
 
   const recordUsage = createCopilotTokenUsageRecorder({
     endpoint: "responses",

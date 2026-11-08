@@ -52,6 +52,14 @@ export const normalizeResponsesReasoningEffort = (
   return { from: requestedEffort, to: resolvedEffort }
 }
 
+export const applyDefaultReasoningSummary = (
+  payload: ResponsesPayload,
+): void => {
+  if (payload.reasoning?.effort && payload.reasoning.summary === undefined) {
+    payload.reasoning.summary = "auto"
+  }
+}
+
 export const responsesUtilsDependencies = {
   getModelResponsesApiCompactThreshold:
     getConfiguredModelResponsesApiCompactThreshold,

@@ -211,7 +211,7 @@ describe("OpenCode provider Responses forwarding", () => {
         const body = parseJsonRequestBody(init?.body) as ResponsesPayload
         expect(body.model).toBe(model)
         expect(body.input).toEqual(payload.input)
-        expect(body.reasoning).toEqual({ effort: "high" })
+        expect(body.reasoning).toEqual({ effort: "high", summary: "auto" })
         expect(body).not.toHaveProperty("output_config")
       } finally {
         state.codexAccessToken = originalAccessToken
@@ -293,6 +293,50 @@ describe("OpenCode provider Responses forwarding", () => {
         originalWebSocketEnabled
     }
   })
+})
+
+describe("provider Responses reasoning summary defaults", () => {
+  for (const [path, model] of [
+    ["/v1/responses", "openai/gpt-test"],
+    ["/openai/v1/responses", "gpt-test"],
+  ]) {
+    test.each([false, true])(
+      `defaults summary for ${path} with stream=%s`,
+      async (stream) => {
+        fetchMock.mockImplementation((_url, init) => {
+          const body = parseJsonRequestBody(init?.body) as ResponsesPayload
+          const result = createResponsesResult(body.model)
+          return Promise.resolve(
+            body.stream ?
+              new Response(
+                `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: result })}\n\n`,
+                { headers: { "content-type": "text/event-stream" } },
+              )
+            : Response.json(result),
+          )
+        })
+
+        const response = await createApp().request(path, {
+          body: JSON.stringify({
+            input: "hello",
+            model,
+            reasoning: { effort: "high" },
+            stream,
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        })
+        await response.text()
+
+        expect(response.status).toBe(200)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        const body = parseJsonRequestBody(
+          fetchMock.mock.calls[0][1]?.body,
+        ) as ResponsesPayload
+        expect(body.reasoning).toEqual({ effort: "high", summary: "auto" })
+      },
+    )
+  }
 })
 
 describe("Codex task title model routing on provider Responses", () => {

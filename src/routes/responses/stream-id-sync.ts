@@ -1,9 +1,11 @@
 /**
- * Stream ID Synchronization for @ai-sdk/openai compatibility
+ * Stream ID Synchronization for Responses client compatibility
  *
  * Problem: GitHub Copilot's Responses API returns different IDs for the same
- * item in 'added' vs 'done' events. This breaks @ai-sdk/openai which expects
- * consistent IDs across the stream lifecycle.
+ * response and output item across lifecycle events and response snapshots.
+ * Responses clients, including OpenCode compaction, require consistent IDs.
+ * Apply this only to downstream JSON: WebSocket continuation keeps the original
+ * upstream response.completed ID for previous_response_id.
  *
  * Errors without this fix:
  * - "activeReasoningPart.summaryParts" undefined
@@ -14,17 +16,21 @@
  */
 
 import type {
+  ResponseOutputItem,
   ResponseOutputItemAddedEvent,
   ResponseOutputItemDoneEvent,
   ResponseStreamEvent,
 } from "~/lib/types/responses"
 
 interface StreamIdTracker {
+  responseId?: string
   outputItems: Map<number, string>
+  completedCompactions: Map<number, string>
 }
 
 export const createStreamIdTracker = (): StreamIdTracker => ({
   outputItems: new Map(),
+  completedCompactions: new Map(),
 })
 
 export const fixStreamIds = (
@@ -32,20 +38,33 @@ export const fixStreamIds = (
   event: string | undefined,
   tracker: StreamIdTracker,
 ): string => {
-  if (!data) return data
+  if (!data || data === "[DONE]") return data
   const parsed = JSON.parse(data) as ResponseStreamEvent
-  switch (event) {
-    case "response.output_item.added": {
-      return handleOutputItemAdded(
-        parsed as ResponseOutputItemAddedEvent,
-        tracker,
-      )
+  if ("response" in parsed) {
+    const { response } = parsed
+    if (tracker.responseId) {
+      response.id = tracker.responseId
+    } else if (response.id) {
+      tracker.responseId = response.id
     }
+    for (const [outputIndex, item] of (response.output ?? []).entries()) {
+      synchronizeOutputItem(item, outputIndex, tracker)
+    }
+  }
+
+  switch (event ?? parsed.type) {
+    case "response.output_item.added":
     case "response.output_item.done": {
-      return handleOutputItemDone(
-        parsed as ResponseOutputItemDoneEvent,
+      const itemEvent = parsed as
+        | ResponseOutputItemAddedEvent
+        | ResponseOutputItemDoneEvent
+      synchronizeOutputItem(
+        itemEvent.item,
+        itemEvent.output_index,
         tracker,
+        itemEvent.type === "response.output_item.done",
       )
+      return JSON.stringify(parsed)
     }
     default: {
       return handleItemId(parsed, tracker)
@@ -53,33 +72,34 @@ export const fixStreamIds = (
   }
 }
 
-const handleOutputItemAdded = (
-  parsed: ResponseOutputItemAddedEvent,
+const synchronizeOutputItem = (
+  item: ResponseOutputItem,
+  outputIndex: number,
   tracker: StreamIdTracker,
-): string => {
-  if (!parsed.item.id) {
+  isDone = false,
+): void => {
+  let itemId = tracker.outputItems.get(outputIndex) ?? item.id
+  if (!itemId) {
     let randomSuffix = ""
     while (randomSuffix.length < 16) {
       randomSuffix += Math.random().toString(36).slice(2)
     }
-    parsed.item.id = `oi_${parsed.output_index}_${randomSuffix.slice(0, 16)}`
+    itemId = `oi_${outputIndex}_${randomSuffix.slice(0, 16)}`
   }
 
-  const outputIndex = parsed.output_index
-  tracker.outputItems.set(outputIndex, parsed.item.id)
-  return JSON.stringify(parsed)
-}
+  item.id = itemId
+  tracker.outputItems.set(outputIndex, itemId)
 
-const handleOutputItemDone = (
-  parsed: ResponseOutputItemDoneEvent,
-  tracker: StreamIdTracker,
-): string => {
-  const outputIndex = parsed.output_index
-  const originalId = tracker.outputItems.get(outputIndex)
-  if (originalId) {
-    parsed.item.id = originalId
+  if (item.type === "compaction") {
+    // Copilot can rewrap the same checkpoint in the completed snapshot.
+    // Clients have already accepted item.done, so preserve its ciphertext.
+    const encryptedContent = tracker.completedCompactions.get(outputIndex)
+    if (encryptedContent !== undefined) {
+      item.encrypted_content = encryptedContent
+    } else if (isDone) {
+      tracker.completedCompactions.set(outputIndex, item.encrypted_content)
+    }
   }
-  return JSON.stringify(parsed)
 }
 
 const handleItemId = (

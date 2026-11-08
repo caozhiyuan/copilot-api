@@ -5,7 +5,10 @@ import type {
   AnthropicMessagesPayload,
   AnthropicResponse,
 } from "~/lib/types/anthropic"
-import type { ResponsesResult } from "~/lib/types/responses"
+import type {
+  ResponsesResult,
+  ResponseStreamEvent,
+} from "~/lib/types/responses"
 import type { CompletionPayloadOptions } from "~/routes/messages/handler"
 import { MESSAGES_TOOL_CALL_TIPS } from "~/routes/responses/messages-translation"
 import type { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
@@ -208,6 +211,81 @@ afterEach(async () => {
   )
   Object.assign(responsesUtilsDependencies, defaultResponsesUtilsDependencies)
   Object.assign(taskTitleDependencies, defaultTaskTitleDependencies)
+})
+
+describe("Responses reasoning summary defaults", () => {
+  for (const [transport, supportedEndpoints] of [
+    ["http", ["/responses"]],
+    ["websocket", ["/responses", "ws:/responses"]],
+  ] as const) {
+    for (const [scenario, reasoning, expectedReasoning] of [
+      [
+        "effort is set",
+        { effort: "high", context: "all_turns" },
+        { effort: "high", context: "all_turns", summary: "auto" },
+      ],
+      [
+        "effort is none",
+        { effort: "none" },
+        { effort: "none", summary: "auto" },
+      ],
+      [
+        "summary is auto",
+        { effort: "high", summary: "auto" },
+        { effort: "high", summary: "auto" },
+      ],
+      [
+        "summary is concise",
+        { effort: "high", summary: "concise" },
+        { effort: "high", summary: "concise" },
+      ],
+      [
+        "summary is detailed",
+        { effort: "high", summary: "detailed" },
+        { effort: "high", summary: "detailed" },
+      ],
+      [
+        "summary is null",
+        { effort: "high", summary: null },
+        { effort: "high", summary: null },
+      ],
+      ["effort is empty", { effort: "" }, { effort: "" }],
+      ["effort is null", { effort: null }, { effort: null }],
+      ["effort is omitted", {}, {}],
+      ["reasoning is null", null, null],
+      ["reasoning is omitted", undefined, undefined],
+    ] as const) {
+      test(`forwards reasoning when ${scenario} over ${transport}`, async () => {
+        state.models!.data[0].supported_endpoints = [...supportedEndpoints]
+        createResponses.mockImplementation((payload) =>
+          Promise.resolve(
+            payload.stream ?
+              streamChunks([])
+            : createResponsesResult(payload.model),
+          ),
+        )
+
+        const response = await createApp().request("/v1/responses", {
+          body: JSON.stringify({
+            input: "hello",
+            model: "gpt-test",
+            reasoning,
+            stream: transport === "websocket",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        })
+        await response.text()
+
+        expect(response.status).toBe(200)
+        expect(createResponses).toHaveBeenCalledTimes(1)
+        expect<unknown>(createResponses.mock.calls[0][0].reasoning).toEqual(
+          expectedReasoning,
+        )
+        expect(createResponses.mock.calls[0][1].transport).toBe(transport)
+      })
+    }
+  }
 })
 
 describe("Codex task title model routing on Responses", () => {
@@ -1211,11 +1289,12 @@ describe("responses handler token usage", () => {
       expect(createResponses).toHaveBeenCalledTimes(1)
       expect(
         createResponses.mock.calls[0][0].reasoning as
-          | { effort?: string }
+          | { effort?: string; summary?: string | null }
           | null
           | undefined,
       ).toEqual({
         effort: expectedEffort,
+        summary: "auto",
       })
     },
   )
@@ -2125,6 +2204,121 @@ describe("responses handler token usage", () => {
     expect(page.items[0]?.total_nano_aiu).toBe(1234)
     expect(page.items[0]?.total_tokens).toBe(7)
   })
+})
+
+describe("Responses compaction stream IDs", () => {
+  for (const [transport, supportedEndpoints] of [
+    ["http", ["/responses"]],
+    ["websocket", ["/responses", "ws:/responses"]],
+  ] as const) {
+    test.each([true, false])(
+      `keeps one response and checkpoint over ${transport} with SSE event names=%s`,
+      async (includeEventName) => {
+        state.models!.data[0].supported_endpoints = [...supportedEndpoints]
+        const checkpoint = {
+          id: "checkpoint-added",
+          type: "compaction",
+          encrypted_content: "final-checkpoint",
+        } as const
+        const events: Array<ResponseStreamEvent> = [
+          {
+            type: "response.created",
+            sequence_number: 0,
+            response: {
+              ...createResponsesResult("gpt-test"),
+              id: "response-created",
+              status: "in_progress",
+            },
+          },
+          {
+            type: "response.in_progress",
+            sequence_number: 1,
+            response: {
+              ...createResponsesResult("gpt-test"),
+              id: "response-in-progress",
+              status: "in_progress",
+            },
+          },
+          {
+            type: "response.output_item.added",
+            sequence_number: 2,
+            output_index: 0,
+            item: { ...checkpoint, encrypted_content: "initial-checkpoint" },
+          },
+          {
+            type: "response.output_item.done",
+            sequence_number: 3,
+            output_index: 0,
+            item: { ...checkpoint, id: "checkpoint-done" },
+          },
+          {
+            type: "response.completed",
+            sequence_number: 4,
+            response: {
+              ...createResponsesResult("gpt-test"),
+              id: "response-completed",
+              output: [
+                {
+                  ...checkpoint,
+                  id: "checkpoint-completed",
+                  encrypted_content: "rewrapped-checkpoint",
+                },
+              ],
+            },
+          },
+        ]
+        createResponses.mockImplementation(() =>
+          Promise.resolve(
+            streamChunks(
+              events.map((event) => ({
+                data: JSON.stringify(event),
+                event: includeEventName ? event.type : undefined,
+              })),
+            ),
+          ),
+        )
+
+        const response = await createApp().request("/v1/responses", {
+          body: JSON.stringify({
+            input: [
+              { role: "user", content: "Compact this conversation." },
+              { type: "compaction_trigger" },
+            ],
+            model: "gpt-test",
+            stream: true,
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        })
+        const body = await response.text()
+        const forwarded = body
+          .split("\n")
+          .filter((line) => line.startsWith("data: "))
+          .map((line) => JSON.parse(line.slice(6)) as ResponseStreamEvent)
+
+        expect(response.status).toBe(200)
+        expect(createResponses.mock.calls[0][1].transport).toBe(transport)
+        expect(forwarded.map((event) => event.type)).toEqual(
+          events.map((event) => event.type),
+        )
+        const checkpointIds = new Set<string | undefined>()
+        for (const event of forwarded) {
+          if ("response" in event) {
+            expect(event.response.id).toBe("response-created")
+          }
+          if (event.type === "response.output_item.done") {
+            expect(event.item).toEqual(checkpoint)
+            checkpointIds.add(event.item.id)
+          }
+          if (event.type === "response.completed") {
+            expect(event.response.output).toEqual([checkpoint])
+            for (const item of event.response.output) checkpointIds.add(item.id)
+          }
+        }
+        expect([...checkpointIds]).toEqual([checkpoint.id])
+      },
+    )
+  }
 })
 
 describe("responses handler interrupted streams", () => {

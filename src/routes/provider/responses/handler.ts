@@ -22,6 +22,7 @@ import {
 import { isResponsesStream } from "~/lib/utils"
 import { isCodexUserAgent } from "~/routes/models/codex-models"
 import {
+  applyDefaultReasoningSummary,
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
   filterReasoningForTransport,
@@ -127,6 +128,7 @@ export async function handleProviderResponsesForProvider(
   }
 
   filterReasoningForTransport(payload, false)
+  applyDefaultReasoningSummary(payload)
 
   const model =
     providerConfig.name === "codex" ?
