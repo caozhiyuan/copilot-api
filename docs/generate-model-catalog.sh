@@ -55,14 +55,14 @@ trap 'rm -f "$temp_file"' 0
 trap 'exit 1' HUP INT TERM
 
 set -- --fail --silent --show-error --connect-timeout 10 --max-time 120 \
-  --user-agent 'codex-tui/0.160.0 (Windows 10.0.26200; x86_64) vscode/1.139.1 (codex-tui; 0.160.0)' \
-  --header 'originator: codex-tui' --header 'version: 0.160.0' \
+  --user-agent 'codex-tui/0.166.0 (Windows 10.0.26200; x86_64) vscode/1.139.1 (codex-tui; 0.166.0)' \
+  --header 'originator: codex-tui' --header 'version: 0.166.0' \
   --header 'x-full-model-catalog: true' \
   --header 'Accept: application/json' --output "$temp_file"
 if [ -n "${GITHUB_COPILOT_API_KEY:-}" ]; then
   set -- "$@" --header "Authorization: Bearer $GITHUB_COPILOT_API_KEY"
 fi
-if ! curl "$@" --url "${base_url%/}/models?client_version=0.160.0"; then
+if ! curl "$@" --url "${base_url%/}/models?client_version=0.166.0"; then
   printf 'Error: failed to download the model catalog. Check the gateway URL and API key.\n' >&2
   exit 1
 fi

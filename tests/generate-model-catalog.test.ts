@@ -36,7 +36,7 @@ async function generate(output: string, url: string) {
 
 describe("model catalog generator", () => {
   test.skipIf(!fs.existsSync(shell))(
-    "exports more than 1 MiB with the full header and 0.160.0 version",
+    "exports more than 1 MiB with the full header and 0.166.0 version",
     async () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-generator-"))
       tempDirs.push(dir)
@@ -66,13 +66,13 @@ describe("model catalog generator", () => {
         expect(fs.statSync(output).size).toBeGreaterThan(1024 * 1024)
         expect(JSON.parse(fs.readFileSync(output, "utf8"))).toEqual(catalog)
         expect(requestHeaders?.get("x-full-model-catalog")).toBe("true")
-        expect(requestHeaders?.get("version")).toBe("0.160.0")
-        expect(requestHeaders?.get("user-agent")).toContain("codex-tui/0.160.0")
+        expect(requestHeaders?.get("version")).toBe("0.166.0")
+        expect(requestHeaders?.get("user-agent")).toContain("codex-tui/0.166.0")
         expect(requestHeaders?.get("authorization")).toBe(
           "Bearer test-gateway-key",
         )
         expect(new URL(requestUrl!).searchParams.get("client_version")).toBe(
-          "0.160.0",
+          "0.166.0",
         )
       } finally {
         await server.stop(true)

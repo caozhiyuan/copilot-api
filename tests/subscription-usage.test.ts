@@ -539,9 +539,9 @@ describe("subscription usage requests", () => {
     expect(headers.get("chatgpt-account-id")).toBe("business-workspace")
     expect(headers.get("originator")).toBe("codex_cli_rs")
     expect(headers.get("user-agent")).toMatch(
-      /^codex_cli_rs\/0\.164\.0 \(.+; .+\) unknown$/u,
+      /^codex_cli_rs\/0\.166\.0 \(.+; .+\) unknown$/u,
     )
-    expect(headers.get("version")).toBe("0.164.0")
+    expect(headers.get("version")).toBe("0.166.0")
     expect(init?.redirect).toBe("error")
     controller.abort()
     expect(init?.signal?.aborted).toBe(true)
