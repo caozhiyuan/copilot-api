@@ -1,5 +1,6 @@
 import consola from "consola"
 
+import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { prepareResponsesContinuation } from "~/lib/responses-continuation"
 import type {
   ResponsesPayload,
@@ -10,6 +11,8 @@ import {
   type PooledWebSocketRequest,
   type PooledWebSocketStreamOptions,
 } from "~/services/responses-websocket"
+
+const logger = createHandlerLogger("responses-websocket-continuation")
 
 interface StreamChunk {
   data?: string
@@ -53,6 +56,7 @@ export async function* createContinuableResponsesWebSocketStream<
             forceFull,
             clientSignal,
           )
+          logOutgoingContinuationPayload(attempt.payload)
           return attempt.payload
         },
       },
@@ -85,6 +89,15 @@ export async function* createContinuableResponsesWebSocketStream<
     if (!retry) return
     forceFull = true
   }
+}
+
+function logOutgoingContinuationPayload(payload: ResponsesPayload): void {
+  const previousResponseId = payload.previous_response_id
+  if (typeof previousResponseId === "string" && previousResponseId) {
+    debugJson(logger, "Responses websocket continuation payload:", payload)
+    return
+  }
+  logger.debug("full payload")
 }
 
 function parseEvent(chunk: StreamChunk): ResponseStreamEvent | null {
