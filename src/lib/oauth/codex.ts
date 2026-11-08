@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto"
 import { createServer } from "node:http"
 import type { OAuthCredentials } from "~/lib/types/oauth"
 
-export { CODEX_API_BASE_URL } from "~/services/codex/create-responses"
+export { CODEX_API_BASE_URL } from "~/services/codex/constants"
 
 const CALLBACK_HOST = "127.0.0.1"
 const CALLBACK_PORT = 1455

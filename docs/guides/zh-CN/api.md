@@ -45,6 +45,12 @@ curl http://localhost:4141/admin/config/model-mappings \
 | `GET /v1/models`            | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求返回合并后的 Codex 格式目录，并排除仅输出图片的模型。 |
 | `POST /v1/embeddings`       | `POST` | 创建表示输入文本的向量嵌入。                                                                             |
 
+### Responses WebSocket 续接
+
+内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，可复用同一连接上最近一次完整成功的 response。内存只保留 response ID 和一个不透明锚点：思考项的 `encrypted_content`，或工具调用的类型及 `call_id`。锚点以 `response.output_item.done` 为准；`response.completed` 只确认成功并补齐缺失项，不覆盖 done 中不同的签名。下轮请求找到锚点后，跳过后续助手输出（包括文本），从下一条非助手内容（如用户消息或工具结果）开始发送增量，并带上 `previous_response_id`。不保存或比较助手文本，不计算历史/配置 hash，不保存 item 数量，也不另设续接过期时间。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
+
+找不到锚点、响应没有可用锚点、没有新增 input、重新连接、取消或未完整结束时，均发送完整 input。锚点不校验更早的历史；修改、重排或压缩历史后，需要显式传入 `previous_response_id: null` 或新建会话。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次；客户端显式传入的 response ID 保持不变。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。
+
 ### 模型发现来源
 
 `GET /models`、`GET /v1/models` 和 `GET /:provider/v1/models` 从 models.dev 缓存读取 `xai`、`openrouter`、`deepseek`、`kimi`、`dashscope`、`opencode-go` 的模型，不查询这些 provider 的远程模型接口。Kimi 默认使用 `kimi-code-plan-cn`，DashScope 默认使用 `alibaba-cn`；其他官方地址匹配对应目录，显式 `modelsDevProviderId` 优先。

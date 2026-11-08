@@ -18,13 +18,15 @@ import {
   isResponsesApiWebSocketEnabled as isConfiguredResponsesApiWebSocketEnabled,
 } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
+import { getResponsesContinuationSession } from "~/lib/responses-continuation"
 import { FULL_MODEL_CATALOG_HEADER } from "~/lib/internal-headers"
 import { state } from "~/lib/state"
 import {
-  createPooledWebSocketStream,
   createWebSocketUrl,
   type PooledWebSocketRequest,
 } from "~/services/responses-websocket"
+import { CODEX_API_BASE_URL } from "~/services/codex/constants"
+import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
   createResponsesSafeStream,
   encodePoolKeyPart,
@@ -38,7 +40,7 @@ import {
 } from "~/lib/request-context"
 import consola from "consola"
 
-export const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api"
+export { CODEX_API_BASE_URL }
 
 const CODEX_RESPONSE_METADATA_EVENT = "codex.response.metadata"
 const RESPONSE_CREATED_EVENT = "response.created"
@@ -541,6 +543,7 @@ const forwardCodexResponsesOverWebSocket = (
     websocketRequest,
     clientSignal,
     onResponseHeaders,
+    getResponsesContinuationSession(),
   )
 }
 
@@ -548,25 +551,34 @@ const createCodexResponsesWebSocketStream = (
   request: CodexResponsesWebSocketRequest,
   clientSignal?: AbortSignal,
   onResponseHeaders?: (headers: Headers) => void,
+  continuationSession?: string,
 ): ResponsesStream => {
   const transportConfig = getUpstreamTransportConfig()
   return createResponsesSafeStream(
     createClientPreflightStream(
       filterCodexResponsesWebSocketMetadata(
-        createPooledWebSocketStream(request, {
-          createChunk: createCodexResponsesWebSocketStreamChunk,
-          maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
-          maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
-          getTerminalDisposition: getResponsesStreamTerminalDisposition,
-          openErrorMessage: "Failed to create codex responses websocket",
-          openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
-          poolIdleTimeoutMs: transportConfig.websocketPoolIdleTimeoutMs,
-          streamInactivityTimeoutMs: transportConfig.streamInactivityTimeoutMs,
-          streamErrorMessage:
-            "Upstream connection lost, Codex responses websocket stream error",
-          terminalChunkMissingMessage:
-            "Codex responses websocket ended without a terminal response, retry your request.",
-        }),
+        createContinuableResponsesWebSocketStream(
+          request,
+          {
+            createChunk: createCodexResponsesWebSocketStreamChunk,
+            maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
+            maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
+            getTerminalDisposition: getResponsesStreamTerminalDisposition,
+            openErrorMessage: "Failed to create codex responses websocket",
+            openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
+            poolIdleTimeoutMs: transportConfig.websocketPoolIdleTimeoutMs,
+            streamInactivityTimeoutMs:
+              transportConfig.streamInactivityTimeoutMs,
+            streamErrorMessage:
+              "Upstream connection lost, Codex responses websocket stream error",
+            terminalChunkMissingMessage:
+              "Codex responses websocket ended without a terminal response, retry your request.",
+          },
+          {
+            sessionId: continuationSession,
+            clientSignal,
+          },
+        ),
         onResponseHeaders,
       ),
       clientSignal,

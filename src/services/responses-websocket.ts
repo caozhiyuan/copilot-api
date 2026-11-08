@@ -1,12 +1,21 @@
 import consola from "consola"
+import { randomUUID } from "node:crypto"
 import { getProxyForUrl } from "proxy-from-env"
 import { WebSocket } from "undici"
+
+export interface PooledWebSocketConnection {
+  readonly id: string
+  readonly closed: boolean
+}
 
 export interface PooledWebSocketRequest<TPayload> {
   headers: Record<string, string>
   payload: TPayload
   // Refresh request metadata after the socket is ready, immediately before send.
-  preparePayload?: (payload: TPayload) => TPayload
+  preparePayload?: (
+    payload: TPayload,
+    connection?: PooledWebSocketConnection,
+  ) => TPayload
   poolKey: string
   // Optional cancellation for a single pooled request. The Responses and Codex
   // request paths deliberately leave it unset: a client disconnect now drains
@@ -49,6 +58,7 @@ const websocketPool = new Map<string, PooledWebSocketEntry>()
 const websocketActiveRequests = new Map<string, number>()
 
 interface PooledWebSocketEntry {
+  id: string
   closed: boolean
   idleMessageListener: WebSocketMessageListener | null
   idleTimer: ReturnType<typeof setTimeout> | null
@@ -193,7 +203,8 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
       options,
     )
     messageStream.start()
-    const payload = request.preparePayload?.(request.payload) ?? request.payload
+    const payload =
+      request.preparePayload?.(request.payload, entry) ?? request.payload
     websocket.send(JSON.stringify(payload))
 
     for await (const data of messageStream.iterable) {
@@ -260,6 +271,7 @@ const createPooledWebSocketEntry = <TPayload, TChunk>(
     url: request.url,
   })
   const entry: PooledWebSocketEntry = {
+    id: randomUUID(),
     closed: false,
     idleMessageListener: null,
     idleTimer: null,

@@ -11,6 +11,7 @@ type ListenerEvent = {
 
 type Listener = (event: ListenerEvent) => void
 
+const { requestContext } = await import("~/lib/request-context")
 const originalFetch = globalThis.fetch
 const originalSetTimeout = globalThis.setTimeout
 
@@ -116,6 +117,18 @@ class MockWebSocket {
         type: "response.created",
       }),
     })
+    if (parsed.model === "gpt-continuation") {
+      for (const [outputIndex, item] of continuationOutput.entries()) {
+        this.emit("message", {
+          data: JSON.stringify({
+            type: "response.output_item.done",
+            sequence_number: outputIndex + 1,
+            output_index: outputIndex,
+            item,
+          }),
+        })
+      }
+    }
     this.emit("message", {
       data: JSON.stringify({
         response: createResponsesResult(
@@ -199,7 +212,14 @@ const createResponsesResult = (
   metadata: null,
   model,
   object: "response",
-  output: [],
+  output:
+    model === "gpt-continuation" ?
+      continuationOutput.map((item) =>
+        item.type === "reasoning" ?
+          { ...item, encrypted_content: "completed-cipher" }
+        : item,
+      )
+    : [],
   output_text: "",
   parallel_tool_calls: false,
   status: "completed",
@@ -777,3 +797,51 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 const delay = async (milliseconds: number): Promise<void> =>
   await new Promise((resolve) => originalSetTimeout(resolve, milliseconds))
+
+test("Codex websocket automatically continues a stable non-Codex user agent", async () => {
+  await requestContext.run(
+    {
+      traceId: "continuation",
+      startTime: Date.now(),
+      userAgent: "claude-code",
+      sessionAffinity: "root:child",
+      rootSessionId: "root",
+      parentSessionId: undefined,
+    },
+    async () => {
+      const first = { type: "message", role: "user", content: "hello" } as const
+      for (const input of [[first], [first, ...continuationOutput, first]]) {
+        const stream = await forwardCodexResponses(
+          { model: "gpt-continuation", stream: true, input },
+          new Headers({ "user-agent": "claude-code" }),
+          undefined,
+          { transport: "websocket" },
+        )
+        for await (const _chunk of stream as AsyncIterable<unknown>) {
+          /* consume */
+        }
+      }
+    },
+  )
+  expect(MockWebSocket.instances).toHaveLength(1)
+  expect(JSON.parse(MockWebSocket.instances[0].sent[1])).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [{ type: "message", role: "user", content: "hello" }],
+  })
+})
+
+const continuationOutput = [
+  {
+    type: "reasoning",
+    id: "server-reasoning",
+    encrypted_content: "cipher",
+    summary: [],
+  },
+  {
+    type: "message",
+    id: "server-message",
+    role: "assistant",
+    status: "completed",
+    content: [{ type: "output_text", text: "answer", annotations: [] }],
+  },
+] satisfies ResponsesResult["output"]

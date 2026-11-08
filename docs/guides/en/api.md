@@ -41,6 +41,12 @@ These endpoints mimic the OpenAI API structure.
 | `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) receive the merged Codex-format catalog, excluding image-only models. |
 | `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
 
+### Responses WebSocket continuation
+
+For the built-in Codex and GitHub Copilot providers, streamed requests using an upstream WebSocket may reuse the latest completed response on that same socket. The gateway keeps only its response ID and an opaque anchor: a reasoning item's `encrypted_content` or a tool call's type and `call_id`. Anchors come from `response.output_item.done`; `response.completed` confirms success and fills only missing items, preserving any different done-event signature. On the next request it locates that anchor, skips subsequent assistant items (including text), and sends `previous_response_id` with input starting at the next non-assistant item, such as a user message or tool result. Assistant text is neither retained nor compared; there are no history/configuration hashes, saved item counts or separate continuation expiry. HTTP clients may use this optimization when their upstream transport is WebSocket; upstream HTTP requests are unchanged.
+
+Missing anchors, responses without a usable anchor, no new input, reconnects and cancelled/incomplete requests send full input. Anchors do not verify earlier history: after editing, reordering or compacting history, explicitly send `previous_response_id: null` or start a new session. A rejected automatic response ID is retried once with full input before any response events have been forwarded. Client-supplied response IDs are left intact. See the [OpenAI WebSocket continuation contract](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works).
+
 ### Model Discovery Sources
 
 `GET /models`, `GET /v1/models`, and `GET /:provider/v1/models` read `xai`, `openrouter`, `deepseek`, `kimi`, `dashscope`, and `opencode-go` models from the models.dev cache without querying those providers' model endpoints. Kimi defaults to `kimi-code-plan-cn` and DashScope to `alibaba-cn`; other official URLs select their matching catalogs. Explicit `modelsDevProviderId` takes priority.
