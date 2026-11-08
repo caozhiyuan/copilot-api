@@ -28,7 +28,7 @@ import {
   type TokenUsageEndpoint,
   type UsageTokens,
 } from "~/lib/token-usage"
-import { isAsyncIterable, parseUserIdMetadata } from "~/lib/utils"
+import { isAsyncIterable } from "~/lib/utils"
 import {
   buildErrorEvent,
   createResponsesStreamState,
@@ -140,7 +140,6 @@ export const handleWithChatCompletions = async (
     endpoint: options.usageEndpoint ?? "chat_completions",
     fallbackSessionId: sessionId,
     model: openAIPayload.model,
-    payload: anthropicPayload,
   })
   debugJson(logger, "Translated OpenAI request payload:", openAIPayload)
 
@@ -253,7 +252,6 @@ export const handleWithResponsesApi = async (
     endpoint: options.usageEndpoint ?? "responses",
     fallbackSessionId: requestOptions.sessionId,
     model: responsesPayload.model,
-    payload: anthropicPayload,
   })
 
   const shouldCompactInput = applyResponsesApiContextManagement(
@@ -406,7 +404,6 @@ export const handleWithMessagesApi = async (
     endpoint: options.usageEndpoint ?? "messages",
     fallbackSessionId: sessionId,
     model: anthropicPayload.model,
-    payload: anthropicPayload,
   })
 
   debugJson(logger, "Translated Messages payload:", anthropicPayload)
@@ -562,18 +559,12 @@ const createCopilotUsageRecorder = (options: {
   endpoint: TokenUsageEndpoint
   fallbackSessionId?: string
   model: string
-  payload: AnthropicMessagesPayload
 }): ((usage: UsageTokens) => void) =>
   createCopilotTokenUsageRecorder({
     endpoint: options.endpoint,
     fallbackSessionId: options.fallbackSessionId,
     model: options.model,
-    sessionId: getMetadataSessionId(options.payload),
   })
-
-const getMetadataSessionId = (
-  payload: AnthropicMessagesPayload,
-): string | null => parseUserIdMetadata(payload.metadata?.user_id).sessionId
 
 const normalizeCopilotUsage = (
   copilotUsage: CopilotUsage | null | undefined,

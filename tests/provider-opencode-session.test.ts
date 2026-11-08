@@ -152,46 +152,18 @@ describe("opencode-go x-opencode-session header", () => {
       expect(opencodeSessionHeader()).toBe("affinity-1")
     })
 
-    test("parses session id from JSON metadata user_id", async () => {
-      const payload = createMessagesPayload({
-        metadata: { user_id: JSON.stringify({ session_id: "ses_json" }) },
-      })
-
+    test.each([
+      JSON.stringify({ session_id: "ses_json" }),
+      "user_abc_account_def_session_sess-legacy",
+      "plain-user",
+    ])("does not derive a session from metadata user_id %s", async (userId) => {
+      const payload = createMessagesPayload({ metadata: { user_id: userId } })
       await forwardProviderMessages(
         createProviderConfig(),
         payload,
         new Headers(),
       )
-
-      expect(opencodeSessionHeader()).toBe("ses_json")
-    })
-
-    test("parses session id from legacy metadata user_id", async () => {
-      const payload = createMessagesPayload({
-        metadata: { user_id: "user_abc_account_def_session_sess-legacy" },
-      })
-
-      await forwardProviderMessages(
-        createProviderConfig(),
-        payload,
-        new Headers(),
-      )
-
-      expect(opencodeSessionHeader()).toBe("sess-legacy")
-    })
-
-    test("falls back to raw user_id when no session can be parsed", async () => {
-      const payload = createMessagesPayload({
-        metadata: { user_id: "plain-user" },
-      })
-
-      await forwardProviderMessages(
-        createProviderConfig(),
-        payload,
-        new Headers(),
-      )
-
-      expect(opencodeSessionHeader()).toBe("plain-user")
+      expect(opencodeSessionHeader()).toBeUndefined()
     })
 
     test("omits header without session affinity or user_id", async () => {

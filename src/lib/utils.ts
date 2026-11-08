@@ -2,7 +2,6 @@ import type { Context } from "hono"
 
 import { createHash, randomUUID } from "node:crypto"
 
-import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { ResponsesStream } from "~/lib/types/responses"
 
 import { state } from "./state"
@@ -29,58 +28,11 @@ interface PayloadMessage {
   type?: string
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
-
-const getUserIdJsonField = (
-  userIdPayload: Record<string, unknown> | null,
-  field: string,
-): string | null => {
-  const value = userIdPayload?.[field]
-  return typeof value === "string" && value.length > 0 ? value : null
-}
-
-const parseJsonUserId = (userId: string): Record<string, unknown> | null => {
-  try {
-    const parsed: unknown = JSON.parse(userId)
-    return isRecord(parsed) ? parsed : null
-  } catch {
-    return null
-  }
-}
-
-export const parseUserIdMetadata = (
-  userId: string | undefined,
-): { safetyIdentifier: string | null; sessionId: string | null } => {
-  if (!userId || typeof userId !== "string") {
-    return { safetyIdentifier: null, sessionId: null }
-  }
-
-  const legacySafetyIdentifier =
-    userId.match(/user_([^_]+)_account/)?.[1] ?? null
-  const legacySessionId = userId.match(/_session_(.+)$/)?.[1] ?? null
-
-  const parsedUserId =
-    legacySafetyIdentifier && legacySessionId ? null : parseJsonUserId(userId)
-
-  const safetyIdentifier =
-    legacySafetyIdentifier
-    ?? getUserIdJsonField(parsedUserId, "device_id")
-    ?? getUserIdJsonField(parsedUserId, "account_uuid")
-  const sessionId =
-    legacySessionId ?? getUserIdJsonField(parsedUserId, "session_id")
-
-  return { safetyIdentifier, sessionId }
-}
-
-export const getPromptCacheKey = (
-  payload: Pick<AnthropicMessagesPayload, "metadata">,
-): string | null => {
-  const { sessionId } = parseUserIdMetadata(payload.metadata?.user_id)
+export const getPromptCacheKey = (): string | null => {
   const store = requestContext.getStore()
   const rootSessionId = store?.rootSessionId?.trim() || null
   const sessionAffinity = store?.sessionAffinity?.trim() || null
-  return rootSessionId ?? sessionId ?? sessionAffinity
+  return rootSessionId ?? sessionAffinity
 }
 
 const findLastUserContent = (
@@ -125,36 +77,38 @@ export const generateRequestIdFromPayload = (
   return randomUUID()
 }
 
-// Shared by the Messages and Responses routes: `session-id` comes from codex
-// clients, `x-root-session-id` is set by the agent-context plugin.
+// Claude's session ID groups its main agent and all spawned agents. Codex uses
+// session-id; the OpenCode agent-context plugin supplies x-root-session-id.
 export const getRootSessionIdFromHeaders = (c: Context): string | undefined =>
-  c.req.header("session-id")?.trim()
+  c.req.header("x-claude-code-session-id")?.trim()
+  || c.req.header("session-id")?.trim()
   || c.req.header("x-root-session-id")?.trim()
   || c.req.header("x-session-id")?.trim()
   || undefined
 
 // Shared by the request context and the Responses route. The codex thread id
 // counts as a client request id, so it is accepted as the last resort.
-export const getSessionAffinityFromHeaders = (c: Context): string | undefined =>
-  c.req.header("x-opencode-session-id")?.trim()
-  || c.req.header("x-session-affinity")?.trim()
-  || c.req.header("x-client-request-id")?.trim()
-  || c.req.header("thread-id")?.trim()
-  || undefined
-
-// Unlike getRootSessionIdFromHeaders, this prefers metadata.user_id, ignores
-// the `session-id` header, and hashes the resolved value.
-export const getRootSessionId = (
-  anthropicPayload: AnthropicMessagesPayload,
+export const getSessionAffinityFromHeaders = (
   c: Context,
 ): string | undefined => {
-  const userId = anthropicPayload.metadata?.user_id
-  const sessionId =
-    userId ?
-      parseUserIdMetadata(userId).sessionId || undefined
-    : (c.req.header("x-root-session-id") ?? c.req.header("x-session-id"))
+  const claudeSessionId = c.req.header("x-claude-code-session-id")?.trim()
+  if (claudeSessionId) {
+    const agentId = c.req.header("x-claude-code-agent-id")?.trim()
+    return agentId ? `${claudeSessionId}:${agentId}` : claudeSessionId
+  }
+  return (
+    c.req.header("x-opencode-session-id")?.trim()
+    || c.req.header("x-session-affinity")?.trim()
+    || c.req.header("x-client-request-id")?.trim()
+    || c.req.header("thread-id")?.trim()
+    || undefined
+  )
+}
 
-  return sessionId ? getUUID(sessionId) : sessionId
+// Upstream interaction IDs use the trace session, hashed to a UUID.
+export const getRootSessionId = (): string | undefined => {
+  const sessionId = getPromptCacheKey()
+  return sessionId ? getUUID(sessionId) : undefined
 }
 
 export const getUUID = (content: string): string => {

@@ -6,7 +6,6 @@ import {
   createProviderTokenUsageRecorder,
   type TokenUsageEndpoint,
 } from "~/lib/token-usage"
-import { parseUserIdMetadata } from "~/lib/utils"
 
 export const createProviderMessagesUsageRecorder = (
   payload: AnthropicMessagesPayload,
@@ -21,5 +20,4 @@ export const createProviderMessagesUsageRecorder = (
     pricing: modelConfig?.pricing,
     pricingCurrency,
     providerName: provider,
-    sessionId: parseUserIdMetadata(payload.metadata?.user_id).sessionId,
   })

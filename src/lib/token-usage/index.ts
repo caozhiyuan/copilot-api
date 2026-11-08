@@ -99,8 +99,10 @@ export function resolveTokenUsageSessionId(
   sessionId: string | null | undefined,
   fallbackSessionId?: string | null,
 ): string {
+  const store = requestContext.getStore()
   return (
-    requestContext.getStore()?.sessionAffinity?.trim()
+    store?.sessionAffinity?.trim()
+    || store?.rootSessionId?.trim()
     || sessionId?.trim()
     || fallbackSessionId?.trim()
     || ""

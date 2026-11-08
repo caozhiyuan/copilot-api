@@ -15,6 +15,7 @@ import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
 import { findEndpointModel } from "~/lib/models"
 import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
 import { state } from "~/lib/state"
+import { requestContext } from "~/lib/request-context"
 import type { SubagentMarker } from "~/lib/subagent"
 import type { TokenUsageEndpoint } from "~/lib/token-usage"
 import {
@@ -46,7 +47,6 @@ import {
   sanitizeIdeTools,
   stripToolReferenceTurnBoundary,
 } from "./preprocess"
-import { parseSubagentMarkerFromFirstUser } from "./subagent-marker"
 import { tryHandleWebSearch } from "./web-search/fulfill"
 import consola from "consola"
 
@@ -140,13 +140,13 @@ export async function handleCompletionPayload(
 
   const subagentMarker =
     dispatchOptions.subagentMarker
-    ?? parseSubagentMarkerFromFirstUser(anthropicPayload)
+    ?? requestContext.getStore()?.subagent
+    ?? null
   if (subagentMarker) {
-    debugJson(logger, "Detected Subagent marker:", subagentMarker)
+    debugJson(logger, "Detected subagent session:", subagentMarker)
   }
 
-  let sessionId =
-    dispatchOptions.sessionId ?? getRootSessionId(anthropicPayload, c)
+  let sessionId = dispatchOptions.sessionId ?? getRootSessionId()
 
   // claude code and opencode compact / auto-continue detection
   const compactType =

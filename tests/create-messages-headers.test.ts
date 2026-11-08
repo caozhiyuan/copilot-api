@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { createServer } from "node:http"
+import { Hono } from "hono"
+import { traceIdMiddleware } from "~/lib/trace"
 
 import type {
   AnthropicMessagesPayload,
@@ -9,6 +11,7 @@ import type {
 import { COMPACT_REQUEST } from "~/lib/compact"
 import { HTTPError } from "~/lib/error"
 import { state } from "~/lib/state"
+import { requestContext } from "~/lib/request-context"
 import { isAsyncIterable } from "~/lib/utils"
 import { createMessages } from "~/services/copilot/create-messages"
 import { getVSCodeVersion } from "~/services/get-vscode-version"
@@ -49,6 +52,20 @@ const createPayload = (
   metadata: { user_id: "user_device-1_account_account-1_session_session-1" },
   ...overrides,
 })
+const createClaudeMessages = (...args: Parameters<typeof createMessages>) =>
+  requestContext.run(
+    {
+      traceId: "claude-headers-test",
+      startTime: Date.now(),
+      userAgent: "test",
+      isClaudeCode: true,
+      rootSessionId: "native-root",
+      sessionAffinity: "native-root",
+      parentSessionId: undefined,
+    },
+    () => createMessages(...args),
+  )
+
 const getRequestHeaders = (index = 0) =>
   fetchMock.mock.calls[index][1]?.headers as Record<string, string>
 
@@ -94,6 +111,45 @@ afterEach(() => {
   }
 })
 
+test.each<{ headers: Record<string, string>; proxy: boolean }>([
+  { headers: { "x-claude-code-session-id": "root" }, proxy: true },
+  {
+    headers: {
+      "x-claude-code-session-id": "root",
+      "x-claude-code-agent-id": "child",
+    },
+    proxy: true,
+  },
+  { headers: { "x-claude-code-session-id": " " }, proxy: false },
+  { headers: { "user-agent": "claude-code/2.1.304" }, proxy: false },
+  { headers: {}, proxy: false },
+])(
+  "selects Messages proxy from native headers through trace (%#)",
+  async ({ headers, proxy }) => {
+    const app = new Hono()
+    app.use(traceIdMiddleware)
+    app.post("/", async (c) =>
+      c.json(
+        await createMessages(
+          createPayload({ metadata: undefined }),
+          undefined,
+          {
+            requestId: "request-1",
+          },
+        ),
+      ),
+    )
+    const response = await app.request("/", { method: "POST", headers })
+    expect(response.status).toBe(200)
+    expect(new Headers(getRequestHeaders()).get("authorization")).toBe(
+      proxy ? "Bearer test-github-token" : "Bearer test-copilot-token",
+    )
+    expect(new Headers(getRequestHeaders()).get("openai-intent")).toBe(
+      proxy ? "messages-proxy" : "conversation-agent",
+    )
+  },
+)
+
 describe("Messages proxy request headers", () => {
   test("preserves custom header casing over Bun HTTP transport", async () => {
     let rawHeaders: Array<string> = []
@@ -112,9 +168,13 @@ describe("Messages proxy request headers", () => {
       }
       state.copilotApiUrl = `http://127.0.0.1:${address.port}`
       globalThis.fetch = originalFetch
-      await createMessages(createPayload(), "context-management-2025-06-27", {
-        requestId: "request-1",
-      })
+      await createClaudeMessages(
+        createPayload(),
+        "context-management-2025-06-27",
+        {
+          requestId: "request-1",
+        },
+      )
 
       const headerNames = rawHeaders.filter((_, index) => index % 2 === 0)
       for (const headerName of [
@@ -154,7 +214,7 @@ describe("Messages proxy request headers", () => {
     "uses anthropic-version %j with the captured header casing",
     async ({ version, expectedVersion }) => {
       const payload = createPayload()
-      const result = await createMessages(
+      const result = await createClaudeMessages(
         payload,
         "interleaved-thinking-2025-05-14,context-management-2025-06-27,per-turn-control-2026-07-01,advanced-tool-use-2025-11-20,unknown-beta",
         {
@@ -195,7 +255,7 @@ describe("Messages proxy request headers", () => {
     },
   )
 
-  test("supports JSON metadata and generates a fresh request ID for every request", async () => {
+  test("generates a fresh request ID for every native Claude request", async () => {
     const payload = createPayload({
       metadata: {
         user_id: JSON.stringify({
@@ -204,10 +264,10 @@ describe("Messages proxy request headers", () => {
         }),
       },
     })
-    await createMessages(payload, undefined, {
+    await createClaudeMessages(payload, undefined, {
       requestId: "original-request-id",
     })
-    await createMessages(payload, undefined, {
+    await createClaudeMessages(payload, undefined, {
       requestId: "original-request-id",
     })
 
@@ -220,7 +280,9 @@ describe("Messages proxy request headers", () => {
   test("requires a Copilot token before proxy requests", async () => {
     state.copilotToken = undefined
     const error = await getRejectedError(
-      createMessages(createPayload(), undefined, { requestId: "request-1" }),
+      createClaudeMessages(createPayload(), undefined, {
+        requestId: "request-1",
+      }),
     )
 
     expect(error.message).toBe("Copilot token not found")
@@ -228,7 +290,7 @@ describe("Messages proxy request headers", () => {
   })
 
   test("uses the Messages proxy identity for claude-opus-4.8", async () => {
-    await createMessages(
+    await createClaudeMessages(
       createPayload({ model: "claude-opus-4.8" }),
       undefined,
       {
@@ -244,7 +306,9 @@ describe("Messages proxy request headers", () => {
   test("rejects proxy requests without a GitHub token before contacting upstream", async () => {
     state.githubToken = undefined
     const error = await getRejectedError(
-      createMessages(createPayload(), undefined, { requestId: "request-1" }),
+      createClaudeMessages(createPayload(), undefined, {
+        requestId: "request-1",
+      }),
     )
     expect(error.message).toBe("GitHub token not found")
     expect(fetchMock).not.toHaveBeenCalled()
@@ -254,7 +318,9 @@ describe("Messages proxy request headers", () => {
     process.env.COPILOT_API_ENTERPRISE_URL = "https://example.test/"
     state.vsCodeSessionId = undefined
     state.macMachineId = undefined
-    await createMessages(createPayload(), undefined, { requestId: "request-1" })
+    await createClaudeMessages(createPayload(), undefined, {
+      requestId: "request-1",
+    })
 
     expect(fetchMock.mock.calls[0][0]).toBe(
       "https://copilot-api.example.test/v1/messages",
@@ -269,6 +335,19 @@ describe("Messages proxy request headers", () => {
 describe("Standard Copilot Messages request compatibility", () => {
   test.each([
     { metadata: undefined },
+    {
+      metadata: {
+        user_id: "user_device-1_account_account-1_session_session-1",
+      },
+    },
+    {
+      metadata: {
+        user_id: JSON.stringify({
+          device_id: "device-1",
+          session_id: "session-1",
+        }),
+      },
+    },
     { metadata: { user_id: "user_device-1_account_account-1" } },
   ])("keeps Copilot authentication for %j", async (overrides) => {
     state.githubToken = undefined
@@ -287,10 +366,10 @@ describe("Standard Copilot Messages request compatibility", () => {
     expect(getRequestHeaders()["copilot-integration-id"]).toBe("vscode-chat")
   })
 
-  test("keeps OpenCode OAuth identity and Copilot authentication for Claude metadata", async () => {
+  test("keeps OpenCode OAuth identity and Copilot authentication for native Claude requests", async () => {
     process.env.COPILOT_API_OAUTH_APP = "opencode"
     state.githubToken = undefined
-    await createMessages(createPayload(), undefined, {
+    await createClaudeMessages(createPayload(), undefined, {
       anthropicVersionHeader: "client-selected-version",
       requestId: "request-1",
     })
@@ -360,7 +439,7 @@ describe("Standard Copilot Messages request compatibility", () => {
         }),
       ),
     )
-    const result = await createMessages(
+    const result = await createClaudeMessages(
       createPayload({ stream: true }),
       undefined,
       {

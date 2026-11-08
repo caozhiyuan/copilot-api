@@ -1,7 +1,5 @@
 import { describe, expect, mock, test } from "bun:test"
 
-import { parseSubagentMarkerFromFirstUser } from "~/routes/messages/subagent-marker"
-
 import * as agentContextModule from "../plugin/opencode/agent-context.js"
 
 interface SessionInfo {
@@ -109,7 +107,7 @@ describe("OpenCode v1 subagent marker", () => {
     expect(pluginModule.default.id).toBe("copilot-api.agent-context")
   })
 
-  test("marks the first child message in a format the gateway can parse", async () => {
+  test("preserves the legacy marker on the first child message", async () => {
     const hooks = await pluginModule.default.server()
     await sessionEvent(hooks, { id: "child", parentID: "root" })
     const output = messageOutput()
@@ -124,17 +122,9 @@ describe("OpenCode v1 subagent marker", () => {
       synthetic: true,
     })
     expect(output.parts[1].text).toBe("task prompt")
-    expect(
-      parseSubagentMarkerFromFirstUser({
-        model: "test-model",
-        max_tokens: 128,
-        messages: [{ role: "user", content: output.parts }],
-      }),
-    ).toEqual({
-      session_id: "child",
-      agent_id: "child",
-      agent_type: "explore",
-    })
+    expect(output.parts[0].text).toContain(
+      '__SUBAGENT_MARKER__{"session_id":"child","agent_id":"child","agent_type":"explore"}',
+    )
 
     const next = messageOutput()
     await hooks["chat.message"]({ sessionID: "child" }, next)
