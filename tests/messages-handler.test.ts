@@ -13,6 +13,7 @@ import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 
 import { compactSummaryPromptStart, compactTextOnlyGuard } from "~/lib/compact"
 import { createFallbackModel } from "~/lib/provider-model"
+import { traceIdMiddleware } from "~/lib/trace"
 
 const actualStateModule = await import("~/lib/state")
 const actualConfigModule = await import("~/lib/config")
@@ -98,6 +99,7 @@ const defaultResponsesUtilsDependencies = { ...responsesUtilsDependencies }
 
 const createApp = () => {
   const app = new Hono()
+  app.use(traceIdMiddleware)
   app.post("/", handleCompletion)
   return app
 }
@@ -888,7 +890,7 @@ describe("messages handler orchestration", () => {
     ])
   })
 
-  test("applies warmup model override and passes request metadata to the selected flow", async () => {
+  test("uses native Claude subagent headers for warmup and selected-flow context", async () => {
     selectedModel = {
       id: "messages-model",
       supported_endpoints: ["/v1/messages"],
@@ -901,7 +903,7 @@ describe("messages handler orchestration", () => {
           content: [
             {
               type: "text",
-              text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"sub-session","agent_id":"agent-1","agent_type":"Explore"}</system-reminder>',
+              text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"stale-session","agent_id":"stale-agent","agent_type":"Explore"}</system-reminder>',
             },
             {
               type: "text",
@@ -919,6 +921,9 @@ describe("messages handler orchestration", () => {
         "content-type": "application/json",
         "anthropic-beta": "warmup-beta",
         "x-session-id": "session-123",
+        "x-claude-code-session-id": "sub-session",
+        "x-claude-code-agent-id": "agent-1",
+        "x-claude-code-agent-type": "Explore",
       },
       body: JSON.stringify(payload),
     })
@@ -929,7 +934,7 @@ describe("messages handler orchestration", () => {
       actualConfigModule.getSmallModel(),
     )
 
-    const expectedSessionId = actualUtilsModule.getUUID("session-123")
+    const expectedSessionId = actualUtilsModule.getUUID("sub-session")
     const expectedRequestId = actualUtilsModule.generateRequestIdFromPayload(
       payload,
       expectedSessionId,
@@ -1102,6 +1107,93 @@ describe("messages handler orchestration", () => {
     expect(handleWithMessagesApi.mock.calls[0][2].sessionId).toBe(
       actualUtilsModule.getUUID("root-session"),
     )
+  })
+
+  test.each<{
+    name: string
+    headers: Record<string, string>
+    agentId: string
+    agentType: string
+  }>([
+    {
+      name: "Claude Code",
+      headers: {
+        "x-claude-code-session-id": "root",
+        "x-claude-code-agent-id": "child",
+      },
+      agentId: "child",
+      agentType: "claude-subagent",
+    },
+    {
+      name: "OpenCode v1",
+      headers: {
+        "x-root-session-id": "root",
+        "x-opencode-session-id": "child",
+      },
+      agentId: "child",
+      agentType: "opencode-subagent",
+    },
+    {
+      name: "OpenCode v2",
+      headers: {
+        "x-root-session-id": "root",
+        "x-session-id": "child",
+        "x-session-affinity": "child",
+        "x-parent-session-id": "root",
+      },
+      agentId: "child",
+      agentType: "opencode-subagent",
+    },
+  ])(
+    "passes $name header-only subagent context to the Messages flow",
+    async ({ headers, agentId, agentType }) => {
+      selectedModel = {
+        id: "messages-model",
+        supported_endpoints: ["/v1/messages"],
+      }
+      const response = await createApp().request("/", {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify(createPayload()),
+      })
+      expect(response.status).toBe(200)
+      expect(handleWithMessagesApi.mock.calls[0][2].subagentMarker).toEqual({
+        session_id: "root",
+        agent_id: agentId,
+        agent_type: agentType,
+      })
+    },
+  )
+
+  test("does not classify a main request from a stale body marker", async () => {
+    selectedModel = {
+      id: "messages-model",
+      supported_endpoints: ["/v1/messages"],
+    }
+    const response = await createApp().request("/", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-claude-code-session-id": "root",
+      },
+      body: JSON.stringify(
+        createPayload({
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: '<system-reminder>__SUBAGENT_MARKER__{"session_id":"root","agent_id":"old","agent_type":"Explore"}</system-reminder>',
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    })
+    expect(response.status).toBe(200)
+    expect(handleWithMessagesApi.mock.calls[0][2].subagentMarker).toBeNull()
   })
 
   test("prefers dispatch-provided session, request, and subagent context", async () => {

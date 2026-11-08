@@ -68,6 +68,17 @@ const headerDerivationCases: Array<{
 }> = [
   {
     headers: {
+      "x-claude-code-session-id": " claude-root ",
+      "session-id": "other",
+    },
+    expected: "claude-root",
+  },
+  {
+    headers: { "x-claude-code-session-id": " ", "session-id": "legacy" },
+    expected: "legacy",
+  },
+  {
+    headers: {
       "session-id": " session-1 ",
       "x-root-session-id": "root-1",
       "x-session-id": "leaf-1",
@@ -156,6 +167,20 @@ test("getRootSessionId supports JSON-like user_id metadata", () => {
   expect(getRootSessionId(anthropicPayload, context)).toBe(
     getUUID("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752"),
   )
+})
+
+test("getRootSessionId prefers Claude native session headers over body metadata", () => {
+  const payload: AnthropicMessagesPayload = {
+    model: "test-model",
+    messages: [],
+    max_tokens: 128,
+    metadata: { user_id: jsonStyleUserId },
+  }
+  const headers = new Headers({ "x-claude-code-session-id": "native-root" })
+  const context = {
+    req: { header: (name: string) => headers.get(name) ?? undefined },
+  } as unknown as Context
+  expect(getRootSessionId(payload, context)).toBe(getUUID("native-root"))
 })
 
 test("getRootSessionId keeps legacy parsing before JSON fallback", () => {

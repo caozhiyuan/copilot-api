@@ -57,7 +57,7 @@ AI gateway 内部现在会把 OpenAI Responses `tool_search` 配置成 client-ex
 
 Claude Code 集成现在拆分为两个插件：
 
-- `agent-inject` 会在 `SubagentStart` 时注入 `__SUBAGENT_MARKER__...`，以便 AI gateway 推导 `x-initiator: agent`。
+- `agent-inject` v1.5.2 保留为空的兼容占位插件，不再注册 hook 或注入提示词，新安装无需启用。
 - `tool-search` 会注册用于 GPT Responses deferred tool loading 的 `tool_search` MCP bridge。
 
 - 本仓库中的 marketplace catalog：`.claude-plugin/marketplace.json`
@@ -72,16 +72,12 @@ Claude Code 集成现在拆分为两个插件：
 从 marketplace 安装插件：
 
 ```sh
-/plugin install agent-inject@copilot-api-marketplace
 /plugin install tool-search@copilot-api-marketplace
 ```
 
-安装后，`agent-inject` 会在 `SubagentStart` 时注入 `__SUBAGENT_MARKER__...`，AI gateway 会利用它推导 `x-initiator: agent`。
+网关改用 Claude Code 原生的 `x-claude-code-session-id` 和 `x-claude-code-agent-id` 请求头识别子代理：session ID 用于主、子代理共享根会话，每个子代理的 session affinity 由 session ID 和 agent ID 组合得到。可选的 `x-claude-code-agent-type` 提供代理类型，缺失时仍能识别子代理。参见 [Claude Code 网关请求头文档](https://code.claude.com/docs/en/llm-gateway-protocol#request-headers)。
 
-`agent-inject` 还会注册一个 `UserPromptSubmit` hook，并返回 `{"continue": true}`；同时它也可以通过环境变量注入 `SessionStart` reminder 规则：
-
-- `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES=1` 会自动为 Claude Code 启用两条关于使用 `question` 工具的提醒。
-- `CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE=1` 会启用关于避免在 agent hooks 中使用 `run_in_background: true` 的提醒。
+已有 `agent-inject` 安装可更新到 v1.5.2 或卸载。原 `SessionStart`、`UserPromptSubmit`、`SubagentStart` hook 及 `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES`、`CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE` 提醒均已停用；仍需保留的自定义指令请放入 `CLAUDE.md`。
 
 `tool-search` 插件内置了 [GPT Tool Search](#gpt-tool-search) 一节描述的同一个 MCP bridge，因此安装该插件后，Claude Code 用户无需再手动配置 `tool_search` server。
 
@@ -107,9 +103,9 @@ cp plugin/opencode/agent-context.js ~/.config/opencode/plugins/
 **功能：**
 
 - 沿 `parentID` 逐层查到根会话，将 `x-root-session-id` 设置为根会话 ID，支持多层 subagent 和恢复的会话
-- v1 在子会话首条聊天消息前添加 marker system reminder（`__SUBAGENT_MARKER__...`），让这个 AI gateway 识别 subagent 请求
+- v1 保留原生 `x-opencode-session-id`，网关比较当前会话 affinity 和根会话来识别子代理，不再修改聊天消息
 - v2 使用原生的 `x-parent-session-id`，插件只处理根会话 ID，保留原生的子会话和会话 affinity 请求头
 
-v1 使用 `session.created`、`session.deleted`、`chat.message` 和 `chat.headers` 钩子；v2 使用 `session.hook("model.request", ...)` 修改请求头。原生的 `x-session-id` 保留为当前会话 ID。Messages API 保留 `metadata.user_id` 的解析优先级；没有该值时，先读取 `x-root-session-id`，再回退到 `x-session-id`。prompt cache key 的优先级相反：`session-id`、`x-root-session-id`、`x-session-id` 优先于 `metadata.user_id`，最后回退到会话 affinity，让同一根会话下的子代理共享缓存分组。遇到父会话缺失、查询失败或循环引用时，保留已有请求头。
+v1 使用 `session.created`、`session.deleted` 和 `chat.headers` 钩子；v2 使用 `session.hook("model.request", ...)` 修改请求头。原生的 `x-session-id` 保留为当前会话 ID。Messages API 保留 `metadata.user_id` 的解析优先级；没有该值时，先读取 `x-root-session-id`，再回退到 `x-session-id`。prompt cache key 的优先级相反：`session-id`、`x-root-session-id`、`x-session-id` 优先于 `metadata.user_id`，最后回退到会话 affinity，让同一根会话下的子代理共享缓存分组。遇到父会话缺失、查询失败或循环引用时，保留已有请求头。
 
-Responses API 按 `session-id`、`x-root-session-id`、`x-session-id` 的顺序读取会话 ID，跳过空白值。
+Trace 的根会话依次读取 `x-claude-code-session-id`、`session-id`、`x-root-session-id`、`x-session-id`，跳过空白值。Claude Code 子代理的 affinity 组合原生 session ID 和 agent ID；OpenCode v1 保留 `x-opencode-session-id`，v2 保留原生 session affinity。Messages 和 Responses 路由统一使用 trace 中的子代理信息，不再解析消息正文中的旧 marker。

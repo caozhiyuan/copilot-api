@@ -125,34 +125,49 @@ export const generateRequestIdFromPayload = (
   return randomUUID()
 }
 
-// Shared by the Messages and Responses routes: `session-id` comes from codex
-// clients, `x-root-session-id` is set by the agent-context plugin.
+// Claude's session ID groups its main agent and all spawned agents. Codex uses
+// session-id; the OpenCode agent-context plugin supplies x-root-session-id.
 export const getRootSessionIdFromHeaders = (c: Context): string | undefined =>
-  c.req.header("session-id")?.trim()
+  c.req.header("x-claude-code-session-id")?.trim()
+  || c.req.header("session-id")?.trim()
   || c.req.header("x-root-session-id")?.trim()
   || c.req.header("x-session-id")?.trim()
   || undefined
 
 // Shared by the request context and the Responses route. The codex thread id
 // counts as a client request id, so it is accepted as the last resort.
-export const getSessionAffinityFromHeaders = (c: Context): string | undefined =>
-  c.req.header("x-opencode-session-id")?.trim()
-  || c.req.header("x-session-affinity")?.trim()
-  || c.req.header("x-client-request-id")?.trim()
-  || c.req.header("thread-id")?.trim()
-  || undefined
+export const getSessionAffinityFromHeaders = (
+  c: Context,
+): string | undefined => {
+  const claudeSessionId = c.req.header("x-claude-code-session-id")?.trim()
+  if (claudeSessionId) {
+    const agentId = c.req.header("x-claude-code-agent-id")?.trim()
+    return agentId ? `${claudeSessionId}:${agentId}` : claudeSessionId
+  }
+  return (
+    c.req.header("x-opencode-session-id")?.trim()
+    || c.req.header("x-session-affinity")?.trim()
+    || c.req.header("x-client-request-id")?.trim()
+    || c.req.header("thread-id")?.trim()
+    || (c.req.header("x-parent-session-id")?.trim() ?
+      c.req.header("x-session-id")?.trim()
+    : undefined)
+    || undefined
+  )
+}
 
-// Unlike getRootSessionIdFromHeaders, this prefers metadata.user_id, ignores
-// the `session-id` header, and hashes the resolved value.
+// Claude native session IDs take priority. Other clients retain metadata.user_id
+// precedence and the existing legacy-header fallback. The result is hashed.
 export const getRootSessionId = (
   anthropicPayload: AnthropicMessagesPayload,
   c: Context,
 ): string | undefined => {
   const userId = anthropicPayload.metadata?.user_id
   const sessionId =
-    userId ?
+    c.req.header("x-claude-code-session-id")?.trim()
+    || (userId ?
       parseUserIdMetadata(userId).sessionId || undefined
-    : (c.req.header("x-root-session-id") ?? c.req.header("x-session-id"))
+    : (c.req.header("x-root-session-id") ?? c.req.header("x-session-id")))
 
   return sessionId ? getUUID(sessionId) : sessionId
 }

@@ -1,6 +1,11 @@
 import type { MiddlewareHandler } from "hono"
 
-import { requestContext, resolveTraceId } from "./request-context"
+import {
+  requestContext,
+  resolveTraceId,
+  type RequestContext,
+} from "./request-context"
+import { getSubagentFromSession } from "./subagent"
 import {
   getRootSessionIdFromHeaders,
   getSessionAffinityFromHeaders,
@@ -11,14 +16,15 @@ export const traceIdMiddleware: MiddlewareHandler = async (c, next) => {
 
   c.header("x-trace-id", traceId)
 
-  const context = {
+  const context: RequestContext = {
     traceId,
     startTime: Date.now(),
     userAgent: c.req.header("user-agent") || "",
     sessionAffinity: getSessionAffinityFromHeaders(c),
     rootSessionId: getRootSessionIdFromHeaders(c),
-    parentSessionId: c.req.header("x-parent-session-id"),
+    parentSessionId: c.req.header("x-parent-session-id")?.trim() || undefined,
   }
+  context.subagent = getSubagentFromSession(c, context)
 
   await requestContext.run(context, async () => {
     await next()

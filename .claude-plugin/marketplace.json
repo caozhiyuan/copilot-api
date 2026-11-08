@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "agent-inject",
-      "description": "Inject copilot-api rules and SubagentStart agent context",
+      "description": "Compatibility placeholder; agent context now uses native request headers",
       "source": "./plugin/claude/agent-inject"
     },
     {

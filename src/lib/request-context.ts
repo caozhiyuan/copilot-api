@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import type { RequestEventObserver } from "./types/gateway-plugins"
+import type { SubagentMarker } from "./subagent"
 
 export interface RequestTiming {
   id: string
@@ -18,6 +19,7 @@ export interface RequestContext {
   sessionAffinity: string | undefined
   rootSessionId?: string
   parentSessionId: string | undefined
+  subagent?: SubagentMarker | null
   pluginRequest?: RequestEventObserver
   requestTiming?: RequestTiming
 }

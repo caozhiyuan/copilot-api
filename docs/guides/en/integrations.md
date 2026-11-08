@@ -53,7 +53,7 @@ Plugin integrations are available for Claude Code and opencode.
 
 The Claude Code integration is packaged as two plugins:
 
-- `agent-inject` injects `__SUBAGENT_MARKER__...` on `SubagentStart`, so the gateway can infer `x-initiator: agent`.
+- `agent-inject` v1.5.2 is an empty compatibility placeholder for existing installations. It no longer registers hooks or injects prompts. New installations do not need it.
 - `tool-search` registers the `tool_search` MCP bridge used for GPT Responses deferred tool loading.
 
 - Marketplace catalog in this repository: `.claude-plugin/marketplace.json`
@@ -68,16 +68,12 @@ Add the marketplace remotely:
 Install the plugins from the marketplace:
 
 ```sh
-/plugin install agent-inject@copilot-api-marketplace
 /plugin install tool-search@copilot-api-marketplace
 ```
 
-After installation, `agent-inject` injects `__SUBAGENT_MARKER__...` on `SubagentStart`, and the gateway uses it to infer `x-initiator: agent`.
+The gateway identifies Claude Code subagents from the native `x-claude-code-session-id` and `x-claude-code-agent-id` request headers. The session ID groups main and child requests; each child has a separate session affinity derived from the session and agent IDs. The optional `x-claude-code-agent-type` header adds the agent type, but is not required for detection. See the [Claude Code gateway headers](https://code.claude.com/docs/en/llm-gateway-protocol#request-headers).
 
-The `agent-inject` plugin also registers a `UserPromptSubmit` hook that returns `{"continue": true}`, and it can inject `SessionStart` reminder rules through environment variables:
-
-- `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES=1` enables the two reminders about using the `question` tool automatically for Claude Code.
-- `CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE=1` enables the `run_in_background: true` avoidance reminder for agent hooks.
+Existing `agent-inject` installations can update to v1.5.2 or uninstall the plugin. Its former `SessionStart`, `UserPromptSubmit`, and `SubagentStart` hooks, including the `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES` and `CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE` reminders, have been retired. Put any custom instructions you still need in `CLAUDE.md`.
 
 The `tool-search` plugin bundles the same MCP bridge described in [GPT Tool Search](#gpt-tool-search), so Claude Code users do not need to add the `tool_search` server manually when they install that plugin.
 
@@ -103,9 +99,9 @@ The same file supports the OpenCode v1 `server()` plugin entrypoint (checked aga
 **Features:**
 
 - Follows every `parentID` to the root session and sets `x-root-session-id` to that root ID, including nested subagents and restored sessions
-- On v1, prepends a marker system reminder (`__SUBAGENT_MARKER__...`) to the first child message so the gateway can identify subagent requests
+- On v1, preserves the native `x-opencode-session-id`; the gateway compares current-session affinity with the root session to identify children, without changing chat messages
 - On v2, uses the native `x-parent-session-id`; the plugin only sets the root session ID and preserves native child-session and session affinity headers
 
-v1 uses the `session.created`, `session.deleted`, `chat.message`, and `chat.headers` hooks. v2 updates headers through `session.hook("model.request", ...)`. The native `x-session-id` keeps the current session ID. The Messages API preserves the priority of `metadata.user_id`; without it, the API reads `x-root-session-id` before falling back to `x-session-id`. Prompt cache keys reverse that priority: `session-id`, then `x-root-session-id`, then `x-session-id`, then `metadata.user_id`, with session affinity as the last fallback, so sibling subagents share the root session's cache group. Missing parents, lookup failures, and cyclic ancestry leave existing headers intact.
+v1 uses the `session.created`, `session.deleted`, and `chat.headers` hooks. v2 updates headers through `session.hook("model.request", ...)`. The native `x-session-id` keeps the current session ID. The Messages API preserves the priority of `metadata.user_id`; without it, the API reads `x-root-session-id` before falling back to `x-session-id`. Prompt cache keys reverse that priority: `session-id`, then `x-root-session-id`, then `x-session-id`, then `metadata.user_id`, with session affinity as the last fallback, so sibling subagents share the root session's cache group. Missing parents, lookup failures, and cyclic ancestry leave existing headers intact.
 
-The Responses API reads `session-id`, `x-root-session-id`, then `x-session-id`, skipping blank values.
+Trace resolves root sessions from `x-claude-code-session-id`, `session-id`, `x-root-session-id`, then `x-session-id`, skipping blank values. Claude Code child affinity combines the native session ID and agent ID; OpenCode v1 keeps `x-opencode-session-id`, and v2 keeps its native session affinity. Both Messages and Responses routes use trace subagent context. Legacy message-body markers are no longer parsed.

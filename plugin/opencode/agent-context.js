@@ -1,5 +1,3 @@
-const MARKER_PREFIX = "__SUBAGENT_MARKER__"
-
 const createSessionLookup = (loadSession) => {
   const sessions = new Map()
 
@@ -53,7 +51,6 @@ const getSessionInfo = (event) => {
 }
 
 export const AgentContextPlugin = async ({ client } = {}) => {
-  const markedSessions = new Set()
   const lookup = createSessionLookup(async (sessionID) => {
     const result = await client?.session.get({ path: { id: sessionID } })
     return result?.data
@@ -67,38 +64,8 @@ export const AgentContextPlugin = async ({ client } = {}) => {
       if (event.type === "session.created") {
         lookup.sessions.set(info.id, info)
       } else if (event.type === "session.deleted") {
-        markedSessions.delete(info.id)
         lookup.sessions.delete(info.id)
       }
-    },
-    "chat.message": async (input, output) => {
-      const { sessionID } = input
-      if (markedSessions.has(sessionID)) return
-      if (!output.message?.id || !output.message?.sessionID) {
-        return
-      }
-      const info = await lookup.getSession(sessionID)
-      if (!info?.parentID || markedSessions.has(sessionID)) return
-
-      const marker = `${MARKER_PREFIX}${JSON.stringify({
-        session_id: sessionID,
-        agent_id: sessionID,
-        agent_type: input.agent ?? "opencode-subagent",
-      })}`
-
-      output.parts.unshift({
-        id: `prt-${output.message.id}-subagent-marker`,
-        sessionID: output.message.sessionID,
-        messageID: output.message.id,
-        type: "text",
-        text: `<system-reminder>\nSubagentStart hook additional context: ${marker}\n</system-reminder>`,
-        synthetic: true,
-        time: {
-          start: Date.now(),
-          end: Date.now(),
-        },
-      })
-      markedSessions.add(sessionID)
     },
     "chat.headers": async (input, output) => {
       const { sessionID } = input
@@ -115,7 +82,7 @@ export default {
   setup: async (context) => {
     await context.session.hook("model.request", async (input) => {
       // Read the current ancestry for each request, including restored sessions.
-      // v2 already supplies x-parent-session-id, so no marker injection is needed.
+      // v2 already supplies child-session affinity and x-parent-session-id.
       const lookup = createSessionLookup(async (sessionID) => {
         const result = await context.session.get({ sessionID })
         // The v2 Promise API returns Session.Info directly, unlike the v1 SDK.

@@ -1,6 +1,8 @@
 import { describe, expect, mock, test } from "bun:test"
 
-import { parseSubagentMarkerFromFirstUser } from "~/routes/messages/subagent-marker"
+import { Hono } from "hono"
+import { requestContext } from "~/lib/request-context"
+import { traceIdMiddleware } from "~/lib/trace"
 
 import * as agentContextModule from "../plugin/opencode/agent-context.js"
 
@@ -9,24 +11,8 @@ interface SessionInfo {
   parentID?: string
 }
 
-interface MessageOutput {
-  message?: { id?: string; sessionID?: string }
-  parts: Array<{
-    type: "text"
-    text: string
-    id?: string
-    sessionID?: string
-    messageID?: string
-    synthetic?: boolean
-  }>
-}
-
 interface LegacyHooks {
   event: (input: { event: unknown }) => Promise<void>
-  "chat.message": (
-    input: { sessionID: string; agent?: string },
-    output: MessageOutput,
-  ) => Promise<void>
   "chat.headers": (
     input: { sessionID: string },
     output: { headers: Record<string, string> },
@@ -68,11 +54,6 @@ const pluginModule = agentContextModule as unknown as {
   }
 }
 
-const messageOutput = (sessionID = "child"): MessageOutput => ({
-  message: { id: "msg-test", sessionID },
-  parts: [{ type: "text", text: "task prompt" }],
-})
-
 const sessionEvent = (
   hooks: LegacyHooks,
   info: SessionInfo,
@@ -103,63 +84,17 @@ const createV2 = async (sessions: Map<string, SessionInfo>) => {
   return { request, get, hooks }
 }
 
-describe("OpenCode v1 subagent marker", () => {
-  test("exposes a v1 server entrypoint and a v2 setup entrypoint", () => {
+describe("OpenCode v1 session headers", () => {
+  test("exposes both entrypoints without injecting chat messages", async () => {
     expect(pluginModule.default.server).toBe(pluginModule.AgentContextPlugin)
     expect(pluginModule.default.id).toBe("copilot-api.agent-context")
-  })
-
-  test("marks the first child message in a format the gateway can parse", async () => {
     const hooks = await pluginModule.default.server()
-    await sessionEvent(hooks, { id: "child", parentID: "root" })
-    const output = messageOutput()
-    await hooks["chat.message"](
-      { sessionID: "child", agent: "explore" },
-      output,
-    )
-
-    expect(output.parts[0]).toMatchObject({
-      sessionID: "child",
-      messageID: "msg-test",
-      synthetic: true,
-    })
-    expect(output.parts[1].text).toBe("task prompt")
-    expect(
-      parseSubagentMarkerFromFirstUser({
-        model: "test-model",
-        max_tokens: 128,
-        messages: [{ role: "user", content: output.parts }],
-      }),
-    ).toEqual({
-      session_id: "child",
-      agent_id: "child",
-      agent_type: "explore",
-    })
-
-    const next = messageOutput()
-    await hooks["chat.message"]({ sessionID: "child" }, next)
-    expect(next.parts).toHaveLength(1)
+    expect("chat.message" in hooks).toBe(false)
   })
 
-  test("uses the default agent name and prevents concurrent duplicate markers", async () => {
-    const hooks = await pluginModule.default.server()
-    await sessionEvent(hooks, { id: "child", parentID: "root" })
-    const outputs = [messageOutput(), messageOutput()]
-    await Promise.all(
-      outputs.map((output) =>
-        hooks["chat.message"]({ sessionID: "child" }, output),
-      ),
-    )
-    expect(outputs.map((output) => output.parts.length).sort()).toEqual([1, 2])
-    expect(JSON.stringify(outputs)).toContain("opencode-subagent")
-  })
-
-  test("keeps root messages unmarked and sets their own session header", async () => {
+  test("sets the root session's own header", async () => {
     const hooks = await pluginModule.default.server()
     await sessionEvent(hooks, { id: "root" })
-    const output = messageOutput("root")
-    await hooks["chat.message"]({ sessionID: "root" }, output)
-    expect(output.parts).toHaveLength(1)
     const headers: Record<string, string> = {}
     await hooks["chat.headers"]({ sessionID: "root" }, { headers })
     expect(headers["x-root-session-id"]).toBe("root")
@@ -173,9 +108,8 @@ describe("OpenCode v1 subagent marker", () => {
       { id: "second", parentID: "first" },
       { id: "first", parentID: "root" },
       { id: "root" },
-    ]) {
+    ])
       await sessionEvent(hooks, info)
-    }
     const headers: Record<string, string> = {
       "X-Session-Id": "leaf",
       "X-Root-Session-Id": "third",
@@ -187,10 +121,9 @@ describe("OpenCode v1 subagent marker", () => {
       "x-root-session-id": "root",
     })
     expect(new Headers(headers).get("x-root-session-id")).toBe("root")
-    expect(new Headers(headers).get("x-session-id")).toBe("leaf")
   })
 
-  test("loads restored children and ancestors through the v1 SDK", async () => {
+  test("loads and caches restored children and ancestors through the v1 SDK", async () => {
     const sessions = new Map<string, SessionInfo>([
       ["child", { id: "child", parentID: "parent" }],
       ["parent", { id: "parent", parentID: "root" }],
@@ -202,9 +135,6 @@ describe("OpenCode v1 subagent marker", () => {
     const hooks = await pluginModule.default.server({
       client: { session: { get } },
     })
-    const output = messageOutput()
-    await hooks["chat.message"]({ sessionID: "child" }, output)
-    expect(output.parts).toHaveLength(2)
     const headers: Record<string, string> = {}
     await hooks["chat.headers"]({ sessionID: "child" }, { headers })
     await hooks["chat.headers"]({ sessionID: "child" }, { headers })
@@ -220,40 +150,70 @@ describe("OpenCode v1 subagent marker", () => {
     const first = await pluginModule.default.server()
     const second = await pluginModule.default.server()
     await sessionEvent(first, { id: "child", parentID: "root" })
-    await first["chat.message"]({ sessionID: "child" }, messageOutput())
-    const isolated = messageOutput()
-    await second["chat.message"]({ sessionID: "child" }, isolated)
-    expect(isolated.parts).toHaveLength(1)
-
+    await sessionEvent(first, { id: "root" })
+    const isolated: Record<string, string> = {}
+    await second["chat.headers"]({ sessionID: "child" }, { headers: isolated })
+    expect(isolated).toEqual({})
     await sessionEvent(first, { id: "child" }, "session.deleted")
-    const deletedHeaders = { "x-session-id": "original" }
-    await first["chat.headers"](
-      { sessionID: "child" },
-      { headers: deletedHeaders },
-    )
-    expect(deletedHeaders["x-session-id"]).toBe("original")
+    const headers: Record<string, string> = { "x-session-id": "original" }
+    await first["chat.headers"]({ sessionID: "child" }, { headers })
+    expect(headers).toEqual({ "x-session-id": "original" })
     await sessionEvent(first, { id: "child", parentID: "other-root" })
-    const recreated = messageOutput()
-    await first["chat.message"]({ sessionID: "child" }, recreated)
-    expect(recreated.parts).toHaveLength(2)
+    await sessionEvent(first, { id: "other-root" })
+    await first["chat.headers"]({ sessionID: "child" }, { headers })
+    expect(headers["x-root-session-id"]).toBe("other-root")
   })
 
-  test("does not mark incomplete messages and permits a later valid message", async () => {
+  test("identifies v1 main and sibling agents through trace session information", async () => {
     const hooks = await pluginModule.default.server()
-    await sessionEvent(hooks, { id: "child", parentID: "root" })
-    for (const message of [
-      undefined,
-      {},
-      { id: "msg" },
-      { sessionID: "child" },
-    ]) {
-      const output = { message, parts: [] }
-      await hooks["chat.message"]({ sessionID: "child" }, output)
-      expect(output.parts).toHaveLength(0)
-    }
-    const valid = messageOutput()
-    await hooks["chat.message"]({ sessionID: "child" }, valid)
-    expect(valid.parts).toHaveLength(2)
+    for (const info of [
+      { id: "root" },
+      { id: "child-a", parentID: "root" },
+      { id: "child-b", parentID: "root" },
+    ])
+      await sessionEvent(hooks, info)
+    const app = new Hono()
+    app.use(traceIdMiddleware)
+    app.get("/", (c) => {
+      const context = requestContext.getStore()
+      return c.json({
+        root: context?.rootSessionId,
+        affinity: context?.sessionAffinity,
+        subagent: context?.subagent,
+      })
+    })
+    const results = await Promise.all(
+      ["root", "child-a", "child-b"].map(async (sessionID) => {
+        const headers: Record<string, string> = {
+          "user-agent": "opencode/1.18.0",
+          "x-opencode-session-id": sessionID,
+          "x-client-request-id": "shared-request",
+        }
+        await hooks["chat.headers"]({ sessionID }, { headers })
+        return (await app.request("/", { headers })).json()
+      }),
+    )
+    expect(results).toEqual([
+      { root: "root", affinity: "root", subagent: null },
+      {
+        root: "root",
+        affinity: "child-a",
+        subagent: {
+          session_id: "root",
+          agent_id: "child-a",
+          agent_type: "opencode-subagent",
+        },
+      },
+      {
+        root: "root",
+        affinity: "child-b",
+        subagent: {
+          session_id: "root",
+          agent_id: "child-b",
+          agent_type: "opencode-subagent",
+        },
+      },
+    ])
   })
 
   test("ignores malformed and unrelated events", async () => {
