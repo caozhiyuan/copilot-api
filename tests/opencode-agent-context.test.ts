@@ -1,9 +1,5 @@
 import { describe, expect, mock, test } from "bun:test"
 
-import { Hono } from "hono"
-import { requestContext } from "~/lib/request-context"
-import { traceIdMiddleware } from "~/lib/trace"
-
 import * as agentContextModule from "../plugin/opencode/agent-context.js"
 
 interface SessionInfo {
@@ -248,58 +244,6 @@ describe("OpenCode v1 subagent marker", () => {
     const valid = messageOutput()
     await hooks["chat.message"]({ sessionID: "child" }, valid)
     expect(valid.parts).toHaveLength(2)
-  })
-
-  test("identifies v1 main and sibling agents through trace session information", async () => {
-    const hooks = await pluginModule.default.server()
-    for (const info of [
-      { id: "root" },
-      { id: "child-a", parentID: "root" },
-      { id: "child-b", parentID: "root" },
-    ])
-      await sessionEvent(hooks, info)
-    const app = new Hono()
-    app.use(traceIdMiddleware)
-    app.get("/", (c) => {
-      const context = requestContext.getStore()
-      return c.json({
-        root: context?.rootSessionId,
-        affinity: context?.sessionAffinity,
-        subagent: context?.subagent,
-      })
-    })
-    const results = await Promise.all(
-      ["root", "child-a", "child-b"].map(async (sessionID) => {
-        const headers: Record<string, string> = {
-          "user-agent": "opencode/1.18.0",
-          "x-opencode-session-id": sessionID,
-          "x-client-request-id": "shared-request",
-        }
-        await hooks["chat.headers"]({ sessionID }, { headers })
-        return (await app.request("/", { headers })).json()
-      }),
-    )
-    expect(results).toEqual([
-      { root: "root", affinity: "root", subagent: null },
-      {
-        root: "root",
-        affinity: "child-a",
-        subagent: {
-          session_id: "root",
-          agent_id: "child-a",
-          agent_type: "subagent",
-        },
-      },
-      {
-        root: "root",
-        affinity: "child-b",
-        subagent: {
-          session_id: "root",
-          agent_id: "child-b",
-          agent_type: "subagent",
-        },
-      },
-    ])
   })
 
   test("ignores malformed and unrelated events", async () => {

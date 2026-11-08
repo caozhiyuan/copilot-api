@@ -119,7 +119,17 @@ describe("Anthropic to OpenAI translation logic", () => {
         model: "qwen-plus",
         max_tokens: 128,
         metadata: { user_id: JSON.stringify({ session_id: "stale-session" }) },
-        messages: [{ role: "user", content: "hello" }],
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `<system-reminder>__SUBAGENT_MARKER__${JSON.stringify({ session_id: "child", agent_id: agentId, agent_type: "Explore" })}</system-reminder>`,
+              },
+            ],
+          },
+        ],
       }
       requestContext.run(
         {

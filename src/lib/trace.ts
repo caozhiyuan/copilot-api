@@ -5,7 +5,6 @@ import {
   resolveTraceId,
   type RequestContext,
 } from "./request-context"
-import { getSubagentFromSession } from "./subagent"
 import {
   getRootSessionIdFromHeaders,
   getSessionAffinityFromHeaders,
@@ -23,9 +22,26 @@ export const traceIdMiddleware: MiddlewareHandler = async (c, next) => {
     sessionAffinity: getSessionAffinityFromHeaders(c),
     rootSessionId: getRootSessionIdFromHeaders(c),
     isClaudeCode: Boolean(c.req.header("x-claude-code-session-id")?.trim()),
-    parentSessionId: c.req.header("x-parent-session-id")?.trim() || undefined,
+    parentSessionId: c.req.header("x-parent-session-id"),
   }
-  context.subagent = getSubagentFromSession(c, context)
+  const { rootSessionId, sessionAffinity } = context
+  const isSubagent = Boolean(
+    c.req.header("x-openai-subagent")?.trim()
+      || (rootSessionId
+        && rootSessionId !== sessionAffinity
+        && (context.isClaudeCode
+          || c.req.header("x-opencode-session-id")?.trim()
+          || c.req.header("x-session-affinity")?.trim())),
+  )
+  context.subagent =
+    isSubagent && sessionAffinity ?
+      {
+        session_id: rootSessionId ?? sessionAffinity,
+        agent_id:
+          c.req.header("x-claude-code-agent-id")?.trim() || sessionAffinity,
+        agent_type: "subagent",
+      }
+    : null
 
   await requestContext.run(context, async () => {
     await next()

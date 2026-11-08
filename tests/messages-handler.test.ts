@@ -1112,7 +1112,6 @@ describe("messages handler orchestration", () => {
   test.each<{
     name: string
     headers: Record<string, string>
-    agentId: string
   }>([
     {
       name: "Claude Code",
@@ -1120,7 +1119,6 @@ describe("messages handler orchestration", () => {
         "x-claude-code-session-id": "root",
         "x-claude-code-agent-id": "child",
       },
-      agentId: "child",
     },
     {
       name: "OpenCode v1",
@@ -1128,7 +1126,6 @@ describe("messages handler orchestration", () => {
         "x-root-session-id": "root",
         "x-opencode-session-id": "child",
       },
-      agentId: "child",
     },
     {
       name: "OpenCode v2",
@@ -1138,11 +1135,10 @@ describe("messages handler orchestration", () => {
         "x-session-affinity": "child",
         "x-parent-session-id": "root",
       },
-      agentId: "child",
     },
   ])(
     "passes $name header-only subagent context to the Messages flow",
-    async ({ headers, agentId }) => {
+    async ({ headers }) => {
       selectedModel = {
         id: "messages-model",
         supported_endpoints: ["/v1/messages"],
@@ -1155,7 +1151,7 @@ describe("messages handler orchestration", () => {
       expect(response.status).toBe(200)
       expect(handleWithMessagesApi.mock.calls[0][2].subagentMarker).toEqual({
         session_id: "root",
-        agent_id: agentId,
+        agent_id: "child",
         agent_type: "subagent",
       })
     },

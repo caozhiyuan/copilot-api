@@ -130,9 +130,13 @@ test.each<{ headers: Record<string, string>; proxy: boolean }>([
     app.use(traceIdMiddleware)
     app.post("/", async (c) =>
       c.json(
-        await createMessages(createPayload(), undefined, {
-          requestId: "request-1",
-        }),
+        await createMessages(
+          createPayload({ metadata: undefined }),
+          undefined,
+          {
+            requestId: "request-1",
+          },
+        ),
       ),
     )
     const response = await app.request("/", { method: "POST", headers })
@@ -147,17 +151,6 @@ test.each<{ headers: Record<string, string>; proxy: boolean }>([
 )
 
 describe("Messages proxy request headers", () => {
-  test.each([undefined, { user_id: "plain-user" }])(
-    "uses native Claude identity without structured metadata (%j)",
-    async (metadata) => {
-      const payload = createPayload({ metadata })
-      await createClaudeMessages(payload, undefined, { requestId: "request-1" })
-      expect(getRequestHeaders().Authorization).toBe("Bearer test-github-token")
-      expect(getRequestHeaders()["OpenAI-Intent"]).toBe("messages-proxy")
-      expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify(payload))
-    },
-  )
-
   test("preserves custom header casing over Bun HTTP transport", async () => {
     let rawHeaders: Array<string> = []
     const server = createServer((request, response) => {
