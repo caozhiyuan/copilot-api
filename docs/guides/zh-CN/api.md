@@ -47,9 +47,9 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 ### Responses WebSocket 续接
 
-内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，若当前 agent 的 affinity、请求配置和归一化后的历史前缀匹配，会自动复用同一连接上最近一次完整成功的 response，通过 `previous_response_id` 只发送新增 input。匹配时忽略已知 item 的 ID/状态、Codex 回传元数据及文本 annotations/logprobs，并兼容等价的字符串/文本块消息；正文、item 顺序、工具 call ID/参数和加密内容仍须一致，未知字段及 item/引用类型保持严格匹配。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
+内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，可复用同一连接上最近一次完整成功的 response。内存只保留 response ID 和一个不透明锚点：思考项的 `encrypted_content`，或工具调用的类型及 `call_id`。锚点以 `response.output_item.done` 为准；`response.completed` 只确认成功并补齐缺失项，不覆盖 done 中不同的签名。下轮请求找到锚点后，跳过后续助手输出（包括文本），从下一条非助手内容（如用户消息或工具结果）开始发送增量，并带上 `previous_response_id`。不保存或比较助手文本，不计算历史/配置 hash，不保存 item 数量，也不另设续接过期时间。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
 
-修改历史、压缩、重新连接、取消或未完整结束，以及协议转换后前缀无法完全匹配时，均发送完整 input。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次。客户端显式传入的 response ID 保持不变，显式 `null` 会开始新链。SQLite 在独立的 `response_continuations` 表中保留每条连接最近一次完整成功的会话、response ID 及指纹，不保存提示词，不向 usage 表追加续接数据，也不自动删除记录。1 小时续接有效期和连接关闭仅使内存续接状态失效，重启后不会用数据库记录恢复已断开的连接。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。
+找不到锚点、响应没有可用锚点、没有新增 input、重新连接、取消或未完整结束时，均发送完整 input。锚点不校验更早的历史；修改、重排或压缩历史后，需要显式传入 `previous_response_id: null` 或新建会话。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次；客户端显式传入的 response ID 保持不变。SQLite 的独立表 `response_continuations` 只保留 `connection_id`、`session_id`、`response_id` 和 `updated_at_ms`，不保存锚点或消息内容，不向 usage 表追加数据，也不自动删除记录；不会用数据库记录恢复已断开的连接。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。
 
 ### 模型发现来源
 

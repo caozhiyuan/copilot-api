@@ -10,11 +10,11 @@ import {
 } from "~/lib/response-continuation-store"
 import {
   getResponsesContinuationSession,
-  hashResponseContext,
   prepareResponsesContinuation,
 } from "~/lib/responses-continuation"
 import { openSqliteDatabase } from "~/lib/sqlite"
 import type {
+  ResponseOutputItem,
   ResponseStreamEvent,
   ResponsesPayload,
 } from "~/lib/types/responses"
@@ -27,13 +27,25 @@ const output = {
   call_id: "call-1",
   name: "read",
   arguments: "{}",
-  status: "completed",
 } as const
 const result = {
   type: "function_call_output",
   call_id: "call-1",
   output: "file contents",
 } as const
+const thinking = {
+  type: "reasoning",
+  id: "reasoning-1",
+  summary: [],
+  encrypted_content: "cipher",
+} satisfies ResponseOutputItem
+const text = {
+  type: "message",
+  id: "message-1",
+  role: "assistant",
+  status: "completed",
+  content: [{ type: "output_text", text: "answer", annotations: [] }],
+} satisfies ResponseOutputItem
 const payload = (
   input: ResponsesPayload["input"] = [user],
 ): ResponsesPayload => ({ model: "gpt-test", input, stream: true })
@@ -49,7 +61,7 @@ const complete = (
 class Connection {
   closed = false
   readonly id: string
-  constructor(id: string) {
+  constructor(id = "socket") {
     this.id = id
   }
   close() {
@@ -69,23 +81,19 @@ afterEach(async () => {
   fs.rmSync(dir, { recursive: true, force: true })
 })
 
-function seed(
-  connection = new Connection("socket"),
-  overrides: Partial<ResponsesPayload> = {},
-) {
+function seed(items: unknown = [output], connection = new Connection()) {
   const attempt = prepareResponsesContinuation(
-    { ...payload(), ...overrides },
+    payload(),
     connection,
-    "scope",
     "session",
     false,
   )
-  attempt.observe(complete())
+  attempt.observe(complete("resp-1", items))
   attempt.finish()
   return connection
 }
 
-test("uses current agent affinity for every user agent, not the shared root", () => {
+test("uses current agent affinity independently of the shared root", () => {
   expect(getResponsesContinuationSession()).toBeUndefined()
   requestContext.run(
     {
@@ -102,216 +110,146 @@ test("uses current agent affinity for every user agent, not the shared root", ()
   )
 })
 
-test("fingerprints preserve array order, encrypted fields and unknown settings", () => {
-  expect(hashResponseContext({ b: 2, a: { d: 4, c: 3 } })).toBe(
-    hashResponseContext({ a: { c: 3, d: 4 }, b: 2 }),
-  )
-  expect(hashResponseContext([1, 2])).not.toBe(hashResponseContext([2, 1]))
-  expect(hashResponseContext({ encrypted_content: "a" })).not.toBe(
-    hashResponseContext({ encrypted_content: "b" }),
-  )
-})
-
 test.each([
+  output,
   {
-    name: "replaced tool item ID and replay metadata",
-    item: { ...output, id: "server-item" },
-    replay: {
-      ...output,
-      id: "client-item",
-      status: undefined,
-      internal_chat_message_metadata_passthrough: { turn_id: "turn-2" },
-    },
+    type: "custom_tool_call",
+    call_id: "call-1",
+    name: "run",
+    input: "command",
   },
-  {
-    name: "replaced reasoning ID with the same encrypted content",
-    item: {
-      type: "reasoning",
-      id: "server-reasoning",
-      summary: [],
-      encrypted_content: "cipher",
-    },
-    replay: {
-      type: "reasoning",
-      id: "client-reasoning",
-      status: "completed",
-      summary: [],
-      encrypted_content: "cipher",
-    },
+  { type: "tool_search_call", call_id: "call-1", arguments: { query: "read" } },
+])(
+  "uses a typed tool call anchor without confusing its result (%j)",
+  (item) => {
+    const connection = seed([item])
+    const replay = { ...item, id: "client-generated-id", extra_metadata: true }
+    const full = payload([user, replay, result, user])
+    const original = structuredClone(full)
+    const next = prepareResponsesContinuation(
+      full,
+      connection,
+      "session",
+      false,
+    )
+    expect(next.payload).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [result, user],
+    })
+    expect(full).toEqual(original)
+    next.finish()
   },
-  {
-    name: "message IDs, annotations, logprobs and text block type",
-    item: {
-      type: "message",
-      id: "server-message",
-      status: "completed",
-      role: "assistant",
-      content: [{ type: "output_text", text: "answer", annotations: [] }],
-    },
-    replay: {
-      type: "message",
-      id: "client-message",
-      role: "assistant",
-      content: [{ type: "input_text", text: "answer", logprobs: [] }],
-    },
+)
+
+test.each([output, thinking])(
+  "skips assistant text after an opaque anchor (%j)",
+  (item) => {
+    const connection = seed([item, text])
+    const replay = { ...item, id: "replaced-id" }
+    const nextUser = { ...user, content: "next question" }
+    const prefill = { role: "assistant", content: "new prefill" }
+    const next = prepareResponsesContinuation(
+      payload([
+        user,
+        replay,
+        {
+          role: "assistant",
+          content: "client-reformatted answer",
+          extra: true,
+        },
+        { type: "reasoning", summary: [], encrypted_content: "" },
+        nextUser,
+        prefill,
+      ]),
+      connection,
+      "session",
+      false,
+    )
+    expect(next.payload).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [nextUser, prefill],
+    })
+    next.finish()
   },
-  {
-    name: "equivalent string messages with an optional item type",
-    item: {
-      type: "message",
-      role: "assistant",
-      content: [{ type: "output_text", text: "answer", annotations: [] }],
-    },
-    replay: { role: "assistant", content: "answer" },
-  },
-])("continues after $name", ({ item, replay }) => {
-  const connection = new Connection("socket")
-  const first = prepareResponsesContinuation(
-    payload(),
-    connection,
-    "scope",
-    "session",
-    false,
-  )
-  first.observe(complete("resp-1", [item]))
-  first.finish()
-  const full = payload([user, replay, result])
-  const original = structuredClone(full)
+)
+
+test("chooses the last opaque output anchor and keeps every new tool result", () => {
+  const lastCall = { ...output, call_id: "call-2" }
+  const lastResult = { ...result, call_id: "call-2" }
+  const connection = seed([thinking, output, text, lastCall, text])
   const next = prepareResponsesContinuation(
-    full,
+    payload([user, thinking, output, text, lastCall, text, result, lastResult]),
     connection,
-    "scope",
     "session",
     false,
   )
   expect(next.payload).toMatchObject({
     previous_response_id: "resp-1",
-    input: [result],
+    input: [result, lastResult],
   })
-  expect(full).toEqual(original)
   next.finish()
 })
 
-test.each([
-  { item: output, replay: { ...output, call_id: "changed" } },
-  { item: output, replay: { ...output, arguments: '{"id":"changed"}' } },
-  { item: output, replay: { ...output, future_context: true } },
-  {
-    item: { type: "reasoning", encrypted_content: "cipher", summary: [] },
-    replay: { type: "reasoning", encrypted_content: "changed", summary: [] },
-  },
-  {
-    item: { type: "message", role: "assistant", content: "answer" },
-    replay: { type: "message", role: "assistant", content: "edited" },
-  },
-  {
-    item: {
-      type: "message",
-      role: "assistant",
-      content: [{ type: "input_image", file_id: "original" }],
-    },
-    replay: {
-      type: "message",
-      role: "assistant",
-      content: [{ type: "input_image", file_id: "changed" }],
-    },
-  },
-  {
-    item: {
-      type: "message",
-      role: "assistant",
-      phase: "commentary",
-      content: "answer",
-    },
-    replay: {
-      type: "message",
-      role: "assistant",
-      phase: "final_answer",
-      content: "answer",
-    },
-  },
-  {
-    item: { type: "item_reference", id: "original" },
-    replay: { type: "item_reference", id: "changed" },
-  },
-  {
-    item: { type: "future_item", id: "original" },
-    replay: { type: "future_item", id: "changed" },
-  },
-])("keeps full input when item context changes (%j)", ({ item, replay }) => {
-  const connection = new Connection("socket")
-  const first = prepareResponsesContinuation(
-    payload(),
-    connection,
-    "scope",
-    "session",
-    false,
-  )
-  first.observe(complete("resp-1", [item]))
-  first.finish()
-  const full = payload([user, replay, result])
-  const next = prepareResponsesContinuation(
-    full,
-    connection,
-    "scope",
-    "session",
-    false,
-  )
-  expect(next.usedPrevious).toBe(false)
-  expect(next.payload).toBe(full)
-  next.finish()
-})
-
-test("continues multiple completed turns with only the new tool/user items", () => {
+test("continues completed tool turns and never reuses an unfinished request", () => {
   const connection = seed()
-  const full = payload([user, output, result])
   const next = prepareResponsesContinuation(
-    full,
+    payload([user, output, result]),
     connection,
-    "scope",
     "session",
     false,
   )
-  expect(next.usedPrevious).toBe(true)
   expect(next.payload).toMatchObject({
     previous_response_id: "resp-1",
     input: [result],
   })
-  expect(full.input).toEqual([user, output, result])
-  expect(full.previous_response_id).toBeUndefined()
-  next.observe(complete("resp-2", []))
+  const lastCall = { ...output, call_id: "call-2" }
+  const lastResult = { ...result, call_id: "call-2" }
+  next.observe(complete("resp-2", [lastCall]))
   next.finish()
-  const third = prepareResponsesContinuation(
-    payload([user, output, result, user]),
-    connection,
-    "scope",
-    "session",
-    false,
-  )
+  const full = payload([user, output, result, lastCall, lastResult])
+  const third = prepareResponsesContinuation(full, connection, "session", false)
   expect(third.payload).toMatchObject({
     previous_response_id: "resp-2",
-    input: [user],
+    input: [lastResult],
   })
   third.finish()
   const resent = prepareResponsesContinuation(
-    payload([user, output, result, user]),
+    full,
     connection,
-    "scope",
     "session",
     false,
   )
-  expect(resent.usedPrevious).toBe(false)
+  expect(resent.payload).toBe(full)
   resent.finish()
 })
 
+test("anchor matching does not compare earlier history, settings or item IDs", () => {
+  const connection = seed()
+  const editedCall = { ...output, id: "new-id", arguments: "changed" }
+  const next = prepareResponsesContinuation(
+    {
+      ...payload([
+        { ...user, content: "edited earlier history" },
+        editedCall,
+        result,
+      ]),
+      instructions: "new instructions",
+      tools: [],
+      client_metadata: { timestamp: "2" },
+    },
+    connection,
+    "session",
+    false,
+  )
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [result],
+    instructions: "new instructions",
+  })
+  next.finish()
+})
+
 test.each([
-  { name: "model", overrides: { model: "other" } },
-  { name: "instructions", overrides: { instructions: "changed" } },
-  {
-    name: "tools",
-    overrides: { tools: [{ type: "function", name: "other" }] },
-  },
-  { name: "unknown configuration", overrides: { future_option: true } },
   { name: "explicit reset", overrides: { previous_response_id: null } },
   {
     name: "explicit chain",
@@ -319,98 +257,119 @@ test.each([
   },
   { name: "warmup", overrides: { generate: false } },
   { name: "string input", overrides: { input: "hello" } },
-  { name: "short input", overrides: { input: [user] } },
+  { name: "missing anchor", overrides: { input: [user, result] } },
   {
-    name: "edited history",
-    overrides: { input: [{ ...user, content: "edited" }, output, result] },
+    name: "different call ID",
+    overrides: { input: [user, { ...output, call_id: "other" }, result] },
   },
-])("sends the full request for $name", ({ overrides }) => {
+  {
+    name: "different call type",
+    overrides: {
+      input: [
+        user,
+        {
+          type: "custom_tool_call",
+          name: "read",
+          call_id: "call-1",
+          input: "{}",
+        },
+        result,
+      ],
+    },
+  },
+  { name: "no new input", overrides: { input: [user, output] } },
+  { name: "assistant-only tail", overrides: { input: [user, output, text] } },
+])("sends full input for $name", ({ overrides }) => {
   const connection = seed()
   const full = {
     ...payload([user, output, result]),
     ...overrides,
   } as ResponsesPayload
-  const next = prepareResponsesContinuation(
-    full,
-    connection,
-    "scope",
-    "session",
-    false,
-  )
+  const next = prepareResponsesContinuation(full, connection, "session", false)
   expect(next.usedPrevious).toBe(false)
   expect(next.payload).toBe(full)
   next.finish()
 })
 
-test("request timestamps and initiator do not break an otherwise exact chain", () => {
-  const connection = seed(undefined, {
-    initiator: "user",
-    client_metadata: { timestamp: "1" },
-  })
+test("changed reasoning ciphertext does not match", () => {
+  const connection = seed([thinking, text])
   const next = prepareResponsesContinuation(
-    {
-      ...payload([user, output, result]),
-      initiator: "agent",
-      client_metadata: { timestamp: "2" },
-    },
+    payload([
+      user,
+      { ...thinking, encrypted_content: "different" },
+      text,
+      user,
+    ]),
     connection,
-    "scope",
     "session",
     false,
   )
-  expect(next.usedPrevious).toBe(true)
+  expect(next.usedPrevious).toBe(false)
   next.finish()
 })
 
-test("never crosses connection, provider/account scope or an explicit full retry", () => {
-  const connection = seed()
-  for (const [socket, scope, force] of [
-    [new Connection("other"), "scope", false],
-    [connection, "other-account", false],
-    [seed(), "scope", true],
+test("new or closed connections and a forced retry use full input", () => {
+  const closed = seed()
+  closed.close()
+  for (const [connection, forceFull] of [
+    [new Connection("other"), false],
+    [closed, false],
+    [seed(), true],
   ] as const) {
     const next = prepareResponsesContinuation(
       payload([user, output, result]),
-      socket,
-      scope,
+      connection,
       "session",
-      force,
+      forceFull,
     )
     expect(next.usedPrevious).toBe(false)
     next.finish()
   }
 })
 
-test("expiry and closed sockets discard the previous chain", () => {
+test("a live connection has no separate one-hour continuation expiry", () => {
   const connection = seed()
   const now = Date.now
   try {
-    Date.now = () => now() + 60 * 60 * 1000 + 1
+    Date.now = () => now() + 24 * 60 * 60 * 1000
     const next = prepareResponsesContinuation(
       payload([user, output, result]),
       connection,
-      "scope",
+      "session",
+      false,
+    )
+    expect(next.usedPrevious).toBe(true)
+    next.finish()
+  } finally {
+    Date.now = now
+  }
+})
+
+test.each([
+  { items: [text] },
+  { items: [{ type: "reasoning", summary: [], encrypted_content: "" }] },
+  { items: [{ ...output, call_id: "" }] },
+  { items: [output, { type: "future_server_item" }] },
+  {
+    items: [
+      output,
+      { type: "tool_search_output", call_id: "call-1", tools: [] },
+    ],
+  },
+])(
+  "responses without a usable anchor keep later requests full (%j)",
+  ({ items }) => {
+    const connection = seed(items)
+    const next = prepareResponsesContinuation(
+      payload([user, output, result]),
+      connection,
       "session",
       false,
     )
     expect(next.usedPrevious).toBe(false)
     next.finish()
-  } finally {
-    Date.now = now
-  }
-  const closed = seed()
-  closed.close()
-  const next = prepareResponsesContinuation(
-    payload([user, output, result]),
-    closed,
-    "scope",
-    "session",
-    false,
-  )
-  expect(next.usedPrevious).toBe(false)
-  next.observe(complete())
-  next.finish()
-})
+  },
+)
 
 test.each([
   "cancelled",
@@ -422,12 +381,11 @@ test.each([
   "missing-id",
   "missing-output",
 ])("does not retain %s results", (mode) => {
-  const connection = new Connection("socket")
+  const connection = new Connection()
   const controller = new AbortController()
   const first = prepareResponsesContinuation(
     payload(),
     connection,
-    "scope",
     "session",
     false,
     controller.signal,
@@ -442,7 +400,7 @@ test.each([
     first.observe(
       mode === "incomplete" ?
         ({
-          ...complete(),
+          type: "response.completed",
           response: { id: "resp", status: "incomplete", output: [output] },
         } as ResponseStreamEvent)
       : complete(),
@@ -452,7 +410,6 @@ test.each([
   const next = prepareResponsesContinuation(
     payload([user, output, result]),
     connection,
-    "scope",
     "session",
     false,
   )
@@ -460,66 +417,123 @@ test.each([
   next.finish()
 })
 
-test("uses terminal output instead of a partial done-event list", () => {
-  const connection = new Connection("socket")
+test.each([false, true])(
+  "prefers done-event markers with or without completed output (%s)",
+  (omitOutput) => {
+    const connection = new Connection()
+    const first = prepareResponsesContinuation(
+      payload(),
+      connection,
+      "session",
+      false,
+    )
+    first.observe({
+      type: "response.output_item.done",
+      sequence_number: 1,
+      output_index: 1,
+      item: text,
+    })
+    first.observe({
+      type: "response.output_item.done",
+      sequence_number: 2,
+      output_index: 0,
+      item: thinking,
+    })
+    first.observe(complete("resp-1", omitOutput ? [] : [output, text]))
+    first.finish()
+    const next = prepareResponsesContinuation(
+      payload([user, thinking, text, result]),
+      connection,
+      "session",
+      false,
+    )
+    expect(next.payload).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [result],
+    })
+    next.finish()
+  },
+)
+
+test("uses the done reasoning signature when completed contains a different one", () => {
+  const connection = new Connection()
   const first = prepareResponsesContinuation(
     payload(),
     connection,
-    "scope",
     "session",
     false,
   )
+  const doneThinking = {
+    ...thinking,
+    encrypted_content: "done-cipher",
+    id: "done-id",
+  }
   first.observe({
     type: "response.output_item.done",
+    sequence_number: 1,
     output_index: 0,
-    item: output,
-  } as ResponseStreamEvent)
-  first.observe(complete("resp-1", [output, user]))
+    item: doneThinking,
+  })
+  first.observe(
+    complete("resp-1", [
+      {
+        ...thinking,
+        encrypted_content: "completed-cipher",
+        id: "completed-id",
+      },
+      text,
+    ]),
+  )
   first.finish()
   const next = prepareResponsesContinuation(
-    payload([user, output, user, result]),
+    payload([user, doneThinking, text, user]),
     connection,
-    "scope",
     "session",
     false,
   )
-  expect(next.payload.input).toEqual([result])
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [user],
+  })
   next.finish()
 })
 
-test("uses contiguous done events when the terminal event omits output", () => {
-  const connection = new Connection("socket")
+test("completed output fills missing done items without replacing a tool call ID", () => {
+  const connection = new Connection()
   const first = prepareResponsesContinuation(
     payload(),
     connection,
-    "scope",
     "session",
     false,
   )
   first.observe({
     type: "response.output_item.done",
+    sequence_number: 1,
     output_index: 0,
     item: output,
-  } as ResponseStreamEvent)
-  first.observe(complete("resp-1", []))
+  })
+  first.observe(
+    complete("resp-1", [{ ...output, call_id: "completed-call-id" }, text]),
+  )
   first.finish()
   const next = prepareResponsesContinuation(
-    payload([user, output, result]),
+    payload([user, output, text, result]),
     connection,
-    "scope",
     "session",
     false,
   )
-  expect(next.payload.input).toEqual([result])
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [result],
+  })
   next.finish()
 })
 
 test("does not retain gaps in done-event output", () => {
-  const connection = new Connection("socket")
+  const connection = new Connection()
   const first = prepareResponsesContinuation(
     payload(),
     connection,
-    "scope",
     "session",
     false,
   )
@@ -533,7 +547,6 @@ test("does not retain gaps in done-event output", () => {
   const next = prepareResponsesContinuation(
     payload([user, output, result]),
     connection,
-    "scope",
     "session",
     false,
   )
@@ -541,8 +554,8 @@ test("does not retain gaps in done-event output", () => {
   next.finish()
 })
 
-test("SQLite retains independent metadata after close, expiry and invalidation", async () => {
-  const connection = seed()
+test("SQLite keeps only four audit fields and retains rows after connection closure", async () => {
+  const connection = seed([thinking, text])
   await flushResponseContinuations()
   const db = await openSqliteDatabase(process.env.COPILOT_API_SQLITE_DB_PATH!)
   try {
@@ -550,44 +563,37 @@ test("SQLite retains independent metadata after close, expiry and invalidation",
       .prepare("SELECT * FROM response_continuations")
       .all() as Array<Record<string, unknown>>
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({
+    expect(rows[0]).toEqual({
       connection_id: "socket",
       session_id: "session",
       response_id: "resp-1",
-      prefix_item_count: 2,
+      updated_at_ms: expect.any(Number),
     })
-    expect(JSON.stringify(rows)).not.toContain("file contents")
+    expect(JSON.stringify(rows)).not.toContain("cipher")
+    expect(JSON.stringify(rows)).not.toContain("answer")
     expect(
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all(),
     ).toEqual([{ name: "response_continuations" }])
     connection.close()
-    await flushResponseContinuations()
-    expect(db.prepare("SELECT * FROM response_continuations").all()).toEqual(
-      rows,
-    )
-    db.prepare("UPDATE response_continuations SET expires_at_ms = 0").run()
-    seed(new Connection("other"))
+    seed([output], new Connection("other"))
     await flushResponseContinuations()
     expect(
       db
         .prepare(
-          "SELECT connection_id FROM response_continuations ORDER BY connection_id",
+          "SELECT * FROM response_continuations WHERE connection_id = 'socket'",
         )
         .all(),
-    ).toEqual([{ connection_id: "other" }, { connection_id: "socket" }])
-    const next = prepareResponsesContinuation(
-      payload([user, output, result]),
-      connection,
-      "scope",
-      "session",
-      false,
-    )
-    expect(next.usedPrevious).toBe(false)
-    next.finish()
-    await flushResponseContinuations()
+    ).toEqual(rows)
     expect(
       db.prepare("SELECT connection_id FROM response_continuations").all(),
     ).toHaveLength(2)
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_response_continuations_expiry'",
+        )
+        .all(),
+    ).toEqual([])
   } finally {
     db.close?.()
   }
@@ -600,7 +606,6 @@ test("SQLite failures leave live continuation and shutdown usable", async () => 
   const next = prepareResponsesContinuation(
     payload([user, output, result]),
     connection,
-    "scope",
     "session",
     false,
   )

@@ -121,6 +121,18 @@ class MockWebSocket {
         type: "response.created",
       }),
     })
+    if (parsed.model === "gpt-continuation") {
+      for (const [outputIndex, item] of continuationOutput.entries()) {
+        this.emit("message", {
+          data: JSON.stringify({
+            type: "response.output_item.done",
+            sequence_number: outputIndex + 1,
+            output_index: outputIndex,
+            item,
+          }),
+        })
+      }
+    }
     this.emit("message", {
       data: JSON.stringify({
         response: createResponsesResult(
@@ -204,7 +216,14 @@ const createResponsesResult = (
   metadata: null,
   model,
   object: "response",
-  output: [],
+  output:
+    model === "gpt-continuation" ?
+      continuationOutput.map((item) =>
+        item.type === "reasoning" ?
+          { ...item, encrypted_content: "completed-cipher" }
+        : item,
+      )
+    : [],
   output_text: "",
   parallel_tool_calls: false,
   status: "completed",
@@ -800,9 +819,9 @@ test("Codex websocket automatically continues a stable non-Codex user agent", as
     },
     async () => {
       const first = { type: "message", role: "user", content: "hello" } as const
-      for (const input of [[first], [first, first]]) {
+      for (const input of [[first], [first, ...continuationOutput, first]]) {
         const stream = await forwardCodexResponses(
-          { model: "gpt-5.4", stream: true, input },
+          { model: "gpt-continuation", stream: true, input },
           new Headers({ "user-agent": "claude-code" }),
           undefined,
           { transport: "websocket" },
@@ -819,3 +838,19 @@ test("Codex websocket automatically continues a stable non-Codex user agent", as
     input: [{ type: "message", role: "user", content: "hello" }],
   })
 })
+
+const continuationOutput = [
+  {
+    type: "reasoning",
+    id: "server-reasoning",
+    encrypted_content: "cipher",
+    summary: [],
+  },
+  {
+    type: "message",
+    id: "server-message",
+    role: "assistant",
+    status: "completed",
+    content: [{ type: "output_text", text: "answer", annotations: [] }],
+  },
+] satisfies ResponsesResult["output"]

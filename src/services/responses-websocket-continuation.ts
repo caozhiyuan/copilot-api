@@ -1,9 +1,6 @@
 import consola from "consola"
 
-import {
-  hashResponseContext,
-  prepareResponsesContinuation,
-} from "~/lib/responses-continuation"
+import { prepareResponsesContinuation } from "~/lib/responses-continuation"
 import type {
   ResponsesPayload,
   ResponseStreamEvent,
@@ -37,7 +34,7 @@ export async function* createContinuableResponsesWebSocketStream<
     return
   }
 
-  const scopeKey = hashResponseContext([
+  const poolKey = JSON.stringify([
     provider,
     request.url,
     request.poolKey,
@@ -53,7 +50,7 @@ export async function* createContinuableResponsesWebSocketStream<
     const source = createPooledWebSocketStream(
       {
         ...request,
-        poolKey: scopeKey,
+        poolKey,
         preparePayload: (payload, connection) => {
           const prepared =
             request.preparePayload?.(payload, connection) ?? payload
@@ -61,7 +58,6 @@ export async function* createContinuableResponsesWebSocketStream<
           attempt = prepareResponsesContinuation(
             prepared,
             connection,
-            scopeKey,
             sessionId,
             forceFull,
             clientSignal,

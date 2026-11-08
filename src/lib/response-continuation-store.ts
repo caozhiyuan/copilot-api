@@ -7,13 +7,8 @@ import { isSqliteRuntimeSupported, SqliteDbStore } from "~/lib/sqlite"
 
 export interface ResponseContinuationRecord {
   connectionId: string
-  scopeKey: string
   sessionId: string
   responseId: string
-  requestHash: string
-  prefixItemCount: number
-  prefixHash: string
-  expiresAt: number
 }
 
 // Keep the latest completed record per connection, without automatic deletion.
@@ -29,17 +24,10 @@ const store = new SqliteDbStore({
     db.exec(`
       CREATE TABLE IF NOT EXISTS response_continuations (
         connection_id TEXT PRIMARY KEY,
-        scope_key TEXT NOT NULL,
         session_id TEXT NOT NULL,
         response_id TEXT NOT NULL,
-        request_hash TEXT NOT NULL,
-        prefix_item_count INTEGER NOT NULL,
-        prefix_hash TEXT NOT NULL,
-        updated_at_ms INTEGER NOT NULL,
-        expires_at_ms INTEGER NOT NULL
+        updated_at_ms INTEGER NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_response_continuations_expiry
-      ON response_continuations(expires_at_ms);
     `)
   },
 })
@@ -62,26 +50,13 @@ export function saveResponseContinuation(
     db.prepare(
       `
       INSERT INTO response_continuations (
-        connection_id, scope_key, session_id, response_id, request_hash,
-        prefix_item_count, prefix_hash, updated_at_ms, expires_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        connection_id, session_id, response_id, updated_at_ms
+      ) VALUES (?, ?, ?, ?)
       ON CONFLICT(connection_id) DO UPDATE SET
-        scope_key = excluded.scope_key, session_id = excluded.session_id,
-        response_id = excluded.response_id, request_hash = excluded.request_hash,
-        prefix_item_count = excluded.prefix_item_count, prefix_hash = excluded.prefix_hash,
-        updated_at_ms = excluded.updated_at_ms, expires_at_ms = excluded.expires_at_ms
+        session_id = excluded.session_id,
+        response_id = excluded.response_id, updated_at_ms = excluded.updated_at_ms
     `,
-    ).run(
-      record.connectionId,
-      record.scopeKey,
-      record.sessionId,
-      record.responseId,
-      record.requestHash,
-      record.prefixItemCount,
-      record.prefixHash,
-      now,
-      record.expiresAt,
-    )
+    ).run(record.connectionId, record.sessionId, record.responseId, now)
   })
 }
 

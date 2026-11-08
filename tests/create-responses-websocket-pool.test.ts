@@ -141,6 +141,18 @@ class MockWebSocket {
     }
 
     const parsed = JSON.parse(latestSent) as { model: string }
+    if (parsed.model === "gpt-continuation") {
+      for (const [outputIndex, item] of continuationOutput.entries()) {
+        this.emitMessage(
+          JSON.stringify({
+            type: "response.output_item.done",
+            sequence_number: outputIndex + 1,
+            output_index: outputIndex,
+            item,
+          }),
+        )
+      }
+    }
     this.emit("message", {
       data: JSON.stringify({
         response: createResponsesResult(
@@ -235,7 +247,14 @@ const createResponsesResult = (
   metadata: null,
   model,
   object: "response",
-  output: [],
+  output:
+    model === "gpt-continuation" ?
+      continuationOutput.map((item) =>
+        item.type === "reasoning" ?
+          { ...item, encrypted_content: "completed-cipher" }
+        : item,
+      )
+    : [],
   output_text: "",
   parallel_tool_calls: false,
   status: "completed",
@@ -1255,6 +1274,26 @@ const withAffinity = <T>(affinity: string, callback: () => T): T =>
 const continuationInput = [
   { type: "message", role: "user", content: "hello" },
 ] as const
+const continuationOutput = [
+  {
+    type: "reasoning",
+    id: "server-reasoning",
+    encrypted_content: "cipher",
+    summary: [],
+  },
+  {
+    type: "message",
+    id: "server-message",
+    role: "assistant",
+    status: "completed",
+    content: [{ type: "output_text", text: "answer", annotations: [] }],
+  },
+] satisfies ResponsesResult["output"]
+const continuationHistory = () => [
+  ...continuationInput,
+  ...continuationOutput,
+  ...continuationInput,
+]
 const sendContinuationTurn = async (
   requestId: string,
   input: ResponsesPayload["input"],
@@ -1269,10 +1308,7 @@ const sendContinuationTurn = async (
 test("Copilot websocket continues the same agent across different request IDs", async () => {
   await withAffinity("agent-a", async () => {
     await sendContinuationTurn("turn-1", [...continuationInput])
-    await sendContinuationTurn("turn-2", [
-      ...continuationInput,
-      ...continuationInput,
-    ])
+    await sendContinuationTurn("turn-2", continuationHistory())
   })
   expect(MockWebSocket.instances).toHaveLength(1)
   expect(continuationRequest(0, 1)).toMatchObject({
@@ -1280,10 +1316,7 @@ test("Copilot websocket continues the same agent across different request IDs", 
     input: [...continuationInput],
   })
   await withAffinity("agent-b", () =>
-    sendContinuationTurn("turn-3", [
-      ...continuationInput,
-      ...continuationInput,
-    ]),
+    sendContinuationTurn("turn-3", continuationHistory()),
   )
   expect(MockWebSocket.instances).toHaveLength(2)
   expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
@@ -1300,16 +1333,13 @@ test.each([
     await withAffinity("retry", async () => {
       await sendContinuationTurn("turn-1", [...continuationInput])
       MockWebSocket.continuationError = error
-      const chunks = await sendContinuationTurn("turn-2", [
-        ...continuationInput,
-        ...continuationInput,
-      ])
+      const chunks = await sendContinuationTurn("turn-2", continuationHistory())
       expect(chunks.some((chunk) => chunk.event === "error")).toBe(false)
     })
     expect(MockWebSocket.instances).toHaveLength(2)
     expect(continuationRequest(0, 1).previous_response_id).toBe("resp-1")
     expect(continuationRequest(1, 0)).toMatchObject({
-      input: [...continuationInput, ...continuationInput],
+      input: continuationHistory(),
     })
     expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
   },
@@ -1327,10 +1357,7 @@ test.each(["response-started", "other-error"])(
             "previous_response_not_found"
           ),
       }
-      const chunks = await sendContinuationTurn("turn-2", [
-        ...continuationInput,
-        ...continuationInput,
-      ])
+      const chunks = await sendContinuationTurn("turn-2", continuationHistory())
       expect(chunks.some((chunk) => chunk.event === "error")).toBe(true)
     })
     expect(MockWebSocket.instances).toHaveLength(1)
@@ -1341,10 +1368,7 @@ test("reconnected sockets send full history instead of persisted response IDs", 
   await withAffinity("reconnect", async () => {
     await sendContinuationTurn("turn-1", [...continuationInput])
     MockWebSocket.instances[0].close()
-    await sendContinuationTurn("turn-2", [
-      ...continuationInput,
-      ...continuationInput,
-    ])
+    await sendContinuationTurn("turn-2", continuationHistory())
   })
   expect(MockWebSocket.instances).toHaveLength(2)
   expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
@@ -1365,7 +1389,7 @@ test("HTTP requests keep full input even when the websocket has a continuation",
       await createResponses(
         {
           model: "gpt-continuation",
-          input: [...continuationInput, ...continuationInput],
+          input: continuationHistory(),
         },
         {
           requestId: "http",
@@ -1375,7 +1399,7 @@ test("HTTP requests keep full input even when the websocket has a continuation",
         },
       )
       expect(body?.previous_response_id).toBeUndefined()
-      expect(body?.input).toEqual([...continuationInput, ...continuationInput])
+      expect(body?.input).toEqual(continuationHistory())
     })
   } finally {
     globalThis.fetch = fetchBefore
@@ -1387,7 +1411,7 @@ test("cancelled websocket requests can be resent immediately with full input", a
     await sendContinuationTurn("turn-1", [...continuationInput])
     MockWebSocket.autoComplete = false
     const controller = new AbortController()
-    const input = [...continuationInput, ...continuationInput]
+    const input = continuationHistory()
     const cancelled = collectStreamChunks(
       (await createResponses(
         { model: "gpt-continuation", stream: true, input },
