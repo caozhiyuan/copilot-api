@@ -1633,7 +1633,7 @@ describe("responses handler token usage", () => {
     },
   )
 
-  test("uses Codex subagent headers for Responses request attribution", async () => {
+  test("uses root and current sessions for Responses request attribution", async () => {
     createResponses.mockImplementation((payload) =>
       Promise.resolve(createResponsesResult(payload.model)),
     )
@@ -1774,7 +1774,7 @@ describe("responses handler token usage", () => {
       "x-session-id": "root-session",
     }),
   ])(
-    "uses session headers when Codex subagent header is missing (%#)",
+    "attributes differing sessions without a Codex subagent header (%#)",
     async (headers) => {
       createResponses.mockImplementation((payload) =>
         Promise.resolve(createResponsesResult(payload.model)),
@@ -1805,14 +1805,18 @@ describe("responses handler token usage", () => {
 
       const options = createResponses.mock.calls[0][1]
       const expectedSessionId = getUUID("root-session")
-      expect(options?.initiator).toBe("user")
+      expect(options?.initiator).toBe("agent")
       expect(options?.requestId).toBe(getUUID("child-thread_"))
       expect(options?.sessionId).toBe(expectedSessionId)
-      expect(options?.subagentMarker).toBeNull()
+      expect(options?.subagentMarker).toEqual({
+        session_id: "root-session",
+        agent_id: "child-thread",
+        agent_type: "subagent",
+      })
     },
   )
 
-  test("accepts custom x-openai-subagent values with generic attribution", async () => {
+  test("attributes differing sessions independently of x-openai-subagent values", async () => {
     createResponses.mockImplementation((payload) =>
       Promise.resolve(createResponsesResult(payload.model)),
     )
@@ -1855,7 +1859,7 @@ describe("responses handler token usage", () => {
         [false, true].map((withParent) => ({ agentType, withParent })),
     ),
   )(
-    "recognizes $agentType Codex subagents with parent header=$withParent",
+    "attributes differing sessions regardless of hint $agentType or parent=$withParent",
     async ({ agentType, withParent }) => {
       createResponses.mockImplementation((payload) =>
         Promise.resolve(createResponsesResult(payload.model)),

@@ -112,4 +112,4 @@ cp plugin/opencode/agent-context.js ~/.config/opencode/plugins/
 
 v1 使用 `session.created`、`session.deleted`、`chat.message` 和 `chat.headers` 钩子；v2 使用 `session.hook("model.request", ...)` 修改请求头。原生的 `x-session-id` 保留为当前会话 ID。Messages 交互 ID、prompt cache key 和 OpenCode Go 缓存分组使用 trace 根会话，缺失时回退到 session affinity。Usage 使用当前 affinity，缺失时使用根会话。`metadata.user_id` 不再解析为会话信息，也不参与 proxy 模式选择。遇到父会话缺失、查询失败或循环引用时，保留已有请求头。
 
-Trace 依次读取 `x-claude-code-session-id`、`session-id`、`x-root-session-id`、`x-session-id`，并跳过空白值。OpenCode v1 保留 `x-opencode-session-id` affinity，v2 保留原生 session affinity；Messages 和 Responses 均使用 trace 子代理信息，现有 OpenCode 插件无需升级。`x-parent-session-id` 保留 OpenCode OAuth 转发用途，不参与归属和 affinity 判断。
+Trace 依次读取 `x-claude-code-session-id`、`session-id`、`x-root-session-id`、`x-session-id`，并跳过空白值。OpenCode v1 保留 `x-opencode-session-id` affinity，v2 保留原生 session affinity；Messages 和 Responses 均使用 trace 子代理信息：仅当 root 和 affinity 均存在且不相等时判为子代理，不再判断客户端或子代理提示头；`session_id` 使用 root，`agent_id` 使用 affinity。现有 OpenCode 插件无需升级。`x-parent-session-id` 保留 OpenCode OAuth 转发用途，不参与归属和 affinity 判断。

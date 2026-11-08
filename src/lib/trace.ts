@@ -25,20 +25,12 @@ export const traceIdMiddleware: MiddlewareHandler = async (c, next) => {
     parentSessionId: c.req.header("x-parent-session-id"),
   }
   const { rootSessionId, sessionAffinity } = context
-  const isSubagent = Boolean(
-    c.req.header("x-openai-subagent")?.trim()
-      || (rootSessionId
-        && rootSessionId !== sessionAffinity
-        && (context.isClaudeCode
-          || c.req.header("x-opencode-session-id")?.trim()
-          || c.req.header("x-session-affinity")?.trim())),
-  )
+  const isSubagent = rootSessionId !== sessionAffinity
   context.subagent =
-    isSubagent && sessionAffinity ?
+    rootSessionId && sessionAffinity && isSubagent ?
       {
-        session_id: rootSessionId ?? sessionAffinity,
-        agent_id:
-          c.req.header("x-claude-code-agent-id")?.trim() || sessionAffinity,
+        session_id: rootSessionId,
+        agent_id: sessionAffinity,
         agent_type: "subagent",
       }
     : null

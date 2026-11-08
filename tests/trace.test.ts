@@ -73,7 +73,7 @@ describe("traceIdMiddleware", () => {
       },
       root: "root",
       affinity: "root:child",
-      agentId: "child",
+      agentId: "root:child",
     },
     {
       name: "orphan Claude agent header",
@@ -121,16 +121,17 @@ describe("traceIdMiddleware", () => {
       affinity: null,
     },
     {
-      name: "unrelated clients with differing grouping and request IDs",
+      name: "all clients compare the resolved root and affinity",
       headers: {
         "x-root-session-id": "root",
         "x-client-request-id": "request",
       },
       root: "root",
       affinity: "request",
+      agentId: "request",
     },
     {
-      name: "Codex explicit subagent hint with the same root and thread ID",
+      name: "matching IDs remain main despite a Codex hint",
       headers: {
         "session-id": "child",
         "thread-id": "child",
@@ -138,14 +139,12 @@ describe("traceIdMiddleware", () => {
       },
       root: "child",
       affinity: "child",
-      agentId: "child",
     },
     {
-      name: "Codex custom child hint without a root",
+      name: "a missing root remains main despite a Codex hint",
       headers: { "thread-id": "child", "x-openai-subagent": "custom" },
       root: null,
       affinity: "child",
-      agentId: "child",
     },
     {
       name: "Codex missing child affinity",
