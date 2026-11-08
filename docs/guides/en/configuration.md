@@ -117,12 +117,6 @@
 Edit this file to customize prompts or swap in your own fast model. Restart the server (or rerun the command) after changes so the cached config is refreshed.
 
 
-### WebSocket response continuation
-
-For the built-in Codex and GitHub Copilot providers, streamed requests using an upstream WebSocket automatically reuse the latest completed response on that same socket when the current agent affinity, request settings and full input prefix match. The gateway sends `previous_response_id` with only new input items. HTTP clients may use this optimization when their upstream transport is WebSocket; upstream HTTP requests are unchanged.
-
-History edits, compaction, reconnects, cancelled/incomplete requests and unmatched protocol round trips send full input. A rejected automatic response ID is retried once with full input before any response events have been forwarded. Client-supplied response IDs are left intact; explicit `null` starts a fresh chain. SQLite stores only live connection/session/response IDs and fingerprints in a separate `response_continuations` table, without prompt contents or changes to normal usage storage. These records do not restore a connection after restart. See the [OpenAI WebSocket continuation contract](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works).
-
 ### Codex Multi-Agent compatibility
 
 `codexMultiAgentV1` defaults to `false`: synthesized Codex models advertise `multi_agent_version: "v2"`. Set it to `true` to advertise `"v1"`, including upstream models and aliases that would otherwise advertise V2. Existing upstream V1 or unset capabilities remain unchanged. Only the boolean `true` enables V1; missing or invalid values fall back to V2.

@@ -45,6 +45,12 @@ curl http://localhost:4141/admin/config/model-mappings \
 | `GET /v1/models`            | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求返回合并后的 Codex 格式目录，并排除仅输出图片的模型。 |
 | `POST /v1/embeddings`       | `POST` | 创建表示输入文本的向量嵌入。                                                                             |
 
+### Responses WebSocket 续接
+
+内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，若当前 agent 的 affinity、请求配置和完整历史前缀匹配，会自动复用同一连接上最近一次完整成功的 response，通过 `previous_response_id` 只发送新增 input。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
+
+修改历史、压缩、重新连接、取消或未完整结束，以及协议转换后前缀无法完全匹配时，均发送完整 input。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次。客户端显式传入的 response ID 保持不变，显式 `null` 会开始新链。SQLite 在独立的 `response_continuations` 表中记录活动连接、会话、response ID 及指纹，不保存提示词，不向 usage 表追加续接数据；重启后不会用这些记录恢复已断开的连接。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。
+
 ### 模型发现来源
 
 `GET /models`、`GET /v1/models` 和 `GET /:provider/v1/models` 从 models.dev 缓存读取 `xai`、`openrouter`、`deepseek`、`kimi`、`dashscope`、`opencode-go` 的模型，不查询这些 provider 的远程模型接口。Kimi 默认使用 `kimi-code-plan-cn`，DashScope 默认使用 `alibaba-cn`；其他官方地址匹配对应目录，显式 `modelsDevProviderId` 优先。

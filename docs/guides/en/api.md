@@ -41,6 +41,12 @@ These endpoints mimic the OpenAI API structure.
 | `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) receive the merged Codex-format catalog, excluding image-only models. |
 | `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
 
+### Responses WebSocket continuation
+
+For the built-in Codex and GitHub Copilot providers, streamed requests using an upstream WebSocket automatically reuse the latest completed response on that same socket when the current agent affinity, request settings and full input prefix match. The gateway sends `previous_response_id` with only new input items. HTTP clients may use this optimization when their upstream transport is WebSocket; upstream HTTP requests are unchanged.
+
+History edits, compaction, reconnects, cancelled/incomplete requests and unmatched protocol round trips send full input. A rejected automatic response ID is retried once with full input before any response events have been forwarded. Client-supplied response IDs are left intact; explicit `null` starts a fresh chain. SQLite stores only live connection/session/response IDs and fingerprints in a separate `response_continuations` table, without prompt contents or changes to normal usage storage. These records do not restore a connection after restart. See the [OpenAI WebSocket continuation contract](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works).
+
 ### Model Discovery Sources
 
 `GET /models`, `GET /v1/models`, and `GET /:provider/v1/models` read `xai`, `openrouter`, `deepseek`, `kimi`, `dashscope`, and `opencode-go` models from the models.dev cache without querying those providers' model endpoints. Kimi defaults to `kimi-code-plan-cn` and DashScope to `alibaba-cn`; other official URLs select their matching catalogs. Explicit `modelsDevProviderId` takes priority.

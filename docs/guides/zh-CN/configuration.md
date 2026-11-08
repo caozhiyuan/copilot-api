@@ -121,12 +121,6 @@
 内置 GitHub Copilot 也支持统一管理：`providers["github-copilot"]` 只需配置 `enabled`，可选 `agentsModels`，无需 URL、API Key 或协议类型。旧配置没有这一项时默认启用，继续使用已有 GitHub 登录凭据。使用 `copilot-api provider disable github-copilot` / `copilot-api provider enable github-copilot`，或在 Providers 页面切换后保存并重启网关。禁用会跳过 Copilot 初始化，从所有客户端的模型列表移除其模型并拒绝 Copilot 请求，其他启用的 provider 可继续使用。
 
 
-### WebSocket response 续接
-
-内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，若当前 agent 的 affinity、请求配置和完整历史前缀匹配，会自动复用同一连接上最近一次完整成功的 response，通过 `previous_response_id` 只发送新增 input。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
-
-修改历史、压缩、重新连接、取消或未完整结束，以及协议转换后前缀无法完全匹配时，均发送完整 input。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次。客户端显式传入的 response ID 保持不变，显式 `null` 会开始新链。SQLite 在独立的 `response_continuations` 表中记录活动连接、会话、response ID 及指纹，不保存提示词，不向 usage 表追加续接数据；重启后不会用这些记录恢复已断开的连接。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。
-
 ### Codex 多 Agent 兼容性
 
 `codexMultiAgentV1` 默认 `false`：合成的 Codex 模型声明 `multi_agent_version: "v2"`。设为 `true` 后声明 `"v1"`，同时将上游模型及其别名中的 V2 声明改为 V1。上游原有的 V1 或未启用能力保持不变。只有布尔值 `true` 启用 V1，缺失或非法值均回退为 V2。
