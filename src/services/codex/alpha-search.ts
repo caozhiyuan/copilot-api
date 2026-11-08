@@ -1,7 +1,5 @@
-import {
-  buildCodexRequestHeaders,
-  CODEX_API_BASE_URL,
-} from "~/services/codex/create-responses"
+import { CODEX_API_BASE_URL } from "~/services/codex/constants"
+import { buildCodexRequestHeaders } from "~/services/codex/create-responses"
 
 const CODEX_ALPHA_SEARCH_URL = `${CODEX_API_BASE_URL}/codex/alpha/search`
 

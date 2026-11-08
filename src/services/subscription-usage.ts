@@ -13,10 +13,8 @@ import type {
   SubscriptionQuotaWindow,
   SubscriptionUsage,
 } from "~/lib/types/subscription-usage"
-import {
-  buildCodexRequestHeaders,
-  CODEX_API_BASE_URL,
-} from "~/services/codex/create-responses"
+import { CODEX_API_BASE_URL } from "~/services/codex/constants"
+import { buildCodexRequestHeaders } from "~/services/codex/create-responses"
 
 // Published @openai/codex stable version, checked on 2026-10-25.
 const CODEX_CLI_VERSION = "0.164.0"

@@ -25,6 +25,7 @@ import {
   createWebSocketUrl,
   type PooledWebSocketRequest,
 } from "~/services/responses-websocket"
+import { CODEX_API_BASE_URL } from "~/services/codex/constants"
 import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
   createResponsesSafeStream,
@@ -39,7 +40,7 @@ import {
 } from "~/lib/request-context"
 import consola from "consola"
 
-export const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api"
+export { CODEX_API_BASE_URL }
 
 const CODEX_RESPONSE_METADATA_EVENT = "codex.response.metadata"
 const RESPONSE_CREATED_EVENT = "response.created"

@@ -5,10 +5,8 @@ import {
 
 import { createTimeoutDispatcher } from "~/lib/timeout-dispatcher"
 import { DEFAULT_IMAGE_MODELS } from "~/lib/image-models"
-import {
-  buildCodexRequestHeaders,
-  CODEX_API_BASE_URL,
-} from "~/services/codex/create-responses"
+import { CODEX_API_BASE_URL } from "~/services/codex/constants"
+import { buildCodexRequestHeaders } from "~/services/codex/create-responses"
 
 export type CodexImagesOperation = "generations" | "edits"
 

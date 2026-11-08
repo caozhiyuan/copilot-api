@@ -21,7 +21,7 @@ import {
   refreshCodexCredentials,
   type CodexCredentials,
 } from "~/lib/oauth/codex"
-import { CODEX_API_BASE_URL } from "~/services/codex/create-responses"
+import { CODEX_API_BASE_URL } from "~/services/codex/constants"
 import {
   getCopilotToken,
   type GetCopilotTokenResponse,

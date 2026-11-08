@@ -12,7 +12,9 @@ import {
   type PooledWebSocketStreamOptions,
 } from "~/services/responses-websocket"
 
-const logger = createHandlerLogger("responses-websocket-continuation")
+let logger: ReturnType<typeof createHandlerLogger> | undefined
+const getLogger = () =>
+  (logger ??= createHandlerLogger("responses-websocket-continuation"))
 
 interface StreamChunk {
   data?: string
@@ -94,10 +96,10 @@ export async function* createContinuableResponsesWebSocketStream<
 function logOutgoingContinuationPayload(payload: ResponsesPayload): void {
   const previousResponseId = payload.previous_response_id
   if (typeof previousResponseId === "string" && previousResponseId) {
-    debugJson(logger, "Responses websocket continuation payload:", payload)
+    debugJson(getLogger(), "Responses websocket continuation payload:", payload)
     return
   }
-  logger.debug("full payload")
+  getLogger().debug("full payload")
 }
 
 function parseEvent(chunk: StreamChunk): ResponseStreamEvent | null {
