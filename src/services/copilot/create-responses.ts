@@ -213,9 +213,7 @@ export const buildResponsesWebSocketPoolKey = (
       ].join(":")
     : "main"
 
-  const sessionId = getResponsesContinuationSession()
-  const affinityKey = sessionId ? `session:${sessionId}` : requestId
-  return [tokenFingerprint, payload.model, affinityKey, subagentKey]
+  return [tokenFingerprint, payload.model, requestId, subagentKey]
     .map(encodePoolKeyPart)
     .join("|")
 }
@@ -240,7 +238,6 @@ const createPooledResponsesWebSocketStream = (
           ...getResponsesWebSocketOptions(),
         },
         {
-          provider: "github-copilot",
           sessionId: continuationSession,
           clientSignal,
         },

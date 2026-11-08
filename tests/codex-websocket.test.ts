@@ -13,7 +13,7 @@ type Listener = (event: ListenerEvent) => void
 
 const { requestContext } = await import("~/lib/request-context")
 const { closeResponseContinuationStore } = await import(
-  "~/lib/response-continuation-store"
+  "~/lib/responses-continuation/store"
 )
 const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
 const originalFetch = globalThis.fetch

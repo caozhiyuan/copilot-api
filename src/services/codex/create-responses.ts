@@ -489,11 +489,11 @@ const buildCodexResponsesWebSocketPoolKey = (
   headers: Record<string, string>,
   baseUrl: string,
 ): string => {
-  const continuationSession =
-    getResponsesContinuationSession()
-    || (/codex/iu.test(headers["user-agent"] ?? "") ?
+  // Only Codex clients use thread affinity; other clients keep the full fingerprint.
+  const codexThreadId =
+    /codex/iu.test(headers["user-agent"] ?? "") ?
       headers["thread-id"]?.trim()
-    : undefined)
+    : undefined
   const authFingerprint = createHash("sha256")
     .update(
       `${state.codexAccessToken ?? "missing-token"}:${state.codexAccountId ?? "missing-account"}`,
@@ -501,8 +501,8 @@ const buildCodexResponsesWebSocketPoolKey = (
     .digest("hex")
     .slice(0, 16)
   const affinityKey =
-    continuationSession ?
-      `session:${continuationSession}`
+    codexThreadId ?
+      `thread:${codexThreadId}`
     : createHash("sha256")
         .update(
           JSON.stringify(
@@ -574,7 +574,6 @@ const createCodexResponsesWebSocketStream = (
               "Codex responses websocket ended without a terminal response, retry your request.",
           },
           {
-            provider: "codex",
             sessionId: continuationSession,
             clientSignal,
           },

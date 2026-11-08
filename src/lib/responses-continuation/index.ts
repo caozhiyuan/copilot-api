@@ -1,5 +1,5 @@
 import { requestContext } from "~/lib/request-context"
-import { saveResponseContinuation } from "~/lib/response-continuation-store"
+import { saveResponseContinuation } from "~/lib/responses-continuation/store"
 import type {
   ResponseInputItem,
   ResponseOutputItem,

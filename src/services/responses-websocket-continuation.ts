@@ -23,23 +23,16 @@ export async function* createContinuableResponsesWebSocketStream<
   request: PooledWebSocketRequest<TPayload>,
   options: PooledWebSocketStreamOptions<TChunk>,
   continuation: {
-    provider: "codex" | "github-copilot"
     sessionId: string | undefined
     clientSignal?: AbortSignal
   },
 ): AsyncGenerator<TChunk> {
-  const { provider, sessionId, clientSignal } = continuation
+  const { sessionId, clientSignal } = continuation
   if (!sessionId) {
     yield* createPooledWebSocketStream(request, options)
     return
   }
 
-  const poolKey = JSON.stringify([
-    provider,
-    request.url,
-    request.poolKey,
-    sessionId,
-  ])
   let forceFull = false
   for (let attemptIndex = 0; attemptIndex < 2; attemptIndex++) {
     let attempt:
@@ -50,7 +43,6 @@ export async function* createContinuableResponsesWebSocketStream<
     const source = createPooledWebSocketStream(
       {
         ...request,
-        poolKey,
         preparePayload: (payload, connection) => {
           const prepared =
             request.preparePayload?.(payload, connection) ?? payload

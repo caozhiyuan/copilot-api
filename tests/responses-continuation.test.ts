@@ -7,7 +7,7 @@ import { requestContext } from "~/lib/request-context"
 import {
   closeResponseContinuationStore,
   flushResponseContinuations,
-} from "~/lib/response-continuation-store"
+} from "~/lib/responses-continuation/store"
 import {
   getResponsesContinuationSession,
   prepareResponsesContinuation,
