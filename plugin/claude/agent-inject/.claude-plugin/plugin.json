@@ -1,7 +1,7 @@
 {
   "name": "agent-inject",
-  "description": "Compatibility placeholder; agent context now uses native request headers",
-  "version": "1.5.2",
+  "description": "Inject copilot-api rules and SubagentStart agent context",
+  "version": "1.5.1",
   "author": {
     "name": "copilot-api maintainers"
   }
