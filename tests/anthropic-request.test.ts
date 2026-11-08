@@ -113,26 +113,25 @@ function createThinkingModel(): Model {
 }
 
 describe("Anthropic to OpenAI translation logic", () => {
-  test("shares the main agent metadata cache key with marked subagents", () => {
+  test("shares the trace root cache key with sibling subagents", () => {
     for (const agentId of ["agent-a", "agent-b"]) {
       const payload: AnthropicMessagesPayload = {
         model: "qwen-plus",
         max_tokens: 128,
-        metadata: { user_id: JSON.stringify({ session_id: "root" }) },
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `<system-reminder>__SUBAGENT_MARKER__${JSON.stringify({ session_id: "child", agent_id: agentId, agent_type: "Explore" })}</system-reminder>`,
-              },
-            ],
-          },
-        ],
+        metadata: { user_id: JSON.stringify({ session_id: "stale-session" }) },
+        messages: [{ role: "user", content: "hello" }],
       }
-
-      expect(translateToOpenAI(payload).prompt_cache_key).toBe("root")
+      requestContext.run(
+        {
+          traceId: "test-cache",
+          startTime: Date.now(),
+          userAgent: "test",
+          rootSessionId: "root",
+          sessionAffinity: agentId,
+          parentSessionId: undefined,
+        },
+        () => expect(translateToOpenAI(payload).prompt_cache_key).toBe("root"),
+      )
     }
   })
 

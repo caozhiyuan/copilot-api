@@ -94,8 +94,7 @@ export const translateAnthropicMessagesToResponsesPayload = (
     toolSearchEnabled,
   )
 
-  // Remove safetyIdentifier to align with vscode copilot
-  const promptCacheKey = getPromptCacheKey(payload)
+  const promptCacheKey = getPromptCacheKey()
 
   const responsesPayload: ResponsesPayload = {
     model: payload.model,

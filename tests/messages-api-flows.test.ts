@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
+import { requestContext } from "~/lib/request-context"
 
 import type {
   AnthropicMessagesPayload,
@@ -166,24 +167,35 @@ test("Messages flow passes the inbound anthropic-version to the Copilot request"
   )
 })
 
-test("messages Chat Completions flow shares the main cache key with dispatched subagents", async () => {
-  const response = await handleWithChatCompletions(
-    createContext(),
+test("messages Chat Completions flow shares the trace root cache key with dispatched subagents", async () => {
+  const response = await requestContext.run(
     {
-      model: "gpt-test",
-      max_tokens: 128,
-      metadata: { user_id: JSON.stringify({ session_id: "root" }) },
-      messages: [{ role: "user", content: "hello" }],
+      traceId: "test-cache",
+      startTime: Date.now(),
+      userAgent: "test",
+      rootSessionId: "root",
+      sessionAffinity: "child",
+      parentSessionId: undefined,
     },
-    {
-      logger,
-      requestId: "request-subagent",
-      subagentMarker: {
-        session_id: "child",
-        agent_id: "agent-a",
-        agent_type: "collab_spawn",
-      },
-    },
+    () =>
+      handleWithChatCompletions(
+        createContext(),
+        {
+          model: "gpt-test",
+          max_tokens: 128,
+          metadata: { user_id: JSON.stringify({ session_id: "root" }) },
+          messages: [{ role: "user", content: "hello" }],
+        },
+        {
+          logger,
+          requestId: "request-subagent",
+          subagentMarker: {
+            session_id: "child",
+            agent_id: "agent-a",
+            agent_type: "subagent",
+          },
+        },
+      ),
   )
 
   expect(response.status).toBe(200)

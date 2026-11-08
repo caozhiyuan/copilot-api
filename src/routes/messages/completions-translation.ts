@@ -73,7 +73,7 @@ export function translateToOpenAI(
   const model = state.models?.data.find((m) => m.id === modelId)
   const thinkingBudget = getThinkingBudget(payload, model)
   const reasoningEffort = getReasoningEffort(payload, options)
-  const promptCacheKey = getPromptCacheKey(payload)
+  const promptCacheKey = getPromptCacheKey()
   const capabilities = {
     supportPdf: options.supportPdf ?? false,
     toolContentSupportType: options.toolContentSupportType ?? [],

@@ -21,6 +21,10 @@ const createTracingApp = () => {
     }),
   )
 
+  app.get("/client", (c) =>
+    c.json({ isClaudeCode: requestContext.getStore()?.isClaudeCode }),
+  )
+
   app.get("/session", (c) => {
     const context = requestContext.getStore()
     return c.json({
@@ -45,6 +49,23 @@ const createTracingApp = () => {
 }
 
 describe("traceIdMiddleware", () => {
+  test.each<{ headers: Record<string, string>; expected: boolean }>([
+    { headers: { "x-claude-code-session-id": " root " }, expected: true },
+    { headers: { "x-claude-code-session-id": " " }, expected: false },
+    { headers: { "x-claude-code-agent-id": "child" }, expected: false },
+    {
+      headers: { "user-agent": "claude-code/2.1.304", "session-id": "legacy" },
+      expected: false,
+    },
+    { headers: {}, expected: false },
+  ])(
+    "identifies Claude Code from its native session header (%#)",
+    async ({ headers, expected }) => {
+      const response = await createTracingApp().request("/client", { headers })
+      expect(await response.json()).toEqual({ isClaudeCode: expected })
+    },
+  )
+
   test.each<{
     name: string
     headers: Record<string, string>
@@ -73,7 +94,7 @@ describe("traceIdMiddleware", () => {
       agent: {
         session_id: "root",
         agent_id: "child",
-        agent_type: "claude-subagent",
+        agent_type: "subagent",
       },
     },
     {
@@ -86,7 +107,7 @@ describe("traceIdMiddleware", () => {
       },
       root: "root",
       affinity: "root:leaf",
-      agent: { session_id: "root", agent_id: "leaf", agent_type: "Explore" },
+      agent: { session_id: "root", agent_id: "leaf", agent_type: "subagent" },
     },
     {
       name: "orphan Claude agent header",
@@ -120,7 +141,7 @@ describe("traceIdMiddleware", () => {
       agent: {
         session_id: "root",
         agent_id: "child",
-        agent_type: "opencode-subagent",
+        agent_type: "subagent",
       },
     },
     {
@@ -137,23 +158,18 @@ describe("traceIdMiddleware", () => {
       agent: {
         session_id: "root",
         agent_id: "child",
-        agent_type: "opencode-subagent",
+        agent_type: "subagent",
       },
     },
     {
-      name: "OpenCode parent and current session without affinity header",
+      name: "parent session header does not supply affinity or child identity",
       headers: {
         "x-root-session-id": "root",
         "x-session-id": "child",
         "x-parent-session-id": "root",
       },
       root: "root",
-      affinity: "child",
-      agent: {
-        session_id: "root",
-        agent_id: "child",
-        agent_type: "opencode-subagent",
-      },
+      affinity: null,
     },
     {
       name: "unrelated clients with differing grouping and request IDs",
@@ -176,7 +192,7 @@ describe("traceIdMiddleware", () => {
       agent: {
         session_id: "root",
         agent_id: "child",
-        agent_type: "collab_spawn",
+        agent_type: "subagent",
       },
     },
     {
@@ -184,7 +200,7 @@ describe("traceIdMiddleware", () => {
       headers: { "thread-id": "child", "x-openai-subagent": "review" },
       root: null,
       affinity: "child",
-      agent: { session_id: "child", agent_id: "child", agent_type: "review" },
+      agent: { session_id: "child", agent_id: "child", agent_type: "subagent" },
     },
     {
       name: "Codex missing child affinity",
@@ -193,10 +209,11 @@ describe("traceIdMiddleware", () => {
       affinity: null,
     },
     {
-      name: "unknown Codex agent type",
+      name: "custom Codex subagent type",
       headers: { "thread-id": "child", "x-openai-subagent": "unknown" },
       root: null,
       affinity: "child",
+      agent: { session_id: "child", agent_id: "child", agent_type: "subagent" },
     },
   ])(
     "derives session context for $name",

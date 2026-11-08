@@ -946,7 +946,7 @@ describe("messages handler orchestration", () => {
     expect(options.subagentMarker).toEqual({
       session_id: "sub-session",
       agent_id: "agent-1",
-      agent_type: "Explore",
+      agent_type: "subagent",
     })
     expect(options.anthropicBetaHeader).toBe("warmup-beta")
   })
@@ -1113,7 +1113,6 @@ describe("messages handler orchestration", () => {
     name: string
     headers: Record<string, string>
     agentId: string
-    agentType: string
   }>([
     {
       name: "Claude Code",
@@ -1122,7 +1121,6 @@ describe("messages handler orchestration", () => {
         "x-claude-code-agent-id": "child",
       },
       agentId: "child",
-      agentType: "claude-subagent",
     },
     {
       name: "OpenCode v1",
@@ -1131,7 +1129,6 @@ describe("messages handler orchestration", () => {
         "x-opencode-session-id": "child",
       },
       agentId: "child",
-      agentType: "opencode-subagent",
     },
     {
       name: "OpenCode v2",
@@ -1142,11 +1139,10 @@ describe("messages handler orchestration", () => {
         "x-parent-session-id": "root",
       },
       agentId: "child",
-      agentType: "opencode-subagent",
     },
   ])(
     "passes $name header-only subagent context to the Messages flow",
-    async ({ headers, agentId, agentType }) => {
+    async ({ headers, agentId }) => {
       selectedModel = {
         id: "messages-model",
         supported_endpoints: ["/v1/messages"],
@@ -1160,7 +1156,7 @@ describe("messages handler orchestration", () => {
       expect(handleWithMessagesApi.mock.calls[0][2].subagentMarker).toEqual({
         session_id: "root",
         agent_id: agentId,
-        agent_type: agentType,
+        agent_type: "subagent",
       })
     },
   )
@@ -1205,7 +1201,7 @@ describe("messages handler orchestration", () => {
     const dispatchMarker = {
       session_id: "dispatch-sub-session",
       agent_id: "dispatch-agent",
-      agent_type: "collab_spawn",
+      agent_type: "subagent",
     }
 
     const app = new Hono()

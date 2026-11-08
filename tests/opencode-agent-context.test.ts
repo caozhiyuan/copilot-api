@@ -201,7 +201,7 @@ describe("OpenCode v1 session headers", () => {
         subagent: {
           session_id: "root",
           agent_id: "child-a",
-          agent_type: "opencode-subagent",
+          agent_type: "subagent",
         },
       },
       {
@@ -210,7 +210,7 @@ describe("OpenCode v1 session headers", () => {
         subagent: {
           session_id: "root",
           agent_id: "child-b",
-          agent_type: "opencode-subagent",
+          agent_type: "subagent",
         },
       },
     ])

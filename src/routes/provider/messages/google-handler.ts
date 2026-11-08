@@ -18,7 +18,6 @@ import type {
   AnthropicStreamEventData,
 } from "~/lib/types/anthropic"
 import type { GoogleGenerateContentResponse } from "~/lib/types/google"
-import { parseUserIdMetadata } from "~/lib/utils"
 import { GoogleMessagesStreamTranslator } from "~/routes/messages/google-stream-translation"
 import {
   translateAnthropicToGoogle,
@@ -67,7 +66,7 @@ export async function handleGoogleProviderMessages(
     {
       stream: payload.stream === true,
       clientSignal: signal,
-      sessionId: resolveOpencodeMessagesSession(payload),
+      sessionId: resolveOpencodeMessagesSession(),
     },
   )
   if (!upstream.ok)
@@ -78,7 +77,6 @@ export async function handleGoogleProviderMessages(
     providerName: provider.name,
     pricing: modelConfig?.pricing,
     pricingCurrency: provider.pricingCurrency,
-    sessionId: parseUserIdMetadata(payload.metadata?.user_id).sessionId,
   })
   if (!payload.stream) {
     const response = translateGoogleToAnthropic(

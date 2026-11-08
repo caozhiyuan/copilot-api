@@ -146,8 +146,7 @@ export async function handleCompletionPayload(
     debugJson(logger, "Detected subagent session:", subagentMarker)
   }
 
-  let sessionId =
-    dispatchOptions.sessionId ?? getRootSessionId(anthropicPayload, c)
+  let sessionId = dispatchOptions.sessionId ?? getRootSessionId()
 
   // claude code and opencode compact / auto-continue detection
   const compactType =

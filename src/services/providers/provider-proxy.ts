@@ -21,7 +21,7 @@ import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { ChatCompletionsPayload } from "~/lib/types/chat-completions"
 import type { ResponsesPayload } from "~/lib/types/responses"
 import type { GoogleModelsResponse } from "~/lib/types/google"
-import { parseUserIdMetadata } from "~/lib/utils"
+import { getPromptCacheKey } from "~/lib/utils"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 
 const OPENCODE_GO_PROVIDER_NAME = "opencode-go"
@@ -114,30 +114,8 @@ export function buildProviderUpstreamHeaders(
   return headers
 }
 
-export const resolveOpencodeMessagesSession = (
-  payload: AnthropicMessagesPayload,
-): string | undefined => {
-  const store = requestContext.getStore()
-  // Keep sibling subagents on the root session so opencode-go routes them to the
-  // same prompt cache group, matching the chat completions/responses flows.
-  const rootSessionId = store?.rootSessionId?.trim()
-  if (rootSessionId) {
-    return rootSessionId
-  }
-
-  const sessionAffinity = store?.sessionAffinity?.trim()
-  if (sessionAffinity) {
-    return sessionAffinity
-  }
-
-  const userId = payload.metadata?.user_id
-  if (!userId?.trim()) {
-    return undefined
-  }
-
-  const { sessionId } = parseUserIdMetadata(userId)
-  return sessionId ?? userId
-}
+export const resolveOpencodeMessagesSession = (): string | undefined =>
+  getPromptCacheKey() ?? undefined
 
 export const applyOpencodeSessionHeader = (
   providerConfig: ResolvedProviderConfig,
@@ -218,7 +196,7 @@ export async function forwardProviderMessages(
   applyOpencodeSessionHeader(
     providerConfig,
     headers,
-    resolveOpencodeMessagesSession(payload),
+    resolveOpencodeMessagesSession(),
   )
   const transportConfig = getUpstreamTransportConfig()
   setPluginRequestActualModel(payload.model, providerConfig.name)

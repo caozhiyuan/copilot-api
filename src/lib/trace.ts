@@ -22,6 +22,7 @@ export const traceIdMiddleware: MiddlewareHandler = async (c, next) => {
     userAgent: c.req.header("user-agent") || "",
     sessionAffinity: getSessionAffinityFromHeaders(c),
     rootSessionId: getRootSessionIdFromHeaders(c),
+    isClaudeCode: Boolean(c.req.header("x-claude-code-session-id")?.trim()),
     parentSessionId: c.req.header("x-parent-session-id")?.trim() || undefined,
   }
   context.subagent = getSubagentFromSession(c, context)

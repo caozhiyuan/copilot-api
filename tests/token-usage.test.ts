@@ -30,7 +30,6 @@ import {
 import { traceIdMiddleware } from "~/lib/trace"
 import { tokenUsageRoute } from "~/routes/token-usage/route"
 import { translateToOpenAI } from "~/routes/messages/completions-translation"
-import { parseUserIdMetadata } from "~/lib/utils"
 
 import {
   modelsDevCatalogFixture,
@@ -136,8 +135,6 @@ describe("token usage storage", () => {
               endpoint: "messages",
               model: payload.model,
               input_tokens: 10,
-              sessionId: parseUserIdMetadata(payload.metadata.user_id)
-                .sessionId,
               fallbackSessionId: "interaction-session",
               providerName: source === "provider" ? "test-provider" : undefined,
             })
@@ -153,9 +150,9 @@ describe("token usage storage", () => {
     },
   )
 
-  test.each(["metadata", "fallback"] as const)(
-    "keeps %s usage session ids when only a root cache session exists",
-    async (mode) => {
+  test.each([true, false])(
+    "uses the trace root session when affinity is missing (metadata=%s)",
+    async (withMetadata) => {
       requestContext.run(
         {
           traceId: "trace-child",
@@ -171,7 +168,7 @@ describe("token usage storage", () => {
             max_tokens: 128,
             messages: [],
             metadata:
-              mode === "metadata" ?
+              withMetadata ?
                 { user_id: JSON.stringify({ session_id: "metadata-child" }) }
               : undefined,
           }
@@ -181,7 +178,6 @@ describe("token usage storage", () => {
             endpoint: "messages",
             model: payload.model,
             input_tokens: 10,
-            sessionId: parseUserIdMetadata(payload.metadata?.user_id).sessionId,
             fallbackSessionId: "fallback-child",
           })
         },
@@ -189,7 +185,7 @@ describe("token usage storage", () => {
 
       const page = await fetchEventsPage()
       expect(page.items).toHaveLength(1)
-      expect(page.items[0]?.session_id).toBe(`${mode}-child`)
+      expect(page.items[0]?.session_id).toBe("root")
     },
   )
 
@@ -242,7 +238,7 @@ describe("token usage storage", () => {
     expect(row.total_tokens).toBe(15)
   })
 
-  test("uses explicit metadata session id when no session affinity exists", async () => {
+  test("uses an explicit session id outside a trace session", async () => {
     recordTokenUsageEvent({
       endpoint: "provider_messages",
       input_tokens: 12,

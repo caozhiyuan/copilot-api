@@ -3,23 +3,15 @@ import type { Context } from "hono"
 import { expect, test } from "bun:test"
 import { createHash, randomUUID } from "node:crypto"
 
-import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
+import { requestContext } from "~/lib/request-context"
 
 import {
+  getPromptCacheKey,
   getRootSessionId,
   getRootSessionIdFromHeaders,
   getSessionAffinityFromHeaders,
   getUUID,
 } from "~/lib/utils"
-
-const jsonStyleUserId = JSON.stringify({
-  device_id: "3f4a1b7c8d9e0f1234567890abcdef1234567890abcdef1234567890abcdef12",
-  account_uuid: "",
-  session_id: "2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752",
-})
-
-const legacyStyleUserId =
-  "user_8b7e2c1d4f6a9b3c0d1e2f3456789abcdeffedcba9876543210fedcba1234567_account__session_7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b"
 
 const getLegacyUUID = (content: string): string => {
   const hash32 = createHash("sha256").update(content).digest("hex").slice(0, 32)
@@ -135,6 +127,10 @@ test.each([
   },
   { headers: { "thread-id": " thread-1 " }, expected: "thread-1" },
   { headers: { "thread-id": " " }, expected: undefined },
+  {
+    headers: { "x-parent-session-id": "root", "x-session-id": "child" },
+    expected: undefined,
+  },
   { headers: {}, expected: undefined },
 ] as Array<{ headers: Record<string, string>; expected?: string }>)(
   "getSessionAffinityFromHeaders resolves $expected",
@@ -149,118 +145,31 @@ test.each([
   },
 )
 
-test("getRootSessionId supports JSON-like user_id metadata", () => {
-  const anthropicPayload = {
-    model: "claude-3-5-sonnet",
-    messages: [],
-    max_tokens: 0,
-    metadata: {
-      user_id: jsonStyleUserId,
-    },
-  } as AnthropicMessagesPayload
-  const context = {
-    req: {
-      header: (_name: string) => undefined,
-    },
-  } as unknown as Context
-
-  expect(getRootSessionId(anthropicPayload, context)).toBe(
-    getUUID("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752"),
-  )
-})
-
-test("getRootSessionId prefers Claude native session headers over body metadata", () => {
-  const payload: AnthropicMessagesPayload = {
-    model: "test-model",
-    messages: [],
-    max_tokens: 128,
-    metadata: { user_id: jsonStyleUserId },
-  }
-  const headers = new Headers({ "x-claude-code-session-id": "native-root" })
-  const context = {
-    req: { header: (name: string) => headers.get(name) ?? undefined },
-  } as unknown as Context
-  expect(getRootSessionId(payload, context)).toBe(getUUID("native-root"))
-})
-
-test("getRootSessionId keeps legacy parsing before JSON fallback", () => {
-  const anthropicPayload = {
-    model: "claude-3-5-sonnet",
-    messages: [],
-    max_tokens: 0,
-    metadata: {
-      user_id: legacyStyleUserId,
-    },
-  } as AnthropicMessagesPayload
-  const context = {
-    req: {
-      header: (_name: string) => undefined,
-    },
-  } as unknown as Context
-
-  expect(getRootSessionId(anthropicPayload, context)).toBe(
-    getUUID("7d0e2f61-4b5c-4a9d-8f11-2c3d4e5f6a7b"),
-  )
-})
-
 test.each([
-  {
-    rootSessionId: "root-session",
-    legacySessionId: "child-session",
-    expected: "root-session",
-  },
-  {
-    rootSessionId: "root-session",
-    legacySessionId: undefined,
-    expected: "root-session",
-  },
-  {
-    rootSessionId: undefined,
-    legacySessionId: "legacy-session",
-    expected: "legacy-session",
-  },
-  {
-    rootSessionId: undefined,
-    legacySessionId: undefined,
-    expected: undefined,
-  },
-])(
-  "getRootSessionId prefers the root header and falls back to the legacy header (%#)",
-  ({ rootSessionId, legacySessionId, expected }) => {
-    const payload: AnthropicMessagesPayload = {
-      model: "test-model",
-      messages: [],
-      max_tokens: 0,
-    }
-    const headers = new Headers()
-    if (rootSessionId) headers.set("x-root-session-id", rootSessionId)
-    if (legacySessionId) headers.set("x-session-id", legacySessionId)
-    const context = {
-      req: { header: (name: string) => headers.get(name) ?? undefined },
-    } as unknown as Context
-
-    expect(getRootSessionId(payload, context)).toBe(
-      expected ? getUUID(expected) : undefined,
-    )
-  },
-)
-
-test("getRootSessionId keeps user_id metadata ahead of session headers", () => {
-  const payload: AnthropicMessagesPayload = {
-    model: "test-model",
-    messages: [],
-    max_tokens: 0,
-    metadata: { user_id: jsonStyleUserId },
-  }
-  const headers = new Headers({
-    "X-Root-Session-Id": "root-session",
-    "x-session-id": "child-session",
-  })
-  const context = {
-    req: { header: (name: string) => headers.get(name) ?? undefined },
-  } as unknown as Context
-
-  expect(getRootSessionId(payload, context)).toBe(
-    getUUID("2c4e1cf0-7a67-4d2e-9a4b-1d16d3f44752"),
+  { rootSessionId: "root", sessionAffinity: "child", expected: "root" },
+  { rootSessionId: " root ", sessionAffinity: undefined, expected: "root" },
+  { rootSessionId: " ", sessionAffinity: " child ", expected: "child" },
+  { rootSessionId: undefined, sessionAffinity: "child", expected: "child" },
+  { rootSessionId: undefined, sessionAffinity: undefined, expected: null },
+])("uses trace sessions for interaction IDs and cache keys (%#)", (context) => {
+  requestContext.run(
+    {
+      ...context,
+      parentSessionId: "unrelated-parent",
+      traceId: "test-trace",
+      startTime: Date.now(),
+      userAgent: "test",
+    },
+    () => {
+      expect(getPromptCacheKey()).toBe(context.expected)
+      expect(getRootSessionId()).toBe(
+        context.expected ? getUUID(context.expected) : undefined,
+      )
+    },
   )
+})
+
+test("has no interaction ID or cache key outside a trace session", () => {
+  expect(getRootSessionId()).toBeUndefined()
+  expect(getPromptCacheKey()).toBeNull()
 })

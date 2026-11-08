@@ -75,7 +75,7 @@ Claude Code 集成现在拆分为两个插件：
 /plugin install tool-search@copilot-api-marketplace
 ```
 
-网关改用 Claude Code 原生的 `x-claude-code-session-id` 和 `x-claude-code-agent-id` 请求头识别子代理：session ID 用于主、子代理共享根会话，每个子代理的 session affinity 由 session ID 和 agent ID 组合得到。可选的 `x-claude-code-agent-type` 提供代理类型，缺失时仍能识别子代理。参见 [Claude Code 网关请求头文档](https://code.claude.com/docs/en/llm-gateway-protocol#request-headers)。
+网关改用 Claude Code 原生的 `x-claude-code-session-id` 和 `x-claude-code-agent-id` 请求头识别子代理：session ID 用于主、子代理共享根会话，每个子代理的 session affinity 由 session ID 和 agent ID 组合得到。Claude、Codex、OpenCode 子代理的类型统一为 `subagent`。GitHub Copilot Messages proxy 模式也直接根据 Claude 原生 session 请求头选择，不再判断 metadata 格式。参见 [Claude Code 网关请求头文档](https://code.claude.com/docs/en/llm-gateway-protocol#request-headers)。
 
 已有 `agent-inject` 安装可更新到 v1.5.2 或卸载。原 `SessionStart`、`UserPromptSubmit`、`SubagentStart` hook 及 `CLAUDE_PLUGIN_ENABLE_QUESTION_RULES`、`CLAUDE_PLUGIN_ENABLE_NO_BACKGROUND_AGENTS_RULE` 提醒均已停用；仍需保留的自定义指令请放入 `CLAUDE.md`。
 
@@ -106,6 +106,6 @@ cp plugin/opencode/agent-context.js ~/.config/opencode/plugins/
 - v1 保留原生 `x-opencode-session-id`，网关比较当前会话 affinity 和根会话来识别子代理，不再修改聊天消息
 - v2 使用原生的 `x-parent-session-id`，插件只处理根会话 ID，保留原生的子会话和会话 affinity 请求头
 
-v1 使用 `session.created`、`session.deleted` 和 `chat.headers` 钩子；v2 使用 `session.hook("model.request", ...)` 修改请求头。原生的 `x-session-id` 保留为当前会话 ID。Messages API 保留 `metadata.user_id` 的解析优先级；没有该值时，先读取 `x-root-session-id`，再回退到 `x-session-id`。prompt cache key 的优先级相反：`session-id`、`x-root-session-id`、`x-session-id` 优先于 `metadata.user_id`，最后回退到会话 affinity，让同一根会话下的子代理共享缓存分组。遇到父会话缺失、查询失败或循环引用时，保留已有请求头。
+v1 使用 `session.created`、`session.deleted` 和 `chat.headers` 钩子；v2 使用 `session.hook("model.request", ...)` 修改请求头。原生的 `x-session-id` 保留为当前会话 ID。Messages 交互 ID、prompt cache key 和 OpenCode Go 缓存分组统一使用 trace 的根会话，缺失时回退到 session affinity。Usage 按当前 affinity 归属，缺失时使用根会话。`metadata.user_id` 仅作为请求数据透传，不再解析其中的会话信息，也不参与 Messages proxy 模式判断。遇到父会话缺失、查询失败或循环引用时，保留已有请求头。
 
-Trace 的根会话依次读取 `x-claude-code-session-id`、`session-id`、`x-root-session-id`、`x-session-id`，跳过空白值。Claude Code 子代理的 affinity 组合原生 session ID 和 agent ID；OpenCode v1 保留 `x-opencode-session-id`，v2 保留原生 session affinity。Messages 和 Responses 路由统一使用 trace 中的子代理信息，不再解析消息正文中的旧 marker。
+Trace 的根会话依次读取 `x-claude-code-session-id`、`session-id`、`x-root-session-id`、`x-session-id`，跳过空白值。Claude Code 子代理的 affinity 组合原生 session ID 和 agent ID；OpenCode v1 保留 `x-opencode-session-id`，v2 保留原生 session affinity。Messages 和 Responses 路由统一使用 trace 中的子代理信息，不再解析消息正文中的旧 marker。`x-parent-session-id` 仅保留 OpenCode OAuth 所需的上游转发，不参与会话归属和 affinity 判断。

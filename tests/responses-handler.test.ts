@@ -689,7 +689,7 @@ describe("responses handler token usage", () => {
     expect(dispatchOptions?.requestId).toBe(getUUID("child-thread_"))
     expect(dispatchOptions?.subagentMarker).toEqual({
       agent_id: "child-thread",
-      agent_type: "collab_spawn",
+      agent_type: "subagent",
       session_id: "root-session",
     })
   })
@@ -1671,7 +1671,7 @@ describe("responses handler token usage", () => {
     expect(options?.requestId).toBe(getUUID("child-thread_"))
     expect(options?.subagentMarker).toEqual({
       agent_id: "child-thread",
-      agent_type: "collab_spawn",
+      agent_type: "subagent",
       session_id: "root-session",
     })
   })
@@ -1812,7 +1812,7 @@ describe("responses handler token usage", () => {
     },
   )
 
-  test("ignores unknown x-openai-subagent values", async () => {
+  test("accepts custom x-openai-subagent values with generic attribution", async () => {
     createResponses.mockImplementation((payload) =>
       Promise.resolve(createResponsesResult(payload.model)),
     )
@@ -1841,8 +1841,12 @@ describe("responses handler token usage", () => {
 
     expect(response.status).toBe(200)
     expect(createResponses).toHaveBeenCalledTimes(1)
-    expect(createResponses.mock.calls[0][1]?.initiator).toBe("user")
-    expect(createResponses.mock.calls[0][1]?.subagentMarker).toBeNull()
+    expect(createResponses.mock.calls[0][1]?.initiator).toBe("agent")
+    expect(createResponses.mock.calls[0][1]?.subagentMarker).toEqual({
+      session_id: "root-session",
+      agent_id: "child-thread",
+      agent_type: "subagent",
+    })
   })
 
   test.each(
@@ -1885,7 +1889,7 @@ describe("responses handler token usage", () => {
       expect(createResponses.mock.calls[0][1]?.initiator).toBe("agent")
       expect(createResponses.mock.calls[0][1]?.subagentMarker).toEqual({
         agent_id: "child-thread",
-        agent_type: agentType,
+        agent_type: "subagent",
         session_id: "root-session",
       })
     },

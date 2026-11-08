@@ -18,6 +18,7 @@ export interface RequestContext {
   userAgent: string
   sessionAffinity: string | undefined
   rootSessionId?: string
+  isClaudeCode?: boolean
   parentSessionId: string | undefined
   subagent?: SubagentMarker | null
   pluginRequest?: RequestEventObserver
