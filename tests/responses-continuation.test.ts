@@ -48,17 +48,12 @@ const complete = (
 
 class Connection {
   closed = false
-  callbacks: Array<() => void> = []
   readonly id: string
   constructor(id: string) {
     this.id = id
   }
-  onClose(callback: () => void) {
-    this.callbacks.push(callback)
-  }
   close() {
     this.closed = true
-    for (const callback of this.callbacks) callback()
   }
 }
 
@@ -117,6 +112,156 @@ test("fingerprints preserve array order, encrypted fields and unknown settings",
   )
 })
 
+test.each([
+  {
+    name: "replaced tool item ID and replay metadata",
+    item: { ...output, id: "server-item" },
+    replay: {
+      ...output,
+      id: "client-item",
+      status: undefined,
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-2" },
+    },
+  },
+  {
+    name: "replaced reasoning ID with the same encrypted content",
+    item: {
+      type: "reasoning",
+      id: "server-reasoning",
+      summary: [],
+      encrypted_content: "cipher",
+    },
+    replay: {
+      type: "reasoning",
+      id: "client-reasoning",
+      status: "completed",
+      summary: [],
+      encrypted_content: "cipher",
+    },
+  },
+  {
+    name: "message IDs, annotations, logprobs and text block type",
+    item: {
+      type: "message",
+      id: "server-message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: "answer", annotations: [] }],
+    },
+    replay: {
+      type: "message",
+      id: "client-message",
+      role: "assistant",
+      content: [{ type: "input_text", text: "answer", logprobs: [] }],
+    },
+  },
+  {
+    name: "equivalent string messages with an optional item type",
+    item: {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "answer", annotations: [] }],
+    },
+    replay: { role: "assistant", content: "answer" },
+  },
+])("continues after $name", ({ item, replay }) => {
+  const connection = new Connection("socket")
+  const first = prepareResponsesContinuation(
+    payload(),
+    connection,
+    "scope",
+    "session",
+    false,
+  )
+  first.observe(complete("resp-1", [item]))
+  first.finish()
+  const full = payload([user, replay, result])
+  const original = structuredClone(full)
+  const next = prepareResponsesContinuation(
+    full,
+    connection,
+    "scope",
+    "session",
+    false,
+  )
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [result],
+  })
+  expect(full).toEqual(original)
+  next.finish()
+})
+
+test.each([
+  { item: output, replay: { ...output, call_id: "changed" } },
+  { item: output, replay: { ...output, arguments: '{"id":"changed"}' } },
+  { item: output, replay: { ...output, future_context: true } },
+  {
+    item: { type: "reasoning", encrypted_content: "cipher", summary: [] },
+    replay: { type: "reasoning", encrypted_content: "changed", summary: [] },
+  },
+  {
+    item: { type: "message", role: "assistant", content: "answer" },
+    replay: { type: "message", role: "assistant", content: "edited" },
+  },
+  {
+    item: {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "input_image", file_id: "original" }],
+    },
+    replay: {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "input_image", file_id: "changed" }],
+    },
+  },
+  {
+    item: {
+      type: "message",
+      role: "assistant",
+      phase: "commentary",
+      content: "answer",
+    },
+    replay: {
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: "answer",
+    },
+  },
+  {
+    item: { type: "item_reference", id: "original" },
+    replay: { type: "item_reference", id: "changed" },
+  },
+  {
+    item: { type: "future_item", id: "original" },
+    replay: { type: "future_item", id: "changed" },
+  },
+])("keeps full input when item context changes (%j)", ({ item, replay }) => {
+  const connection = new Connection("socket")
+  const first = prepareResponsesContinuation(
+    payload(),
+    connection,
+    "scope",
+    "session",
+    false,
+  )
+  first.observe(complete("resp-1", [item]))
+  first.finish()
+  const full = payload([user, replay, result])
+  const next = prepareResponsesContinuation(
+    full,
+    connection,
+    "scope",
+    "session",
+    false,
+  )
+  expect(next.usedPrevious).toBe(false)
+  expect(next.payload).toBe(full)
+  next.finish()
+})
+
 test("continues multiple completed turns with only the new tool/user items", () => {
   const connection = seed()
   const full = payload([user, output, result])
@@ -148,7 +293,15 @@ test("continues multiple completed turns with only the new tool/user items", () 
     input: [user],
   })
   third.finish()
-  expect(connection.callbacks).toHaveLength(1)
+  const resent = prepareResponsesContinuation(
+    payload([user, output, result, user]),
+    connection,
+    "scope",
+    "session",
+    false,
+  )
+  expect(resent.usedPrevious).toBe(false)
+  resent.finish()
 })
 
 test.each([
@@ -261,6 +414,7 @@ test("expiry and closed sockets discard the previous chain", () => {
 
 test.each([
   "cancelled",
+  "cancelled-after-completion",
   "incomplete",
   "missing-terminal",
   "socket-closed",
@@ -293,6 +447,7 @@ test.each([
         } as ResponseStreamEvent)
       : complete(),
     )
+  if (mode === "cancelled-after-completion") controller.abort()
   first.finish()
   const next = prepareResponsesContinuation(
     payload([user, output, result]),

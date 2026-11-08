@@ -6,7 +6,6 @@ import { WebSocket } from "undici"
 export interface PooledWebSocketConnection {
   readonly id: string
   readonly closed: boolean
-  onClose: (callback: () => void) => void
 }
 
 export interface PooledWebSocketRequest<TPayload> {
@@ -59,9 +58,8 @@ const websocketPool = new Map<string, PooledWebSocketEntry>()
 const websocketActiveRequests = new Map<string, number>()
 
 interface PooledWebSocketEntry {
+  id: string
   closed: boolean
-  connection: PooledWebSocketConnection
-  closeCallbacks: Set<() => void>
   idleMessageListener: WebSocketMessageListener | null
   idleTimer: ReturnType<typeof setTimeout> | null
   poolIdleTimeoutMs: number
@@ -206,8 +204,7 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
     )
     messageStream.start()
     const payload =
-      request.preparePayload?.(request.payload, entry.connection)
-      ?? request.payload
+      request.preparePayload?.(request.payload, entry) ?? request.payload
     websocket.send(JSON.stringify(payload))
 
     for await (const data of messageStream.iterable) {
@@ -274,18 +271,8 @@ const createPooledWebSocketEntry = <TPayload, TChunk>(
     url: request.url,
   })
   const entry: PooledWebSocketEntry = {
+    id: randomUUID(),
     closed: false,
-    connection: {
-      id: randomUUID(),
-      get closed() {
-        return entry.closed
-      },
-      onClose: (callback) => {
-        if (entry.closed) callback()
-        else entry.closeCallbacks.add(callback)
-      },
-    },
-    closeCallbacks: new Set(),
     idleMessageListener: null,
     idleTimer: null,
     poolIdleTimeoutMs: options.poolIdleTimeoutMs,
@@ -429,8 +416,6 @@ const removePooledWebSocketEntry = (
   if (entry.closed) return
 
   entry.closed = true
-  for (const callback of entry.closeCallbacks) callback()
-  entry.closeCallbacks.clear()
   clearPooledWebSocketIdleState(entry)
   entry.websocketPromise.then(closeWebSocket).catch(() => {})
 }

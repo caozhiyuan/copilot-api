@@ -15,16 +15,30 @@ const states = new WeakMap<
   PooledWebSocketConnection,
   ResponseContinuationRecord
 >()
-const trackedConnections = new WeakSet<PooledWebSocketConnection>()
 const MAX_AGE_MS = 60 * 60 * 1000
+const ITEM_METADATA_TYPES = new Set([
+  "message",
+  "agent_message",
+  "reasoning",
+  "function_call",
+  "function_call_output",
+  "custom_tool_call",
+  "custom_tool_call_output",
+  "tool_search_call",
+  "tool_search_output",
+  "web_search_call",
+  "compaction",
+  "compaction_trigger",
+  "additional_tools",
+])
 
 // Trace affinity identifies the current agent, independently of its root group.
 export function getResponsesContinuationSession(): string | undefined {
   return requestContext.getStore()?.sessionAffinity?.trim() || undefined
 }
 
-// Sort object keys, but preserve every field, array order and encrypted block.
-// A protocol/ID round trip that cannot be matched exactly uses the full input.
+// Request settings preserve every field; input items normalize replay metadata
+// separately, without changing the payload sent to the upstream.
 export function hashResponseContext(value: unknown): string {
   return createHash("sha256")
     .update(
@@ -39,6 +53,48 @@ export function hashResponseContext(value: unknown): string {
     .digest("hex")
 }
 
+function hashResponseInput(items: ReadonlyArray<unknown>): string {
+  return hashResponseContext(
+    items.map((item) => {
+      if (!item || typeof item !== "object") return item
+      const type =
+        "type" in item ? item.type
+        : "role" in item ? "message"
+        : undefined
+      if (typeof type !== "string" || !ITEM_METADATA_TYPES.has(type))
+        return item
+      const {
+        id: _id,
+        status: _status,
+        internal_chat_message_metadata_passthrough: _metadata,
+        ...context
+      } = item as Record<string, unknown>
+      if (type !== "message") return context
+      const content =
+        typeof context.content === "string" ?
+          [{ type: "output_text", text: context.content }]
+        : Array.isArray(context.content) ?
+          context.content.map((part: unknown) => {
+            if (
+              !part
+              || typeof part !== "object"
+              || !("type" in part)
+              || (part.type !== "input_text" && part.type !== "output_text")
+            )
+              return part
+            const {
+              annotations: _annotations,
+              logprobs: _logprobs,
+              ...text
+            } = part as Record<string, unknown>
+            return { ...text, type: "output_text" }
+          })
+        : context.content
+      return { ...context, type, content }
+    }),
+  )
+}
+
 export function prepareResponsesContinuation<T extends ResponsesPayload>(
   payload: T,
   connection: PooledWebSocketConnection,
@@ -47,13 +103,8 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
   forceFull: boolean,
   clientSignal?: AbortSignal,
 ) {
-  if (!trackedConnections.has(connection)) {
-    trackedConnections.add(connection)
-    connection.onClose(() => {
-      states.delete(connection)
-    })
-  }
-
+  // The pool owns the connection lifetime; closed entries cannot be reused and
+  // their continuation state is reclaimed with the entry by the WeakMap.
   const previous = states.get(connection)
   states.delete(connection)
   const {
@@ -72,12 +123,13 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
     eligible
       && explicitPrevious === undefined
       && !forceFull
+      && !connection.closed
       && previous
       && previous.scopeKey === scopeKey
       && previous.expiresAt > Date.now()
       && previous.requestHash === requestHash
       && input.length >= previous.prefixItemCount
-      && hashResponseContext(input.slice(0, previous.prefixItemCount))
+      && hashResponseInput(input.slice(0, previous.prefixItemCount))
         === previous.prefixHash,
   )
   const outgoing =
@@ -88,7 +140,6 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
         input: input.slice(previous.prefixItemCount),
       }
     : payload
-  let completed = false
   const outputItems = new Map<number, unknown>()
 
   return {
@@ -130,17 +181,14 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
         responseId: event.response.id,
         requestHash,
         prefixItemCount: input.length + output.length,
-        prefixHash: hashResponseContext([...input, ...output]),
+        prefixHash: hashResponseInput([...input, ...output]),
         expiresAt: Date.now() + MAX_AGE_MS,
       }
-      completed = true
       states.set(connection, record)
       saveResponseContinuation(record)
     },
     finish(): void {
-      if (!completed || clientSignal?.aborted) {
-        states.delete(connection)
-      }
+      if (clientSignal?.aborted) states.delete(connection)
     },
   }
 }

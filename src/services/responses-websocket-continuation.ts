@@ -31,16 +31,17 @@ export async function* createContinuableResponsesWebSocketStream<
     clientSignal?: AbortSignal
   },
 ): AsyncGenerator<TChunk> {
-  if (!continuation.sessionId) {
+  const { provider, sessionId, clientSignal } = continuation
+  if (!sessionId) {
     yield* createPooledWebSocketStream(request, options)
     return
   }
 
   const scopeKey = hashResponseContext([
-    continuation.provider,
+    provider,
     request.url,
     request.poolKey,
-    continuation.sessionId,
+    sessionId,
   ])
   let forceFull = false
   for (let attemptIndex = 0; attemptIndex < 2; attemptIndex++) {
@@ -52,13 +53,7 @@ export async function* createContinuableResponsesWebSocketStream<
     const source = createPooledWebSocketStream(
       {
         ...request,
-        // Include the destination/provider in the pool namespace as well as the
-        // continuation fingerprint. Concurrent sockets retain separate identities.
-        poolKey: hashResponseContext([
-          continuation.provider,
-          request.url,
-          request.poolKey,
-        ]),
+        poolKey: scopeKey,
         preparePayload: (payload, connection) => {
           const prepared =
             request.preparePayload?.(payload, connection) ?? payload
@@ -67,9 +62,9 @@ export async function* createContinuableResponsesWebSocketStream<
             prepared,
             connection,
             scopeKey,
-            continuation.sessionId!,
+            sessionId,
             forceFull,
-            continuation.clientSignal,
+            clientSignal,
           )
           return attempt.payload
         },
@@ -85,7 +80,7 @@ export async function* createContinuableResponsesWebSocketStream<
           && !responseStarted
           && !forceFull
           && isPreviousResponseMiss(event)
-          && !continuation.clientSignal?.aborted
+          && !clientSignal?.aborted
         ) {
           retry = true
           consola.debug(
