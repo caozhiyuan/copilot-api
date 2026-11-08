@@ -46,6 +46,12 @@ const text = {
   status: "completed",
   content: [{ type: "output_text", text: "answer", annotations: [] }],
 } satisfies ResponseOutputItem
+const compaction = (encrypted_content: string, id = "compaction-1") =>
+  ({
+    type: "compaction",
+    id,
+    encrypted_content,
+  }) as const
 const payload = (
   input: ResponsesPayload["input"] = [user],
 ): ResponsesPayload => ({ model: "gpt-test", input, stream: true })
@@ -613,3 +619,447 @@ test("SQLite failures leave live continuation and shutdown usable", async () => 
   next.finish()
   await closeResponseContinuationStore()
 })
+
+test.each([
+  {
+    name: "before a surviving anchor",
+    input: (checkpoint: ReturnType<typeof compaction>) => [
+      checkpoint,
+      user,
+      output,
+      text,
+      result,
+      user,
+    ],
+  },
+  {
+    name: "after a surviving anchor",
+    input: (checkpoint: ReturnType<typeof compaction>) => [
+      user,
+      output,
+      text,
+      result,
+      checkpoint,
+      user,
+    ],
+  },
+])(
+  "sends the full input when a new compaction checkpoint appears $name",
+  ({ input }) => {
+    const connection = seed([output, text])
+    const checkpoint = compaction("checkpoint")
+    const items = input(checkpoint)
+    const full = payload(items)
+    const original = structuredClone(full)
+    const next = prepareResponsesContinuation(
+      full,
+      connection,
+      "session",
+      false,
+    )
+    expect(next.usedPrevious).toBe(false)
+    expect(next.payload).toBe(full)
+    expect(next.payload.previous_response_id).toBeUndefined()
+    expect(next.payload.input).toEqual(items)
+    expect(full).toEqual(original)
+    next.finish()
+  },
+)
+
+test("continues incrementally after the same compaction ciphertext was sent", async () => {
+  const connection = seed([output, text])
+  const checkpoint = compaction("checkpoint")
+  const full = payload([checkpoint, user, output, text, result])
+  const original = structuredClone(full)
+  const next = prepareResponsesContinuation(full, connection, "session", false)
+  expect(next.usedPrevious).toBe(false)
+  expect(next.payload).toBe(full)
+  expect(next.payload.previous_response_id).toBeUndefined()
+  expect(full).toEqual(original)
+  next.observe(complete("resp-2", [output]))
+  next.finish()
+
+  const continued = prepareResponsesContinuation(
+    payload([
+      compaction("checkpoint", "client-renamed"),
+      { ...user, content: "edited history before the anchor" },
+      output,
+      text,
+      result,
+      user,
+    ]),
+    connection,
+    "session",
+    false,
+  )
+  expect(continued.payload).toMatchObject({
+    previous_response_id: "resp-2",
+    input: [result, user],
+  })
+  continued.observe(complete("resp-3", [{ ...output, call_id: "call-2" }]))
+  continued.finish()
+
+  // The incremental body has no compaction item; keep the full-input hash.
+  const again = prepareResponsesContinuation(
+    payload([
+      checkpoint,
+      user,
+      output,
+      text,
+      result,
+      { ...output, call_id: "call-2" },
+      { ...result, call_id: "call-2" },
+    ]),
+    connection,
+    "session",
+    false,
+  )
+  expect(again.payload).toMatchObject({
+    previous_response_id: "resp-3",
+    input: [{ ...result, call_id: "call-2" }],
+  })
+  again.finish()
+
+  await flushResponseContinuations()
+  const db = await openSqliteDatabase(process.env.COPILOT_API_SQLITE_DB_PATH!)
+  try {
+    const rows = db
+      .prepare("SELECT * FROM response_continuations")
+      .all() as Array<Record<string, unknown>>
+    expect(rows).toEqual([
+      {
+        connection_id: "socket",
+        session_id: "session",
+        response_id: "resp-3",
+        updated_at_ms: expect.any(Number),
+      },
+    ])
+    const stored = JSON.stringify(rows)
+    expect(stored).not.toContain("checkpoint")
+    expect(stored).not.toContain("edited history before the anchor")
+    expect(stored).not.toContain("answer")
+  } finally {
+    db.close?.()
+  }
+})
+
+test("only the latest compaction ciphertext gates continuation", () => {
+  const connection = seed()
+  const latest = compaction("latest", "compaction-2")
+  const first = prepareResponsesContinuation(
+    payload([compaction("older"), latest, user, output, result]),
+    connection,
+    "session",
+    false,
+  )
+  expect(first.usedPrevious).toBe(false)
+  first.observe(complete("resp-2"))
+  first.finish()
+
+  const continued = prepareResponsesContinuation(
+    payload([
+      compaction("older-edited"),
+      { ...latest, id: "renamed-latest" },
+      { ...user, content: "edited" },
+      output,
+      result,
+      user,
+    ]),
+    connection,
+    "session",
+    false,
+  )
+  expect(continued.payload).toMatchObject({
+    previous_response_id: "resp-2",
+    input: [result, user],
+  })
+  continued.finish()
+})
+
+test.each([
+  {
+    name: "replaced",
+    input: () => [compaction("replacement"), user, output, result, user],
+  },
+  {
+    name: "removed",
+    input: () => [user, output, result, user],
+  },
+  {
+    name: "superseded",
+    input: () => [
+      compaction("checkpoint"),
+      compaction("newer", "compaction-2"),
+      user,
+      output,
+      result,
+      user,
+    ],
+  },
+])(
+  "sends the full input when a compaction checkpoint is $name",
+  ({ input }) => {
+    const connection = seed()
+    const first = prepareResponsesContinuation(
+      payload([compaction("checkpoint"), user, output, result]),
+      connection,
+      "session",
+      false,
+    )
+    first.observe(complete("resp-2"))
+    first.finish()
+    const items = input()
+    const full = payload(items)
+    const next = prepareResponsesContinuation(
+      full,
+      connection,
+      "session",
+      false,
+    )
+    expect(next.usedPrevious).toBe(false)
+    expect(next.payload).toBe(full)
+    expect(next.payload.previous_response_id).toBeUndefined()
+    expect(next.payload.input).toEqual(items)
+    next.finish()
+  },
+)
+
+test("an explicit previous response id bypasses compaction checkpoint matching", () => {
+  const connection = seed()
+  const checkpoint = compaction("checkpoint")
+  const established = payload([checkpoint, user, output, result])
+  const first = prepareResponsesContinuation(
+    established,
+    connection,
+    "session",
+    false,
+  )
+  first.observe(complete("resp-2"))
+  first.finish()
+
+  const full = {
+    ...payload([checkpoint, user, output, result, user]),
+    previous_response_id: "client-response",
+  }
+  const next = prepareResponsesContinuation(full, connection, "session", false)
+  expect(next.payload).toBe(full)
+  expect(next.usedPrevious).toBe(false)
+  next.finish()
+})
+
+test("different connections do not share compaction checkpoints", () => {
+  const left = new Connection("left")
+  const right = new Connection("right")
+  for (const connection of [left, right]) {
+    const first = prepareResponsesContinuation(
+      payload(),
+      connection,
+      "session",
+      false,
+    )
+    first.observe(complete("resp-1"))
+    first.finish()
+  }
+
+  const leftCheckpoint = compaction("left-cipher")
+  const rightCheckpoint = compaction("right-cipher")
+  const adopt = (
+    connection: Connection,
+    checkpoint: ReturnType<typeof compaction>,
+    responseId: string,
+  ) => {
+    const full = payload([checkpoint, user, output, result])
+    const attempt = prepareResponsesContinuation(
+      full,
+      connection,
+      "session",
+      false,
+    )
+    expect(attempt.payload).toBe(full)
+    expect(attempt.usedPrevious).toBe(false)
+    attempt.observe(complete(responseId))
+    attempt.finish()
+  }
+  adopt(left, leftCheckpoint, "resp-left")
+  adopt(right, rightCheckpoint, "resp-right")
+
+  const leftNext = prepareResponsesContinuation(
+    payload([leftCheckpoint, user, output, result, user]),
+    left,
+    "session",
+    false,
+  )
+  expect(leftNext.payload).toMatchObject({
+    previous_response_id: "resp-left",
+    input: [result, user],
+  })
+  leftNext.observe(complete("resp-left-2"))
+  leftNext.finish()
+
+  const rightNext = prepareResponsesContinuation(
+    payload([rightCheckpoint, user, output, result, user]),
+    right,
+    "session",
+    false,
+  )
+  expect(rightNext.payload).toMatchObject({
+    previous_response_id: "resp-right",
+    input: [result, user],
+  })
+  rightNext.finish()
+
+  const crossed = payload([rightCheckpoint, user, output, result])
+  const leftCross = prepareResponsesContinuation(
+    crossed,
+    left,
+    "session",
+    false,
+  )
+  expect(leftCross.usedPrevious).toBe(false)
+  expect(leftCross.payload).toBe(crossed)
+  leftCross.finish()
+})
+
+test.each([
+  "cancelled",
+  "cancelled-after-completion",
+  "incomplete",
+  "socket-closed",
+] as const)(
+  "does not commit a compaction checkpoint when the request is %s",
+  (mode) => {
+    const connection = seed()
+    const checkpoint = compaction("checkpoint")
+    const controller = new AbortController()
+    const full = payload([checkpoint, user, output, result])
+    const attempt = prepareResponsesContinuation(
+      full,
+      connection,
+      "session",
+      false,
+      controller.signal,
+    )
+    expect(attempt.payload).toBe(full)
+    if (mode === "cancelled") controller.abort()
+    if (mode === "socket-closed") connection.closed = true
+    if (mode === "incomplete") {
+      attempt.observe({
+        type: "response.completed",
+        response: { id: "resp-2", status: "incomplete", output: [output] },
+      } as ResponseStreamEvent)
+    } else if (mode !== "cancelled") attempt.observe(complete("resp-2"))
+    if (mode === "cancelled-after-completion") controller.abort()
+    attempt.finish()
+    if (mode === "socket-closed") connection.closed = false
+
+    const retry = prepareResponsesContinuation(
+      payload([checkpoint, user, output, result, user]),
+      connection,
+      "session",
+      false,
+    )
+    expect(retry.usedPrevious).toBe(false)
+    expect(retry.payload.previous_response_id).toBeUndefined()
+    expect(retry.payload.input).toEqual([
+      checkpoint,
+      user,
+      output,
+      result,
+      user,
+    ])
+    retry.finish()
+  },
+)
+
+test("a compaction item produced by the response is recorded on the next full send", () => {
+  const connection = seed()
+  const turn = prepareResponsesContinuation(
+    payload([user, output, result]),
+    connection,
+    "session",
+    false,
+  )
+  expect(turn.usedPrevious).toBe(true)
+  const produced = compaction("produced-cipher")
+  const call = { ...output, call_id: "call-2" }
+  turn.observe({
+    type: "response.output_item.done",
+    sequence_number: 1,
+    output_index: 0,
+    item: produced,
+  })
+  turn.observe({
+    type: "response.output_item.done",
+    sequence_number: 2,
+    output_index: 1,
+    item: call,
+  })
+  turn.observe(complete("resp-2", []))
+  turn.finish()
+
+  const unchanged = prepareResponsesContinuation(
+    payload([user, output, result, call, user]),
+    connection,
+    "session",
+    false,
+  )
+  expect(unchanged.payload).toMatchObject({
+    previous_response_id: "resp-2",
+    input: [user],
+  })
+  unchanged.observe(complete("resp-3", [call]))
+  unchanged.finish()
+
+  const replay = payload([produced, user, output, result, call, user])
+  const next = prepareResponsesContinuation(
+    replay,
+    connection,
+    "session",
+    false,
+  )
+  expect(next.usedPrevious).toBe(false)
+  expect(next.payload).toBe(replay)
+  expect(next.payload.previous_response_id).toBeUndefined()
+  next.observe(complete("resp-4", [call]))
+  next.finish()
+
+  const followed = prepareResponsesContinuation(
+    payload([produced, user, output, result, call, user]),
+    connection,
+    "session",
+    false,
+  )
+  expect(followed.payload).toMatchObject({
+    previous_response_id: "resp-4",
+    input: [user],
+  })
+  followed.finish()
+})
+
+test.each([
+  { type: "compaction", id: "compaction-1" },
+  { type: "compaction", id: "compaction-1", encrypted_content: 1 },
+])(
+  "a compaction item without ciphertext does not match a stored checkpoint (%j)",
+  (item) => {
+    const connection = seed()
+    const first = prepareResponsesContinuation(
+      payload([compaction("checkpoint"), user, output, result]),
+      connection,
+      "session",
+      false,
+    )
+    first.observe(complete("resp-2"))
+    first.finish()
+    const full = payload([item, user, output, result, user])
+    const next = prepareResponsesContinuation(
+      full,
+      connection,
+      "session",
+      false,
+    )
+    expect(next.payload).toBe(full)
+    expect(next.usedPrevious).toBe(false)
+    next.finish()
+  },
+)

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { requestContext } from "~/lib/request-context"
 import { saveResponseContinuation } from "~/lib/responses-continuation/store"
 import type {
@@ -15,15 +17,18 @@ interface ContinuationAnchor {
   value: string
 }
 
+interface ContinuationState {
+  responseId: string
+  anchor: ContinuationAnchor
+  compactionHash: string | null
+}
+
 interface OutputMarker {
   anchor: ContinuationAnchor | undefined
   assistant: boolean
 }
 
-const states = new WeakMap<
-  PooledWebSocketConnection,
-  { responseId: string; anchor: ContinuationAnchor }
->()
+const states = new WeakMap<PooledWebSocketConnection, ContinuationState>()
 
 // Trace affinity identifies the current agent, independently of its root group.
 export function getResponsesContinuationSession(): string | undefined {
@@ -56,6 +61,23 @@ function isAssistantItem(item: ContinuationItem): boolean {
   )
 }
 
+// SHA-256 of the latest compaction ciphertext. Null when that item is absent
+// or has no string ciphertext. The ciphertext itself is not retained.
+function hashCompactionCheckpoint(
+  input: ReadonlyArray<ResponseInputItem>,
+): string | null {
+  const item = input.findLast(
+    (candidate) => "type" in candidate && candidate.type === "compaction",
+  )
+  if (
+    !item
+    || !("encrypted_content" in item)
+    || typeof item.encrypted_content !== "string"
+  )
+    return null
+  return createHash("sha256").update(item.encrypted_content).digest("hex")
+}
+
 function findDeltaStart(
   input: ReadonlyArray<ResponseInputItem>,
   anchor: ContinuationAnchor,
@@ -84,6 +106,9 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
     Array.isArray(input)
     && explicitPrevious == null
     && payload.generate !== false
+  // Compare the checkpoint before slicing so a surviving anchor cannot drop it.
+  const compactionHash =
+    Array.isArray(input) ? hashCompactionCheckpoint(input) : null
   const start =
     (
       eligible
@@ -91,6 +116,7 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
       && !forceFull
       && !connection.closed
       && previous
+      && previous.compactionHash === compactionHash
     ) ?
       findDeltaStart(input, previous.anchor)
     : -1
@@ -141,7 +167,11 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
         else if (!item.assistant) anchor = undefined
       }
       if (anchor)
-        states.set(connection, { responseId: event.response.id, anchor })
+        states.set(connection, {
+          responseId: event.response.id,
+          anchor,
+          compactionHash,
+        })
       saveResponseContinuation({
         connectionId: connection.id,
         sessionId,
