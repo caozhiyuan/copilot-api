@@ -228,10 +228,6 @@ const originalState = {
   vsCodeVersion: state.vsCodeVersion,
 }
 const { requestContext } = await import("~/lib/request-context")
-const { closeResponseContinuationStore } = await import(
-  "~/lib/responses-continuation/store"
-)
-const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
 const originalConfigPath = PATHS.CONFIG_PATH
 let configDir: string
 
@@ -269,10 +265,6 @@ beforeEach(() => {
   configDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "responses-websocket-config-"),
   )
-  process.env.COPILOT_API_SQLITE_DB_PATH = path.join(
-    configDir,
-    "metadata.sqlite",
-  )
   PATHS.CONFIG_PATH = path.join(configDir, "config.json")
   fs.writeFileSync(PATHS.CONFIG_PATH, "{}")
   invalidateConfigCache()
@@ -293,9 +285,10 @@ beforeEach(() => {
   state.vsCodeVersion = "1.120.0"
 })
 
-afterEach(async () => {
+afterEach(() => {
   PATHS.CONFIG_PATH = originalConfigPath
   invalidateConfigCache()
+  fs.rmSync(configDir, { recursive: true, force: true })
   globalThis.WebSocket = originalWebSocket
   MockWebSocket.autoComplete = true
   MockWebSocket.closeAfterComplete = false
@@ -307,11 +300,6 @@ afterEach(async () => {
     websocket.close()
   }
 
-  await closeResponseContinuationStore()
-  if (originalDbPath === undefined)
-    delete process.env.COPILOT_API_SQLITE_DB_PATH
-  else process.env.COPILOT_API_SQLITE_DB_PATH = originalDbPath
-  fs.rmSync(configDir, { recursive: true, force: true })
   state.accountType = originalState.accountType
   state.copilotApiUrl = originalState.copilotApiUrl
   state.copilotToken = originalState.copilotToken
@@ -1368,7 +1356,7 @@ test.each(["response-started", "other-error"])(
   },
 )
 
-test("reconnected sockets send full history instead of persisted response IDs", async () => {
+test("reconnected sockets send full history", async () => {
   await withAffinity("reconnect", async () => {
     await sendContinuationTurn([...continuationInput])
     MockWebSocket.instances[0].close()

@@ -12,10 +12,6 @@ type ListenerEvent = {
 type Listener = (event: ListenerEvent) => void
 
 const { requestContext } = await import("~/lib/request-context")
-const { closeResponseContinuationStore } = await import(
-  "~/lib/responses-continuation/store"
-)
-const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
 const originalFetch = globalThis.fetch
 const originalSetTimeout = globalThis.setTimeout
 
@@ -248,7 +244,6 @@ const mockFetchJsonResponse = (body: unknown): void => {
 }
 
 beforeEach(() => {
-  process.env.COPILOT_API_SQLITE_DB_PATH = ":memory:"
   globalThis.WebSocket = MockWebSocket as unknown as typeof globalThis.WebSocket
   MockWebSocket.autoComplete = true
   MockWebSocket.instances = []
@@ -264,16 +259,12 @@ beforeEach(() => {
     fetchMock as unknown as typeof fetch
 })
 
-afterEach(async () => {
+afterEach(() => {
   globalThis.WebSocket = originalWebSocket
   for (const websocket of MockWebSocket.instances) {
     websocket.close()
   }
 
-  await closeResponseContinuationStore()
-  if (originalDbPath === undefined)
-    delete process.env.COPILOT_API_SQLITE_DB_PATH
-  else process.env.COPILOT_API_SQLITE_DB_PATH = originalDbPath
   codexResponsesDependencies.isResponsesApiWebSocketEnabled =
     originalIsResponsesApiWebSocketEnabled
   state.codexAccessToken = originalState.codexAccessToken

@@ -50,7 +50,6 @@ export async function* createContinuableResponsesWebSocketStream<
           attempt = prepareResponsesContinuation(
             prepared,
             connection,
-            sessionId,
             forceFull,
             clientSignal,
           )

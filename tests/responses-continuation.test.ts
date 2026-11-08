@@ -1,26 +1,16 @@
-import { afterEach, beforeEach, expect, test } from "bun:test"
-import fs from "node:fs"
-import os from "node:os"
-import path from "node:path"
+import { expect, test } from "bun:test"
 
 import { requestContext } from "~/lib/request-context"
-import {
-  closeResponseContinuationStore,
-  flushResponseContinuations,
-} from "~/lib/responses-continuation/store"
 import {
   getResponsesContinuationSession,
   prepareResponsesContinuation,
 } from "~/lib/responses-continuation"
-import { openSqliteDatabase } from "~/lib/sqlite"
 import type {
   ResponseOutputItem,
   ResponseStreamEvent,
   ResponsesPayload,
 } from "~/lib/types/responses"
 
-const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
-let dir: string
 const user = { type: "message", role: "user", content: "hello" } as const
 const output = {
   type: "function_call",
@@ -75,25 +65,8 @@ class Connection {
   }
 }
 
-beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "response-continuation-"))
-  process.env.COPILOT_API_SQLITE_DB_PATH = path.join(dir, "metadata.sqlite")
-})
-afterEach(async () => {
-  await closeResponseContinuationStore()
-  if (originalDbPath === undefined)
-    delete process.env.COPILOT_API_SQLITE_DB_PATH
-  else process.env.COPILOT_API_SQLITE_DB_PATH = originalDbPath
-  fs.rmSync(dir, { recursive: true, force: true })
-})
-
 function seed(items: unknown = [output], connection = new Connection()) {
-  const attempt = prepareResponsesContinuation(
-    payload(),
-    connection,
-    "session",
-    false,
-  )
+  const attempt = prepareResponsesContinuation(payload(), connection, false)
   attempt.observe(complete("resp-1", items))
   attempt.finish()
   return connection
@@ -132,12 +105,7 @@ test.each([
     const replay = { ...item, id: "client-generated-id", extra_metadata: true }
     const full = payload([user, replay, result, user])
     const original = structuredClone(full)
-    const next = prepareResponsesContinuation(
-      full,
-      connection,
-      "session",
-      false,
-    )
+    const next = prepareResponsesContinuation(full, connection, false)
     expect(next.payload).toMatchObject({
       previous_response_id: "resp-1",
       input: [result, user],
@@ -168,7 +136,6 @@ test.each([output, thinking])(
         prefill,
       ]),
       connection,
-      "session",
       false,
     )
     expect(next.payload).toMatchObject({
@@ -186,7 +153,6 @@ test("chooses the last opaque output anchor and keeps every new tool result", ()
   const next = prepareResponsesContinuation(
     payload([user, thinking, output, text, lastCall, text, result, lastResult]),
     connection,
-    "session",
     false,
   )
   expect(next.payload).toMatchObject({
@@ -201,7 +167,6 @@ test("continues completed tool turns and never reuses an unfinished request", ()
   const next = prepareResponsesContinuation(
     payload([user, output, result]),
     connection,
-    "session",
     false,
   )
   expect(next.payload).toMatchObject({
@@ -213,18 +178,13 @@ test("continues completed tool turns and never reuses an unfinished request", ()
   next.observe(complete("resp-2", [lastCall]))
   next.finish()
   const full = payload([user, output, result, lastCall, lastResult])
-  const third = prepareResponsesContinuation(full, connection, "session", false)
+  const third = prepareResponsesContinuation(full, connection, false)
   expect(third.payload).toMatchObject({
     previous_response_id: "resp-2",
     input: [lastResult],
   })
   third.finish()
-  const resent = prepareResponsesContinuation(
-    full,
-    connection,
-    "session",
-    false,
-  )
+  const resent = prepareResponsesContinuation(full, connection, false)
   expect(resent.payload).toBe(full)
   resent.finish()
 })
@@ -244,7 +204,6 @@ test("anchor matching does not compare earlier history, settings or item IDs", (
       client_metadata: { timestamp: "2" },
     },
     connection,
-    "session",
     false,
   )
   expect(next.payload).toMatchObject({
@@ -291,7 +250,7 @@ test.each([
     ...payload([user, output, result]),
     ...overrides,
   } as ResponsesPayload
-  const next = prepareResponsesContinuation(full, connection, "session", false)
+  const next = prepareResponsesContinuation(full, connection, false)
   expect(next.usedPrevious).toBe(false)
   expect(next.payload).toBe(full)
   next.finish()
@@ -307,7 +266,6 @@ test("changed reasoning ciphertext does not match", () => {
       user,
     ]),
     connection,
-    "session",
     false,
   )
   expect(next.usedPrevious).toBe(false)
@@ -325,7 +283,6 @@ test("new or closed connections and a forced retry use full input", () => {
     const next = prepareResponsesContinuation(
       payload([user, output, result]),
       connection,
-      "session",
       forceFull,
     )
     expect(next.usedPrevious).toBe(false)
@@ -341,7 +298,6 @@ test("a live connection has no separate one-hour continuation expiry", () => {
     const next = prepareResponsesContinuation(
       payload([user, output, result]),
       connection,
-      "session",
       false,
     )
     expect(next.usedPrevious).toBe(true)
@@ -369,7 +325,6 @@ test.each([
     const next = prepareResponsesContinuation(
       payload([user, output, result]),
       connection,
-      "session",
       false,
     )
     expect(next.usedPrevious).toBe(false)
@@ -392,7 +347,6 @@ test.each([
   const first = prepareResponsesContinuation(
     payload(),
     connection,
-    "session",
     false,
     controller.signal,
   )
@@ -416,7 +370,6 @@ test.each([
   const next = prepareResponsesContinuation(
     payload([user, output, result]),
     connection,
-    "session",
     false,
   )
   expect(next.usedPrevious).toBe(false)
@@ -427,12 +380,7 @@ test.each([false, true])(
   "prefers done-event markers with or without completed output (%s)",
   (omitOutput) => {
     const connection = new Connection()
-    const first = prepareResponsesContinuation(
-      payload(),
-      connection,
-      "session",
-      false,
-    )
+    const first = prepareResponsesContinuation(payload(), connection, false)
     first.observe({
       type: "response.output_item.done",
       sequence_number: 1,
@@ -450,7 +398,6 @@ test.each([false, true])(
     const next = prepareResponsesContinuation(
       payload([user, thinking, text, result]),
       connection,
-      "session",
       false,
     )
     expect(next.payload).toMatchObject({
@@ -463,12 +410,7 @@ test.each([false, true])(
 
 test("uses the done reasoning signature when completed contains a different one", () => {
   const connection = new Connection()
-  const first = prepareResponsesContinuation(
-    payload(),
-    connection,
-    "session",
-    false,
-  )
+  const first = prepareResponsesContinuation(payload(), connection, false)
   const doneThinking = {
     ...thinking,
     encrypted_content: "done-cipher",
@@ -494,7 +436,6 @@ test("uses the done reasoning signature when completed contains a different one"
   const next = prepareResponsesContinuation(
     payload([user, doneThinking, text, user]),
     connection,
-    "session",
     false,
   )
   expect(next.payload).toMatchObject({
@@ -506,12 +447,7 @@ test("uses the done reasoning signature when completed contains a different one"
 
 test("completed output fills missing done items without replacing a tool call ID", () => {
   const connection = new Connection()
-  const first = prepareResponsesContinuation(
-    payload(),
-    connection,
-    "session",
-    false,
-  )
+  const first = prepareResponsesContinuation(payload(), connection, false)
   first.observe({
     type: "response.output_item.done",
     sequence_number: 1,
@@ -525,7 +461,6 @@ test("completed output fills missing done items without replacing a tool call ID
   const next = prepareResponsesContinuation(
     payload([user, output, text, result]),
     connection,
-    "session",
     false,
   )
   expect(next.payload).toMatchObject({
@@ -537,12 +472,7 @@ test("completed output fills missing done items without replacing a tool call ID
 
 test("does not retain gaps in done-event output", () => {
   const connection = new Connection()
-  const first = prepareResponsesContinuation(
-    payload(),
-    connection,
-    "session",
-    false,
-  )
+  const first = prepareResponsesContinuation(payload(), connection, false)
   first.observe({
     type: "response.output_item.done",
     output_index: 1,
@@ -553,71 +483,10 @@ test("does not retain gaps in done-event output", () => {
   const next = prepareResponsesContinuation(
     payload([user, output, result]),
     connection,
-    "session",
     false,
   )
   expect(next.usedPrevious).toBe(false)
   next.finish()
-})
-
-test("SQLite keeps only four audit fields and retains rows after connection closure", async () => {
-  const connection = seed([thinking, text])
-  await flushResponseContinuations()
-  const db = await openSqliteDatabase(process.env.COPILOT_API_SQLITE_DB_PATH!)
-  try {
-    const rows = db
-      .prepare("SELECT * FROM response_continuations")
-      .all() as Array<Record<string, unknown>>
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toEqual({
-      connection_id: "socket",
-      session_id: "session",
-      response_id: "resp-1",
-      updated_at_ms: expect.any(Number),
-    })
-    expect(JSON.stringify(rows)).not.toContain("cipher")
-    expect(JSON.stringify(rows)).not.toContain("answer")
-    expect(
-      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all(),
-    ).toEqual([{ name: "response_continuations" }])
-    connection.close()
-    seed([output], new Connection("other"))
-    await flushResponseContinuations()
-    expect(
-      db
-        .prepare(
-          "SELECT * FROM response_continuations WHERE connection_id = 'socket'",
-        )
-        .all(),
-    ).toEqual(rows)
-    expect(
-      db.prepare("SELECT connection_id FROM response_continuations").all(),
-    ).toHaveLength(2)
-    expect(
-      db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_response_continuations_expiry'",
-        )
-        .all(),
-    ).toEqual([])
-  } finally {
-    db.close?.()
-  }
-})
-
-test("SQLite failures leave live continuation and shutdown usable", async () => {
-  process.env.COPILOT_API_SQLITE_DB_PATH = dir
-  const connection = seed()
-  await flushResponseContinuations()
-  const next = prepareResponsesContinuation(
-    payload([user, output, result]),
-    connection,
-    "session",
-    false,
-  )
-  expect(next.usedPrevious).toBe(true)
-  next.finish()
-  await closeResponseContinuationStore()
 })
 
 test.each([
@@ -651,12 +520,7 @@ test.each([
     const items = input(checkpoint)
     const full = payload(items)
     const original = structuredClone(full)
-    const next = prepareResponsesContinuation(
-      full,
-      connection,
-      "session",
-      false,
-    )
+    const next = prepareResponsesContinuation(full, connection, false)
     expect(next.usedPrevious).toBe(false)
     expect(next.payload).toBe(full)
     expect(next.payload.previous_response_id).toBeUndefined()
@@ -666,12 +530,12 @@ test.each([
   },
 )
 
-test("continues incrementally after the same compaction ciphertext was sent", async () => {
+test("continues incrementally after the same compaction ciphertext was sent", () => {
   const connection = seed([output, text])
   const checkpoint = compaction("checkpoint")
   const full = payload([checkpoint, user, output, text, result])
   const original = structuredClone(full)
-  const next = prepareResponsesContinuation(full, connection, "session", false)
+  const next = prepareResponsesContinuation(full, connection, false)
   expect(next.usedPrevious).toBe(false)
   expect(next.payload).toBe(full)
   expect(next.payload.previous_response_id).toBeUndefined()
@@ -689,7 +553,6 @@ test("continues incrementally after the same compaction ciphertext was sent", as
       user,
     ]),
     connection,
-    "session",
     false,
   )
   expect(continued.payload).toMatchObject({
@@ -711,7 +574,6 @@ test("continues incrementally after the same compaction ciphertext was sent", as
       { ...result, call_id: "call-2" },
     ]),
     connection,
-    "session",
     false,
   )
   expect(again.payload).toMatchObject({
@@ -719,28 +581,6 @@ test("continues incrementally after the same compaction ciphertext was sent", as
     input: [{ ...result, call_id: "call-2" }],
   })
   again.finish()
-
-  await flushResponseContinuations()
-  const db = await openSqliteDatabase(process.env.COPILOT_API_SQLITE_DB_PATH!)
-  try {
-    const rows = db
-      .prepare("SELECT * FROM response_continuations")
-      .all() as Array<Record<string, unknown>>
-    expect(rows).toEqual([
-      {
-        connection_id: "socket",
-        session_id: "session",
-        response_id: "resp-3",
-        updated_at_ms: expect.any(Number),
-      },
-    ])
-    const stored = JSON.stringify(rows)
-    expect(stored).not.toContain("checkpoint")
-    expect(stored).not.toContain("edited history before the anchor")
-    expect(stored).not.toContain("answer")
-  } finally {
-    db.close?.()
-  }
 })
 
 test("only the latest compaction ciphertext gates continuation", () => {
@@ -749,7 +589,6 @@ test("only the latest compaction ciphertext gates continuation", () => {
   const first = prepareResponsesContinuation(
     payload([compaction("older"), latest, user, output, result]),
     connection,
-    "session",
     false,
   )
   expect(first.usedPrevious).toBe(false)
@@ -766,7 +605,6 @@ test("only the latest compaction ciphertext gates continuation", () => {
       user,
     ]),
     connection,
-    "session",
     false,
   )
   expect(continued.payload).toMatchObject({
@@ -803,19 +641,13 @@ test.each([
     const first = prepareResponsesContinuation(
       payload([compaction("checkpoint"), user, output, result]),
       connection,
-      "session",
       false,
     )
     first.observe(complete("resp-2"))
     first.finish()
     const items = input()
     const full = payload(items)
-    const next = prepareResponsesContinuation(
-      full,
-      connection,
-      "session",
-      false,
-    )
+    const next = prepareResponsesContinuation(full, connection, false)
     expect(next.usedPrevious).toBe(false)
     expect(next.payload).toBe(full)
     expect(next.payload.previous_response_id).toBeUndefined()
@@ -828,12 +660,7 @@ test("an explicit previous response id bypasses compaction checkpoint matching",
   const connection = seed()
   const checkpoint = compaction("checkpoint")
   const established = payload([checkpoint, user, output, result])
-  const first = prepareResponsesContinuation(
-    established,
-    connection,
-    "session",
-    false,
-  )
+  const first = prepareResponsesContinuation(established, connection, false)
   first.observe(complete("resp-2"))
   first.finish()
 
@@ -841,7 +668,7 @@ test("an explicit previous response id bypasses compaction checkpoint matching",
     ...payload([checkpoint, user, output, result, user]),
     previous_response_id: "client-response",
   }
-  const next = prepareResponsesContinuation(full, connection, "session", false)
+  const next = prepareResponsesContinuation(full, connection, false)
   expect(next.payload).toBe(full)
   expect(next.usedPrevious).toBe(false)
   next.finish()
@@ -851,12 +678,7 @@ test("different connections do not share compaction checkpoints", () => {
   const left = new Connection("left")
   const right = new Connection("right")
   for (const connection of [left, right]) {
-    const first = prepareResponsesContinuation(
-      payload(),
-      connection,
-      "session",
-      false,
-    )
+    const first = prepareResponsesContinuation(payload(), connection, false)
     first.observe(complete("resp-1"))
     first.finish()
   }
@@ -869,12 +691,7 @@ test("different connections do not share compaction checkpoints", () => {
     responseId: string,
   ) => {
     const full = payload([checkpoint, user, output, result])
-    const attempt = prepareResponsesContinuation(
-      full,
-      connection,
-      "session",
-      false,
-    )
+    const attempt = prepareResponsesContinuation(full, connection, false)
     expect(attempt.payload).toBe(full)
     expect(attempt.usedPrevious).toBe(false)
     attempt.observe(complete(responseId))
@@ -886,7 +703,6 @@ test("different connections do not share compaction checkpoints", () => {
   const leftNext = prepareResponsesContinuation(
     payload([leftCheckpoint, user, output, result, user]),
     left,
-    "session",
     false,
   )
   expect(leftNext.payload).toMatchObject({
@@ -899,7 +715,6 @@ test("different connections do not share compaction checkpoints", () => {
   const rightNext = prepareResponsesContinuation(
     payload([rightCheckpoint, user, output, result, user]),
     right,
-    "session",
     false,
   )
   expect(rightNext.payload).toMatchObject({
@@ -909,12 +724,7 @@ test("different connections do not share compaction checkpoints", () => {
   rightNext.finish()
 
   const crossed = payload([rightCheckpoint, user, output, result])
-  const leftCross = prepareResponsesContinuation(
-    crossed,
-    left,
-    "session",
-    false,
-  )
+  const leftCross = prepareResponsesContinuation(crossed, left, false)
   expect(leftCross.usedPrevious).toBe(false)
   expect(leftCross.payload).toBe(crossed)
   leftCross.finish()
@@ -935,7 +745,6 @@ test.each([
     const attempt = prepareResponsesContinuation(
       full,
       connection,
-      "session",
       false,
       controller.signal,
     )
@@ -955,7 +764,6 @@ test.each([
     const retry = prepareResponsesContinuation(
       payload([checkpoint, user, output, result, user]),
       connection,
-      "session",
       false,
     )
     expect(retry.usedPrevious).toBe(false)
@@ -976,7 +784,6 @@ test("a compaction item produced by the response is recorded on the next full se
   const turn = prepareResponsesContinuation(
     payload([user, output, result]),
     connection,
-    "session",
     false,
   )
   expect(turn.usedPrevious).toBe(true)
@@ -1000,7 +807,6 @@ test("a compaction item produced by the response is recorded on the next full se
   const unchanged = prepareResponsesContinuation(
     payload([user, output, result, call, user]),
     connection,
-    "session",
     false,
   )
   expect(unchanged.payload).toMatchObject({
@@ -1011,12 +817,7 @@ test("a compaction item produced by the response is recorded on the next full se
   unchanged.finish()
 
   const replay = payload([produced, user, output, result, call, user])
-  const next = prepareResponsesContinuation(
-    replay,
-    connection,
-    "session",
-    false,
-  )
+  const next = prepareResponsesContinuation(replay, connection, false)
   expect(next.usedPrevious).toBe(false)
   expect(next.payload).toBe(replay)
   expect(next.payload.previous_response_id).toBeUndefined()
@@ -1026,7 +827,6 @@ test("a compaction item produced by the response is recorded on the next full se
   const followed = prepareResponsesContinuation(
     payload([produced, user, output, result, call, user]),
     connection,
-    "session",
     false,
   )
   expect(followed.payload).toMatchObject({
@@ -1046,18 +846,12 @@ test.each([
     const first = prepareResponsesContinuation(
       payload([compaction("checkpoint"), user, output, result]),
       connection,
-      "session",
       false,
     )
     first.observe(complete("resp-2"))
     first.finish()
     const full = payload([item, user, output, result, user])
-    const next = prepareResponsesContinuation(
-      full,
-      connection,
-      "session",
-      false,
-    )
+    const next = prepareResponsesContinuation(full, connection, false)
     expect(next.payload).toBe(full)
     expect(next.usedPrevious).toBe(false)
     next.finish()

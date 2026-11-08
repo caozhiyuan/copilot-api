@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto"
 
 import { requestContext } from "~/lib/request-context"
-import { saveResponseContinuation } from "~/lib/responses-continuation/store"
 import type {
   ResponseInputItem,
   ResponseOutputItem,
@@ -95,7 +94,6 @@ function findDeltaStart(
 export function prepareResponsesContinuation<T extends ResponsesPayload>(
   payload: T,
   connection: PooledWebSocketConnection,
-  sessionId: string,
   forceFull: boolean,
   clientSignal?: AbortSignal,
 ) {
@@ -172,11 +170,6 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
           anchor,
           compactionHash,
         })
-      saveResponseContinuation({
-        connectionId: connection.id,
-        sessionId,
-        responseId: event.response.id,
-      })
     },
     finish(): void {
       if (clientSignal?.aborted) states.delete(connection)
