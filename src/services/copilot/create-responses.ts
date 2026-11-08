@@ -29,12 +29,11 @@ import {
   type CopilotQuotaSnapshot,
 } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
+import { getResponsesContinuationSession } from "~/lib/responses-continuation"
 import { setPluginRequestActualModel } from "~/lib/request-context"
 import { state } from "~/lib/state"
-import {
-  createPooledWebSocketStream,
-  createWebSocketUrl,
-} from "~/services/responses-websocket"
+import { createWebSocketUrl } from "~/services/responses-websocket"
+import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
   createResponsesSafeStream,
   encodePoolKeyPart,
@@ -101,6 +100,7 @@ export const createResponses = async (
     const stream = createPooledResponsesWebSocketStream(
       websocketRequest,
       clientSignal,
+      getResponsesContinuationSession(),
     )
     return stream
   }
@@ -213,7 +213,9 @@ export const buildResponsesWebSocketPoolKey = (
       ].join(":")
     : "main"
 
-  return [tokenFingerprint, payload.model, requestId, subagentKey]
+  const sessionId = getResponsesContinuationSession()
+  const affinityKey = sessionId ? `session:${sessionId}` : requestId
+  return [tokenFingerprint, payload.model, affinityKey, subagentKey]
     .map(encodePoolKeyPart)
     .join("|")
 }
@@ -228,12 +230,21 @@ export const getResponsesWebSocketInitiator = (
 const createPooledResponsesWebSocketStream = (
   request: ResponsesWebSocketRequest,
   clientSignal?: AbortSignal,
+  continuationSession?: string,
 ): ResponsesStream =>
   createResponsesSafeStream(
     createClientPreflightStream(
-      createPooledWebSocketStream(request, {
-        ...getResponsesWebSocketOptions(),
-      }),
+      createContinuableResponsesWebSocketStream(
+        request,
+        {
+          ...getResponsesWebSocketOptions(),
+        },
+        {
+          provider: "github-copilot",
+          sessionId: continuationSession,
+          clientSignal,
+        },
+      ),
       clientSignal,
     ),
   )

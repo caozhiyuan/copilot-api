@@ -8,6 +8,7 @@ export interface ResponsesPayload {
   model: string
   instructions?: string | null
   input?: string | Array<ResponseInputItem>
+  previous_response_id?: string | null
   text?: ResponsesTextConfig | null
   tools?: Array<Tool> | null
   tool_choice?: ToolChoiceOptions | ToolChoiceFunction | ToolChoiceCustom
@@ -490,6 +491,7 @@ export interface ResponseErrorEvent {
   type: "error"
   error?: {
     type?: string | null
+    param?: string | null
     code: string | null
     message: string
   }

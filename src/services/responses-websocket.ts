@@ -1,12 +1,22 @@
 import consola from "consola"
+import { randomUUID } from "node:crypto"
 import { getProxyForUrl } from "proxy-from-env"
 import { WebSocket } from "undici"
+
+export interface PooledWebSocketConnection {
+  readonly id: string
+  readonly closed: boolean
+  onClose: (callback: () => void) => void
+}
 
 export interface PooledWebSocketRequest<TPayload> {
   headers: Record<string, string>
   payload: TPayload
   // Refresh request metadata after the socket is ready, immediately before send.
-  preparePayload?: (payload: TPayload) => TPayload
+  preparePayload?: (
+    payload: TPayload,
+    connection?: PooledWebSocketConnection,
+  ) => TPayload
   poolKey: string
   // Optional cancellation for a single pooled request. The Responses and Codex
   // request paths deliberately leave it unset: a client disconnect now drains
@@ -50,6 +60,8 @@ const websocketActiveRequests = new Map<string, number>()
 
 interface PooledWebSocketEntry {
   closed: boolean
+  connection: PooledWebSocketConnection
+  closeCallbacks: Set<() => void>
   idleMessageListener: WebSocketMessageListener | null
   idleTimer: ReturnType<typeof setTimeout> | null
   poolIdleTimeoutMs: number
@@ -193,7 +205,9 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
       options,
     )
     messageStream.start()
-    const payload = request.preparePayload?.(request.payload) ?? request.payload
+    const payload =
+      request.preparePayload?.(request.payload, entry.connection)
+      ?? request.payload
     websocket.send(JSON.stringify(payload))
 
     for await (const data of messageStream.iterable) {
@@ -261,6 +275,17 @@ const createPooledWebSocketEntry = <TPayload, TChunk>(
   })
   const entry: PooledWebSocketEntry = {
     closed: false,
+    connection: {
+      id: randomUUID(),
+      get closed() {
+        return entry.closed
+      },
+      onClose: (callback) => {
+        if (entry.closed) callback()
+        else entry.closeCallbacks.add(callback)
+      },
+    },
+    closeCallbacks: new Set(),
     idleMessageListener: null,
     idleTimer: null,
     poolIdleTimeoutMs: options.poolIdleTimeoutMs,
@@ -404,6 +429,8 @@ const removePooledWebSocketEntry = (
   if (entry.closed) return
 
   entry.closed = true
+  for (const callback of entry.closeCallbacks) callback()
+  entry.closeCallbacks.clear()
   clearPooledWebSocketIdleState(entry)
   entry.websocketPromise.then(closeWebSocket).catch(() => {})
 }

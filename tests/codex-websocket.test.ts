@@ -11,6 +11,11 @@ type ListenerEvent = {
 
 type Listener = (event: ListenerEvent) => void
 
+const { requestContext } = await import("~/lib/request-context")
+const { closeResponseContinuationStore } = await import(
+  "~/lib/response-continuation-store"
+)
+const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
 const originalFetch = globalThis.fetch
 const originalSetTimeout = globalThis.setTimeout
 
@@ -224,6 +229,7 @@ const mockFetchJsonResponse = (body: unknown): void => {
 }
 
 beforeEach(() => {
+  process.env.COPILOT_API_SQLITE_DB_PATH = ":memory:"
   globalThis.WebSocket = MockWebSocket as unknown as typeof globalThis.WebSocket
   MockWebSocket.autoComplete = true
   MockWebSocket.instances = []
@@ -239,12 +245,16 @@ beforeEach(() => {
     fetchMock as unknown as typeof fetch
 })
 
-afterEach(() => {
+afterEach(async () => {
   globalThis.WebSocket = originalWebSocket
   for (const websocket of MockWebSocket.instances) {
     websocket.close()
   }
 
+  await closeResponseContinuationStore()
+  if (originalDbPath === undefined)
+    delete process.env.COPILOT_API_SQLITE_DB_PATH
+  else process.env.COPILOT_API_SQLITE_DB_PATH = originalDbPath
   codexResponsesDependencies.isResponsesApiWebSocketEnabled =
     originalIsResponsesApiWebSocketEnabled
   state.codexAccessToken = originalState.codexAccessToken
@@ -777,3 +787,35 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
 
 const delay = async (milliseconds: number): Promise<void> =>
   await new Promise((resolve) => originalSetTimeout(resolve, milliseconds))
+
+test("Codex websocket automatically continues a stable non-Codex user agent", async () => {
+  await requestContext.run(
+    {
+      traceId: "continuation",
+      startTime: Date.now(),
+      userAgent: "claude-code",
+      sessionAffinity: "root:child",
+      rootSessionId: "root",
+      parentSessionId: undefined,
+    },
+    async () => {
+      const first = { type: "message", role: "user", content: "hello" } as const
+      for (const input of [[first], [first, first]]) {
+        const stream = await forwardCodexResponses(
+          { model: "gpt-5.4", stream: true, input },
+          new Headers({ "user-agent": "claude-code" }),
+          undefined,
+          { transport: "websocket" },
+        )
+        for await (const _chunk of stream as AsyncIterable<unknown>) {
+          /* consume */
+        }
+      }
+    },
+  )
+  expect(MockWebSocket.instances).toHaveLength(1)
+  expect(JSON.parse(MockWebSocket.instances[0].sent[1])).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [{ type: "message", role: "user", content: "hello" }],
+  })
+})

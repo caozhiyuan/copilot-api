@@ -18,13 +18,14 @@ import {
   isResponsesApiWebSocketEnabled as isConfiguredResponsesApiWebSocketEnabled,
 } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
+import { getResponsesContinuationSession } from "~/lib/responses-continuation"
 import { FULL_MODEL_CATALOG_HEADER } from "~/lib/internal-headers"
 import { state } from "~/lib/state"
 import {
-  createPooledWebSocketStream,
   createWebSocketUrl,
   type PooledWebSocketRequest,
 } from "~/services/responses-websocket"
+import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
   createResponsesSafeStream,
   encodePoolKeyPart,
@@ -488,11 +489,11 @@ const buildCodexResponsesWebSocketPoolKey = (
   headers: Record<string, string>,
   baseUrl: string,
 ): string => {
-  // Only Codex clients use thread affinity; other clients keep the full fingerprint.
-  const codexThreadId =
-    /codex/iu.test(headers["user-agent"] ?? "") ?
+  const continuationSession =
+    getResponsesContinuationSession()
+    || (/codex/iu.test(headers["user-agent"] ?? "") ?
       headers["thread-id"]?.trim()
-    : undefined
+    : undefined)
   const authFingerprint = createHash("sha256")
     .update(
       `${state.codexAccessToken ?? "missing-token"}:${state.codexAccountId ?? "missing-account"}`,
@@ -500,8 +501,8 @@ const buildCodexResponsesWebSocketPoolKey = (
     .digest("hex")
     .slice(0, 16)
   const affinityKey =
-    codexThreadId ?
-      `thread:${codexThreadId}`
+    continuationSession ?
+      `session:${continuationSession}`
     : createHash("sha256")
         .update(
           JSON.stringify(
@@ -541,6 +542,7 @@ const forwardCodexResponsesOverWebSocket = (
     websocketRequest,
     clientSignal,
     onResponseHeaders,
+    getResponsesContinuationSession(),
   )
 }
 
@@ -548,25 +550,35 @@ const createCodexResponsesWebSocketStream = (
   request: CodexResponsesWebSocketRequest,
   clientSignal?: AbortSignal,
   onResponseHeaders?: (headers: Headers) => void,
+  continuationSession?: string,
 ): ResponsesStream => {
   const transportConfig = getUpstreamTransportConfig()
   return createResponsesSafeStream(
     createClientPreflightStream(
       filterCodexResponsesWebSocketMetadata(
-        createPooledWebSocketStream(request, {
-          createChunk: createCodexResponsesWebSocketStreamChunk,
-          maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
-          maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
-          getTerminalDisposition: getResponsesStreamTerminalDisposition,
-          openErrorMessage: "Failed to create codex responses websocket",
-          openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
-          poolIdleTimeoutMs: transportConfig.websocketPoolIdleTimeoutMs,
-          streamInactivityTimeoutMs: transportConfig.streamInactivityTimeoutMs,
-          streamErrorMessage:
-            "Upstream connection lost, Codex responses websocket stream error",
-          terminalChunkMissingMessage:
-            "Codex responses websocket ended without a terminal response, retry your request.",
-        }),
+        createContinuableResponsesWebSocketStream(
+          request,
+          {
+            createChunk: createCodexResponsesWebSocketStreamChunk,
+            maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
+            maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
+            getTerminalDisposition: getResponsesStreamTerminalDisposition,
+            openErrorMessage: "Failed to create codex responses websocket",
+            openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
+            poolIdleTimeoutMs: transportConfig.websocketPoolIdleTimeoutMs,
+            streamInactivityTimeoutMs:
+              transportConfig.streamInactivityTimeoutMs,
+            streamErrorMessage:
+              "Upstream connection lost, Codex responses websocket stream error",
+            terminalChunkMissingMessage:
+              "Codex responses websocket ended without a terminal response, retry your request.",
+          },
+          {
+            provider: "codex",
+            sessionId: continuationSession,
+            clientSignal,
+          },
+        ),
         onResponseHeaders,
       ),
       clientSignal,
