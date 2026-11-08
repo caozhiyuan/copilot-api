@@ -16,7 +16,8 @@ export interface ResponseContinuationRecord {
   expiresAt: number
 }
 
-// This table records live-connection metadata, never conversation contents.
+// Keep the latest completed record per connection, without automatic deletion.
+// No conversation contents are stored.
 // It is deliberately not read to restore a chain after reconnect or restart.
 const store = new SqliteDbStore({
   getPath: () =>
@@ -59,9 +60,6 @@ export function saveResponseContinuation(
     const db = await store.getDb()
     const now = Date.now()
     db.prepare(
-      "DELETE FROM response_continuations WHERE expires_at_ms <= ?",
-    ).run(now)
-    db.prepare(
       `
       INSERT INTO response_continuations (
         connection_id, scope_key, session_id, response_id, request_hash,
@@ -84,15 +82,6 @@ export function saveResponseContinuation(
       now,
       record.expiresAt,
     )
-  })
-}
-
-export function deleteResponseContinuation(connectionId: string): void {
-  enqueue(async () => {
-    const db = await store.getDb()
-    db.prepare(
-      "DELETE FROM response_continuations WHERE connection_id = ?",
-    ).run(connectionId)
   })
 }
 

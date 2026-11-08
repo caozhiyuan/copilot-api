@@ -2,7 +2,6 @@ import { createHash } from "node:crypto"
 
 import { requestContext } from "~/lib/request-context"
 import {
-  deleteResponseContinuation,
   saveResponseContinuation,
   type ResponseContinuationRecord,
 } from "~/lib/response-continuation-store"
@@ -52,7 +51,6 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
     trackedConnections.add(connection)
     connection.onClose(() => {
       states.delete(connection)
-      deleteResponseContinuation(connection.id)
     })
   }
 
@@ -142,7 +140,6 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
     finish(): void {
       if (!completed || clientSignal?.aborted) {
         states.delete(connection)
-        deleteResponseContinuation(connection.id)
       }
     },
   }

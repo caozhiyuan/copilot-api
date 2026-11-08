@@ -386,7 +386,7 @@ test("does not retain gaps in done-event output", () => {
   next.finish()
 })
 
-test("SQLite stores only independent live-connection metadata and removes closed chains", async () => {
+test("SQLite retains independent metadata after close, expiry and invalidation", async () => {
   const connection = seed()
   await flushResponseContinuations()
   const db = await openSqliteDatabase(process.env.COPILOT_API_SQLITE_DB_PATH!)
@@ -407,7 +407,32 @@ test("SQLite stores only independent live-connection metadata and removes closed
     ).toEqual([{ name: "response_continuations" }])
     connection.close()
     await flushResponseContinuations()
-    expect(db.prepare("SELECT * FROM response_continuations").all()).toEqual([])
+    expect(db.prepare("SELECT * FROM response_continuations").all()).toEqual(
+      rows,
+    )
+    db.prepare("UPDATE response_continuations SET expires_at_ms = 0").run()
+    seed(new Connection("other"))
+    await flushResponseContinuations()
+    expect(
+      db
+        .prepare(
+          "SELECT connection_id FROM response_continuations ORDER BY connection_id",
+        )
+        .all(),
+    ).toEqual([{ connection_id: "other" }, { connection_id: "socket" }])
+    const next = prepareResponsesContinuation(
+      payload([user, output, result]),
+      connection,
+      "scope",
+      "session",
+      false,
+    )
+    expect(next.usedPrevious).toBe(false)
+    next.finish()
+    await flushResponseContinuations()
+    expect(
+      db.prepare("SELECT connection_id FROM response_continuations").all(),
+    ).toHaveLength(2)
   } finally {
     db.close?.()
   }
