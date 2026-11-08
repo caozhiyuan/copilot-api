@@ -4,6 +4,7 @@ import { HTTPError } from "~/lib/error"
 import type { GoogleGenerateContentPayload } from "~/lib/types/google"
 import type {
   AnthropicMessagesPayload,
+  AnthropicTextBlock,
   AnthropicThinkingBlock,
 } from "~/lib/types/anthropic"
 import {
@@ -25,6 +26,13 @@ const payload = (
 
 describe("Messages to Google translation", () => {
   test("translates system prompts, sampling and consecutive conversation roles without mutating input", () => {
+    const toolAdditionBlock = {
+      type: "tool_addition",
+      tool: {
+        type: "tool_reference",
+        name: "mcp__plugin_tool-search_tool_search__search",
+      },
+    } as unknown as AnthropicTextBlock
     const request = payload({
       system: [
         {
@@ -39,7 +47,18 @@ describe("Messages to Google translation", () => {
       stop_sequences: ["END"],
       messages: [
         { role: "system", content: "Code assistant" },
-        { role: "system", content: [{ type: "text", text: "Use tests" }] },
+        {
+          role: "system",
+          content: [{ type: "text", text: "Use tests" }, toolAdditionBlock],
+        },
+        {
+          role: "system",
+          content: "",
+        },
+        {
+          role: "system",
+          content: [{ type: "text", text: " \n\t" }],
+        },
         { role: "user", content: "one" },
         { role: "user", content: [{ type: "text", text: "two" }] },
         { role: "assistant", content: "answer" },
@@ -50,14 +69,19 @@ describe("Messages to Google translation", () => {
     const translated = translateAnthropicToGoogle(request)
     expect(translated).toMatchObject({
       systemInstruction: {
-        parts: [
-          { text: "Be brief" },
-          { text: "Code assistant" },
-          { text: "Use tests" },
-        ],
+        parts: [{ text: "Be brief" }],
       },
       contents: [
-        { role: "user", parts: [{ text: "one" }, { text: "two" }] },
+        {
+          role: "user",
+          parts: [
+            { text: "Code assistant" },
+            { text: "Use tests" },
+            { text: " \n\t" },
+            { text: "one" },
+            { text: "two" },
+          ],
+        },
         { role: "model", parts: [{ text: "answer" }] },
       ],
       generationConfig: {

@@ -171,16 +171,20 @@ export function translateAnthropicToGoogle(
   const toolSignatures = new Map<string, string>()
 
   for (const message of payload.messages) {
-    if (message.role === "system") {
-      systemParts.push(
-        ...(typeof message.content === "string" ?
-          [{ text: message.content }]
-        : message.content.map((block) => ({ text: block.text }))),
-      )
-      continue
-    }
     const parts: Array<GooglePart> = []
-    if (typeof message.content === "string") {
+    if (message.role === "system") {
+      if (typeof message.content === "string") {
+        if (message.content.length > 0) {
+          parts.push({ text: message.content })
+        }
+      } else {
+        parts.push(
+          ...message.content
+            .filter((block) => block.type === "text" && block.text.length > 0)
+            .map((block) => ({ text: block.text })),
+        )
+      }
+    } else if (typeof message.content === "string") {
       if (message.content) parts.push({ text: message.content })
     } else {
       for (const block of message.content) {

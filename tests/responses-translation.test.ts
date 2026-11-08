@@ -584,6 +584,83 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     ])
   })
 
+  it("translates only text blocks in inline system messages", () => {
+    const toolAdditionBlock = {
+      type: "tool_addition",
+      tool: {
+        type: "tool_reference",
+        name: "mcp__plugin_tool-search_tool_search__search",
+      },
+    }
+    const payload = {
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "system",
+          content: [
+            {
+              type: "text",
+              text: "tools are available",
+            },
+            toolAdditionBlock,
+          ],
+        },
+        {
+          role: "user",
+          content: "hello",
+        },
+        {
+          role: "system",
+          content: [toolAdditionBlock],
+        },
+        {
+          role: "system",
+          content: "",
+        },
+        {
+          role: "system",
+          content: [
+            {
+              type: "text",
+              text: " \n\t",
+            },
+          ],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    const result = translateAnthropicMessagesToResponsesPayload(payload)
+
+    expect(result.input).toEqual([
+      {
+        type: "message",
+        role: "developer",
+        content: [
+          {
+            type: "input_text",
+            text: "tools are available",
+          },
+        ],
+      },
+      {
+        type: "message",
+        role: "user",
+        content: "hello",
+      },
+      {
+        type: "message",
+        role: "developer",
+        content: [
+          {
+            type: "input_text",
+            text: " \n\t",
+          },
+        ],
+      },
+    ])
+  })
+
   it("keeps prompt_cache_key null when no session id is provided", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
       ...samplePayload,

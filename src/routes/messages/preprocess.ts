@@ -32,7 +32,6 @@ import type {
 export const TOOL_REFERENCE_TURN_BOUNDARY = "Tool loaded."
 const SYSTEM_REMINDER_START = "<system-reminder>"
 const SYSTEM_REMINDER_END = "</system-reminder>"
-const SUBAGENT_START_HOOK_ADDITIONAL_PREFIX = "SubagentStart hook additional"
 export const claudeAutoModelSystemPromptStart =
   "You are a security monitor for autonomous AI coding agents."
 export const claudeAutoModelStopSequence = "</block>"
@@ -73,47 +72,19 @@ const ensureSystemReminderText = (text: string): string => {
   return `${SYSTEM_REMINDER_START}\n${text.trim()}\n${SYSTEM_REMINDER_END}`
 }
 
-const normalizeSystemStringForMerge = (
-  text: string,
-): string | Array<AnthropicTextBlock> => {
-  if (!text.startsWith(SUBAGENT_START_HOOK_ADDITIONAL_PREFIX)) {
-    return ensureSystemReminderText(text)
-  }
-
-  const lineBreakMatch = /\r?\n/.exec(text)
-  if (!lineBreakMatch) {
-    return [createTextBlock(ensureSystemReminderText(text))]
-  }
-
-  const firstLine = text.slice(0, lineBreakMatch.index)
-  const rest = text.slice(lineBreakMatch.index + lineBreakMatch[0].length)
-  return [
-    createTextBlock(ensureSystemReminderText(firstLine)),
-    ...(rest.length > 0 ?
-      [createTextBlock(ensureSystemReminderText(rest))]
-    : []),
-  ]
-}
-
 const normalizeSystemContentForMerge = (
   content: string | Array<AnthropicTextBlock>,
 ): string | Array<AnthropicTextBlock> => {
   if (typeof content === "string") {
-    return normalizeSystemStringForMerge(content)
+    return content.length > 0 ? ensureSystemReminderText(content) : []
   }
 
-  return content.flatMap((block) => {
-    const normalized = normalizeSystemStringForMerge(block.text)
-    if (typeof normalized === "string") {
-      return [{ ...block, text: normalized }]
-    }
-
-    return normalized.map((normalizedBlock, index) =>
-      index === normalized.length - 1 ?
-        { ...block, text: normalizedBlock.text }
-      : normalizedBlock,
-    )
-  })
+  return content
+    .filter((block) => block.type === "text" && block.text.length > 0)
+    .map((block) => ({
+      ...block,
+      text: ensureSystemReminderText(block.text),
+    }))
 }
 
 const toSystemTextBlocks = (
@@ -224,6 +195,9 @@ export const normalizeSystemMessages = (
   for (const message of payload.messages) {
     if (message.role === "system") {
       const normalizedContent = normalizeSystemContentForMerge(message.content)
+      if (normalizedContent.length === 0) {
+        continue
+      }
       const previousMessage = normalizedMessages.at(-1)
       if (previousMessage?.role === "user") {
         prependSystemContentToUserMessage(previousMessage, normalizedContent)

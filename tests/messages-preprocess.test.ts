@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
-import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
+import type {
+  AnthropicMessagesPayload,
+  AnthropicTextBlock,
+} from "~/lib/types/anthropic"
 
 const actualConfigModule = await import("~/lib/config")
 
@@ -26,6 +29,17 @@ import {
   sanitizeIdeTools,
   stripToolReferenceTurnBoundary,
 } from "~/routes/messages/preprocess"
+
+const toolAdditionBlock = {
+  type: "tool_addition",
+  tool: {
+    type: "tool_reference",
+    name: "mcp__plugin_tool-search_tool_search__search",
+  },
+  cache_control: {
+    type: "ephemeral",
+  },
+} as unknown as AnthropicTextBlock
 
 beforeEach(() => {
   mockedReasoningEffort = "xhigh"
@@ -212,46 +226,7 @@ describe("normalizeSystemMessages", () => {
     ])
   })
 
-  test("splits SubagentStart hook additional first line into its own content block", () => {
-    const payload: AnthropicMessagesPayload = {
-      model: "gemini-2.5-pro",
-      max_tokens: 128,
-      messages: [
-        {
-          role: "user",
-          content: "hello",
-        },
-        {
-          role: "system",
-          content: "SubagentStart hook additional\nextra reminder",
-        },
-      ],
-    }
-
-    normalizeSystemMessages(payload)
-
-    expect(payload.messages).toEqual([
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "<system-reminder>\nSubagentStart hook additional\n</system-reminder>",
-          },
-          {
-            type: "text",
-            text: "<system-reminder>\nextra reminder\n</system-reminder>",
-          },
-          {
-            type: "text",
-            text: "hello",
-          },
-        ],
-      },
-    ])
-  })
-
-  test("splits SubagentStart hook additional array block and preserves its cache boundary", () => {
+  test("uses only text blocks when merging system messages for unsupported models", () => {
     const payload: AnthropicMessagesPayload = {
       model: "gemini-2.5-pro",
       max_tokens: 128,
@@ -265,7 +240,108 @@ describe("normalizeSystemMessages", () => {
           content: [
             {
               type: "text",
-              text: 'SubagentStart hook additional context: __SUBAGENT_MARKER__{"session_id":"sub-session","agent_id":"agent-1","agent_type":"Explore"}\n\nThe following skills are available',
+              text: "The following tools just became available and are ready to use:\nmcp__plugin_tool-search_tool_search__search",
+            },
+            toolAdditionBlock,
+          ],
+        },
+      ],
+    }
+
+    normalizeSystemMessages(payload)
+
+    expect(payload.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<system-reminder>\nThe following tools just became available and are ready to use:\nmcp__plugin_tool-search_tool_search__search\n</system-reminder>",
+          },
+          {
+            type: "text",
+            text: "hello",
+          },
+        ],
+      },
+    ])
+  })
+
+  test("drops empty and tool-only system messages", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "gemini-2.5-pro",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: "hello",
+        },
+        {
+          role: "system",
+          content: "",
+        },
+        {
+          role: "system",
+          content: [toolAdditionBlock],
+        },
+      ],
+    }
+
+    normalizeSystemMessages(payload)
+
+    expect(payload.messages).toEqual([
+      {
+        role: "user",
+        content: "hello",
+      },
+    ])
+  })
+
+  test("preserves empty system content for Claude models", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-opus-4.6",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "system",
+          content: [],
+        },
+        {
+          role: "system",
+          content: [{ type: "text", text: " " }, toolAdditionBlock],
+        },
+      ],
+    }
+
+    normalizeSystemMessages(payload)
+
+    expect(payload.messages).toEqual([
+      {
+        role: "system",
+        content: [],
+      },
+      {
+        role: "system",
+        content: [{ type: "text", text: " " }, toolAdditionBlock],
+      },
+    ])
+  })
+
+  test("keeps multiline system content in one reminder", () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "gemini-2.5-pro",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: "hello",
+        },
+        {
+          role: "system",
+          content: [
+            {
+              type: "text",
+              text: "first line\n\nThe following skills are available",
               cache_control: {
                 type: "ephemeral",
               },
@@ -283,11 +359,7 @@ describe("normalizeSystemMessages", () => {
         content: [
           {
             type: "text",
-            text: '<system-reminder>\nSubagentStart hook additional context: __SUBAGENT_MARKER__{"session_id":"sub-session","agent_id":"agent-1","agent_type":"Explore"}\n</system-reminder>',
-          },
-          {
-            type: "text",
-            text: "<system-reminder>\nThe following skills are available\n</system-reminder>",
+            text: "<system-reminder>\nfirst line\n\nThe following skills are available\n</system-reminder>",
             cache_control: {
               type: "ephemeral",
             },

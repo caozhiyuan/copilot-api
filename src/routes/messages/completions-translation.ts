@@ -165,7 +165,7 @@ function translateAnthropicMessagesToOpenAI(
       return handleUserMessage(message, capabilities)
     }
     if (message.role === "system") {
-      return [handleInlineSystemMessage(message)]
+      return handleInlineSystemMessage(message)
     }
     return handleAssistantMessage(message, modelId, capabilities)
   })
@@ -191,11 +191,28 @@ function handleSystemPrompt(
   }
 }
 
-function handleInlineSystemMessage(message: AnthropicSystemMessage): Message {
-  return {
-    role: "user",
-    content: mapContent(message.content),
+function handleInlineSystemMessage(
+  message: AnthropicSystemMessage,
+): Array<Message> {
+  if (typeof message.content === "string") {
+    return message.content.length > 0 ?
+        [{ role: "user", content: message.content }]
+      : []
   }
+
+  const textBlocks = message.content.filter(
+    (block) => block.type === "text" && block.text.length > 0,
+  )
+  if (textBlocks.length === 0) {
+    return []
+  }
+
+  return [
+    {
+      role: "user",
+      content: mapContent(textBlocks),
+    },
+  ]
 }
 
 function handleUserMessage(

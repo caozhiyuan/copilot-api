@@ -28,6 +28,7 @@ npx @jeffreycao/copilot-api@latest start
     "ANTHROPIC_BASE_URL": "http://localhost:4141",
     "ANTHROPIC_AUTH_TOKEN": "dummy",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
+    "ENABLE_TOOL_SEARCH": "false",
     "ANTHROPIC_DEFAULT_FABLE_MODEL": "gpt-6.1-sol[1m]",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "gpt-6.1-sol[1m]",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6.1-sol[1m]",
