@@ -154,6 +154,26 @@ describe("Copilot Messages prompt cache forwarding", () => {
     expect(init?.body).toBe(JSON.stringify(payload))
   })
 
+  test("forwards the mid-conversation tool changes beta upstream", async () => {
+    const payload: AnthropicMessagesPayload = {
+      model: "claude-sonnet-5",
+      max_tokens: 16,
+      messages: [{ role: "user", content: "hello" }],
+    }
+
+    await createMessages(
+      payload,
+      "mid-conversation-tool-changes-2026-07-01,unknown-beta",
+      { requestId: "request-tool-changes-test" },
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, init] = fetchMock.mock.calls[0]
+    expect(new Headers(init?.headers).get("anthropic-beta")).toBe(
+      "mid-conversation-tool-changes-2026-07-01",
+    )
+  })
+
   test("does not add a cache beta or TTL when the client has not opted in", async () => {
     const payload: AnthropicMessagesPayload = {
       model: "claude-sonnet-5",
