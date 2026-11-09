@@ -648,11 +648,11 @@ const normalizeWebSocketMessageData = async (
 }
 
 const getWebSocketMessageSize = (data: unknown): number => {
-  if (typeof data === "string") return new TextEncoder().encode(data).byteLength
+  if (typeof data === "string") return Buffer.byteLength(data, "utf8")
   if (data instanceof ArrayBuffer) return data.byteLength
   if (ArrayBuffer.isView(data)) return data.byteLength
   if (isSized(data)) return data.size
-  return new TextEncoder().encode(String(data)).byteLength
+  return Buffer.byteLength(String(data), "utf8")
 }
 
 const isTextReadable = (
