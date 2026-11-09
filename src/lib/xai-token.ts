@@ -2,6 +2,7 @@ import {
   getRawProviderConfig,
   readEditableConfigFromDisk,
   setProviderConfig,
+  type ProviderConfig,
 } from "~/lib/config"
 import { withCredentialFileLock } from "~/lib/credential-store"
 import { createOAuthAccountManager } from "~/lib/oauth-accounts"
@@ -12,6 +13,7 @@ import {
   type XaiCredentials,
 } from "~/lib/oauth/xai"
 import { PATHS } from "~/lib/paths"
+import { requestContext, type RequestContext } from "~/lib/request-context"
 
 function syncXaiProviderConfig(accountId: string, enable = false): void {
   const {
@@ -60,10 +62,37 @@ export function persistXaiCredentials(
 
 const refreshInFlight = new Map<string, Promise<string | null>>()
 const pendingPersistence = new Map<string, XaiCredentials>()
+const requestAccessTokens = new WeakMap<
+  RequestContext,
+  { config: ProviderConfig | null; accessToken: Promise<string | null> }
+>()
 
-// Disk reads make account changes visible without a token cache or timer.
 export async function getXaiAccessToken(): Promise<string | null> {
-  const credentials = await readXaiCredentials()
+  const config = getRawProviderConfig("xai")
+  const request = requestContext.getStore()
+  if (!request) return loadXaiAccessToken(config?.accountId)
+
+  // Alias validation and routing share one lookup. A new request or config
+  // reload reads the current credentials from disk.
+  const cached = requestAccessTokens.get(request)
+  if (cached && cached.config === config) return cached.accessToken
+
+  const accessToken = loadXaiAccessToken(config?.accountId).catch(
+    (error: unknown) => {
+      if (requestAccessTokens.get(request)?.accessToken === accessToken) {
+        requestAccessTokens.delete(request)
+      }
+      throw error
+    },
+  )
+  requestAccessTokens.set(request, { config, accessToken })
+  return accessToken
+}
+
+async function loadXaiAccessToken(
+  accountId: string | undefined,
+): Promise<string | null> {
+  const credentials = await readXaiCredentials(accountId)
   if (!credentials || !isXaiCredentialsExpired(credentials))
     return credentials?.accessToken ?? null
   const key = `${credentials.accountId}:${credentials.refreshToken}`

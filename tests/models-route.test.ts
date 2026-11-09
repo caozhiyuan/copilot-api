@@ -3642,6 +3642,7 @@ describe("model routes", () => {
     "%s falls back to the bundled Codex catalog after 3 seconds waiting for %s",
     async (endpoint, phase) => {
       enableCodexCatalog()
+      state.codexAccountId = "cold-catalog-account"
       const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
       copilotModels.data[0].supported_endpoints = ["/v1/messages"]
       copilotModels.data[0].capabilities.supports.tool_calls = true
@@ -3705,6 +3706,114 @@ describe("model routes", () => {
     },
     5_000,
   )
+
+  test("reuses the raw Codex catalog across routes on timeout for the same account and version", async () => {
+    enableCodexCatalog()
+    state.codexAccountId = "cached-catalog-account"
+    const [model] = createDefaultCodexCatalogModels()
+    codexCatalogModels = [
+      { ...model, slug: "gpt-cached-visible" },
+      { ...model, slug: "gpt-cached-hidden" },
+    ]
+    providerConfigs.codex!.agentsModels = ["gpt-cached-visible"]
+    const headers = { "user-agent": "codex-tui/0.160.0" }
+    const app = createApp(false)
+    const first = await app.request("/codex/v1/models?client=first", {
+      headers,
+    })
+    expect(first.status).toBe(200)
+    expect(
+      ((await first.json()) as CodexModelsResponse).models.map(
+        ({ slug }) => slug,
+      ),
+    ).toEqual(["gpt-cached-visible"])
+
+    // A malformed response cannot replace the last successful snapshot.
+    codexCatalogModels = [{ invalid: true }]
+    const invalid = await app.request("/codex/v1/models?client=first", {
+      headers,
+    })
+    expect(invalid.status).toBe(502)
+
+    codexCatalogModels = [model]
+    codexCatalogMetadata = { huge: "x".repeat(1024 * 1024) }
+    const oversized = await app.request("/codex/v1/models?client=first", {
+      headers,
+    })
+    expect(oversized.status).toBe(502)
+
+    providerConfigs.codex!.agentsModels = ["gpt-cached-hidden"]
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(
+                Object.assign(new Error("catalog body timed out"), {
+                  name: "TimeoutError",
+                }),
+              )
+            },
+          }),
+        ),
+      ),
+    )
+    const fallback = await app.request("/v1/models?client=second", { headers })
+    expect(fallback.status).toBe(200)
+    const slugs = ((await fallback.json()) as CodexModelsResponse).models.map(
+      ({ slug }) => slug,
+    )
+    expect(slugs).toContain("gpt-cached-hidden")
+    expect(slugs).not.toContain("gpt-cached-visible")
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+
+  test("keeps only the last successful Codex client version per account", async () => {
+    enableCodexCatalog()
+    state.codexAccountId = "catalog-isolation-owner"
+    const [model] = createDefaultCodexCatalogModels()
+    codexCatalogModels = [{ ...model, slug: "gpt-cached-account" }]
+    const app = createApp()
+    const headers = { "user-agent": "codex-tui/0.160.0" }
+    const getSlugs = async (version: string) => {
+      const response = await app.request(
+        `/codex/v1/models?client_version=${version}`,
+        { headers },
+      )
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as CodexModelsResponse
+      return body.models.map(({ slug }) => slug)
+    }
+    expect(await getSlugs("0.161.0")).toEqual(["gpt-cached-account"])
+
+    fetchMock.mockImplementation(() =>
+      Promise.reject(
+        Object.assign(new Error("catalog timed out"), {
+          name: "TimeoutError",
+        }),
+      ),
+    )
+    expect(await getSlugs("0.161.0")).toEqual(["gpt-cached-account"])
+
+    for (const [accountId, version] of [
+      ["catalog-isolation-owner", "0.162.0"],
+      ["catalog-isolation-other", "0.161.0"],
+    ]) {
+      state.codexAccountId = accountId
+      const slugs = await getSlugs(version)
+      expect(slugs).toContain("gpt-6.1-sol")
+      expect(slugs).not.toContain("gpt-cached-account")
+    }
+
+    state.codexAccountId = "catalog-isolation-owner"
+    codexCatalogModels = [{ ...model, slug: "gpt-cached-new-version" }]
+    fetchMock.mockImplementationOnce(fetchModels)
+    expect(await getSlugs("0.162.0")).toEqual(["gpt-cached-new-version"])
+    const oldVersion = await getSlugs("0.161.0")
+    expect(oldVersion).toContain("gpt-6.1-sol")
+    expect(oldVersion).not.toContain("gpt-cached-account")
+    expect(await getSlugs("0.162.0")).toEqual(["gpt-cached-new-version"])
+  })
 
   test("copies matching Codex catalog models with provider suffixes", async () => {
     const solCatalogModel = {
