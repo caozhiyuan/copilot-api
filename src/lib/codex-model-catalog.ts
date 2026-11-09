@@ -25,29 +25,18 @@ const DEFAULT_EXCLUDED_MODELS = new Set([
   "mai-code-1.1-flash",
 ])
 
-export function getCodexClientVersion(
-  url: string,
-  headers: Headers,
-): string | undefined {
+export function isModernCodexClient(url: string, headers: Headers): boolean {
   const versions = [
     new URL(url).searchParams.get("client_version"),
     headers.get("version"),
-    headers
-      .get("user-agent")
-      ?.match(/\bcodex[^/\s]*\/(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)/iu)?.[1],
+    headers.get("user-agent")?.match(/\bcodex[^/\s]*\/(\d+\.\d+\.\d+)/iu)?.[1],
   ]
-  return (
-    versions.find(
-      (version) => version && /^\d+\.\d+\.\d+(?:[-+].*)?$/u.test(version),
-    ) ?? undefined
-  )
-}
-
-export function isModernCodexClient(url: string, headers: Headers): boolean {
-  const version = getCodexClientVersion(url, headers)
-  if (!version) return false
-  const [major, minor] = version.split(".", 2)
-  return Number(major) > 0 || Number(minor) >= 160
+  for (const version of versions) {
+    const match = version?.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/u)
+    if (!match) continue
+    return Number(match[1]) > 0 || Number(match[2]) >= 160
+  }
+  return false
 }
 
 export function normalizeCodexInstructions(

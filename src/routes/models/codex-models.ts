@@ -8,7 +8,6 @@ import {
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import {
-  getCodexClientVersion,
   isModernCodexClient,
   serializeCodexModelCatalog,
 } from "~/lib/codex-model-catalog"
@@ -34,7 +33,6 @@ import { createProviderProxyResponse } from "~/services/providers/provider-proxy
 
 const logger = createHandlerLogger("codex-models-handler")
 const CODEX_USER_AGENT_PATTERN = /^codex/iu
-const MAX_CACHED_CODEX_ACCOUNTS = 8
 const lastSuccessfulCatalogs = new Map<
   string,
   { version: string; catalog: CodexModelsResponse }
@@ -115,16 +113,10 @@ export async function handleCodexModelsProxy(
     )
   }
 
-  let upstream: CodexCatalogResult | null
-  try {
-    const result = await loadCodexCatalog(c)
-    if (result instanceof Response) return createProviderProxyResponse(result)
-    upstream = result
-  } catch (error) {
-    if (!isCodexCatalogTimeout(error)) throw error
-    logger.warn("models.codex.catalog_timeout", { error })
-    upstream = { catalog: { models: FALLBACK_CODEX_MODELS } }
-  }
+  const upstream = await loadCodexCatalog(c, {
+    catalog: { models: FALLBACK_CODEX_MODELS },
+  })
+  if (upstream instanceof Response) return createProviderProxyResponse(upstream)
   if (!upstream) {
     return c.json(
       { error: { message: "Invalid Codex model catalog", type: "api_error" } },
@@ -328,16 +320,10 @@ function createCodexCatalogResponse(
   }
   if (upstream?.cacheFor) {
     const { accountId, version } = upstream.cacheFor
-    lastSuccessfulCatalogs.delete(accountId)
     lastSuccessfulCatalogs.set(accountId, {
       version,
       catalog: upstream.catalog,
     })
-    if (lastSuccessfulCatalogs.size > MAX_CACHED_CODEX_ACCOUNTS) {
-      const oldestAccount = lastSuccessfulCatalogs.keys().next().value
-      if (oldestAccount !== undefined)
-        lastSuccessfulCatalogs.delete(oldestAccount)
-    }
   }
   return c.body(body, 200, {
     "Content-Type": "application/json",
@@ -449,10 +435,11 @@ function isCodexCatalogTimeout(error: unknown): boolean {
 
 async function loadCodexCatalog(
   c: Context,
+  fallback: CodexCatalogResult | null = null,
 ): Promise<CodexCatalogResult | Response | null> {
   const accountId = state.codexAccountId
-  const version = getCodexClientVersion(c.req.url, c.req.raw.headers)
-  const cacheFor = accountId && version ? { accountId, version } : undefined
+  // Codex appends its version after the configured catalog query parameters.
+  const version = c.req.queries("client_version")?.at(-1)
 
   try {
     const response = await forwardCodexModels(c.req.url, c.req.raw.headers)
@@ -462,18 +449,22 @@ async function loadCodexCatalog(
       if (isCodexCatalogTimeout(error)) throw error
       return null
     })
-    if (!isCodexModelsResponse(catalog)) return null
-
-    return { catalog, cacheFor }
-  } catch (error) {
-    if (cacheFor && isCodexCatalogTimeout(error)) {
-      const cached = lastSuccessfulCatalogs.get(cacheFor.accountId)
-      if (cached?.version === cacheFor.version) {
-        logger.warn("models.codex.catalog_timeout_cached", { error })
-        return { catalog: cached.catalog }
-      }
+    if (!isCodexModelsResponse(catalog)) {
+      logger.warn("models.codex.catalog_invalid")
+      return null
     }
-    throw error
+
+    return {
+      catalog,
+      cacheFor: accountId && version ? { accountId, version } : undefined,
+    }
+  } catch (error) {
+    if (!isCodexCatalogTimeout(error)) throw error
+    logger.warn("models.codex.catalog_timeout", { error })
+    const cached = accountId ? lastSuccessfulCatalogs.get(accountId) : undefined
+    return cached && cached.version === version ?
+        { catalog: cached.catalog }
+      : fallback
   }
 }
 
@@ -492,9 +483,6 @@ async function tryGetCodexCatalog(
       return null
     }
 
-    if (!result) {
-      logger.warn("models.codex.catalog_invalid")
-    }
     return result
   } catch (error) {
     logger.warn("models.codex.catalog_error", { error })

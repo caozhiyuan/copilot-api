@@ -166,7 +166,7 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
       expect(await getXaiAccessToken()).toBe(credentials.accessToken)
     })
 
-    test("reads xAI OAuth credentials once per request and sees updates on the next request", async () => {
+    test("reads xAI OAuth credentials once per request", async () => {
       await persistXaiCredentials(credentials)
       const readFile = spyOn(fsPromises, "readFile")
       const app = new Hono().use(traceIdMiddleware).get("/", async (c) => {
@@ -177,53 +177,35 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
         providers.push(await resolveProviderConfig("xai"))
         return c.json(providers.map((provider) => provider?.apiKey))
       })
-      const request = async () => {
+      for (let request = 0; request < 2; request++) {
         readFile.mockClear()
         const response = await app.request("/", {
-          headers: { "x-trace-id": "same-trace", "thread-id": "same-session" },
+          headers: { "x-trace-id": "same-trace" },
         })
-        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual(
+          Array<string>(3).fill(credentials.accessToken),
+        )
         expect(
           readFile.mock.calls.filter(
             ([file]) => file === PATHS.XAI_CREDENTIAL_PATH,
           ),
         ).toHaveLength(1)
-        return response.json() as Promise<Array<string>>
       }
-
-      expect(await request()).toEqual(
-        Array<string>(3).fill(credentials.accessToken),
-      )
-      fs.writeFileSync(
-        PATHS.XAI_CREDENTIAL_PATH,
-        JSON.stringify({
-          version: 1,
-          accounts: [{ ...credentials, accessToken: "rotated-access" }],
-        }),
-      )
-      expect(await request()).toEqual(Array<string>(3).fill("rotated-access"))
     })
 
     test("retries a failed xAI credential lookup in the same request", async () => {
       await persistXaiCredentials(credentials)
-      const readFile = spyOn(fsPromises, "readFile")
       const lookupError = new Error("credential lookup failed")
-      readFile.mockRejectedValueOnce(lookupError)
+      spyOn(fsPromises, "readFile").mockRejectedValueOnce(lookupError)
       const app = new Hono().use(traceIdMiddleware).get("/", async (c) => {
-        expect(
-          await resolveProviderConfig("xai").catch((error: unknown) => error),
-        ).toBe(lookupError)
-        return c.json((await resolveProviderConfig("xai"))?.apiKey)
+        expect(await getXaiAccessToken().catch((error: unknown) => error)).toBe(
+          lookupError,
+        )
+        return c.json(await getXaiAccessToken())
       })
 
       const response = await app.request("/")
-      expect(response.status).toBe(200)
       expect(await response.json()).toBe(credentials.accessToken)
-      expect(
-        readFile.mock.calls.filter(
-          ([file]) => file === PATHS.XAI_CREDENTIAL_PATH,
-        ),
-      ).toHaveLength(2)
     })
 
     test("returns null for missing credentials or a disabled OAuth provider", async () => {

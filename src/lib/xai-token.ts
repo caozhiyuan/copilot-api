@@ -68,31 +68,26 @@ const requestAccessTokens = new WeakMap<
 >()
 
 export async function getXaiAccessToken(): Promise<string | null> {
-  const config = getRawProviderConfig("xai")
   const request = requestContext.getStore()
-  if (!request) return loadXaiAccessToken(config?.accountId)
+  if (!request) return loadXaiAccessToken()
 
-  // Alias validation and routing share one lookup. A new request or config
-  // reload reads the current credentials from disk.
+  const config = getRawProviderConfig("xai")
   const cached = requestAccessTokens.get(request)
-  if (cached && cached.config === config) return cached.accessToken
+  if (cached?.config === config) return cached.accessToken
 
-  const accessToken = loadXaiAccessToken(config?.accountId).catch(
-    (error: unknown) => {
-      if (requestAccessTokens.get(request)?.accessToken === accessToken) {
-        requestAccessTokens.delete(request)
-      }
-      throw error
-    },
-  )
+  const accessToken = loadXaiAccessToken()
   requestAccessTokens.set(request, { config, accessToken })
-  return accessToken
+  try {
+    return await accessToken
+  } catch (error) {
+    if (requestAccessTokens.get(request)?.accessToken === accessToken)
+      requestAccessTokens.delete(request)
+    throw error
+  }
 }
 
-async function loadXaiAccessToken(
-  accountId: string | undefined,
-): Promise<string | null> {
-  const credentials = await readXaiCredentials(accountId)
+async function loadXaiAccessToken(): Promise<string | null> {
+  const credentials = await readXaiCredentials()
   if (!credentials || !isXaiCredentialsExpired(credentials))
     return credentials?.accessToken ?? null
   const key = `${credentials.accountId}:${credentials.refreshToken}`
