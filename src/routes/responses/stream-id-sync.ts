@@ -15,10 +15,12 @@
  * via @ai-sdk/openai provider requires the Responses API endpoint.
  */
 
+import type { ResponsesStreamChunk } from "~/lib/responses-stream-event"
 import type {
   ResponseOutputItem,
   ResponseOutputItemAddedEvent,
   ResponseOutputItemDoneEvent,
+  ResponsesResult,
   ResponseStreamEvent,
 } from "~/lib/types/responses"
 
@@ -33,43 +35,76 @@ export const createStreamIdTracker = (): StreamIdTracker => ({
   completedCompactions: new Map(),
 })
 
-export const fixStreamIds = (
-  data: string,
+export const createCopilotResponsesSseMessage = (
+  { data: rawData, event, id: chunkId }: ResponsesStreamChunk,
+  parsed: ResponseStreamEvent | null,
+  tracker: StreamIdTracker,
+) => {
+  const data = rawData ?? ""
+  const id = typeof chunkId === "number" ? String(chunkId) : chunkId
+  if (!data || data === "[DONE]") return { data, event, id }
+  if (parsed === null) throw new TypeError("Invalid Copilot Responses event")
+
+  const normalized = fixStreamIds(parsed, event, tracker)
+  return {
+    data: normalized === parsed ? data : JSON.stringify(normalized),
+    event,
+    id,
+  }
+}
+
+const fixStreamIds = (
+  parsed: ResponseStreamEvent,
   event: string | undefined,
   tracker: StreamIdTracker,
-): string => {
-  if (!data || data === "[DONE]") return data
-  const parsed = JSON.parse(data) as ResponseStreamEvent
+): ResponseStreamEvent => {
+  let normalized = parsed
   if ("response" in parsed) {
-    const { response } = parsed
-    if (tracker.responseId) {
-      response.id = tracker.responseId
-    } else if (response.id) {
-      tracker.responseId = response.id
-    }
-    for (const [outputIndex, item] of (response.output ?? []).entries()) {
-      synchronizeOutputItem(item, outputIndex, tracker)
+    const response = synchronizeResponse(parsed.response, tracker)
+    if (response !== parsed.response) {
+      normalized = { ...parsed, response }
     }
   }
 
-  switch (event ?? parsed.type) {
+  switch (event ?? normalized.type) {
     case "response.output_item.added":
     case "response.output_item.done": {
-      const itemEvent = parsed as
+      const itemEvent = normalized as
         | ResponseOutputItemAddedEvent
         | ResponseOutputItemDoneEvent
-      synchronizeOutputItem(
+      const item = synchronizeOutputItem(
         itemEvent.item,
         itemEvent.output_index,
         tracker,
         itemEvent.type === "response.output_item.done",
       )
-      return JSON.stringify(parsed)
+      return item === itemEvent.item ? itemEvent : { ...itemEvent, item }
     }
     default: {
-      return handleItemId(parsed, tracker)
+      return synchronizeItemId(normalized, tracker)
     }
   }
+}
+
+const synchronizeResponse = (
+  response: ResponsesResult,
+  tracker: StreamIdTracker,
+): ResponsesResult => {
+  const id = tracker.responseId || response.id
+  if (id) tracker.responseId = id
+
+  let output: Array<ResponseOutputItem> | undefined
+  for (const [outputIndex, item] of (response.output ?? []).entries()) {
+    const normalized = synchronizeOutputItem(item, outputIndex, tracker)
+    if (normalized !== item) {
+      output ??= response.output.slice()
+      output[outputIndex] = normalized
+    }
+  }
+
+  return id === response.id && output === undefined ?
+      response
+    : { ...response, id, output: output ?? response.output }
 }
 
 const synchronizeOutputItem = (
@@ -77,7 +112,7 @@ const synchronizeOutputItem = (
   outputIndex: number,
   tracker: StreamIdTracker,
   isDone = false,
-): void => {
+): ResponseOutputItem => {
   let itemId = tracker.outputItems.get(outputIndex) ?? item.id
   if (!itemId) {
     let randomSuffix = ""
@@ -87,7 +122,6 @@ const synchronizeOutputItem = (
     itemId = `oi_${outputIndex}_${randomSuffix.slice(0, 16)}`
   }
 
-  item.id = itemId
   tracker.outputItems.set(outputIndex, itemId)
 
   if (item.type === "compaction") {
@@ -95,23 +129,25 @@ const synchronizeOutputItem = (
     // Clients have already accepted item.done, so preserve its ciphertext.
     const encryptedContent = tracker.completedCompactions.get(outputIndex)
     if (encryptedContent !== undefined) {
-      item.encrypted_content = encryptedContent
+      if (encryptedContent !== item.encrypted_content) {
+        return { ...item, id: itemId, encrypted_content: encryptedContent }
+      }
     } else if (isDone) {
       tracker.completedCompactions.set(outputIndex, item.encrypted_content)
     }
   }
+
+  return item.id === itemId ? item : { ...item, id: itemId }
 }
 
-const handleItemId = (
+const synchronizeItemId = (
   parsed: ResponseStreamEvent & { output_index?: number; item_id?: string },
   tracker: StreamIdTracker,
-): string => {
-  const outputIndex = parsed.output_index
-  if (outputIndex !== undefined) {
-    const itemId = tracker.outputItems.get(outputIndex)
-    if (itemId) {
-      parsed.item_id = itemId
-    }
-  }
-  return JSON.stringify(parsed)
+): typeof parsed => {
+  const { output_index: outputIndex } = parsed
+  const itemId =
+    outputIndex === undefined ? undefined : tracker.outputItems.get(outputIndex)
+  return itemId && itemId !== parsed.item_id ?
+      { ...parsed, item_id: itemId }
+    : parsed
 }

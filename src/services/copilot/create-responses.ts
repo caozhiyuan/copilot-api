@@ -2,12 +2,14 @@ import consola from "consola"
 import { createHash } from "node:crypto"
 
 import type { SubagentMarker } from "~/lib/subagent"
+import type { ResponsesStreamChunk } from "~/lib/responses-stream-event"
 import type {
   CreateResponsesReturn,
   ResponsesPayload,
   ResponsesResult,
   ResponsesStream,
   ResponsesTransport,
+  ResponseStreamEvent,
 } from "~/lib/types/responses"
 import type { PooledWebSocketRequest } from "~/services/responses-websocket"
 
@@ -26,7 +28,6 @@ import {
 import {
   logCopilotQuotaSnapshots,
   logCopilotRateLimits,
-  type CopilotQuotaSnapshot,
 } from "~/lib/copilot-rate-limit"
 import { HTTPError } from "~/lib/error"
 import { getResponsesContinuationSession } from "~/lib/responses-continuation"
@@ -36,6 +37,7 @@ import { createWebSocketUrl } from "~/services/responses-websocket"
 import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
   createResponsesSafeStream,
+  decodeResponsesWebSocketChunk,
   encodePoolKeyPart,
   getResponsesStreamTerminalDisposition,
 } from "~/services/responses-websocket-helpers"
@@ -307,41 +309,19 @@ const getHeaderValue = (
 
 export const createResponsesWebSocketStreamChunk = (
   data: string,
-): { data?: string; event?: string; id?: string } => {
-  if (data === "[DONE]") {
-    return { data }
-  }
+): ResponsesStreamChunk =>
+  decodeResponsesWebSocketChunk(data, normalizeCopilotWebSocketEvent)
 
-  try {
-    const parsed = JSON.parse(data) as {
-      copilot_quota_snapshots?: Record<string, CopilotQuotaSnapshot>
-      id?: unknown
-      type?: unknown
-      error?: {
-        code: string | null
-        message: string
-      }
-      code?: string | null
-      message?: string
-    }
-    if (parsed.type === "response.completed") {
-      logCopilotQuotaSnapshots(parsed.copilot_quota_snapshots)
-    }
-    // Normal events have no payload changes: forward their original bytes.
-    // Error events still expose the legacy top-level code/message fields.
-    let forwardedData = data
-    if (parsed.type === "error" && parsed.error) {
-      consola.warn("Copilot responses websocket stream error:", parsed.error)
-      parsed.code = parsed.error.code
-      parsed.message = parsed.error.message
-      forwardedData = JSON.stringify(parsed)
-    }
-    return {
-      event: typeof parsed.type === "string" ? parsed.type : undefined,
-      data: forwardedData,
-      id: typeof parsed.id === "string" ? parsed.id : undefined,
-    }
-  } catch {
-    return { data }
+const normalizeCopilotWebSocketEvent = (
+  event: ResponseStreamEvent,
+): boolean => {
+  if (event.type === "response.completed") {
+    logCopilotQuotaSnapshots(event.copilot_quota_snapshots)
   }
+  if (event.type !== "error" || !event.error) return false
+
+  consola.warn("Copilot responses websocket stream error:", event.error)
+  event.code = event.error.code
+  event.message = event.error.message
+  return true
 }

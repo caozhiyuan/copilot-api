@@ -2,6 +2,10 @@ import consola from "consola"
 
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { prepareResponsesContinuation } from "~/lib/responses-continuation"
+import {
+  readResponsesStreamEvent,
+  type ResponsesStreamChunk,
+} from "~/lib/responses-stream-event"
 import type {
   ResponsesPayload,
   ResponseStreamEvent,
@@ -16,14 +20,9 @@ let logger: ReturnType<typeof createHandlerLogger> | undefined
 const getLogger = () =>
   (logger ??= createHandlerLogger("responses-websocket-continuation"))
 
-interface StreamChunk {
-  data?: string
-  event?: string
-}
-
 export async function* createContinuableResponsesWebSocketStream<
   TPayload extends ResponsesPayload,
-  TChunk extends StreamChunk,
+  TChunk extends ResponsesStreamChunk,
 >(
   request: PooledWebSocketRequest<TPayload>,
   options: PooledWebSocketStreamOptions<TChunk>,
@@ -102,18 +101,10 @@ function logOutgoingContinuationPayload(payload: ResponsesPayload): void {
   getLogger().debug("full payload")
 }
 
-function parseEvent(chunk: StreamChunk): ResponseStreamEvent | null {
-  if (!chunk.data || chunk.data === "[DONE]") return null
+function parseEvent(chunk: ResponsesStreamChunk): ResponseStreamEvent | null {
   try {
-    const parsed: unknown = JSON.parse(chunk.data)
-    return (
-        parsed
-          && typeof parsed === "object"
-          && "type" in parsed
-          && typeof parsed.type === "string"
-      ) ?
-        (parsed as ResponseStreamEvent)
-      : null
+    const event = readResponsesStreamEvent(chunk)
+    return typeof event?.type === "string" ? event : null
   } catch {
     return null
   }

@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test"
 import { Hono, type Context } from "hono"
 
 import type {
@@ -11,7 +19,10 @@ import type {
 } from "~/lib/types/responses"
 import type { CompletionPayloadOptions } from "~/routes/messages/handler"
 import { MESSAGES_TOOL_CALL_TIPS } from "~/routes/responses/messages-translation"
-import type { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
+import {
+  createResponsesWebSocketStreamChunk,
+  type createResponses as createCopilotResponses,
+} from "~/services/copilot/create-responses"
 
 let responsesApiWebSocketEnabled = true
 
@@ -2267,36 +2278,62 @@ describe("Responses compaction stream IDs", () => {
             },
           },
         ]
+        const instructions = "x".repeat(256 * 1024)
+        const rawFrames = events.map((event) => {
+          const frame =
+            "response" in event ?
+              { ...event, response: { ...event.response, instructions } }
+            : event
+          return ` ${JSON.stringify(frame)} `
+        })
         createResponses.mockImplementation(() =>
           Promise.resolve(
             streamChunks(
-              events.map((event) => ({
-                data: JSON.stringify(event),
-                event: includeEventName ? event.type : undefined,
-              })),
+              rawFrames.map((data, index) => {
+                const chunk =
+                  transport === "websocket" ?
+                    createResponsesWebSocketStreamChunk(data)
+                  : { data, event: events[index].type }
+                return {
+                  ...chunk,
+                  event: includeEventName ? chunk.event : undefined,
+                }
+              }),
             ),
           ),
         )
 
-        const response = await createApp().request("/v1/responses", {
-          body: JSON.stringify({
-            input: [
-              { role: "user", content: "Compact this conversation." },
-              { type: "compaction_trigger" },
-            ],
-            model: "gpt-test",
-            stream: true,
-          }),
-          headers: { "content-type": "application/json" },
-          method: "POST",
-        })
-        const body = await response.text()
+        const parseSpy = spyOn(JSON, "parse")
+        let body: string
+        try {
+          const response = await createApp().request("/v1/responses", {
+            body: JSON.stringify({
+              input: [
+                { role: "user", content: "Compact this conversation." },
+                { type: "compaction_trigger" },
+              ],
+              model: "gpt-test",
+              stream: true,
+            }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          })
+          expect(response.status).toBe(200)
+          body = await response.text()
+          for (const data of rawFrames) {
+            expect(
+              parseSpy.mock.calls.filter(([input]) => input === data),
+            ).toHaveLength(1)
+          }
+        } finally {
+          parseSpy.mockRestore()
+        }
+        expect(body).toContain(`data: ${rawFrames[0]}\n`)
         const forwarded = body
           .split("\n")
           .filter((line) => line.startsWith("data: "))
           .map((line) => JSON.parse(line.slice(6)) as ResponseStreamEvent)
 
-        expect(response.status).toBe(200)
         expect(createResponses.mock.calls[0][1].transport).toBe(transport)
         expect(forwarded.map((event) => event.type)).toEqual(
           events.map((event) => event.type),
