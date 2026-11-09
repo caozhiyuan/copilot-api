@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto"
 
-import type { ServerSentEventMessage } from "fetch-event-stream"
-
 import type {
   CreateResponsesReturn,
   ResponseInputContent,
@@ -11,6 +9,7 @@ import type {
   ResponsesResult,
   ResponsesStream,
   ResponsesTransport,
+  ResponseStreamEvent,
 } from "~/lib/types/responses"
 
 import {
@@ -19,6 +18,10 @@ import {
 } from "~/lib/config"
 import { HTTPError } from "~/lib/error"
 import { getResponsesContinuationSession } from "~/lib/responses-continuation"
+import {
+  readResponsesStreamEvent,
+  type ResponsesStreamChunk,
+} from "~/lib/responses-stream-event"
 import { FULL_MODEL_CATALOG_HEADER } from "~/lib/internal-headers"
 import { state } from "~/lib/state"
 import {
@@ -29,6 +32,7 @@ import { CODEX_API_BASE_URL } from "~/services/codex/constants"
 import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
   createResponsesSafeStream,
+  decodeResponsesWebSocketChunk,
   encodePoolKeyPart,
   getResponsesStreamTerminalDisposition,
 } from "~/services/responses-websocket-helpers"
@@ -52,8 +56,6 @@ const CODEX_RESPONSES_LITE_METADATA_KEY =
 type CodexResponsesWebSocketPayload = ResponsesPayload & {
   type: "response.create"
 }
-
-type ServerSentEventChunk = ServerSentEventMessage
 
 type CodexResponsesWebSocketRequest =
   PooledWebSocketRequest<CodexResponsesWebSocketPayload>
@@ -587,10 +589,10 @@ const createCodexResponsesWebSocketStream = (
 }
 
 const filterCodexResponsesWebSocketMetadata = async function* (
-  source: AsyncIterable<ServerSentEventChunk>,
+  source: AsyncIterable<ResponsesStreamChunk>,
   onResponseHeaders?: (headers: Headers) => void,
-): AsyncGenerator<ServerSentEventChunk, void, unknown> {
-  const pendingChunks: Array<ServerSentEventChunk> = []
+): AsyncGenerator<ResponsesStreamChunk, void, unknown> {
+  const pendingChunks: Array<ResponsesStreamChunk> = []
   let responseStarted = false
 
   for await (const chunk of source) {
@@ -624,24 +626,18 @@ const filterCodexResponsesWebSocketMetadata = async function* (
 }
 
 const getCodexResponseMetadataHeaders = (
-  chunk: ServerSentEventChunk,
+  chunk: ResponsesStreamChunk,
 ): Headers | undefined => {
   if (chunk.event !== CODEX_RESPONSE_METADATA_EVENT) return undefined
-  if (!chunk.data || chunk.data === "[DONE]") return new Headers()
 
-  let parsed: { headers?: unknown }
-  try {
-    parsed = JSON.parse(chunk.data) as typeof parsed
-  } catch {
-    return new Headers()
-  }
-
+  const parsed = readResponsesStreamEvent(chunk) as { headers?: unknown } | null
+  const metadataHeaders = parsed?.headers
   const headers = new Headers()
-  if (typeof parsed.headers !== "object" || parsed.headers === null) {
+  if (typeof metadataHeaders !== "object" || metadataHeaders === null) {
     return headers
   }
 
-  for (const [headerName, headerValue] of Object.entries(parsed.headers)) {
+  for (const [headerName, headerValue] of Object.entries(metadataHeaders)) {
     if (typeof headerValue === "string") {
       try {
         headers.set(headerName, headerValue)
@@ -663,38 +659,15 @@ const createClientPreflightStream = async function* <T>(
 
 export const createCodexResponsesWebSocketStreamChunk = (
   data: string,
-): ServerSentEventChunk => {
-  if (data === "[DONE]") {
-    return { data }
-  }
+): ResponsesStreamChunk =>
+  decodeResponsesWebSocketChunk(data, normalizeCodexWebSocketEvent)
 
-  try {
-    const parsed = JSON.parse(data) as {
-      id?: unknown
-      type?: unknown
-      error?: {
-        message: string
-      }
-      message?: string
-    }
+const normalizeCodexWebSocketEvent = (event: ResponseStreamEvent): boolean => {
+  if (event.type !== "error" || !event.error) return false
 
-    // Preserve upstream JSON for normal events; error messages retain the
-    // top-level field expected by existing Responses clients.
-    let forwardedData = data
-    if (parsed.type === "error" && parsed.error) {
-      consola.warn("Codex responses websocket stream error:", parsed.error)
-      parsed.message = parsed.error.message
-      forwardedData = JSON.stringify(parsed)
-    }
-
-    return {
-      event: typeof parsed.type === "string" ? parsed.type : undefined,
-      data: forwardedData,
-      id: typeof parsed.id === "string" ? parsed.id : undefined,
-    }
-  } catch {
-    return { data }
-  }
+  consola.warn("Codex responses websocket stream error:", event.error)
+  event.message = event.error.message
+  return true
 }
 
 function shouldIncludeHeader(headerName: string): boolean {

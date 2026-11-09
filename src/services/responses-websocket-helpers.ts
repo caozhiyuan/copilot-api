@@ -1,10 +1,13 @@
-import type { ResponseErrorEvent } from "~/lib/types/responses"
+import {
+  decodedResponsesEvent,
+  readResponsesStreamEvent,
+  type ResponsesStreamChunk,
+} from "~/lib/responses-stream-event"
+import type {
+  ResponseErrorEvent,
+  ResponseStreamEvent,
+} from "~/lib/types/responses"
 import type { PooledWebSocketTerminalDisposition } from "~/services/responses-websocket"
-
-export interface ResponsesStreamErrorChunk {
-  data?: string
-  event?: string
-}
 
 export const encodePoolKeyPart = (value: string): string =>
   encodeURIComponent(value)
@@ -19,7 +22,7 @@ export const getErrorMessage = (error: unknown): string => {
 
 export const createResponsesErrorServerSentEventChunk = (
   message: string,
-): ResponsesStreamErrorChunk => {
+): ResponsesStreamChunk => {
   const errorEvent: ResponseErrorEvent = {
     code: null,
     message,
@@ -31,16 +34,44 @@ export const createResponsesErrorServerSentEventChunk = (
   return {
     event: errorEvent.type,
     data: JSON.stringify(errorEvent),
+    [decodedResponsesEvent]: errorEvent,
+  }
+}
+
+export const decodeResponsesWebSocketChunk = (
+  data: string,
+  normalizeEvent: (event: ResponseStreamEvent) => boolean,
+): ResponsesStreamChunk => {
+  if (!data || data === "[DONE]") return { data }
+
+  let parsed: (ResponseStreamEvent & { id?: unknown }) | null
+  try {
+    parsed = JSON.parse(data) as typeof parsed
+  } catch (error) {
+    return error instanceof Error ?
+        { data, [decodedResponsesEvent]: error }
+      : { data }
+  }
+
+  if (parsed === null) return { data, [decodedResponsesEvent]: parsed }
+  try {
+    return {
+      data: normalizeEvent(parsed) ? JSON.stringify(parsed) : data,
+      event: typeof parsed.type === "string" ? parsed.type : undefined,
+      id: typeof parsed.id === "string" ? parsed.id : undefined,
+      [decodedResponsesEvent]: parsed,
+    }
+  } catch {
+    return { data, [decodedResponsesEvent]: parsed }
   }
 }
 
 // A failed response (`error` or `response.failed`) can leave the upstream
 // connection in a state where the next request sent on it fails as well, so
 // the socket is discarded instead of being returned to the pool.
-export const getResponsesStreamTerminalDisposition = (chunk: {
-  data?: string
-  event?: string
-}): PooledWebSocketTerminalDisposition => {
+export const getResponsesStreamTerminalDisposition = (
+  chunk: ResponsesStreamChunk,
+): PooledWebSocketTerminalDisposition => {
   if (!chunk.data || chunk.data === "[DONE]") {
     return "continue"
   }
@@ -48,10 +79,7 @@ export const getResponsesStreamTerminalDisposition = (chunk: {
   try {
     // WebSocket decoders already extracted the event type. Parse only for
     // callers that provide a raw chunk without event metadata.
-    const type =
-      chunk.event === undefined ?
-        (JSON.parse(chunk.data) as { type?: unknown }).type
-      : chunk.event
+    const type = chunk.event ?? readResponsesStreamEvent(chunk)?.type
 
     if (type === "error" || type === "response.failed") {
       return "discard"
@@ -68,7 +96,7 @@ export const getResponsesStreamTerminalDisposition = (chunk: {
 }
 
 export const createResponsesSafeStream = async function* <
-  TChunk extends ResponsesStreamErrorChunk,
+  TChunk extends ResponsesStreamChunk,
 >(
   source: AsyncIterable<TChunk>,
   options: { signal?: AbortSignal } = {},
@@ -79,9 +107,7 @@ export const createResponsesSafeStream = async function* <
     if (options.signal?.aborted || isAbortError(error)) {
       return
     }
-    // The cast relies on TChunk staying shape-compatible with the error chunk
-    // ({ data, event } only, no required extra fields). Keep new call sites
-    // within that constraint.
+    // Stream chunks must allow synthetic errors without extra required fields.
     yield createResponsesErrorServerSentEventChunk(
       getErrorMessage(error),
     ) as TChunk

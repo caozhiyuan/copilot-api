@@ -9,8 +9,8 @@ import type {
   ResponseStreamEvent,
 } from "~/lib/types/responses"
 import {
+  createCopilotResponsesSseMessage,
   createStreamIdTracker,
-  fixStreamIds,
 } from "~/routes/responses/stream-id-sync"
 
 const result = (
@@ -41,7 +41,14 @@ const fix = <T extends ResponseStreamEvent>(
   event: T,
   tracker: ReturnType<typeof createStreamIdTracker>,
   eventName: string | undefined = event.type,
-): T => JSON.parse(fixStreamIds(JSON.stringify(event), eventName, tracker)) as T
+): T =>
+  JSON.parse(
+    createCopilotResponsesSseMessage(
+      { data: JSON.stringify(event), event: eventName },
+      event,
+      tracker,
+    ).data,
+  ) as T
 
 const checkpoint = (id: string, encrypted_content = "final-checkpoint") =>
   ({ id, type: "compaction", encrypted_content }) as const
@@ -268,7 +275,11 @@ describe("Responses stream ID synchronization", () => {
       output_index: 0,
       item: checkpoint("added-id"),
     } as const
-    fixStreamIds(JSON.stringify(event), undefined, tracker)
+    createCopilotResponsesSseMessage(
+      { data: JSON.stringify(event) },
+      event,
+      tracker,
+    )
     const done = fix(
       {
         ...event,
@@ -349,7 +360,38 @@ describe("Responses stream ID synchronization", () => {
 
   test("passes empty data and the SSE completion marker through", () => {
     const tracker = createStreamIdTracker()
-    expect(fixStreamIds("", undefined, tracker)).toBe("")
-    expect(fixStreamIds("[DONE]", undefined, tracker)).toBe("[DONE]")
+    expect(createCopilotResponsesSseMessage({}, null, tracker).data).toBe("")
+    expect(
+      createCopilotResponsesSseMessage({ data: "[DONE]" }, null, tracker).data,
+    ).toBe("[DONE]")
+    expect(() =>
+      createCopilotResponsesSseMessage({ data: "null" }, null, tracker),
+    ).toThrow(TypeError)
+  })
+
+  test("preserves raw JSON while still tracking the first done ciphertext", () => {
+    const tracker = createStreamIdTracker()
+    const done = {
+      type: "response.output_item.done",
+      sequence_number: 0,
+      output_index: 0,
+      item: checkpoint("checkpoint-id", "done-cipher"),
+    } as const
+    const data = ` ${JSON.stringify(done)} `
+    expect(createCopilotResponsesSseMessage({ data }, done, tracker).data).toBe(
+      data,
+    )
+
+    const completed = {
+      type: "response.completed",
+      sequence_number: 1,
+      response: result("response-id", [
+        checkpoint("checkpoint-id", "new-cipher"),
+      ]),
+    } as const
+    expect(fix(completed, tracker).response.output).toEqual([done.item])
+    expect(completed.response.output).toEqual([
+      checkpoint("checkpoint-id", "new-cipher"),
+    ])
   })
 })

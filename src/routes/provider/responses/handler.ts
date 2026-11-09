@@ -13,6 +13,10 @@ import { recordResponsesFirstToken } from "~/lib/first-token"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { requestContext } from "~/lib/request-context"
+import {
+  readResponsesStreamEvent,
+  type ResponsesStreamChunk,
+} from "~/lib/responses-stream-event"
 import { writeSSEIfConnected } from "~/lib/sse"
 import {
   createProviderTokenUsageRecorder,
@@ -283,46 +287,35 @@ const streamProviderResponses = async (
   }
 
   const firstChunk = firstResult.value
-  if (firstChunk.data && firstChunk.data !== "[DONE]") {
-    const event = parseProviderResponsesStreamEvent(firstChunk.data, {
-      normalizeCodex: false,
-      provider: options.provider,
-    })
-    if (event?.type === "error") {
-      const errorEvent = event
-      const statusCode = errorEvent.status_code ?? 500
-      await iterator.return?.()
-      return c.json(
-        {
-          error: {
-            message: errorEvent.message,
-            ...errorEvent.error,
-          },
+  const firstEvent = parseProviderResponsesStreamEvent(
+    firstChunk,
+    options.provider,
+  )
+  if (firstEvent?.type === "error") {
+    const statusCode = firstEvent.status_code ?? 500
+    await iterator.return?.()
+    return c.json(
+      {
+        error: {
+          message: firstEvent.message,
+          ...firstEvent.error,
         },
-        statusCode as ContentfulStatusCode,
-        errorEvent.headers ?? undefined,
-      )
-    }
+      },
+      statusCode as ContentfulStatusCode,
+      firstEvent.headers ?? undefined,
+    )
   }
 
   return streamSSE(c, async (stream) => {
     let usage: UsageTokens = {}
 
-    const writeChunk = async (chunk: typeof firstChunk) => {
+    const writeChunk = async (
+      chunk: ResponsesStreamChunk,
+      event = parseProviderResponsesStreamEvent(chunk, options.provider),
+    ) => {
       debugJson(logger, "Responses stream chunk:", chunk)
-      let responseChunk = chunk
-      let event: ResponseStreamEvent | null = null
-
-      if (chunk.data && chunk.data !== "[DONE]") {
-        event = parseProviderResponsesStreamEvent(chunk.data, {
-          normalizeCodex: options.normalizeCodex,
-          provider: options.provider,
-        })
-        if (event && options.normalizeCodex && chunk.event !== event.type) {
-          // The Codex normalizer observes rate limits but does not modify
-          // the event body. Keep the original JSON instead of re-encoding it.
-          responseChunk = { ...chunk, event: event.type }
-        }
+      if (options.normalizeCodex) {
+        logCodexRateLimitsEvent(event)
       }
 
       recordResponsesFirstToken(event)
@@ -336,15 +329,15 @@ const streamProviderResponses = async (
       await writeSSEIfConnected(
         stream,
         {
-          data: responseChunk.data ?? "",
-          event: responseChunk.event,
+          data: chunk.data ?? "",
+          event: options.normalizeCodex && event ? event.type : chunk.event,
         },
         event?.type,
       )
     }
 
     try {
-      await writeChunk(firstChunk)
+      await writeChunk(firstChunk, firstEvent)
 
       for await (const chunk of {
         [Symbol.asyncIterator]: () => iterator,
@@ -359,22 +352,15 @@ const streamProviderResponses = async (
 }
 
 const parseProviderResponsesStreamEvent = (
-  data: string,
-  options: {
-    normalizeCodex: boolean
-    provider: string
-  },
+  chunk: ResponsesStreamChunk,
+  provider: string,
 ): ResponseStreamEvent | null => {
   try {
-    const parsed = JSON.parse(data) as ResponseStreamEvent
-    if (options.normalizeCodex) {
-      logCodexRateLimitsEvent(parsed)
-    }
-    return parsed
+    return readResponsesStreamEvent(chunk)
   } catch (error) {
     logger.error("provider.responses.parse_chunk_error", {
-      provider: options.provider,
-      data,
+      provider,
+      data: chunk.data,
       error,
     })
     return null

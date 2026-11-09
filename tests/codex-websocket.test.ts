@@ -24,6 +24,7 @@ class MockWebSocket {
   static instances: Array<MockWebSocket> = []
   static responseError: { message: string; statusCode: number } | null = null
   static responseMetadataHeaders: Record<string, unknown> | null = null
+  static responseFrames: Array<string> | null = null
 
   readonly sent: Array<string> = []
   readonly init: { dispatcher?: unknown; headers?: Record<string, string> }
@@ -112,6 +113,12 @@ class MockWebSocket {
         }),
       })
     }
+    if (MockWebSocket.responseFrames) {
+      for (const data of MockWebSocket.responseFrames) {
+        this.emit("message", { data })
+      }
+      return
+    }
     this.emit("message", {
       data: JSON.stringify({
         type: "response.created",
@@ -183,6 +190,7 @@ await mock.module("undici", () => ({
 }))
 
 const { state } = await import("~/lib/state")
+const { traceIdMiddleware } = await import("~/lib/trace")
 const { codexResponsesDependencies, forwardCodexResponses } = await import(
   "~/services/codex/create-responses"
 )
@@ -249,6 +257,7 @@ beforeEach(() => {
   MockWebSocket.instances = []
   MockWebSocket.responseError = null
   MockWebSocket.responseMetadataHeaders = null
+  MockWebSocket.responseFrames = null
   // Other test files mock ~/lib/config with websockets disabled, and Bun keeps
   // module mocks for the whole run, so pin the configured transport here.
   codexResponsesDependencies.isResponsesApiWebSocketEnabled = () => true
@@ -612,6 +621,24 @@ test("provider Responses forwards Codex websocket metadata as HTTP headers", asy
     "x-models-etag": 'W/"cc84b142c478d2fdd3d1257f1a8eefc2"',
     "x-custom-metadata": "forward-me",
   }
+  const instructions = "x".repeat(256 * 1024)
+  const frames = [
+    "response.created",
+    "response.in_progress",
+    "response.completed",
+  ].map(
+    (type, sequence_number) =>
+      ` ${JSON.stringify({
+        type,
+        sequence_number,
+        response: {
+          ...createResponsesResult("gpt-5.4"),
+          instructions,
+          status: type === "response.completed" ? "completed" : "in_progress",
+        },
+      })} `,
+  )
+  MockWebSocket.responseFrames = frames
   providerResponsesHandlerDependencies.resolveProviderConfig = () =>
     Promise.resolve({
       apiKey: "",
@@ -622,8 +649,10 @@ test("provider Responses forwards Codex websocket metadata as HTTP headers", asy
       type: "openai-responses",
     })
 
+  const parseSpy = spyOn(JSON, "parse")
   try {
     const app = new Hono()
+    app.use(traceIdMiddleware)
     app.route("/:provider/v1/responses", providerResponsesRoutes)
     const response = await app.request("/codex/v1/responses", {
       body: JSON.stringify({
@@ -631,7 +660,10 @@ test("provider Responses forwards Codex websocket metadata as HTTP headers", asy
         model: "gpt-5.4",
         stream: true,
       }),
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "thread-id": "large-lifecycle",
+      },
       method: "POST",
     })
 
@@ -660,7 +692,14 @@ test("provider Responses forwards Codex websocket metadata as HTTP headers", asy
     expect(responseCompletedIndex).toBeGreaterThan(responseCreatedIndex)
     expect(body).toContain("response.completed")
     expect(body).not.toContain("codex.response.metadata")
+    for (const data of frames) {
+      expect(body).toContain(`data: ${data}\n`)
+      expect(
+        parseSpy.mock.calls.filter(([input]) => input === data),
+      ).toHaveLength(1)
+    }
   } finally {
+    parseSpy.mockRestore()
     providerResponsesHandlerDependencies.resolveProviderConfig =
       originalResolveProviderConfig
   }
