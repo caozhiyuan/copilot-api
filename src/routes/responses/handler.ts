@@ -38,6 +38,7 @@ import type {
 import { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
 
 import { handleResponsesViaMessages } from "./messages-handler"
+import { createResponsesStreamTerminalTracker } from "./stream-failure"
 import {
   createCopilotResponsesSseMessage,
   createStreamIdTracker,
@@ -246,6 +247,7 @@ export const handleResponses = async (c: Context) => {
     logger.debug("Forwarding native Responses stream")
     return streamSSE(c, async (stream) => {
       const idTracker = createStreamIdTracker()
+      const terminalTracker = createResponsesStreamTerminalTracker(publicModel)
       let usage: UsageTokens = {}
       const iterator = response[Symbol.asyncIterator]()
 
@@ -255,6 +257,7 @@ export const handleResponses = async (c: Context) => {
         }) {
           debugJson(logger, "Responses stream chunk:", chunk)
           const parsedEvent = readResponsesStreamEvent(chunk)
+          terminalTracker.observe(parsedEvent)
           recordResponsesFirstToken(parsedEvent)
           if (
             parsedEvent?.type === "response.completed"
@@ -278,6 +281,13 @@ export const handleResponses = async (c: Context) => {
       } finally {
         await iterator.return?.()
         recordUsage(usage)
+
+        const failure = terminalTracker.finalize(idTracker.responseId)
+        if (failure && (await writeSSEIfConnected(stream, failure.sse))) {
+          logger.warn(
+            `Responses stream ended without a terminal event; sent response.failed (${failure.code}: ${failure.message})`,
+          )
+        }
       }
     })
   }

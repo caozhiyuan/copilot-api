@@ -1030,6 +1030,29 @@ describe("request event lifecycle", () => {
               sequence_number: 3,
               text: "Hello",
             },
+            {
+              type: "response.completed",
+              sequence_number: 4,
+              response: {
+                id: "resp-1",
+                object: "response",
+                created_at: 0,
+                model: "gpt-plugin-test",
+                output: [],
+                output_text: "Hello",
+                status: "completed",
+                error: null,
+                incomplete_details: null,
+                instructions: null,
+                metadata: null,
+                parallel_tool_calls: false,
+                temperature: null,
+                tool_choice: "auto",
+                tools: [],
+                top_p: null,
+                usage: null,
+              },
+            },
           ]) {
             reads++
             yield { event: event.type, data: JSON.stringify(event) }
@@ -1049,7 +1072,7 @@ describe("request event lifecycle", () => {
       const text = await response.text()
       await plugins.flush()
       expect(text).toContain('"delta":"Hello"')
-      expect(reads).toBe(4)
+      expect(reads).toBe(5)
       expect(tokens).toHaveLength(1)
       expect(tokens[0].firstTokenMs).toBeGreaterThanOrEqual(0)
       expect(ends[0]).toMatchObject({
