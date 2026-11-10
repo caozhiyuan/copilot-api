@@ -44,7 +44,10 @@ import type {
   ResponseStreamEvent,
   ResponsesStream,
 } from "~/lib/types/responses"
-import { forwardCodexResponses } from "~/services/codex/create-responses"
+import {
+  forwardCodexResponses,
+  resolveCodexResponsesTransport,
+} from "~/services/codex/create-responses"
 import { getModels as getCodexModels } from "~/services/codex/get-models"
 import { createResponsesSafeStream } from "~/services/responses-websocket-helpers"
 import { createResponsesHttpEventStream } from "~/services/responses-http"
@@ -160,14 +163,23 @@ export async function handleProviderResponsesForProvider(
   const modelConfig = providerConfig.models?.[payload.model]
 
   if (providerConfig.name === "codex") {
+    const transport = resolveCodexResponsesTransport()
+    const streamAbort =
+      payload.stream && transport === "websocket" ?
+        new AbortController()
+      : undefined
     const upstreamResponse = await forwardCodexResponses(
       payload,
       c.req.raw.headers,
       providerConfig.baseUrl,
       {
-        clientSignal: c.req.raw.signal,
+        clientSignal:
+          streamAbort ?
+            AbortSignal.any([c.req.raw.signal, streamAbort.signal])
+          : c.req.raw.signal,
         onResponseHeaders: (headers) =>
           forwardProviderResponseHeaders(c, headers),
+        transport,
       },
     )
     const recordUsage = createProviderResponsesUsageRecorder(
@@ -182,6 +194,7 @@ export async function handleProviderResponsesForProvider(
         normalizeCodex: true,
         provider,
         recordUsage,
+        streamAbort,
       })
     }
 
@@ -274,6 +287,7 @@ const streamProviderResponses = async (
     normalizeCodex: boolean
     provider: string
     recordUsage: (usage: UsageTokens) => void
+    streamAbort?: AbortController
   },
 ): Promise<Response> => {
   const iterator = upstreamResponse[Symbol.asyncIterator]()
@@ -307,6 +321,7 @@ const streamProviderResponses = async (
   }
 
   return streamSSE(c, async (stream) => {
+    stream.onAbort(() => options.streamAbort?.abort())
     let usage: UsageTokens = {}
 
     const writeChunk = async (

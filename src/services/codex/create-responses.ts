@@ -50,6 +50,7 @@ const CODEX_RESPONSE_METADATA_EVENT = "codex.response.metadata"
 const RESPONSE_CREATED_EVENT = "response.created"
 const CODEX_USER_AGENT_VERSION_PATTERN =
   /\bcodex(?:[-_ ][a-z0-9]+)*\/(\d+\.\d+\.\d+)(?:-[a-z0-9.-]+)?(?:\+[a-z0-9.-]+)?(?=$|[\s;)])/iu
+const CODEX_RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite"
 const CODEX_RESPONSES_LITE_METADATA_KEY =
   "ws_request_header_x_openai_internal_codex_responses_lite"
 
@@ -89,7 +90,7 @@ const STRIPPED_CODEX_REQUEST_HEADERS = new Set([
 const STRIPPED_CODEX_WEBSOCKET_HEADERS = new Set([
   "accept",
   "content-type",
-  "x-openai-internal-codex-responses-lite",
+  CODEX_RESPONSES_LITE_HEADER,
   "x-codex-turn-state",
 ])
 
@@ -284,9 +285,7 @@ export function prepareCodexResponsesWebSocketRequest(
         ...websocketPayload.client_metadata,
         "x-codex-ws-stream-request-start-ms": Date.now().toString(),
       }
-      const responsesLite = requestHeaders.get(
-        "x-openai-internal-codex-responses-lite",
-      )
+      const responsesLite = requestHeaders.get(CODEX_RESPONSES_LITE_HEADER)
       if (responsesLite) {
         clientMetadata[CODEX_RESPONSES_LITE_METADATA_KEY] = responsesLite
       } else {
@@ -535,17 +534,25 @@ const forwardCodexResponsesOverWebSocket = (
   clientSignal?: AbortSignal,
   onResponseHeaders?: (headers: Headers) => void,
 ): ResponsesStream => {
+  const continuationSession = getResponsesContinuationSession()
   const websocketRequest = prepareCodexResponsesWebSocketRequest(
     payload,
     requestHeaders,
     baseUrl,
   )
+  // The Codex client uses the interrupt frame with Responses Lite.
+  if (
+    continuationSession
+    && requestHeaders.get(CODEX_RESPONSES_LITE_HEADER) === "true"
+  ) {
+    websocketRequest.interruptSignal = clientSignal
+  }
 
   return createCodexResponsesWebSocketStream(
     websocketRequest,
     clientSignal,
     onResponseHeaders,
-    getResponsesContinuationSession(),
+    continuationSession,
   )
 }
 
