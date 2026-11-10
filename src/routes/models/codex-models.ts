@@ -18,6 +18,7 @@ import {
 import { createHandlerLogger } from "~/lib/logger"
 import { stripInternalRequestHeaders } from "~/lib/internal-headers"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { state } from "~/lib/state"
 import { getSyntheticCodexModels } from "~/routes/models/codex-model-candidates"
 import type {
   CodexModel,
@@ -32,6 +33,10 @@ import { createProviderProxyResponse } from "~/services/providers/provider-proxy
 
 const logger = createHandlerLogger("codex-models-handler")
 const CODEX_USER_AGENT_PATTERN = /^codex/iu
+const lastSuccessfulCatalogs = new Map<
+  string,
+  { version: string; catalog: CodexModelsResponse }
+>()
 
 const DEFAULT_REASONING_EFFORTS: Array<CodexReasoningEffort> = [
   "high",
@@ -76,6 +81,7 @@ interface MergedCodexModelsOptions {
 
 interface CodexCatalogResult {
   catalog: CodexModelsResponse
+  cacheFor?: { accountId: string; version: string }
 }
 
 export function isCodexUserAgent(userAgent: string | undefined): boolean {
@@ -85,7 +91,7 @@ export function isCodexUserAgent(userAgent: string | undefined): boolean {
 /**
  * Proxies a models request to the fixed Codex upstream models endpoint.
  * Returns a 404 JSON response when the codex provider is unavailable.
- * Falls back to the bundled catalog when the upstream request or body times out.
+ * Falls back to the last successful or bundled catalog after a timeout.
  * Pass `resolvedProviderConfig` when the caller already resolved the codex
  * provider to avoid a second resolve.
  */
@@ -107,29 +113,17 @@ export async function handleCodexModelsProxy(
     )
   }
 
-  let catalog: unknown
-  try {
-    const upstreamResponse = await forwardCodexModels(
-      c.req.url,
-      c.req.raw.headers,
-    )
-    if (!upstreamResponse.ok)
-      return createProviderProxyResponse(upstreamResponse)
-    catalog = await upstreamResponse.json().catch((error: unknown) => {
-      if (isCodexCatalogTimeout(error)) throw error
-      return null
-    })
-  } catch (error) {
-    if (!isCodexCatalogTimeout(error)) throw error
-    logger.warn("models.codex.catalog_timeout", { error })
-    catalog = { models: FALLBACK_CODEX_MODELS }
-  }
-  if (!isCodexModelsResponse(catalog)) {
+  const upstream = await loadCodexCatalog(c, {
+    catalog: { models: FALLBACK_CODEX_MODELS },
+  })
+  if (upstream instanceof Response) return createProviderProxyResponse(upstream)
+  if (!upstream) {
     return c.json(
       { error: { message: "Invalid Codex model catalog", type: "api_error" } },
       502,
     )
   }
+  const { catalog } = upstream
   const providerConfig = getRawProviderConfig("codex")
   return createCodexCatalogResponse(
     c,
@@ -143,6 +137,7 @@ export async function handleCodexModelsProxy(
     },
     new Set(getProviderAgentModels(providerConfig)),
     FALLBACK_CODEX_MODELS[0].model_messages,
+    upstream,
   )
 }
 
@@ -285,6 +280,7 @@ export async function handleMergedCodexModels(
     response,
     explicitSlugs,
     template.model_messages ?? FALLBACK_CODEX_MODELS[0].model_messages,
+    upstreamCatalogResult,
   )
 }
 
@@ -293,6 +289,7 @@ function createCodexCatalogResponse(
   response: CodexModelsResponse,
   explicitSlugs: ReadonlySet<string>,
   fallback: CodexModel["model_messages"],
+  upstream: CodexCatalogResult | null,
 ): Response {
   if (getConfig().codexMultiAgentV1 === true) {
     response = {
@@ -320,6 +317,13 @@ function createCodexCatalogResponse(
       },
       502,
     )
+  }
+  if (upstream?.cacheFor) {
+    const { accountId, version } = upstream.cacheFor
+    lastSuccessfulCatalogs.set(accountId, {
+      version,
+      catalog: upstream.catalog,
+    })
   }
   return c.body(body, 200, {
     "Content-Type": "application/json",
@@ -429,6 +433,41 @@ function isCodexCatalogTimeout(error: unknown): boolean {
   )
 }
 
+async function loadCodexCatalog(
+  c: Context,
+  fallback: CodexCatalogResult | null = null,
+): Promise<CodexCatalogResult | Response | null> {
+  const accountId = state.codexAccountId
+  // Codex appends its version after the configured catalog query parameters.
+  const version = c.req.queries("client_version")?.at(-1)
+
+  try {
+    const response = await forwardCodexModels(c.req.url, c.req.raw.headers)
+    if (!response.ok) return response
+
+    const catalog: unknown = await response.json().catch((error: unknown) => {
+      if (isCodexCatalogTimeout(error)) throw error
+      return null
+    })
+    if (!isCodexModelsResponse(catalog)) {
+      logger.warn("models.codex.catalog_invalid")
+      return null
+    }
+
+    return {
+      catalog,
+      cacheFor: accountId && version ? { accountId, version } : undefined,
+    }
+  } catch (error) {
+    if (!isCodexCatalogTimeout(error)) throw error
+    logger.warn("models.codex.catalog_timeout", { error })
+    const cached = accountId ? lastSuccessfulCatalogs.get(accountId) : undefined
+    return cached && cached.version === version ?
+        { catalog: cached.catalog }
+      : fallback
+  }
+}
+
 async function tryGetCodexCatalog(
   c: Context,
 ): Promise<CodexCatalogResult | null> {
@@ -436,22 +475,15 @@ async function tryGetCodexCatalog(
     const providerConfig = await resolveProviderConfig("codex")
     if (!providerConfig) return null
 
-    const response = await forwardCodexModels(c.req.url, c.req.raw.headers)
-    if (!response.ok) {
+    const result = await loadCodexCatalog(c)
+    if (result instanceof Response) {
       logger.warn("models.codex.catalog_fallback", {
-        statusCode: response.status,
+        statusCode: result.status,
       })
       return null
     }
 
-    const body = await response.json()
-    if (!isCodexModelsResponse(body)) {
-      logger.warn("models.codex.catalog_invalid")
-      return null
-    }
-    return {
-      catalog: body,
-    }
+    return result
   } catch (error) {
     logger.warn("models.codex.catalog_error", { error })
     return null

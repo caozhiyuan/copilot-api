@@ -3642,6 +3642,7 @@ describe("model routes", () => {
     "%s falls back to the bundled Codex catalog after 3 seconds waiting for %s",
     async (endpoint, phase) => {
       enableCodexCatalog()
+      state.codexAccountId = "cold-catalog-account"
       const copilotModels = createCopilotModels(["claude-sonnet-4.6"])
       copilotModels.data[0].supported_endpoints = ["/v1/messages"]
       copilotModels.data[0].capabilities.supports.tool_calls = true
@@ -3705,6 +3706,91 @@ describe("model routes", () => {
     },
     5_000,
   )
+
+  test("reuses the raw Codex catalog across routes on timeout for the same account and version", async () => {
+    enableCodexCatalog()
+    state.codexAccountId = "cached-catalog-account"
+    const [model] = createDefaultCodexCatalogModels()
+    codexCatalogModels = [
+      { ...model, slug: "gpt-cached-visible" },
+      { ...model, slug: "gpt-cached-hidden" },
+    ]
+    providerConfigs.codex!.agentsModels = ["gpt-cached-visible"]
+    const options = { headers: { "user-agent": "codex-tui/0.160.0" } }
+    const app = createApp(false)
+    const catalogUrl =
+      "/codex/v1/models?client=first&client_version=0.161.0&client_version=0.160.0"
+    expect((await app.request(catalogUrl, options)).status).toBe(200)
+
+    // Failed responses leave the last successful snapshot available.
+    codexCatalogModels = [{ invalid: true }]
+    expect((await app.request(catalogUrl, options)).status).toBe(502)
+    codexCatalogModels = [model]
+    codexCatalogMetadata = { huge: "x".repeat(1024 * 1024) }
+    expect((await app.request(catalogUrl, options)).status).toBe(502)
+
+    providerConfigs.codex!.agentsModels = ["gpt-cached-hidden"]
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(
+              Object.assign(new Error("catalog body timed out"), {
+                name: "TimeoutError",
+              }),
+            )
+          },
+        }),
+      ),
+    )
+    const fallback = await app.request(
+      "/v1/models?client=second&client_version=0.160.0",
+      options,
+    )
+    expect(fallback.status).toBe(200)
+    const slugs = ((await fallback.json()) as CodexModelsResponse).models.map(
+      ({ slug }) => slug,
+    )
+    expect(slugs).toContain("gpt-cached-hidden")
+    expect(slugs).not.toContain("gpt-cached-visible")
+  })
+
+  test("keeps only the last successful Codex client version per account", async () => {
+    enableCodexCatalog()
+    const [model] = createDefaultCodexCatalogModels()
+    codexCatalogModels = [{ ...model, slug: "gpt-cached-account" }]
+    const app = createApp()
+    const headers = { "user-agent": "codex-tui/0.161.0" }
+    const getSlugs = async (
+      query: string,
+      accountId = "catalog-isolation-owner",
+    ) => {
+      state.codexAccountId = accountId
+      const response = await app.request(`/codex/v1/models${query}`, {
+        headers,
+      })
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as CodexModelsResponse
+      return body.models.map(({ slug }) => slug)
+    }
+    const firstVersion = "?client_version=0.161.0"
+    const nextVersion = "?client_version=0.162.0"
+    expect(await getSlugs(firstVersion)).toEqual(["gpt-cached-account"])
+    fetchMock.mockRejectedValue(
+      Object.assign(new Error("catalog timed out"), { name: "TimeoutError" }),
+    )
+    expect(await getSlugs(firstVersion)).toEqual(["gpt-cached-account"])
+    expect(await getSlugs(firstVersion, "other-account")).toContain(
+      "gpt-6.1-sol",
+    )
+    expect(await getSlugs(nextVersion)).toContain("gpt-6.1-sol")
+    expect(await getSlugs("")).toContain("gpt-6.1-sol")
+
+    fetchMock.mockImplementationOnce(fetchModels)
+    expect(await getSlugs(nextVersion)).toEqual(["gpt-cached-account"])
+    expect(await getSlugs(firstVersion)).toContain("gpt-6.1-sol")
+    expect(await getSlugs(nextVersion)).toEqual(["gpt-cached-account"])
+  })
 
   test("copies matching Codex catalog models with provider suffixes", async () => {
     const solCatalogModel = {

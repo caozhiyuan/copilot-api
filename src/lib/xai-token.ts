@@ -2,6 +2,7 @@ import {
   getRawProviderConfig,
   readEditableConfigFromDisk,
   setProviderConfig,
+  type ProviderConfig,
 } from "~/lib/config"
 import { withCredentialFileLock } from "~/lib/credential-store"
 import { createOAuthAccountManager } from "~/lib/oauth-accounts"
@@ -12,6 +13,7 @@ import {
   type XaiCredentials,
 } from "~/lib/oauth/xai"
 import { PATHS } from "~/lib/paths"
+import { requestContext, type RequestContext } from "~/lib/request-context"
 
 function syncXaiProviderConfig(accountId: string, enable = false): void {
   const {
@@ -60,9 +62,31 @@ export function persistXaiCredentials(
 
 const refreshInFlight = new Map<string, Promise<string | null>>()
 const pendingPersistence = new Map<string, XaiCredentials>()
+const requestAccessTokens = new WeakMap<
+  RequestContext,
+  { config: ProviderConfig | null; accessToken: Promise<string | null> }
+>()
 
-// Disk reads make account changes visible without a token cache or timer.
 export async function getXaiAccessToken(): Promise<string | null> {
+  const request = requestContext.getStore()
+  if (!request) return loadXaiAccessToken()
+
+  const config = getRawProviderConfig("xai")
+  const cached = requestAccessTokens.get(request)
+  if (cached?.config === config) return cached.accessToken
+
+  const accessToken = loadXaiAccessToken()
+  requestAccessTokens.set(request, { config, accessToken })
+  try {
+    return await accessToken
+  } catch (error) {
+    if (requestAccessTokens.get(request)?.accessToken === accessToken)
+      requestAccessTokens.delete(request)
+    throw error
+  }
+}
+
+async function loadXaiAccessToken(): Promise<string | null> {
   const credentials = await readXaiCredentials()
   if (!credentials || !isXaiCredentialsExpired(credentials))
     return credentials?.accessToken ?? null
