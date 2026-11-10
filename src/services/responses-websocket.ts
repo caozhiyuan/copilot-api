@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto"
 import { getProxyForUrl } from "proxy-from-env"
 import { WebSocket } from "undici"
 
+import type { ResponsesStreamChunk } from "~/lib/responses-stream-event"
+import { createResponsesWebSocketInterruption } from "~/services/responses-websocket-interrupt"
+
 export interface PooledWebSocketConnection {
   readonly id: string
   readonly closed: boolean
@@ -10,6 +13,8 @@ export interface PooledWebSocketConnection {
 
 export interface PooledWebSocketRequest<TPayload> {
   headers: Record<string, string>
+  // A downstream disconnect can interrupt an active response on a pooled socket.
+  interruptSignal?: AbortSignal
   payload: TPayload
   // Refresh request metadata after the socket is ready, immediately before send.
   preparePayload?: (
@@ -17,12 +22,7 @@ export interface PooledWebSocketRequest<TPayload> {
     connection?: PooledWebSocketConnection,
   ) => TPayload
   poolKey: string
-  // Optional cancellation for a single pooled request. The Responses and Codex
-  // request paths deliberately leave it unset: a client disconnect now drains
-  // the upstream instead of cancelling it, because aborting here closes the
-  // shared pooled socket and invalidates it for other in-flight requests.
-  // Keep this hook for callers that own the lifecycle end to end (and for a
-  // future bounded drain deadline).
+  // Transport cancellation closes the underlying socket.
   signal?: AbortSignal
   url: string
 }
@@ -60,6 +60,7 @@ const websocketActiveRequests = new Map<string, number>()
 interface PooledWebSocketEntry {
   id: string
   closed: boolean
+  interruption?: ReturnType<typeof createResponsesWebSocketInterruption>
   idleMessageListener: WebSocketMessageListener | null
   idleTimer: ReturnType<typeof setTimeout> | null
   poolIdleTimeoutMs: number
@@ -174,54 +175,104 @@ export const createWebSocketUrl = (url: string): string => {
   return websocketUrl.toString()
 }
 
-export const createPooledWebSocketStream = <TPayload, TChunk>(
+export const createPooledWebSocketStream = <
+  TPayload,
+  TChunk extends ResponsesStreamChunk,
+>(
   request: PooledWebSocketRequest<TPayload>,
   options: PooledWebSocketStreamOptions<TChunk>,
 ): AsyncIterable<TChunk> => runPooledWebSocketRequest(request, options)
 
-const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
+const runPooledWebSocketRequest = async function* <
+  TPayload,
+  TChunk extends ResponsesStreamChunk,
+>(
   request: PooledWebSocketRequest<TPayload>,
   options: PooledWebSocketStreamOptions<TChunk>,
 ): AsyncIterable<TChunk> {
+  const { interruptSignal, poolKey } = request
+  if (interruptSignal?.aborted) return
+  if (interruptSignal && getPooledWebSocketActiveRequestCount(poolKey) === 1) {
+    const waiting = websocketPool
+      .get(poolKey)
+      ?.interruption?.waitForRelease(interruptSignal)
+    if (waiting) {
+      await waiting
+      if (interruptSignal.aborted) return
+    }
+  }
   throwIfAborted(request.signal)
   const { entry, pooled } = getPooledWebSocketRequestTarget(request, options)
-  const release = acquirePooledWebSocketEntry(request.poolKey, entry, pooled)
+  const release = acquirePooledWebSocketEntry(poolKey, entry, pooled)
+  let interruption: PooledWebSocketEntry["interruption"]
   let messageStream: WebSocketMessageStream | null = null
   let reusable = false
+  let terminalPendingAck = false
 
   try {
     const websocket = await getReadyPooledWebSocket(
-      request.poolKey,
+      poolKey,
       entry,
       pooled,
       options,
     )
     throwIfAborted(request.signal)
+    if (interruptSignal?.aborted) {
+      reusable = true
+      return
+    }
+    if (pooled && interruptSignal) {
+      interruption = createResponsesWebSocketInterruption(
+        interruptSignal,
+        (message) => websocket.send(message),
+      )
+    }
+    const failureSignal = interruption?.failureSignal
+    const streamSignal =
+      request.signal && failureSignal ?
+        AbortSignal.any([request.signal, failureSignal])
+      : (request.signal ?? failureSignal)
     messageStream = createWebSocketMessageStream(
       websocket,
-      request.signal,
+      streamSignal,
       options,
     )
     messageStream.start()
     const payload =
       request.preparePayload?.(request.payload, entry) ?? request.payload
     websocket.send(JSON.stringify(payload))
+    entry.interruption = interruption
+    interruption?.start()
 
     for await (const data of messageStream.iterable) {
+      if (failureSignal?.aborted) return
       const chunk = options.createChunk(data)
+      if (interruption?.observe(chunk)) {
+        if (failureSignal?.aborted) return
+        if (terminalPendingAck && !interruption.awaitingAcknowledgement) {
+          reusable = true
+          return
+        }
+        continue
+      }
       const disposition = options.getTerminalDisposition(chunk)
       const isTerminal = disposition !== "continue"
       if (isTerminal) {
         messageStream.complete()
-        reusable = disposition === "reuse"
+        interruption?.complete()
+        terminalPendingAck =
+          disposition === "reuse"
+          && interruption?.awaitingAcknowledgement === true
+        reusable = disposition === "reuse" && !terminalPendingAck
         // Drop the socket from the pool before yielding so no later request
         // can pick it up while the consumer is still handling this chunk.
-        if (!reusable) removePooledWebSocketEntry(request.poolKey, entry)
+        if (disposition === "discard")
+          removePooledWebSocketEntry(poolKey, entry)
       }
 
       yield chunk
 
-      if (isTerminal) {
+      if (isTerminal && !terminalPendingAck) {
         return
       }
     }
@@ -231,8 +282,11 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
     throw toError(error)
   } finally {
     messageStream?.dispose()
-    if (!reusable) removePooledWebSocketEntry(request.poolKey, entry)
+    if (interruption?.failureSignal.aborted) reusable = false
+    entry.interruption = undefined
+    if (!reusable) removePooledWebSocketEntry(poolKey, entry)
     release(reusable)
+    interruption?.dispose()
   }
 }
 
