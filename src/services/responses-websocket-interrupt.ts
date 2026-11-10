@@ -5,7 +5,7 @@ import {
   type ResponsesStreamChunk,
 } from "~/lib/responses-stream-event"
 
-const INTERRUPT_TIMEOUT_MS = 3000
+const INTERRUPT_TIMEOUT_MS = 10000
 
 export function createResponsesWebSocketInterruption(
   clientSignal: AbortSignal,

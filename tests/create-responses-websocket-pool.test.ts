@@ -1471,7 +1471,7 @@ const sendInterruptibleTurn = (
           openTimeoutMs: 100,
           poolIdleTimeoutMs: 1000,
           streamErrorMessage: "stream failed",
-          streamInactivityTimeoutMs: 10000,
+          streamInactivityTimeoutMs: 30000,
           terminalChunkMissingMessage: "terminal missing",
         },
         { sessionId: getContinuationRequestId(), clientSignal },
@@ -1606,6 +1606,7 @@ test.each(["rejected", "wrong-id", "timeout", "closed", "missing-id"] as const)(
       expect(continuationRequest(1, 0).input).toEqual(input)
     })
   },
+  15000,
 )
 
 test("a client that cancels while waiting for interruption sends no response", async () => {

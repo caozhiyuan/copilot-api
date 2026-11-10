@@ -71,6 +71,8 @@ enabled = false
 > [!NOTE]
 > `name` must be set to `"OpenAI"`.
 >
+> **GitHub Copilot users must set `instant_interrupt = false` under `[features]`.** This keeps new messages on Codex's regular steering path, allowing the current model response to finish and preserving the opportunity for WebSocket reuse and incremental continuation.
+>
 > **Multi-Agent V1:** Enable [`codexMultiAgentV1`](configuration.md#codex-multi-agent-compatibility) in the gateway configuration or Desktop Advanced config to mix GPT and third-party models with plain text task messages, avoiding V2's encrypted message compatibility constraints. V2 remains the default; start a new session after switching.
 >
 > **GitHub Copilot with Multi-Agent V2:** Enable `defer_mailbox_preemption = true` under `[features]` to prevent subagent messages from preempting the current response.
