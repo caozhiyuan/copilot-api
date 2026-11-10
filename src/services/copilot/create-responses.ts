@@ -235,10 +235,7 @@ const createPooledResponsesWebSocketStream = (
   createResponsesSafeStream(
     createClientPreflightStream(
       createContinuableResponsesWebSocketStream(
-        {
-          ...request,
-          interruptSignal: continuationSession ? clientSignal : undefined,
-        },
+        request,
         {
           ...getResponsesWebSocketOptions(),
         },

@@ -218,8 +218,14 @@ const {
   ResponsesWebSocketOpenTimeoutError,
   WebSocketMessageBuffer,
 } = await import("~/services/responses-websocket")
-const { createResponsesSafeStream, getResponsesStreamTerminalDisposition } =
-  await import("~/services/responses-websocket-helpers")
+const {
+  createResponsesSafeStream,
+  decodeResponsesWebSocketChunk,
+  getResponsesStreamTerminalDisposition,
+} = await import("~/services/responses-websocket-helpers")
+const { createContinuableResponsesWebSocketStream } = await import(
+  "~/services/responses-websocket-continuation"
+)
 
 const originalState = {
   accountType: state.accountType,
@@ -1323,6 +1329,35 @@ test("Copilot websocket continues an existing stable pool key and isolates agent
   expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
 })
 
+test("Copilot cancellation drains the old stream while the follow-up uses a separate connection", async () => {
+  await withAffinity("copilot-cancel", async () => {
+    await sendContinuationTurn([...continuationInput])
+    MockWebSocket.autoComplete = false
+    const controller = new AbortController()
+    const socket = MockWebSocket.instances[0]
+    const input = continuationHistory()
+    const cancelled = sendContinuationTurn(input, controller.signal)
+    await waitFor(() => socket.sent.length === 2)
+    socket.emitMessage(
+      JSON.stringify({ type: "response.created", response: { id: "resp-2" } }),
+    )
+    controller.abort()
+
+    MockWebSocket.autoComplete = true
+    await sendContinuationTurn(input)
+    expect(socket.sent).toHaveLength(2)
+    expect(socket.readyState).toBe(MockWebSocket.OPEN)
+    expect(MockWebSocket.instances).toHaveLength(2)
+    expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
+
+    socket.completeLatestResponse()
+    await cancelled
+    await sendContinuationTurn(input)
+    expect(continuationRequest(0, 2).previous_response_id).toBe("resp-1")
+    expect(MockWebSocket.instances).toHaveLength(2)
+  })
+})
+
 test.each([
   { code: "previous_response_not_found" },
   { code: "unsupported_parameter", param: "previous_response_id" },
@@ -1407,6 +1442,43 @@ test("HTTP requests keep full input even when the websocket has a continuation",
   }
 })
 
+// Exercise the shared interrupt-capable transport independently of Copilot.
+const sendInterruptibleTurn = (
+  input: ResponsesPayload["input"],
+  clientSignal = new AbortController().signal,
+) =>
+  collectStreamChunks(
+    createResponsesSafeStream(
+      createContinuableResponsesWebSocketStream(
+        {
+          headers: {},
+          payload: {
+            type: "response.create",
+            model: "gpt-continuation",
+            input,
+          },
+          poolKey: `interrupt-${getContinuationRequestId()}`,
+          interruptSignal: clientSignal,
+          url: "wss://responses.example/responses",
+        },
+        {
+          createChunk: (data) =>
+            decodeResponsesWebSocketChunk(data, () => false),
+          getTerminalDisposition: getResponsesStreamTerminalDisposition,
+          maxBufferedBytes: 65536,
+          maxBufferedMessages: 32,
+          openErrorMessage: "open failed",
+          openTimeoutMs: 100,
+          poolIdleTimeoutMs: 1000,
+          streamErrorMessage: "stream failed",
+          streamInactivityTimeoutMs: 10000,
+          terminalChunkMissingMessage: "terminal missing",
+        },
+        { sessionId: getContinuationRequestId(), clientSignal },
+      ),
+    ),
+  )
+
 const interruptedResponseId = "resp-interrupted"
 const interruptAcknowledgement = {
   type: "response.interrupt.accepted",
@@ -1430,12 +1502,12 @@ const emitInterruptibleResponseCreated = (socket: MockWebSocket) => {
 }
 
 const startInterruptibleTurn = async () => {
-  await sendContinuationTurn([...continuationInput])
+  await sendInterruptibleTurn([...continuationInput])
   MockWebSocket.autoComplete = false
   const controller = new AbortController()
   const socket = MockWebSocket.instances[0]
   const input = continuationHistory()
-  const stream = sendContinuationTurn(input, controller.signal)
+  const stream = sendInterruptibleTurn(input, controller.signal)
   await waitFor(() => socket.sent.length === 2)
   expect(continuationRequest(0, 1).previous_response_id).toBe("resp-1")
   return { controller, socket, input, stream }
@@ -1453,7 +1525,7 @@ test.each(["acknowledgement-first", "terminal-first"] as const)(
       }
       controller.abort()
       const followup = { ...continuationInput[0], content: "follow-up" }
-      const resent = sendContinuationTurn([...input, followup])
+      const resent = sendInterruptibleTurn([...input, followup])
       if (order === "terminal-first") {
         await delay(0)
         expect(socket.sent).toHaveLength(2)
@@ -1503,7 +1575,7 @@ test.each(["rejected", "wrong-id", "timeout", "closed", "missing-id"] as const)(
       controller.abort()
       if (mode !== "missing-id") await waitFor(() => socket.sent.length === 3)
       MockWebSocket.autoComplete = true
-      const resent = sendContinuationTurn(input)
+      const resent = sendInterruptibleTurn(input)
       await delay(0)
       expect(MockWebSocket.instances).toHaveLength(1)
 
@@ -1544,7 +1616,7 @@ test("a client that cancels while waiting for interruption sends no response", a
     await waitFor(() => socket.sent.length === 3)
 
     const waiter = new AbortController()
-    const waiting = sendContinuationTurn(input, waiter.signal)
+    const waiting = sendInterruptibleTurn(input, waiter.signal)
     await delay(0)
     waiter.abort()
     expect(await waiting).toEqual([])
@@ -1565,7 +1637,7 @@ test("retries full input if the last completed ID is unavailable after interrupt
 
     MockWebSocket.continuationError = { code: "previous_response_not_found" }
     MockWebSocket.autoComplete = true
-    const resent = sendContinuationTurn(input)
+    const resent = sendInterruptibleTurn(input)
     await delay(0)
     expect(MockWebSocket.instances).toHaveLength(1)
     socket.emitMessage(JSON.stringify(interruptAcknowledgement))

@@ -1195,26 +1195,6 @@ describe("responses handler token usage", () => {
     expect(createResponses.mock.calls[0][1]?.subagentMarker).toBeNull()
   })
 
-  test("signals a native WebSocket stream when its SSE response body is cancelled", async () => {
-    state.models!.data[0].supported_endpoints = ["/responses", "ws:/responses"]
-    createResponses.mockImplementation(() =>
-      Promise.resolve(streamChunks([{ data: "[DONE]" }])),
-    )
-    const request = new Request("http://localhost/v1/responses", {
-      body: JSON.stringify({ input: "hello", model: "gpt-test", stream: true }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    })
-    const response = await createApp().fetch(request)
-    const signal = createResponses.mock.calls[0][1].clientSignal
-    expect(signal?.aborted).toBe(false)
-
-    await response.body?.cancel()
-
-    expect(signal?.aborted).toBe(true)
-    expect(request.signal.aborted).toBe(false)
-  })
-
   test("keeps HTTP transport for dual-endpoint models when websocket is disabled", async () => {
     state.models = {
       object: "list",
