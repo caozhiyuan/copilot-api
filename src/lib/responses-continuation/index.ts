@@ -98,7 +98,6 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
   clientSignal?: AbortSignal,
 ) {
   const previous = states.get(connection)
-  states.delete(connection)
   const { input, previous_response_id: explicitPrevious } = payload
   const eligible =
     Array.isArray(input)
@@ -128,6 +127,7 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
     : payload
   // Track only opaque anchors and item roles, never output text.
   const outputItems = new Map<number, OutputMarker>()
+  let candidate: ContinuationState | undefined
   const markOutput = (item: ContinuationItem): OutputMarker => ({
     anchor: getAnchor(item),
     assistant: isAssistantItem(item),
@@ -165,14 +165,15 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
         else if (!item.assistant) anchor = undefined
       }
       if (anchor)
-        states.set(connection, {
+        candidate = {
           responseId: event.response.id,
           anchor,
           compactionHash,
-        })
+        }
     },
     finish(): void {
-      if (clientSignal?.aborted) states.delete(connection)
+      if (candidate && !connection.closed && !clientSignal?.aborted)
+        states.set(connection, candidate)
     },
   }
 }

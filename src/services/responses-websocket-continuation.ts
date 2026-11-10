@@ -64,28 +64,29 @@ export async function* createContinuableResponsesWebSocketStream<
       options,
     )
 
-    try {
-      for await (const chunk of source) {
-        const event = parseEvent(chunk)
-        if (
-          attempt?.usedPrevious
-          && !responseStarted
-          && !forceFull
-          && isPreviousResponseMiss(event)
-          && !clientSignal?.aborted
-        ) {
-          retry = true
-          consola.debug(
-            "Responses websocket continuation unavailable; retrying full input",
-          )
-          break
-        }
-        if (event) attempt?.observe(event)
-        if (event?.type.startsWith("response.")) responseStarted = true
-        yield chunk
+    for await (const chunk of source) {
+      const event = parseEvent(chunk)
+      if (
+        attempt?.usedPrevious
+        && !responseStarted
+        && !forceFull
+        && isPreviousResponseMiss(event)
+        && !clientSignal?.aborted
+      ) {
+        retry = true
+        consola.debug(
+          "Responses websocket continuation unavailable; retrying full input",
+        )
+        break
       }
-    } finally {
-      attempt?.finish()
+      if (event) attempt?.observe(event)
+      if (event?.type.startsWith("response.")) responseStarted = true
+      try {
+        yield chunk
+      } finally {
+        // The pool still holds this request's socket while yielding completion.
+        if (event?.type === "response.completed") attempt?.finish()
+      }
     }
     if (!retry) return
     forceFull = true

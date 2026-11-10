@@ -17,13 +17,10 @@ export interface PooledWebSocketRequest<TPayload> {
     connection?: PooledWebSocketConnection,
   ) => TPayload
   poolKey: string
-  // Optional cancellation for a single pooled request. The Responses and Codex
-  // request paths deliberately leave it unset: a client disconnect now drains
-  // the upstream instead of cancelling it, because aborting here closes the
-  // shared pooled socket and invalidates it for other in-flight requests.
-  // Keep this hook for callers that own the lifecycle end to end (and for a
-  // future bounded drain deadline).
+  // Transport cancellation closes the underlying socket.
   signal?: AbortSignal
+  // A disconnected client lets one successor wait while the request drains.
+  drainSignal?: AbortSignal
   url: string
 }
 
@@ -56,8 +53,10 @@ type WebSocketMessageListener = (event: { data: unknown }) => void
 
 const websocketPool = new Map<string, PooledWebSocketEntry>()
 const websocketActiveRequests = new Map<string, number>()
+const CANCELLED_REQUEST_DRAIN_WAIT_MS = 250
 
 interface PooledWebSocketEntry {
+  activeRequest?: { drainSignal: AbortSignal; wakeWaiter?: () => void }
   id: string
   closed: boolean
   idleMessageListener: WebSocketMessageListener | null
@@ -183,9 +182,20 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
   request: PooledWebSocketRequest<TPayload>,
   options: PooledWebSocketStreamOptions<TChunk>,
 ): AsyncIterable<TChunk> {
+  const { drainSignal, poolKey } = request
+  if (drainSignal?.aborted) return
+  const wait =
+    drainSignal && waitForCancelledPooledRequest(poolKey, drainSignal)
+  if (wait) await wait
+  if (drainSignal?.aborted) return
   throwIfAborted(request.signal)
   const { entry, pooled } = getPooledWebSocketRequestTarget(request, options)
-  const release = acquirePooledWebSocketEntry(request.poolKey, entry, pooled)
+  const release = acquirePooledWebSocketEntry(
+    poolKey,
+    entry,
+    pooled,
+    drainSignal,
+  )
   let messageStream: WebSocketMessageStream | null = null
   let reusable = false
 
@@ -197,6 +207,10 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
       options,
     )
     throwIfAborted(request.signal)
+    if (drainSignal?.aborted) {
+      reusable = true
+      return
+    }
     messageStream = createWebSocketMessageStream(
       websocket,
       request.signal,
@@ -234,6 +248,31 @@ const runPooledWebSocketRequest = async function* <TPayload, TChunk>(
     if (!reusable) removePooledWebSocketEntry(request.poolKey, entry)
     release(reusable)
   }
+}
+
+const waitForCancelledPooledRequest = (
+  poolKey: string,
+  drainSignal: AbortSignal,
+): Promise<void> | undefined => {
+  const active = websocketPool.get(poolKey)?.activeRequest
+  if (
+    !active?.drainSignal.aborted
+    || active.wakeWaiter
+    || getPooledWebSocketActiveRequestCount(poolKey) !== 1
+  ) {
+    return
+  }
+
+  const { promise, resolve } = Promise.withResolvers<void>()
+  const wake = () => resolve()
+  active.wakeWaiter = wake
+  const timer = setTimeout(wake, CANCELLED_REQUEST_DRAIN_WAIT_MS)
+  unrefTimer(timer)
+  drainSignal.addEventListener("abort", wake, { once: true })
+  return promise.finally(() => {
+    clearTimeout(timer)
+    drainSignal.removeEventListener("abort", wake)
+  })
 }
 
 const getPooledWebSocketRequestTarget = <TPayload, TChunk>(
@@ -305,10 +344,12 @@ const acquirePooledWebSocketEntry = (
   poolKey: string,
   entry: PooledWebSocketEntry,
   pooled: boolean,
+  drainSignal?: AbortSignal,
 ): ((reusable: boolean) => void) => {
   clearPooledWebSocketIdleState(entry)
   incrementPooledWebSocketActiveRequestCount(poolKey)
   entry.requestCount += 1
+  if (pooled && drainSignal) entry.activeRequest = { drainSignal }
 
   let released = false
   return (reusable) => {
@@ -316,6 +357,8 @@ const acquirePooledWebSocketEntry = (
     released = true
     entry.requestCount -= 1
     decrementPooledWebSocketActiveRequestCount(poolKey)
+    entry.activeRequest?.wakeWaiter?.()
+    entry.activeRequest = undefined
 
     if (!reusable) {
       removePooledWebSocketEntry(poolKey, entry)

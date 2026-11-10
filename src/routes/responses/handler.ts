@@ -232,19 +232,27 @@ export const handleResponses = async (c: Context) => {
     getResponsesRequestOptions(payload)
   const initiator = subagentMarker ? "agent" : inferredInitiator
 
+  const streamAbort =
+    payload.stream && responsesTransport === "websocket" ?
+      new AbortController()
+    : undefined
   const response = await responsesHandlerDependencies.createResponses(payload, {
     vision,
     initiator,
     subagentMarker,
     requestId,
     sessionId: fallbackSessionId,
-    clientSignal: c.req.raw.signal,
+    clientSignal:
+      streamAbort ?
+        AbortSignal.any([c.req.raw.signal, streamAbort.signal])
+      : c.req.raw.signal,
     transport: responsesTransport,
   })
 
   if (isStreamingRequested(payload) && isResponsesStream(response)) {
     logger.debug("Forwarding native Responses stream")
     return streamSSE(c, async (stream) => {
+      if (streamAbort) stream.onAbort(() => streamAbort.abort())
       const idTracker = createStreamIdTracker()
       let usage: UsageTokens = {}
       const iterator = response[Symbol.asyncIterator]()

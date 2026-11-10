@@ -1288,7 +1288,10 @@ const continuationHistory = () => [
 ]
 const getContinuationRequestId = () =>
   requestContext.getStore()?.sessionAffinity ?? "continuation"
-const sendContinuationTurn = async (input: ResponsesPayload["input"]) =>
+const sendContinuationTurn = async (
+  input: ResponsesPayload["input"],
+  clientSignal = new AbortController().signal,
+) =>
   collectStreamChunks(
     (await createResponses(
       { model: "gpt-continuation", stream: true, input },
@@ -1297,6 +1300,7 @@ const sendContinuationTurn = async (input: ResponsesPayload["input"]) =>
         initiator: "user",
         transport: "websocket",
         vision: false,
+        clientSignal,
       },
     )) as AsyncIterable<unknown>,
   )
@@ -1402,38 +1406,78 @@ test("HTTP requests keep full input even when the websocket has a continuation",
   }
 })
 
-test("cancelled websocket requests can be resent immediately with full input", async () => {
+test("the next request resumes on the same socket after a cancelled stream drains", async () => {
   await withAffinity("cancel-and-resend", async () => {
     await sendContinuationTurn([...continuationInput])
     MockWebSocket.autoComplete = false
     const controller = new AbortController()
     const input = continuationHistory()
-    const cancelled = collectStreamChunks(
-      (await createResponses(
-        { model: "gpt-continuation", stream: true, input },
-        {
-          requestId: getContinuationRequestId(),
-          initiator: "user",
-          transport: "websocket",
-          vision: false,
-          clientSignal: controller.signal,
-        },
-      )) as AsyncIterable<unknown>,
-    )
-    await waitFor(() => MockWebSocket.instances[0]?.sent.length === 2)
+    const socket = MockWebSocket.instances[0]
+    const cancelled = sendContinuationTurn(input, controller.signal)
+    await waitFor(() => socket.sent.length === 2)
     expect(continuationRequest(0, 1).previous_response_id).toBe("resp-1")
+
     controller.abort()
-    const resent = sendContinuationTurn(input)
-    await waitFor(() => MockWebSocket.instances[1]?.sent.length === 1)
-    expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
-    expect(continuationRequest(1, 0).input).toEqual(input)
-    MockWebSocket.instances[1].completeLatestResponse()
-    await resent
-    MockWebSocket.instances[0].completeLatestResponse()
+    const followup = { ...continuationInput[0], content: "follow-up" }
+    const resent = sendContinuationTurn([...input, followup])
+    await delay(0)
+    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(socket.sent).toHaveLength(2)
+
+    socket.completeLatestResponse()
     await cancelled
+    await waitFor(() => socket.sent.length === 3)
+    expect(continuationRequest(0, 2)).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [...continuationInput, followup],
+    })
+    socket.completeLatestResponse()
+    expect((await resent).at(-1)?.data).toContain('"id":"resp-3"')
+    expect(MockWebSocket.instances).toHaveLength(1)
+  })
+})
+
+test("the next request falls back to full input when the cancelled stream is slow to drain", async () => {
+  await withAffinity("cancelled-drain-timeout", async () => {
+    await sendContinuationTurn([...continuationInput])
+    MockWebSocket.autoComplete = false
+    const controller = new AbortController()
+    const input = continuationHistory()
+    const socket = MockWebSocket.instances[0]
+    const cancelled = sendContinuationTurn(input, controller.signal)
+    await waitFor(() => socket.sent.length === 2)
+    controller.abort()
+
     MockWebSocket.autoComplete = true
     await sendContinuationTurn(input)
-    expect(continuationRequest(0, 2).previous_response_id).toBeUndefined()
-    expect(continuationRequest(0, 2).input).toEqual(input)
+    expect(MockWebSocket.instances).toHaveLength(2)
+    expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
+    expect(continuationRequest(1, 0).input).toEqual(input)
+    expect(socket.readyState).toBe(MockWebSocket.OPEN)
+    socket.completeLatestResponse()
+    await cancelled
+  })
+})
+
+test("cancelling a request while it waits for a draining socket skips its send", async () => {
+  await withAffinity("cancelled-drain-waiter", async () => {
+    await sendContinuationTurn([...continuationInput])
+    MockWebSocket.autoComplete = false
+    const controller = new AbortController()
+    const input = continuationHistory()
+    const socket = MockWebSocket.instances[0]
+    const cancelled = sendContinuationTurn(input, controller.signal)
+    await waitFor(() => socket.sent.length === 2)
+    controller.abort()
+
+    const waiter = new AbortController()
+    const waiting = sendContinuationTurn(input, waiter.signal)
+    await delay(0)
+    waiter.abort()
+    expect(await waiting).toEqual([])
+    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(socket.sent).toHaveLength(2)
+    socket.completeLatestResponse()
+    await cancelled
   })
 })

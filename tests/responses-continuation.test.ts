@@ -162,7 +162,7 @@ test("chooses the last opaque output anchor and keeps every new tool result", ()
   next.finish()
 })
 
-test("continues completed tool turns and never reuses an unfinished request", () => {
+test("retains the latest completed tool turn across an unfinished request", () => {
   const connection = seed()
   const next = prepareResponsesContinuation(
     payload([user, output, result]),
@@ -185,8 +185,32 @@ test("continues completed tool turns and never reuses an unfinished request", ()
   })
   third.finish()
   const resent = prepareResponsesContinuation(full, connection, false)
-  expect(resent.payload).toBe(full)
+  expect(resent.payload).toMatchObject({
+    previous_response_id: "resp-2",
+    input: [lastResult],
+  })
   resent.finish()
+})
+
+test("cancelling after completion leaves the previous checkpoint committed", () => {
+  const connection = seed()
+  const full = payload([user, output, result])
+  const controller = new AbortController()
+  const next = prepareResponsesContinuation(
+    full,
+    connection,
+    false,
+    controller.signal,
+  )
+  next.observe(complete("resp-2"))
+  controller.abort()
+  next.finish()
+
+  const resent = prepareResponsesContinuation(full, connection, false)
+  expect(resent.payload).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [result],
+  })
 })
 
 test("anchor matching does not compare earlier history, settings or item IDs", () => {
