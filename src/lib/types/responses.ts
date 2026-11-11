@@ -304,7 +304,7 @@ export interface CopilotUsage {
 export type Metadata = { [key: string]: string }
 
 export interface IncompleteDetails {
-  reason?: "max_output_tokens" | "content_filter"
+  reason?: "max_output_tokens" | "content_filter" | "interrupted"
 }
 
 export interface ResponseError {

@@ -84,8 +84,12 @@ export async function* createContinuableResponsesWebSocketStream<
       try {
         yield chunk
       } finally {
-        // The pool still holds this request's socket while yielding completion.
-        if (event?.type === "response.completed") attempt?.finish()
+        // Commit terminal checkpoints while the pool still holds the socket.
+        if (
+          event?.type === "response.completed"
+          || event?.type === "response.incomplete"
+        )
+          attempt?.finish()
       }
     }
     if (!retry) return
