@@ -88,6 +88,15 @@ export async function forwardError(
     }
     consola.error("HTTP error:", errorJson)
     if (isUpstreamErrorResponse(errorJson)) {
+      if (
+        isDeterministicInvalidRequestError(error.response.status, errorJson)
+      ) {
+        // The upstream rejected the request body itself; retrying the exact
+        // same payload can never succeed. Tell Anthropic-compatible clients
+        // (x-should-retry) to stop retry-looping. 408/429 and 5xx stay
+        // retryable.
+        c.header("x-should-retry", "false")
+      }
       return c.json(errorJson, error.response.status as ContentfulStatusCode)
     }
     return c.json(
@@ -127,4 +136,20 @@ const isUpstreamErrorResponse = (
   }
   const error = value.error
   return typeof error === "object" && error !== null && !Array.isArray(error)
+}
+
+// A 4xx rejection of the request body itself (Copilot "invalid_request_body",
+// Anthropic-style "invalid_request_error") is deterministic: the same payload
+// fails identically on every retry.
+const isDeterministicInvalidRequestError = (
+  status: number,
+  errorJson: UpstreamErrorResponse,
+): boolean => {
+  if (status < 400 || status >= 500 || status === 408 || status === 429) {
+    return false
+  }
+  return (
+    errorJson.error.code === "invalid_request_body"
+    || errorJson.error.type === "invalid_request_error"
+  )
 }
