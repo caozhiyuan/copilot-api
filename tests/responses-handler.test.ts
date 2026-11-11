@@ -2427,3 +2427,117 @@ describe("responses handler interrupted streams", () => {
     ])
   })
 })
+
+describe("responses handler native stream termination", () => {
+  const createdChunk = (model: string) => ({
+    data: JSON.stringify({
+      response: { ...createResponsesResult(model), status: "in_progress" },
+      sequence_number: 0,
+      type: "response.created",
+    }),
+    event: "response.created",
+  })
+
+  const completedChunk = (model: string) => ({
+    data: JSON.stringify({
+      response: createResponsesResult(model),
+      sequence_number: 1,
+      type: "response.completed",
+    }),
+    event: "response.completed",
+  })
+
+  const streamRequest = async (
+    chunks: () => AsyncGenerator<Record<string, unknown>>,
+  ) => {
+    createResponses.mockImplementation(() => Promise.resolve(chunks()))
+    const response = await createApp().request("/v1/responses", {
+      body: JSON.stringify({ input: "hello", model: "gpt-test", stream: true }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+    expect(response.status).toBe(200)
+    return (await response.text())
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)) as ResponseStreamEvent)
+  }
+
+  test("closes a stream that ended without a terminal event with response.failed", async () => {
+    const events = await streamRequest(async function* () {
+      await Promise.resolve()
+      yield createdChunk("gpt-test")
+    })
+
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.failed",
+    ])
+    const failed = events.at(-1)
+    expect(failed?.type === "response.failed" && failed.response).toMatchObject(
+      {
+        error: { code: "server_error" },
+        id: "resp-test",
+        model: "gpt-test",
+        status: "failed",
+      },
+    )
+  })
+
+  test("follows a bare upstream error event with a classified response.failed", async () => {
+    const events = await streamRequest(async function* () {
+      await Promise.resolve()
+      yield {
+        data: JSON.stringify({
+          code: null,
+          message: "Upstream connection lost",
+          param: null,
+          sequence_number: 0,
+          type: "error",
+        }),
+        event: "error",
+      }
+    })
+
+    expect(events.map((event) => event.type)).toEqual([
+      "error",
+      "response.failed",
+    ])
+    const failed = events[1]
+    expect(failed.type === "response.failed" && failed.response.error).toEqual({
+      code: "server_error",
+      message: "Upstream connection lost",
+    })
+  })
+
+  test("still sends response.failed when an undecodable event aborts the loop", async () => {
+    const errorSpy = spyOn(console, "error").mockImplementation(() => {})
+    try {
+      const events = await streamRequest(async function* () {
+        await Promise.resolve()
+        yield createdChunk("gpt-test")
+        yield { data: "{not json", event: "response.output_text.delta" }
+      })
+
+      expect(events.map((event) => event.type)).toEqual([
+        "response.created",
+        "response.failed",
+      ])
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  test("does not add events when the upstream sent its own terminal event", async () => {
+    const events = await streamRequest(async function* () {
+      await Promise.resolve()
+      yield createdChunk("gpt-test")
+      yield completedChunk("gpt-test")
+    })
+
+    expect(events.map((event) => event.type)).toEqual([
+      "response.created",
+      "response.completed",
+    ])
+  })
+})
