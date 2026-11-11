@@ -231,12 +231,8 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
         arguments: "{}",
         status: "completed",
       },
-      {
-        type: "message",
-        role: "assistant",
-        content: [{ type: "output_text", text: "" }],
-        phase: "final_answer",
-      },
+      // The trailing assistant message only contained an empty text block,
+      // which is dropped rather than shipped as a text-less output_text part.
     ])
   })
 
@@ -335,38 +331,50 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
   })
 
   it.each([
-    { texts: ["exit  "] },
-    { texts: [""] },
-    { texts: ["First line", "Second line  "] },
-    { texts: [] },
-  ])("preserves Grok tool output text arrays for %j", ({ texts }) => {
-    const result = translateAnthropicMessagesToResponsesPayload({
-      model: "grok-4",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "tool_result",
-              tool_use_id: "call_review",
-              content: texts.map((text) => ({ type: "text", text })),
-              is_error: true,
-            },
-          ],
-        },
-      ],
-    })
+    {
+      texts: ["exit  "],
+      expected: [{ type: "input_text", text: "exit  " }] as const,
+    },
+    {
+      texts: ["First line", "Second line  "],
+      expected: [
+        { type: "input_text", text: "First line" },
+        { type: "input_text", text: "Second line  " },
+      ] as const,
+    },
+    { texts: [""], expected: "" },
+    { texts: [], expected: "" },
+  ])(
+    "maps Grok tool output text arrays for %j, dropping empty parts",
+    ({ texts, expected }) => {
+      const result = translateAnthropicMessagesToResponsesPayload({
+        model: "grok-4",
+        max_tokens: 1024,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "call_review",
+                content: texts.map((text) => ({ type: "text", text })),
+                is_error: true,
+              },
+            ],
+          },
+        ],
+      })
 
-    expect(result.input).toEqual([
-      {
-        type: "function_call_output",
-        call_id: "call_review",
-        output: texts.map((text) => ({ type: "input_text", text })),
-        status: "incomplete",
-      },
-    ])
-  })
+      expect(result.input).toEqual([
+        {
+          type: "function_call_output",
+          call_id: "call_review",
+          output: expected,
+          status: "incomplete",
+        },
+      ])
+    },
+  )
 
   it.each([false, true])(
     "preserves Grok tool output images with text included: %j",
@@ -661,6 +669,116 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     ])
   })
 
+  it("drops text blocks with missing or empty text instead of emitting text-less input_text parts", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "hello" },
+            { type: "text" },
+            { type: "text", text: "" },
+            { type: "text", text: "world" },
+          ],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload)
+
+    expect(result.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "hello" },
+          { type: "input_text", text: "world" },
+        ],
+      },
+    ])
+  })
+
+  it("omits user and assistant messages whose text blocks all drop", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      messages: [
+        { role: "user", content: [{ type: "text", text: "" }] },
+        { role: "assistant", content: [{ type: "text" }] },
+        { role: "user", content: [{ type: "text", text: "still here" }] },
+      ],
+    } as unknown as AnthropicMessagesPayload)
+
+    expect(result.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "still here" }],
+      },
+    ])
+  })
+
+  it("omits inline system messages whose blocks all drop", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      messages: [
+        { role: "system", content: [{ type: "text", text: "" }] },
+        {
+          role: "system",
+          content: [{ type: "text" }, { type: "text", text: "keep me" }],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload)
+
+    expect(result.input).toEqual([
+      {
+        type: "message",
+        role: "developer",
+        content: [{ type: "input_text", text: "keep me" }],
+      },
+    ])
+  })
+
+  it("falls back to empty string when every tool_result text part drops", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_empty",
+              content: [{ type: "text", text: "" }, { type: "text" }],
+            },
+          ],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload)
+
+    expect(result.input).toEqual([
+      {
+        type: "function_call_output",
+        call_id: "call_empty",
+        output: "",
+        status: "completed",
+      },
+    ])
+  })
+
+  it("does not stringify missing text as 'undefined' in top-level system blocks", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      system: [{ type: "text" }, { type: "text", text: "real prompt" }],
+      messages: [{ role: "user", content: "hi" }],
+    } as unknown as AnthropicMessagesPayload)
+
+    expect(result.instructions).not.toContain("undefined")
+    expect(result.instructions).toContain("real prompt")
+  })
   it("keeps prompt_cache_key null when no session id is provided", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
       ...samplePayload,
