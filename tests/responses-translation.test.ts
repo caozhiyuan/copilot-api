@@ -672,6 +672,34 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     ])
   })
 
+  it("ignores non-text system blocks that carry a text property", () => {
+    const payload = {
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "system",
+          content: [
+            { type: "text", text: "keep me" },
+            { type: "image", text: "image alt must not leak" },
+            { type: "unexpected_block", text: "unknown block must not leak" },
+            { type: "text" },
+          ],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    const result = translateAnthropicMessagesToResponsesPayload(payload)
+
+    expect(result.input).toEqual([
+      {
+        type: "message",
+        role: "developer",
+        content: [{ type: "input_text", text: "keep me" }],
+      },
+    ])
+  })
+
   it("drops text blocks with missing or empty text instead of emitting text-less input_text parts", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
       model: "gpt-5.4",

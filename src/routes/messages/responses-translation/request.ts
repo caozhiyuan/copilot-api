@@ -174,10 +174,12 @@ export const translateSystemMessage = (
       : []
   }
 
-  const content = message.content.flatMap((block) => {
-    const textContent = createTextContent(block.text)
-    return textContent ? [textContent] : []
-  })
+  const content = message.content
+    .filter((block) => block.type === "text")
+    .flatMap((block) => {
+      const textContent = createTextContent(block.text)
+      return textContent ? [textContent] : []
+    })
   return content.length > 0 ? [createMessage("developer", content)] : []
 }
 

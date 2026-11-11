@@ -22,13 +22,16 @@ await mock.module("~/lib/config", () => ({
 
 import {
   applyLastMessageCacheControl,
+  getCompactType,
   getLastMessageContentCacheControl,
   mergeToolResultForClaude,
+  normalizeClaudeCodeBillingHeaderInSystem,
   normalizeSystemMessages,
   prepareMessagesApiPayload,
   sanitizeIdeTools,
   stripToolReferenceTurnBoundary,
 } from "~/routes/messages/preprocess"
+import { COMPACT_REQUEST } from "~/lib/compact"
 
 const toolAdditionBlock = {
   type: "tool_addition",
@@ -1446,5 +1449,198 @@ describe("prepareMessagesApiPayload", () => {
       ttl: "1h",
     })
     expect(payload.cache_control).toBeUndefined()
+  })
+})
+
+// Direct unit tests for the missing-text guards: these call the changed
+// preprocessing helpers themselves so reverting the guards turns them red,
+// unlike the end-to-end payload test above.
+describe("missing text field guards", () => {
+  test("normalizeSystemMessages drops textless blocks when merging mid system messages", () => {
+    const payload = {
+      model: "gemini-2.5-pro",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: "hello",
+        },
+        {
+          role: "system",
+          content: [{ type: "text" }, { type: "text", text: "repo style" }],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    normalizeSystemMessages(payload)
+
+    expect(payload.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "<system-reminder>\nrepo style\n</system-reminder>",
+          },
+          { type: "text", text: "hello" },
+        ],
+      },
+    ] as unknown as AnthropicMessagesPayload["messages"])
+    expect(payload.system).toBeUndefined()
+  })
+
+  test("normalizeClaudeCodeBillingHeaderInSystem leaves a textless first system block untouched", () => {
+    const payload = {
+      model: "gpt-5.4",
+      max_tokens: 128,
+      system: [
+        { type: "text" },
+        {
+          type: "text",
+          text: "x-anthropic-billing-header: cc_version=2.1.158.c0c; cc_entrypoint=cli; cch=6fb32;",
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    expect(() =>
+      normalizeClaudeCodeBillingHeaderInSystem(payload),
+    ).not.toThrow()
+    expect(payload.system).toEqual([
+      { type: "text" },
+      {
+        type: "text",
+        text: "x-anthropic-billing-header: cc_version=2.1.158.c0c; cc_entrypoint=cli; cch=6fb32;",
+      },
+    ] as unknown as AnthropicMessagesPayload["system"])
+  })
+
+  test("normalizeClaudeCodeBillingHeaderInSystem still normalizes the first block when it has text", () => {
+    const payload = {
+      model: "gpt-5.4",
+      max_tokens: 128,
+      system: [
+        {
+          type: "text",
+          text: "x-anthropic-billing-header: cc_version=2.1.158.c0c; cc_entrypoint=cli; cch=6fb32;",
+        },
+        { type: "text" },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    normalizeClaudeCodeBillingHeaderInSystem(payload)
+
+    expect(payload.system).toEqual([
+      {
+        type: "text",
+        text: "x-anthropic-billing-header: cc_version=2.1.158.c0c; cc_entrypoint=cli; cch=<stable>;",
+      },
+      { type: "text" },
+    ] as unknown as AnthropicMessagesPayload["system"])
+  })
+
+  test("getCompactType skips textless blocks when scanning the compact candidate", () => {
+    const payload = {
+      model: "gpt-5.4",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text" }, { type: "text", text: "hello" }],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    expect(getCompactType(payload)).toBe(0)
+  })
+
+  test("getCompactType still detects a compact request alongside a textless block", () => {
+    const compactText = [
+      "Your task is to create a detailed summary of the conversation so far",
+      "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.",
+      "Pending Tasks:",
+    ].join("\n")
+    const payload = {
+      model: "gpt-5.4",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text" }, { type: "text", text: compactText }],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    expect(getCompactType(payload)).toBe(COMPACT_REQUEST)
+  })
+
+  test("mergeToolResultForClaude skips textless blocks when merging trailing text", () => {
+    const payload = {
+      model: "claude-opus-4.6",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: "Launching skill: foo",
+            },
+            { type: "text" },
+            { type: "text", text: "Follow-up details" },
+          ],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    mergeToolResultForClaude(payload)
+
+    expect(payload.messages[0]).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "tool-1",
+          content: "Launching skill: foo\n\nFollow-up details",
+        },
+      ],
+    })
+  })
+
+  test("stripToolReferenceTurnBoundary keeps textless blocks and still strips Tool loaded", () => {
+    const payload = {
+      model: "claude-opus-4.6",
+      max_tokens: 128,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-1",
+              content: [
+                { type: "tool_reference", tool_name: "AskUserQuestion" },
+              ],
+            },
+            { type: "text" },
+            { type: "text", text: "Tool loaded." },
+          ],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    stripToolReferenceTurnBoundary(payload)
+
+    expect(payload.messages[0]).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "tool-1",
+          content: [{ type: "tool_reference", tool_name: "AskUserQuestion" }],
+        },
+        { type: "text" },
+      ],
+    } as unknown as AnthropicMessagesPayload["messages"][number])
   })
 })
