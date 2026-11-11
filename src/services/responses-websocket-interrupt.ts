@@ -62,7 +62,10 @@ export function createResponsesWebSocketInterruption(
       const signal = AbortSignal.any([nextClientSignal, failure.signal])
       if (signal.aborted) return
       const { promise, resolve } = Promise.withResolvers<void>()
-      const wake = () => resolve()
+      const wake = () => {
+        wakeWaiter = undefined
+        resolve()
+      }
       wakeWaiter = wake
       signal.addEventListener("abort", wake, { once: true })
       return promise.finally(() => signal.removeEventListener("abort", wake))

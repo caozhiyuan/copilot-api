@@ -1609,7 +1609,7 @@ test.each(["rejected", "wrong-id", "timeout", "closed", "missing-id"] as const)(
   15000,
 )
 
-test("a client that cancels while waiting for interruption sends no response", async () => {
+test("a cancelled interruption waiter releases its slot for the next request", async () => {
   await withAffinity("cancel-interrupt-waiter", async () => {
     const { controller, socket, input, stream } = await startInterruptibleTurn()
     emitInterruptibleResponseCreated(socket)
@@ -1620,12 +1620,21 @@ test("a client that cancels while waiting for interruption sends no response", a
     const waiting = sendInterruptibleTurn(input, waiter.signal)
     await delay(0)
     waiter.abort()
+    const successor = sendInterruptibleTurn(input)
+    await delay(0)
     expect(await waiting).toEqual([])
     expect(MockWebSocket.instances).toHaveLength(1)
     expect(socket.sent).toHaveLength(3)
     socket.emitMessage(JSON.stringify(interruptAcknowledgement))
     socket.emitMessage(JSON.stringify(interruptedTerminal))
-    await stream
+    await waitFor(() => socket.sent.length === 4)
+    expect(continuationRequest(0, 3)).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [...continuationInput],
+    })
+    socket.completeLatestResponse()
+    await Promise.all([stream, successor])
+    expect(MockWebSocket.instances).toHaveLength(1)
   })
 })
 
