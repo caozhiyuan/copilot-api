@@ -819,7 +819,7 @@ test("Codex without Responses Lite drains an active websocket after client cance
   expect(socket.readyState).toBe(MockWebSocket.OPEN)
 })
 
-test("top-level Codex Responses Lite interrupts after SSE disconnect and continues on the same socket", async () => {
+test("top-level Codex Responses Lite continues from the interrupted response on the same socket", async () => {
   const originalResolveProviderConfig =
     providerResponsesHandlerDependencies.resolveProviderConfig
   providerResponsesHandlerDependencies.resolveProviderConfig = () =>
@@ -884,7 +884,13 @@ test("top-level Codex Responses Lite interrupts after SSE disconnect and continu
     })
 
     MockWebSocket.autoComplete = true
-    const followUp = sendTurn([...history, next])
+    const interruptedOutput = {
+      type: "reasoning" as const,
+      id: "interrupted-reasoning",
+      encrypted_content: "interrupted-cipher",
+      summary: [],
+    }
+    const followUp = sendTurn([...history, interruptedOutput, next])
     socket.emitMessage({
       type: "response.interrupt.accepted",
       response_id: "resp-2",
@@ -893,16 +899,21 @@ test("top-level Codex Responses Lite interrupts after SSE disconnect and continu
     expect(socket.sent).toHaveLength(3)
     expect(MockWebSocket.instances).toHaveLength(1)
     socket.emitMessage({
-      type: "response.completed",
-      response: createResponsesResult("gpt-continuation", "resp-2"),
+      type: "response.incomplete",
+      response: {
+        ...createResponsesResult("gpt-continuation", "resp-2"),
+        status: "incomplete",
+        incomplete_details: { reason: "interrupted" },
+        output: [interruptedOutput],
+      },
     })
 
     expect(await (await followUp).text()).toContain('"id":"resp-4"')
     expect(MockWebSocket.instances).toHaveLength(1)
     expect(JSON.parse(socket.sent[3])).toMatchObject({
       type: "response.create",
-      previous_response_id: "resp-1",
-      input: [second, next],
+      previous_response_id: "resp-2",
+      input: [next],
     })
   } finally {
     providerResponsesHandlerDependencies.resolveProviderConfig =

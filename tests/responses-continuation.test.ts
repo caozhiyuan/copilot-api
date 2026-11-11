@@ -6,6 +6,7 @@ import {
   prepareResponsesContinuation,
 } from "~/lib/responses-continuation"
 import type {
+  ResponseIncompleteEvent,
   ResponseOutputItem,
   ResponseStreamEvent,
   ResponsesPayload,
@@ -53,6 +54,19 @@ const complete = (
     type: "response.completed",
     response: { id, status: "completed", output: items },
   }) as ResponseStreamEvent
+const interrupted = (
+  id = "resp-interrupted",
+  items: unknown = [thinking],
+): ResponseIncompleteEvent =>
+  ({
+    type: "response.incomplete",
+    response: {
+      id,
+      status: "incomplete",
+      incomplete_details: { reason: "interrupted" },
+      output: items,
+    },
+  }) as ResponseIncompleteEvent
 
 class Connection {
   closed = false
@@ -211,6 +225,173 @@ test("cancelling after completion leaves the previous checkpoint committed", () 
     previous_response_id: "resp-1",
     input: [result],
   })
+})
+
+test.each([
+  { ...thinking, encrypted_content: "interrupted-cipher" },
+  { ...output, call_id: "interrupted-call" },
+])("uses the interrupted response's own ID and anchor (%j)", (item) => {
+  const connection = seed()
+  const controller = new AbortController()
+  const full = payload([user, output, result])
+  const attempt = prepareResponsesContinuation(
+    full,
+    connection,
+    false,
+    controller.signal,
+  )
+  controller.abort()
+  attempt.observe(interrupted("resp-interrupted", [item]))
+  attempt.finish()
+
+  const next = prepareResponsesContinuation(
+    payload([user, output, result, item, user]),
+    connection,
+    false,
+  )
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-interrupted",
+    input: [user],
+  })
+  const missingAnchor = prepareResponsesContinuation(full, connection, false)
+  expect(missingAnchor.usedPrevious).toBe(false)
+  expect(missingAnchor.payload).toBe(full)
+})
+
+test("prefers an interrupted turn's done signature to the terminal snapshot", () => {
+  const connection = seed()
+  const controller = new AbortController()
+  const attempt = prepareResponsesContinuation(
+    payload([user, output, result]),
+    connection,
+    false,
+    controller.signal,
+  )
+  const doneThinking = { ...thinking, encrypted_content: "done-cipher" }
+  attempt.observe({
+    type: "response.output_item.done",
+    sequence_number: 1,
+    output_index: 0,
+    item: doneThinking,
+  })
+  attempt.observe(interrupted())
+  controller.abort()
+  attempt.finish()
+
+  const next = prepareResponsesContinuation(
+    payload([user, output, result, doneThinking, user]),
+    connection,
+    false,
+  )
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-interrupted",
+    input: [user],
+  })
+})
+
+test.each([
+  { items: [] },
+  { items: [text] },
+  { items: null },
+  { items: [output, { type: "future_server_item" }] },
+])(
+  "invalidates the old ID when an interrupted response has no usable anchor (%j)",
+  ({ items }) => {
+    const connection = seed()
+    const full = payload([user, output, result])
+    const attempt = prepareResponsesContinuation(full, connection, false)
+    attempt.observe(interrupted("resp-interrupted", items))
+    attempt.finish()
+
+    const next = prepareResponsesContinuation(full, connection, false)
+    expect(next.usedPrevious).toBe(false)
+    expect(next.payload).toBe(full)
+  },
+)
+
+test("invalidates the old ID when an interrupted response has no ID", () => {
+  const connection = seed()
+  const full = payload([user, output, result])
+  const attempt = prepareResponsesContinuation(full, connection, false)
+  attempt.observe(interrupted(""))
+  attempt.finish()
+  expect(
+    prepareResponsesContinuation(full, connection, false).usedPrevious,
+  ).toBe(false)
+})
+
+test("invalidates the old ID when the interrupted request cannot be checkpointed", () => {
+  const connection = seed()
+  const attempt = prepareResponsesContinuation(
+    payload("next"),
+    connection,
+    false,
+  )
+  attempt.observe(interrupted())
+  attempt.finish()
+  const next = prepareResponsesContinuation(
+    payload([user, output, result]),
+    connection,
+    false,
+  )
+  expect(next.usedPrevious).toBe(false)
+})
+
+test.each([undefined, "max_output_tokens", "content_filter"] as const)(
+  "preserves the previous checkpoint for other incomplete reasons (%s)",
+  (reason) => {
+    const connection = seed()
+    const full = payload([user, output, result])
+    const controller = new AbortController()
+    const attempt = prepareResponsesContinuation(
+      full,
+      connection,
+      false,
+      controller.signal,
+    )
+    controller.abort()
+    const event = interrupted("resp-incomplete")
+    event.response.incomplete_details = reason ? { reason } : null
+    attempt.observe(event)
+    attempt.finish()
+    expect(
+      prepareResponsesContinuation(full, connection, false).payload,
+    ).toMatchObject({ previous_response_id: "resp-1", input: [result] })
+  },
+)
+
+test("interrupted checkpoints preserve the compaction boundary", () => {
+  const connection = seed()
+  const checkpoint = compaction("interrupted-checkpoint")
+  const controller = new AbortController()
+  const attempt = prepareResponsesContinuation(
+    payload([checkpoint, user]),
+    connection,
+    false,
+    controller.signal,
+  )
+  controller.abort()
+  attempt.observe(interrupted())
+  attempt.finish()
+
+  const next = prepareResponsesContinuation(
+    payload([checkpoint, user, thinking, user]),
+    connection,
+    false,
+  )
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-interrupted",
+    input: [user],
+  })
+  const compacted = payload([
+    compaction("new-checkpoint"),
+    user,
+    thinking,
+    user,
+  ])
+  expect(
+    prepareResponsesContinuation(compacted, connection, false).payload,
+  ).toBe(compacted)
 })
 
 test("anchor matching does not compare earlier history, settings or item IDs", () => {
