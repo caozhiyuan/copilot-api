@@ -45,8 +45,7 @@ const CLAUDE_CODE_CCH_SEGMENT_PATTERN = /(^|;\s*)cch=[^;]+;/u
 
 type AnthropicAttachmentBlock = AnthropicImageBlock | AnthropicDocumentBlock
 type AnthropicMessageContentBlock =
-  | AnthropicUserContentBlock
-  | AnthropicAssistantContentBlock
+  AnthropicUserContentBlock | AnthropicAssistantContentBlock
 
 const createTextBlock = (text: string): AnthropicTextBlock => ({
   type: "text",
@@ -79,8 +78,15 @@ const normalizeSystemContentForMerge = (
     return content.length > 0 ? ensureSystemReminderText(content) : []
   }
 
+  // Claude Code can emit text blocks with a missing text field; they carry
+  // no content, so drop them instead of crashing string operations.
   return content
-    .filter((block) => block.type === "text" && block.text.length > 0)
+    .filter(
+      (block) =>
+        block.type === "text"
+        && typeof block.text === "string"
+        && block.text.length > 0,
+    )
     .map((block) => ({
       ...block,
       text: ensureSystemReminderText(block.text),
@@ -165,7 +171,7 @@ export const normalizeClaudeCodeBillingHeaderInSystem = (
   }
 
   payload.system = system.map((block, index) =>
-    index === 0 ?
+    index === 0 && typeof block.text === "string" ?
       { ...block, text: normalizeClaudeCodeBillingHeader(block.text) }
     : block,
   )
@@ -300,7 +306,10 @@ const getCompactCandidateText = (message: AnthropicInputMessage): string => {
   }
 
   return message.content
-    .filter((block): block is AnthropicTextBlock => block.type === "text")
+    .filter(
+      (block): block is AnthropicTextBlock =>
+        block.type === "text" && typeof block.text === "string",
+    )
     .map((block) =>
       block.text.startsWith("<system-reminder>") ? "" : block.text,
     )
@@ -584,7 +593,7 @@ const startsWithPdfFileRead = (
   }
 
   const firstBlock = toolResult.content[0]
-  if (firstBlock.type !== "text") {
+  if (firstBlock.type !== "text" || typeof firstBlock.text !== "string") {
     return false
   }
 
@@ -608,7 +617,9 @@ const collectMergeableUserContent = (
       continue
     }
     if (block.type === "text") {
-      textBlocks.push(block)
+      if (typeof block.text === "string") {
+        textBlocks.push(block)
+      }
       continue
     }
     if (isAttachmentBlock(block)) {
@@ -750,6 +761,7 @@ export const stripToolReferenceTurnBoundary = (
     msg.content = msg.content.filter(
       (block) =>
         block.type !== "text"
+        || typeof block.text !== "string"
         || block.text.trim() !== TOOL_REFERENCE_TURN_BOUNDARY,
     )
   }
@@ -950,11 +962,7 @@ export const prepareMessagesApiPayload = (
     const reasoningEffort = selectedModel.capabilities.supports.reasoning_effort
     if (reasoningEffort && !reasoningEffort.includes(effort)) {
       effort = reasoningEffort.at(-1) as
-        | "low"
-        | "medium"
-        | "high"
-        | "xhigh"
-        | "max"
+        "low" | "medium" | "high" | "xhigh" | "max"
     }
     payload.output_config = {
       ...payload.output_config,

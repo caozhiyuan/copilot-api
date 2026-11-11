@@ -8,12 +8,7 @@ import type {
 const actualConfigModule = await import("~/lib/config")
 
 let mockedReasoningEffort:
-  | "none"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh" = "xhigh"
+  "none" | "minimal" | "low" | "medium" | "high" | "xhigh" = "xhigh"
 
 await mock.module("~/lib/config", () => ({
   ...actualConfigModule,
@@ -1130,6 +1125,30 @@ describe("prepareMessagesApiPayload", () => {
 
     expect(payload.output_config).toEqual(outputConfig)
     expect(payload.thinking?.type).toBe("adaptive")
+  })
+
+  test("tolerates text blocks with a missing text field", () => {
+    const payload = {
+      model: "gpt-5.4",
+      max_tokens: 128,
+      system: [{ type: "text" }, { type: "text", text: "system prompt" }],
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text" }, { type: "text", text: "hello" }],
+        },
+        {
+          role: "user",
+          content: [{ type: "text" }],
+        },
+      ],
+    } as unknown as AnthropicMessagesPayload
+
+    expect(() =>
+      prepareMessagesApiPayload(payload, {
+        capabilities: { supports: { adaptive_thinking: true } },
+      } as never),
+    ).not.toThrow()
   })
 
   test("strips cache_control scope, filters thinking blocks, and enables adaptive thinking", () => {
