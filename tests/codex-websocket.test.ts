@@ -76,6 +76,10 @@ class MockWebSocket {
     this.emit("close", {})
   }
 
+  emitMessage(frame: object): void {
+    this.emit("message", { data: JSON.stringify(frame) })
+  }
+
   completeLatestResponse(): void {
     const latestSent = this.sent.at(-1)
     if (!latestSent) {
@@ -197,6 +201,7 @@ const { codexResponsesDependencies, forwardCodexResponses } = await import(
 const { providerResponsesRoutes } = await import(
   "~/routes/provider/responses/route"
 )
+const { responsesRoutes } = await import("~/routes/responses/route")
 const { providerResponsesHandlerDependencies } = await import(
   "~/routes/provider/responses/handler"
 )
@@ -778,26 +783,131 @@ test("forwardCodexResponses emits an error event when the websocket closes witho
   )
 })
 
-test("forwardCodexResponses drains an active websocket after client cancellation", async () => {
+test("Codex without Responses Lite drains an active websocket after client cancellation", async () => {
   MockWebSocket.autoComplete = false
   const controller = new AbortController()
-  const response = await forwardCodexResponses(
-    { input: "hello", model: "gpt-5.4", stream: true },
-    new Headers(),
-    undefined,
-    { clientSignal: controller.signal, transport: "websocket" },
+  const response = await requestContext.run(
+    {
+      traceId: "non-lite-abort",
+      startTime: Date.now(),
+      userAgent: "codex-tui",
+      sessionAffinity: "non-lite-thread",
+      rootSessionId: "non-lite-thread",
+      parentSessionId: undefined,
+    },
+    () =>
+      forwardCodexResponses(
+        { input: "hello", model: "gpt-5.4", stream: true },
+        new Headers({ "x-openai-internal-codex-responses-lite": "false" }),
+        undefined,
+        { clientSignal: controller.signal, transport: "websocket" },
+      ),
   )
   const chunksPromise = collectStreamChunks(response as AsyncIterable<unknown>)
   await waitFor(() => MockWebSocket.instances[0]?.sent.length === 1)
 
+  const socket = MockWebSocket.instances[0]
+  socket.emitMessage({ type: "response.created", response: { id: "resp-1" } })
   controller.abort()
-  await delay(10)
-  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.OPEN)
+  await delay(0)
+  expect(socket.sent).toHaveLength(1)
+  expect(socket.readyState).toBe(MockWebSocket.OPEN)
 
-  MockWebSocket.instances[0]?.completeLatestResponse()
+  socket.completeLatestResponse()
   const chunks = await chunksPromise
   expect(chunks.at(-1)?.event).toBe("response.completed")
-  expect(MockWebSocket.instances[0]?.readyState).toBe(MockWebSocket.OPEN)
+  expect(socket.readyState).toBe(MockWebSocket.OPEN)
+})
+
+test("top-level Codex Responses Lite interrupts after SSE disconnect and continues on the same socket", async () => {
+  const originalResolveProviderConfig =
+    providerResponsesHandlerDependencies.resolveProviderConfig
+  providerResponsesHandlerDependencies.resolveProviderConfig = () =>
+    Promise.resolve({
+      apiKey: "",
+      authType: "oauth2",
+      baseUrl: "https://chatgpt.example/backend-api",
+      models: { "gpt-continuation": {} },
+      name: "codex",
+      type: "openai-responses",
+    })
+
+  try {
+    const app = new Hono()
+    app.use(traceIdMiddleware)
+    app.route("/responses", responsesRoutes)
+    const sendTurn = (input: ResponsesPayload["input"]) =>
+      app.request("/responses", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "thread-id": "interrupted-thread",
+          "user-agent": "codex-tui/0.167.0",
+          "x-openai-internal-codex-responses-lite": "true",
+        },
+        body: JSON.stringify({
+          input,
+          model: "codex/gpt-continuation",
+          stream: true,
+        }),
+      })
+
+    const first = { type: "message", role: "user", content: "first" } as const
+    const second = { ...first, content: "second" }
+    const next = { ...first, content: "follow-up" }
+    expect(await (await sendTurn([first])).text()).toContain('"id":"resp-1"')
+    const socket = MockWebSocket.instances[0]
+    expect(JSON.parse(socket.sent[0])).toMatchObject({
+      model: "gpt-continuation",
+      client_metadata: {
+        ws_request_header_x_openai_internal_codex_responses_lite: "true",
+      },
+    })
+
+    MockWebSocket.autoComplete = false
+    const history = [first, ...continuationOutput, second]
+    const interrupted = sendTurn(history)
+    await waitFor(() => socket.sent.length === 2)
+    expect(JSON.parse(socket.sent[1])).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [second],
+    })
+    socket.emitMessage({ type: "response.created", response: { id: "resp-2" } })
+    const response = await interrupted
+    expect(response.status).toBe(200)
+    await response.body?.cancel()
+    await waitFor(() => socket.sent.length === 3)
+    expect(JSON.parse(socket.sent[2])).toEqual({
+      type: "response.interrupt",
+      response_id: "resp-2",
+      mode: "discard_partial_items",
+    })
+
+    MockWebSocket.autoComplete = true
+    const followUp = sendTurn([...history, next])
+    socket.emitMessage({
+      type: "response.interrupt.accepted",
+      response_id: "resp-2",
+    })
+    await delay(0)
+    expect(socket.sent).toHaveLength(3)
+    expect(MockWebSocket.instances).toHaveLength(1)
+    socket.emitMessage({
+      type: "response.completed",
+      response: createResponsesResult("gpt-continuation", "resp-2"),
+    })
+
+    expect(await (await followUp).text()).toContain('"id":"resp-4"')
+    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(JSON.parse(socket.sent[3])).toMatchObject({
+      type: "response.create",
+      previous_response_id: "resp-1",
+      input: [second, next],
+    })
+  } finally {
+    providerResponsesHandlerDependencies.resolveProviderConfig =
+      originalResolveProviderConfig
+  }
 })
 
 const collectStreamChunks = async (
