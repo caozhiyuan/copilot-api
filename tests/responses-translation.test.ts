@@ -7,6 +7,7 @@ import type {
   ResponseFunctionCallOutputItem,
   ResponseInputMessage,
   ResponseInputReasoning,
+  ResponseInputText,
   ResponseToolSearchCallItem,
   ResponseToolSearchOutputItem,
   ResponsesResult,
@@ -333,14 +334,16 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
   it.each([
     {
       texts: ["exit  "],
-      expected: [{ type: "input_text", text: "exit  " }] as const,
+      expected: [
+        { type: "input_text", text: "exit  " },
+      ] satisfies Array<ResponseInputText>,
     },
     {
       texts: ["First line", "Second line  "],
       expected: [
         { type: "input_text", text: "First line" },
         { type: "input_text", text: "Second line  " },
-      ] as const,
+      ] satisfies Array<ResponseInputText>,
     },
     { texts: [""], expected: "" },
     { texts: [], expected: "" },
