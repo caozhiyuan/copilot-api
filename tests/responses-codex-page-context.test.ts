@@ -74,6 +74,90 @@ describe("Codex injected page context", () => {
     expect(JSON.stringify(completions.messages)).toContain("Second part")
   })
 
+  test.each([
+    {
+      namespace: "codex_app",
+      name: "send_message_to_thread",
+      output:
+        "<codex_delegation>\n  <source_thread_id>t-1</source_thread_id>\n  <input>Verify host</input>\n</codex_delegation>",
+    },
+    {
+      namespace: "codex_app",
+      name: "create_thread",
+      output: "<codex_delegation><input>Init</input></codex_delegation>",
+    },
+    {
+      namespace: "codex_app",
+      name: "handoff_thread",
+      output: "<codex_delegation><input>Handoff</input></codex_delegation>",
+    },
+    {
+      namespace: "cloud_threads",
+      name: "send_message",
+      output: "<codex_delegation><input>Cloud</input></codex_delegation>",
+    },
+    {
+      namespace: "agent",
+      name: "ide_context",
+      output: "Active file: src/main.ts",
+    },
+    {
+      namespace: "agent",
+      name: "codex_apps_writing_block_edits_part_1_of_2",
+      output: "Writing block edit part 1",
+    },
+  ])(
+    "preserves injected $namespace.$name outputs without call IDs",
+    ({ namespace, name, output }) => {
+      const result = translate([pageContext({ namespace, name, output })])
+      expect(result.messages).toEqual([
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `${namespace}.${name}:` },
+            {
+              type: "text",
+              text: output,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+        },
+      ])
+    },
+  )
+
+  test("treats delegated thread outputs as a user turn boundary for later developer updates", () => {
+    const result = translate([
+      { type: "message", role: "developer", content: "Initial instructions" },
+      pageContext({
+        namespace: "codex_app",
+        name: "send_message_to_thread",
+        output:
+          "<codex_delegation><input>First task</input></codex_delegation>",
+      }),
+      { type: "message", role: "assistant", content: "Done" },
+      {
+        type: "message",
+        role: "developer",
+        content: "<model_instructions>Switched model</model_instructions>",
+      },
+      pageContext({
+        namespace: "codex_app",
+        name: "send_message_to_thread",
+        output:
+          "<codex_delegation><input>Second task</input></codex_delegation>",
+      }),
+    ])
+    expect(result.system).toEqual([
+      {
+        type: "text",
+        text: "Initial instructions",
+        cache_control: { type: "ephemeral" },
+      },
+    ])
+    expect(JSON.stringify(result.messages)).toContain("Switched model")
+  })
+
   test("preserves array content and images while omitting empty text blocks", () => {
     const result = translate([
       pageContext({
@@ -119,7 +203,10 @@ describe("Codex injected page context", () => {
     { name: undefined },
     { name: "codex_apps_selected_page_part_0_of_1" },
     { name: "codex_apps_selected_page_part_1_of_1_extra" },
+    { name: "codex_apps_writing_block_edits_part_0_of_1" },
     { namespace: "functions" },
+    { namespace: "codex_app", name: "list_threads" },
+    { namespace: "cloud_threads", name: "list_threads" },
     { namespace: undefined },
     { type: "custom_tool_call_output" },
     { call_id: "" },

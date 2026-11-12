@@ -471,6 +471,13 @@ describe("responses injected page context", () => {
               output:
                 'Companion Page snapshot part 1 of 1:\n{"page_id":null,"document_view":null}',
             },
+            {
+              type: "function_call_output",
+              namespace: "codex_app",
+              name: "send_message_to_thread",
+              output:
+                "<codex_delegation>\n  <source_thread_id>t-1</source_thread_id>\n  <input>hi</input>\n</codex_delegation>",
+            },
             { type: "message", role: "user", content: "hi" },
           ],
         }),
@@ -482,6 +489,10 @@ describe("responses injected page context", () => {
       expect(forwarded?.stream).toBe(stream)
       const blocks = getMessageBlocks(forwarded)
       expect(blocks).toContainEqual({ type: "text", text: '{"page_id":null}' })
+      expect(blocks).toContainEqual({
+        type: "text",
+        text: "codex_app.send_message_to_thread:",
+      })
       expect(blocks.some((block) => block.type === "tool_result")).toBe(false)
       if (stream) {
         const body = await response.text()
