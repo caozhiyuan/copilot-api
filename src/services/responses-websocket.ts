@@ -46,6 +46,10 @@ export interface PooledWebSocketStreamOptions<TChunk> {
   streamInactivityTimeoutMs: number
   terminalChunkMissingMessage: string
   unavailableErrorMessage?: string
+  // Largest outbound message, in bytes, that the upstream accepts. A bigger
+  // message is rejected before it is sent instead of being closed upstream
+  // without a terminal event.
+  maxMessageBytes?: number
 }
 
 type WebSocketInstance = InstanceType<typeof WebSocket>
@@ -101,6 +105,21 @@ export class ResponsesWebSocketBufferOverflowError extends Error {
     this.name = "ResponsesWebSocketBufferOverflowError"
   }
 }
+
+export class ResponsesWebSocketMessageTooLargeError extends Error {
+  // Clients such as Codex treat this code as a context-window error and stop
+  // retrying the identical request.
+  readonly code = "context_length_exceeded"
+
+  constructor(messageBytes: number, maxMessageBytes: number) {
+    super(
+      `The Responses request is ${formatMiB(messageBytes)} MiB, which exceeds the ${formatMiB(maxMessageBytes)} MiB limit of the GitHub Copilot Responses WebSocket. Compact the conversation or start a new one.`,
+    )
+    this.name = "ResponsesWebSocketMessageTooLargeError"
+  }
+}
+
+const formatMiB = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(1)
 
 export class WebSocketMessageBuffer {
   private readonly entries: Array<BufferedWebSocketMessage | undefined> = []
@@ -240,7 +259,9 @@ const runPooledWebSocketRequest = async function* <
     messageStream.start()
     const payload =
       request.preparePayload?.(request.payload, entry) ?? request.payload
-    websocket.send(JSON.stringify(payload))
+    const message = JSON.stringify(payload)
+    assertMessageWithinLimit(message, options.maxMessageBytes)
+    websocket.send(message)
     entry.interruption = interruption
     interruption?.start()
 
@@ -287,6 +308,21 @@ const runPooledWebSocketRequest = async function* <
     if (!reusable) removePooledWebSocketEntry(poolKey, entry)
     release(reusable)
     interruption?.dispose()
+  }
+}
+
+const assertMessageWithinLimit = (
+  message: string,
+  maxMessageBytes: number | undefined,
+): void => {
+  if (maxMessageBytes === undefined) return
+
+  const messageBytes = Buffer.byteLength(message)
+  if (messageBytes > maxMessageBytes) {
+    throw new ResponsesWebSocketMessageTooLargeError(
+      messageBytes,
+      maxMessageBytes,
+    )
   }
 }
 

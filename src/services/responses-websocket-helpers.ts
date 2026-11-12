@@ -7,7 +7,10 @@ import type {
   ResponseErrorEvent,
   ResponseStreamEvent,
 } from "~/lib/types/responses"
-import type { PooledWebSocketTerminalDisposition } from "~/services/responses-websocket"
+import {
+  ResponsesWebSocketMessageTooLargeError,
+  type PooledWebSocketTerminalDisposition,
+} from "~/services/responses-websocket"
 
 export const encodePoolKeyPart = (value: string): string =>
   encodeURIComponent(value)
@@ -22,9 +25,10 @@ export const getErrorMessage = (error: unknown): string => {
 
 export const createResponsesErrorServerSentEventChunk = (
   message: string,
+  code: string | null = null,
 ): ResponsesStreamChunk => {
   const errorEvent: ResponseErrorEvent = {
-    code: null,
+    code,
     message,
     param: null,
     sequence_number: 0,
@@ -110,6 +114,9 @@ export const createResponsesSafeStream = async function* <
     // Stream chunks must allow synthetic errors without extra required fields.
     yield createResponsesErrorServerSentEventChunk(
       getErrorMessage(error),
+      error instanceof ResponsesWebSocketMessageTooLargeError ?
+        error.code
+      : null,
     ) as TChunk
   }
 }

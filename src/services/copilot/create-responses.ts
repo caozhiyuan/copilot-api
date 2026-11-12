@@ -44,6 +44,10 @@ import {
 import { createResponsesHttpEventStream } from "~/services/responses-http"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 
+// Copilot closes the Responses WebSocket with code 1009 (message too big) and
+// no terminal event for a message above 32 MiB.
+export const COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+
 interface ResponsesRequestOptions {
   vision: boolean
   initiator: "agent" | "user"
@@ -254,6 +258,7 @@ const getResponsesWebSocketOptions = () => {
     createChunk: createResponsesWebSocketStreamChunk,
     maxBufferedBytes: transportConfig.websocketMaxBufferedBytes,
     maxBufferedMessages: transportConfig.websocketMaxBufferedMessages,
+    maxMessageBytes: COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES,
     getTerminalDisposition: getResponsesStreamTerminalDisposition,
     openErrorMessage: "Failed to create responses websocket",
     openTimeoutMs: transportConfig.websocketOpenTimeoutMs,
