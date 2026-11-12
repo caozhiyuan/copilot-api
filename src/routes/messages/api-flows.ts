@@ -17,7 +17,7 @@ import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
 import { debugJson, debugJsonTail, debugLazy } from "~/lib/logger"
 import { getProviderModelPdfSupport } from "~/lib/model-pdf-support"
 import { writeSSEIfConnected } from "~/lib/sse"
-import { resolveBridgeToolSearchName } from "~/lib/tool-search"
+import { resolveResponsesToolSearchName } from "~/lib/tool-search"
 import {
   createCopilotTokenUsageRecorder,
   mergeAnthropicUsage,
@@ -288,7 +288,10 @@ export const handleWithResponsesApi = async (
     logger.debug("Streaming response from Copilot (Responses API)")
     return streamSSE(c, async (stream) => {
       const streamState = createResponsesStreamState({
-        toolSearchName: resolveBridgeToolSearchName(anthropicPayload.tools),
+        toolSearchName: resolveResponsesToolSearchName({
+          model: anthropicPayload.model,
+          tools: anthropicPayload.tools,
+        }),
       })
       let usage: UsageTokens = {}
 
@@ -370,7 +373,10 @@ export const handleWithResponsesApi = async (
   const anthropicResponse = translateResponsesResultToAnthropic(
     response as ResponsesResult,
     {
-      toolSearchName: resolveBridgeToolSearchName(anthropicPayload.tools),
+      toolSearchName: resolveResponsesToolSearchName({
+        model: anthropicPayload.model,
+        tools: anthropicPayload.tools,
+      }),
     },
   )
   const responsesResult = response as ResponsesResult

@@ -8,9 +8,9 @@
 
 ## GPT Tool Search
 
-对于 `gpt-5.4+` 这类 GPT Responses 模型，这个 AI gateway 可以通过一个很小的 MCP bridge 暴露 Responses `tool_search`。Claude Code 和 opencode v1 都可以使用同一个 bridge，前提是客户端会加载 MCP server，并且 Anthropic Messages 流量会经过这个 AI gateway。
+Claude Code 可以通过 `ENABLE_TOOL_SEARCH: "true"` 使用原生 ToolSearch。对于最终模型名为 `gpt-5.4` 及以上的 GPT Responses 请求，网关会将客户端搜索转换为 Responses `tool_search`；模型和上游服务需要支持 client 模式，例如支持该功能的 `gpt-6.1-sol` 上游。搜索命中后，Claude Code 会在后续请求中提供工具定义。此方式不需要 MCP bridge，配置示例见 [Claude Code](claude-code.md#manual-configuration-with-settingsjson)。
 
-GPT 模型不要设置 Claude Code 原生的 `ENABLE_TOOL_SEARCH`。这个开关启用的是 Claude Code 自己的客户端 tool search 模式，可能导致 deferred 工具定义不再转发给 AI gateway。这个 AI gateway 需要完整的工具定义，这样才能只保留那一小组常驻加载工具，其余工具统一转换为 Responses deferred namespace。
+原有 MCP bridge 仍可用于 Claude Code 和 opencode v1，前提是客户端加载 MCP server，并将 Anthropic Messages 流量发送到此网关。Claude Code 如选择 bridge，请将 `ENABLE_TOOL_SEARCH` 设为 `false`；同时启用时优先使用原生 ToolSearch。
 
 如果你安装了 `tool-search@copilot-api-marketplace`，Claude Code 会自动带上这个 MCP bridge，可以跳过下面这段 Claude Code MCP 手动配置。
 
@@ -69,10 +69,15 @@ Claude Code 集成现在拆分为两个插件：
 /plugin marketplace add https://github.com/caozhiyuan/copilot-api.git
 ```
 
-从 marketplace 安装插件：
+按需从 marketplace 安装插件，例如：
 
 ```sh
 /plugin install agent-inject@copilot-api-marketplace
+```
+
+如需 MCP bridge，可再安装 `tool-search`；原生 ToolSearch 不需要此插件：
+
+```sh
 /plugin install tool-search@copilot-api-marketplace
 ```
 

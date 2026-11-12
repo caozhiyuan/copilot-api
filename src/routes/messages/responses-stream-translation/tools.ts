@@ -1,4 +1,7 @@
-import { formatToolSearchBridgeArguments } from "~/lib/tool-search"
+import {
+  BRIDGE_TOOL_SEARCH_NAME,
+  formatToolSearchArguments,
+} from "~/lib/tool-search"
 import {
   type ResponseFunctionCallArgumentsDeltaEvent,
   type ResponseFunctionCallArgumentsDoneEvent,
@@ -99,13 +102,20 @@ export const handleOutputItemDone = (
   const outputIndex = rawEvent.output_index
 
   if (itemType === "tool_search_call") {
+    const toolCallId =
+      item.call_id
+      || state.functionCallStateByOutputIndex.get(outputIndex)?.toolCallId
+    if (!toolCallId) return events
     const blockIndex = openFunctionCallBlock(state, {
       outputIndex,
-      toolCallId: item.call_id,
+      toolCallId,
       name: state.toolSearchName,
       events,
     })
-    const finalArguments = stringifyToolSearchArguments(item.arguments)
+    const finalArguments = stringifyToolSearchArguments(
+      item.arguments,
+      state.toolSearchName,
+    )
 
     if (!state.blockHasDelta.has(blockIndex) && finalArguments) {
       events.push({
@@ -360,6 +370,7 @@ export const extractFunctionCallDetails = (
   const item = rawEvent.item
   const itemType = item.type
   if (itemType === "tool_search_call") {
+    if (typeof item.call_id !== "string" || !item.call_id) return undefined
     const outputIndex = rawEvent.output_index
     const toolCallId = item.call_id
     const name = state.toolSearchName
@@ -389,9 +400,12 @@ export const extractFunctionCallDetails = (
 
 export const stringifyToolSearchArguments = (
   argumentsValue: Record<string, unknown> | string,
+  toolSearchName = BRIDGE_TOOL_SEARCH_NAME,
 ): string | undefined => {
   try {
-    return JSON.stringify(formatToolSearchBridgeArguments(argumentsValue))
+    return JSON.stringify(
+      formatToolSearchArguments(argumentsValue, toolSearchName),
+    )
   } catch {
     return undefined
   }

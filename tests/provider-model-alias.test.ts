@@ -645,6 +645,57 @@ describe("provider/model aliases on top-level messages routes", () => {
     expect(upstreamBody.model).toBe("qwen-plus")
   })
 
+  test.each([
+    { model: "gpt-6.1-sol", nativeSearch: true },
+    { model: "grok-4.7", nativeSearch: false },
+  ])(
+    "chooses native tool search from the resolved model $model",
+    async ({ model, nativeSearch }) => {
+      providerConfig = {
+        apiKey: "provider-key",
+        authType: "authorization",
+        baseUrl: "https://responses.example",
+        models: { [model]: {} },
+        name: "dash",
+        type: "openai-responses",
+      }
+      modelMappings = { friendly: `dash/${model}` }
+      fetchMock.mockImplementationOnce(() =>
+        Promise.resolve(
+          Response.json({
+            id: "resp-search-model",
+            model,
+            output: [],
+            output_text: "",
+            status: "completed",
+            usage: null,
+          }),
+        ),
+      )
+      const response = await createApp().request("/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "friendly",
+          max_tokens: 128,
+          messages: [{ role: "user", content: "hello" }],
+          tools: [{ name: "ToolSearch", input_schema: { type: "object" } }],
+        }),
+      })
+      expect(response.status).toBe(200)
+      const body = fetchMock.mock.calls[0][1]?.body
+      if (typeof body !== "string") throw new Error("Expected a JSON body")
+      const upstream = JSON.parse(body) as {
+        model: string
+        tools: Array<{ type: string }>
+      }
+      expect(upstream.model).toBe(model)
+      expect(upstream.tools.some((tool) => tool.type === "tool_search")).toBe(
+        nativeSearch,
+      )
+    },
+  )
+
   test("routes /v1/messages to the provider and strips the provider prefix", async () => {
     const app = createApp()
     const response = await app.request("/v1/messages", {

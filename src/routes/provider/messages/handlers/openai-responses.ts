@@ -17,7 +17,7 @@ import { HTTPError } from "~/lib/error"
 import { recordResponsesFirstToken } from "~/lib/first-token"
 import { debugJson, debugLazy } from "~/lib/logger"
 import { writeSSEIfConnected } from "~/lib/sse"
-import { resolveBridgeToolSearchName } from "~/lib/tool-search"
+import { resolveResponsesToolSearchName } from "~/lib/tool-search"
 import {
   normalizeResponsesUsage,
   type TokenUsageEndpoint,
@@ -335,7 +335,10 @@ export const streamResponsesProviderMessages = ({
   return streamSSE(c, async (stream) => {
     let usage: UsageTokens = {}
     const streamState = createResponsesStreamState({
-      toolSearchName: resolveBridgeToolSearchName(payload.tools),
+      toolSearchName: resolveResponsesToolSearchName({
+        model: payload.model,
+        tools: payload.tools,
+      }),
     })
 
     for await (const chunk of upstreamResponse) {
@@ -453,7 +456,10 @@ export const respondResponsesProviderMessagesJson = (
   recordUsage(normalizeResponsesUsage(body.usage))
 
   const anthropicResponse = translateResponsesResultToAnthropic(body, {
-    toolSearchName: resolveBridgeToolSearchName(payload.tools),
+    toolSearchName: resolveResponsesToolSearchName({
+      model: payload.model,
+      tools: payload.tools,
+    }),
   })
   debugJson(
     logger,

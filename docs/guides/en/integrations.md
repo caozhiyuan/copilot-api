@@ -6,9 +6,9 @@ For server-side request lifecycle and usage hooks, see [Gateway event plugins](g
 
 ## GPT Tool Search
 
-For GPT Responses models such as `gpt-5.4+`, this AI gateway can expose Responses `tool_search` through a small MCP bridge. The same bridge can be used by Claude Code and opencode v1, as long as the client loads MCP servers and sends Anthropic Messages traffic through this gateway.
+Claude Code can use its native ToolSearch with `ENABLE_TOOL_SEARCH: "true"`. For GPT Responses requests whose resolved model is `gpt-5.4` or newer, the gateway translates client searches to Responses `tool_search`. The model and upstream service must support client mode, such as a compatible `gpt-6.1-sol` provider. Claude Code supplies the selected tool definitions on the follow-up request. Native search does not require the MCP bridge; see the [Claude Code configuration](claude-code.md#manual-configuration-with-settingsjson).
 
-Do not set Claude Code's native `ENABLE_TOOL_SEARCH` for GPT models. That flag enables Claude Code's own client-side tool search mode, and it may stop forwarding deferred tool definitions. This gateway needs the full tool definitions so it can keep the small always-loaded tool set eager and translate every other tool into Responses deferred namespaces.
+The existing MCP bridge remains available for Claude Code and opencode v1 when the client loads MCP servers and sends Anthropic Messages traffic through this gateway. To use the bridge with Claude Code, set `ENABLE_TOOL_SEARCH` to `false`; native ToolSearch takes priority when both are enabled.
 
 If you install `tool-search@copilot-api-marketplace`, Claude Code receives this MCP bridge automatically and you can skip the manual Claude Code MCP setup below.
 
@@ -65,10 +65,15 @@ Add the marketplace remotely:
 /plugin marketplace add https://github.com/caozhiyuan/copilot-api.git
 ```
 
-Install the plugins from the marketplace:
+Install plugins from the marketplace as needed, for example:
 
 ```sh
 /plugin install agent-inject@copilot-api-marketplace
+```
+
+To use the MCP bridge, also install `tool-search`. Native ToolSearch does not require this plugin:
+
+```sh
 /plugin install tool-search@copilot-api-marketplace
 ```
 

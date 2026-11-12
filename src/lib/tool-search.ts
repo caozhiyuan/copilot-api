@@ -5,6 +5,10 @@ export const BRIDGE_TOOL_SEARCH_ALIASES = [
   "mcp__plugin_tool-search_tool_search__search",
 ] as const
 export const MCP_TOOL_SEARCH_SENTINEL_TYPE = "copilot_api_tool_search"
+export const CLAUDE_TOOL_SEARCH_NAME = "ToolSearch"
+export const CLAUDE_DEFERRED_TOOL_PLACEHOLDER_NAME = "DeferredToolPlaceholder"
+
+export type ResponsesToolSearchMode = "native" | "bridge" | "disabled"
 
 export const ALWAYS_LOADED_TOOL_NAMES = [
   "Agent",
@@ -105,6 +109,29 @@ export const shouldEnableResponsesToolSearch = (params: {
   supportsResponsesToolSearchModel(params.model)
   && hasBridgeToolSearchTool(params.tools)
   && hasDeferredToolCandidate(params.tools)
+
+export const resolveResponsesToolSearchMode = (params: {
+  model: string
+  tools?: Array<ToolSearchToolLike>
+}): ResponsesToolSearchMode => {
+  if (!supportsResponsesToolSearchModel(params.model)) {
+    return "disabled"
+  }
+
+  if (params.tools?.some((tool) => tool.name === CLAUDE_TOOL_SEARCH_NAME)) {
+    return "native"
+  }
+
+  return shouldEnableResponsesToolSearch(params) ? "bridge" : "disabled"
+}
+
+export const resolveResponsesToolSearchName = (params: {
+  model: string
+  tools?: Array<ToolSearchToolLike>
+}): string =>
+  resolveResponsesToolSearchMode(params) === "native" ?
+    CLAUDE_TOOL_SEARCH_NAME
+  : resolveBridgeToolSearchName(params.tools)
 
 export const hasDeferredNamespaceTool = (
   tools: Array<unknown> | null | undefined,
@@ -240,6 +267,30 @@ export const formatToolSearchBridgeArguments = (
   }
 
   return { names: names.join(",") }
+}
+
+export const formatToolSearchArguments = (
+  argumentsValue: Record<string, unknown> | string,
+  toolSearchName: string,
+): Record<string, unknown> => {
+  if (toolSearchName !== CLAUDE_TOOL_SEARCH_NAME) {
+    return formatToolSearchBridgeArguments(argumentsValue)
+  }
+
+  if (typeof argumentsValue !== "string") {
+    return argumentsValue && !Array.isArray(argumentsValue) ?
+        argumentsValue
+      : {}
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(argumentsValue)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ?
+        (parsed as Record<string, unknown>)
+      : {}
+  } catch {
+    return {}
+  }
 }
 
 export const selectDeferredToolsByNames = (

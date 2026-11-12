@@ -614,6 +614,134 @@ describe("provider Messages Anthropic forwarding", () => {
 })
 
 describe("provider Messages Responses forwarding", () => {
+  test.each([false, true])(
+    "translates native ToolSearch through the Responses provider with stream=%s",
+    async (stream) => {
+      providerConfig = {
+        ...createProviderConfig("responses"),
+        type: "openai-responses",
+        models: { "gpt-6.1-sol": {} },
+      }
+      const args = { query: "select:mcp__probe__get_issue", max_results: 5 }
+      const call = {
+        type: "tool_search_call" as const,
+        call_id: "call-native-provider",
+        arguments: args,
+      }
+      const result = {
+        id: "resp-native",
+        object: "response",
+        created_at: 0,
+        model: "gpt-6.1-sol",
+        output: [call],
+        output_text: "",
+        status: "completed",
+        error: null,
+        incomplete_details: null,
+        instructions: null,
+        metadata: null,
+        parallel_tool_calls: false,
+        temperature: null,
+        tool_choice: "auto",
+        tools: [],
+        top_p: null,
+      } satisfies ResponsesResult
+      upstreamResponseFactory = () => {
+        if (!stream) return Response.json(result)
+        const events = [
+          {
+            type: "response.created",
+            response: { ...result, status: "in_progress" },
+          },
+          {
+            type: "response.output_item.added",
+            output_index: 0,
+            item: { ...call, arguments: {} },
+          },
+          { type: "response.output_item.done", output_index: 0, item: call },
+          { type: "response.completed", response: result },
+        ]
+        return new Response(
+          events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""),
+          {
+            headers: { "content-type": "text/event-stream" },
+          },
+        )
+      }
+      const response = await createApp().request("/responses/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          createMessagesPayload({
+            model: "gpt-6.1-sol",
+            stream,
+            tools: [
+              {
+                name: "ToolSearch",
+                input_schema: {
+                  type: "object",
+                  properties: {
+                    query: { type: "string" },
+                    max_results: { type: "number" },
+                  },
+                },
+              },
+              {
+                name: "DeferredToolPlaceholder",
+                defer_loading: true,
+                input_schema: { type: "object" },
+              },
+            ],
+          }),
+        ),
+      })
+      expect(response.status).toBe(200)
+      const body = fetchMock.mock.calls[0][1]?.body
+      if (typeof body !== "string") throw new Error("Expected a JSON body")
+      const forwarded = JSON.parse(body) as ResponsesPayload
+      expect(forwarded.tools).toHaveLength(1)
+      expect(forwarded.tools?.[0]).toMatchObject({
+        type: "tool_search",
+        execution: "client",
+      })
+      if (!stream) {
+        expect(await response.json()).toMatchObject({
+          content: [
+            {
+              type: "tool_use",
+              id: call.call_id,
+              name: "ToolSearch",
+              input: args,
+            },
+          ],
+        })
+      } else {
+        const events = parseStreamData(await response.text())
+        expect(
+          events.find((event) => event.type === "content_block_start"),
+        ).toMatchObject({
+          type: "content_block_start",
+          content_block: {
+            type: "tool_use",
+            id: call.call_id,
+            name: "ToolSearch",
+            input: {},
+          },
+        })
+        expect(
+          events.find((event) => event.type === "content_block_delta"),
+        ).toMatchObject({
+          type: "content_block_delta",
+          delta: {
+            type: "input_json_delta",
+            partial_json: JSON.stringify(args),
+          },
+        })
+        expect(events.at(-1)?.type).toBe("message_stop")
+      }
+    },
+  )
+
   test("preserves PDF data when xAI Messages requests use the Responses adapter", async () => {
     providerConfig = {
       ...createProviderConfig("xai"),
