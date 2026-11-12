@@ -15,7 +15,6 @@ import type {
   AnthropicInputMessage,
   AnthropicMessagesPayload,
   AnthropicTextBlock,
-  AnthropicToolResultContentBlock,
   AnthropicUserContentBlock,
   AnthropicUserMessage,
 } from "~/lib/types/anthropic"
@@ -321,6 +320,7 @@ export function translateInputItems(
       }
       case "function_call_output":
       case "custom_tool_call_output": {
+        if (appendCodexPageContext(item, messages)) break
         appendUserBlock(messages, {
           type: "tool_result",
           tool_use_id: requireStringField(item, "call_id", type),
@@ -342,6 +342,35 @@ export function translateInputItems(
       }
     }
   }
+}
+
+function appendCodexPageContext(
+  item: ResponseInputItem,
+  messages: Array<AnthropicInputMessage>,
+): boolean {
+  const name = getStringField(item, "name")
+  if (
+    !isRecord(item)
+    || item.type !== "function_call_output"
+    || item.namespace !== "agent"
+    || (item.call_id !== undefined && item.call_id !== null)
+    || !name
+    || (name !== "codex_apps_open_page"
+      && !/^codex_apps_selected_page_part_[1-9]\d*_of_[1-9]\d*$/u.test(name))
+  ) {
+    return false
+  }
+
+  // Codex Desktop injects page snapshots without a preceding tool call. Keep
+  // them as user context, not an orphan tool_result or a system instruction.
+  const content = translateToolResultContent(item.output, `${item.type}.output`)
+  appendUserBlock(messages, { type: "text", text: `agent.${name}:` })
+  if (typeof content === "string") {
+    if (content) appendUserBlock(messages, { type: "text", text: content })
+  } else {
+    for (const block of content) appendUserBlock(messages, block)
+  }
+  return true
 }
 
 export function translateInputMessage(
@@ -582,7 +611,7 @@ export function translateUserContentPart(
 export function translateToolResultContent(
   value: unknown,
   path: string,
-): string | Array<AnthropicToolResultContentBlock> {
+): string | Array<ReturnType<typeof translateUserContentPart>> {
   if (value === undefined || value === null) return ""
   if (typeof value === "string") return value
   if (!Array.isArray(value)) {
