@@ -991,6 +991,112 @@ describe("Responses Lite to Messages translation", () => {
     ])
   })
 
+  test.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    [
+      "oneOf",
+      {
+        type: "object",
+        properties: {
+          code: { type: "string" },
+          completion_summary: { type: "string" },
+          timeout_ms: { type: "integer" },
+        },
+        additionalProperties: false,
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              code: { type: "string" },
+              timeout_ms: { type: "integer" },
+            },
+            required: ["code"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { completion_summary: { type: "string" } },
+            required: ["completion_summary"],
+            additionalProperties: false,
+          },
+        ],
+      },
+      {
+        type: "object",
+        properties: {
+          code: { type: "string" },
+          completion_summary: { type: "string" },
+          timeout_ms: { type: "integer" },
+        },
+        additionalProperties: false,
+      },
+    ],
+    [
+      "anyOf",
+      {
+        anyOf: [
+          {
+            type: "object",
+            properties: {
+              kind: { const: "file" },
+              path: { type: "string" },
+            },
+            required: ["kind", "path"],
+          },
+          {
+            type: "object",
+            properties: { kind: { const: "url" }, url: { type: "string" } },
+            required: ["kind", "url"],
+          },
+        ],
+      },
+      {
+        type: "object",
+        properties: {
+          kind: { anyOf: [{ const: "file" }, { const: "url" }] },
+          path: { type: "string" },
+          url: { type: "string" },
+        },
+        required: ["kind"],
+      },
+    ],
+    [
+      "allOf",
+      {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+        allOf: [
+          {
+            properties: { encoding: { type: "string" } },
+            required: ["encoding"],
+          },
+          { properties: { limit: { type: "integer" } } },
+        ],
+      },
+      {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          encoding: { type: "string" },
+          limit: { type: "integer" },
+        },
+        required: ["path", "encoding"],
+      },
+    ],
+  ])(
+    "flattens a top-level %s in function tool schemas",
+    (_, parameters, inputSchema) => {
+      const result = translate({
+        input: "Run it",
+        tools: [{ type: "function", name: "js", parameters, strict: false }],
+      })
+
+      expect(result.messagesPayload.tools?.[0]?.input_schema).toEqual(
+        inputSchema,
+      )
+    },
+  )
+
   test.each([undefined, null, ""])(
     "reuses default tool aliases for historical namespace %j",
     (namespace) => {
