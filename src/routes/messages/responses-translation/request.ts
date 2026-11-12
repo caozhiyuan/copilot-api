@@ -628,11 +628,10 @@ export const createToolSearchOutput = (
   return {
     type: "tool_search_output",
     call_id: block.tool_use_id,
-    tools: referencedToolNames.map((toolName) =>
-      convertDeferredToolToNamespace(
-        resolveDeferredTool(toolName, originalTools),
-      ),
-    ),
+    tools: referencedToolNames.map((toolName) => ({
+      ...convertToolToFunction(resolveDeferredTool(toolName, originalTools)),
+      defer_loading: true,
+    })),
     execution: "client",
     status: block.is_error ? "incomplete" : "completed",
   }
@@ -790,7 +789,6 @@ export const convertAnthropicTools = (
     }
 
     if (toolSearchMode === "bridge" && isDeferredToolName(tool.name)) {
-      converted.push(convertDeferredToolToNamespace(tool))
       continue
     }
 
