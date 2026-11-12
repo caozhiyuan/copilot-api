@@ -2,7 +2,7 @@ import consola from "consola"
 
 import {
   BRIDGE_TOOL_SEARCH_NAME,
-  formatToolSearchBridgeArguments,
+  formatToolSearchArguments,
 } from "~/lib/tool-search"
 
 import {
@@ -216,7 +216,7 @@ export const createToolSearchUseContentBlock = (
     type: "tool_use",
     id: toolId,
     name: toolSearchName,
-    input: parseToolSearchArguments(call.arguments),
+    input: parseToolSearchArguments(call.arguments, toolSearchName),
   }
 }
 
@@ -276,8 +276,9 @@ export const parseFunctionCallArguments = (
 
 export const parseToolSearchArguments = (
   argumentsValue: Record<string, unknown> | string,
+  toolSearchName = BRIDGE_TOOL_SEARCH_NAME,
 ): Record<string, unknown> => {
-  return formatToolSearchBridgeArguments(argumentsValue)
+  return formatToolSearchArguments(argumentsValue, toolSearchName)
 }
 
 export const fallbackContentBlocks = (

@@ -852,7 +852,7 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     ])
   })
 
-  it("converts bridge and deferred tools into Responses tool_search and namespaces", () => {
+  it("keeps bridge deferred tools out of top-level tools until loaded", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
       model: "gpt-5.4",
       max_tokens: 1024,
@@ -929,48 +929,6 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
           required: ["names"],
           additionalProperties: false,
         },
-      },
-      {
-        type: "namespace",
-        name: "mcp__fetch__fetch",
-        description: "Fetch a URL",
-        tools: [
-          {
-            type: "function",
-            name: "mcp__fetch__fetch",
-            description: "Fetch a URL",
-            parameters: {
-              type: "object",
-              properties: {
-                url: { type: "string" },
-              },
-              required: ["url"],
-            },
-            strict: false,
-            defer_loading: true,
-          },
-        ],
-      },
-      {
-        type: "namespace",
-        name: "chrome-devtools_click",
-        description: "Click an element",
-        tools: [
-          {
-            type: "function",
-            name: "chrome-devtools_click",
-            description: "Click an element",
-            parameters: {
-              type: "object",
-              properties: {
-                uid: { type: "string" },
-              },
-              required: ["uid"],
-            },
-            strict: false,
-            defer_loading: true,
-          },
-        ],
       },
       {
         type: "function",
@@ -1190,24 +1148,17 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
       execution: "client",
       tools: [
         {
-          type: "namespace",
+          type: "function",
           name: "mcp__fetch__fetch",
           description: "Fetch a URL",
-          tools: [
-            {
-              type: "function",
-              name: "mcp__fetch__fetch",
-              description: "Fetch a URL",
-              parameters: {
-                type: "object",
-                properties: {
-                  url: { type: "string" },
-                },
-              },
-              strict: false,
-              defer_loading: true,
+          parameters: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
             },
-          ],
+          },
+          strict: false,
+          defer_loading: true,
         },
       ],
       status: "completed",
