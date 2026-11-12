@@ -700,6 +700,191 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     ])
   })
 
+  describe("tool_addition blocks in system messages", () => {
+    const toolAdditionBlock = (name: string) => ({
+      type: "tool_addition",
+      tool: {
+        type: "tool_definition",
+        definition: {
+          name,
+          description: `Announced ${name}`,
+          input_schema: { type: "object", properties: {} },
+        },
+      },
+    })
+
+    it("keeps only the announcement text part when translating a mixed system message", () => {
+      const result = translateAnthropicMessagesToResponsesPayload({
+        model: "gpt-5.4",
+        max_tokens: 1024,
+        messages: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: "The following tools just became available",
+              },
+              toolAdditionBlock("mcp__plugin_tool-search_tool_search__search"),
+              toolAdditionBlock("mcp__plugin_context-mode_ctx_search"),
+            ],
+          },
+        ],
+      } as unknown as AnthropicMessagesPayload)
+
+      expect(result.input).toEqual([
+        {
+          type: "message",
+          role: "developer",
+          content: [
+            {
+              type: "input_text",
+              text: "The following tools just became available",
+            },
+          ],
+        },
+      ])
+
+      const developerMessage = (
+        result.input as Array<{ role: string; content: unknown }>
+      )[0]
+      const parts = developerMessage.content as Array<{
+        type: string
+        text: unknown
+      }>
+      expect(parts).toHaveLength(1)
+      for (const part of parts) {
+        expect(part.type).toBe("input_text")
+        expect(typeof part.text).toBe("string")
+      }
+    })
+
+    it("emits no developer item when a system message only contains tool_addition blocks", () => {
+      const result = translateAnthropicMessagesToResponsesPayload({
+        model: "gpt-5.4",
+        max_tokens: 1024,
+        messages: [
+          { role: "user", content: "hello" },
+          {
+            role: "system",
+            content: [
+              toolAdditionBlock("mcp__plugin_tool-search_tool_search__search"),
+              toolAdditionBlock("mcp__plugin_context-mode_ctx_search"),
+            ],
+          },
+          { role: "user", content: "still here" },
+        ],
+      } as unknown as AnthropicMessagesPayload)
+
+      expect(result.input).toEqual([
+        { type: "message", role: "user", content: "hello" },
+        { type: "message", role: "user", content: "still here" },
+      ])
+    })
+
+    it("never serializes a text-less input_text part for such system messages", () => {
+      const result = translateAnthropicMessagesToResponsesPayload({
+        model: "gpt-5.4",
+        max_tokens: 1024,
+        messages: [
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: "The following tools just became available",
+              },
+              toolAdditionBlock("mcp__plugin_tool-search_tool_search__search"),
+              toolAdditionBlock("mcp__plugin_context-mode_ctx_search"),
+            ],
+          },
+        ],
+      } as unknown as AnthropicMessagesPayload)
+
+      expect(JSON.stringify(result)).not.toContain('{"type":"input_text"}')
+    })
+
+    it("translates a captured mid-conversation tool announcement payload end to end", () => {
+      const result = translateAnthropicMessagesToResponsesPayload({
+        model: "gpt-5.4",
+        max_tokens: 1024,
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "list the git remotes" }],
+          },
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "Checking the remotes." },
+              {
+                type: "tool_use",
+                id: "call_remotes",
+                name: "Bash",
+                input: { command: "git remote -v" },
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "call_remotes",
+                content: [{ type: "text", text: "origin and upstream" }],
+              },
+            ],
+          },
+          {
+            role: "system",
+            content: [
+              {
+                type: "text",
+                text: "The following tools just became available",
+              },
+              toolAdditionBlock("mcp__plugin_tool-search_tool_search__search"),
+              toolAdditionBlock("mcp__plugin_context-mode_ctx_search"),
+            ],
+          },
+          {
+            role: "user",
+            content: [{ type: "text", text: "now search for the tool" }],
+          },
+        ],
+      } as unknown as AnthropicMessagesPayload)
+
+      const inputTextParts: Array<Record<string, unknown>> = []
+      const walk = (value: unknown): void => {
+        if (Array.isArray(value)) {
+          for (const entry of value) {
+            walk(entry)
+          }
+          return
+        }
+        if (value === null || typeof value !== "object") {
+          return
+        }
+        const record = value as Record<string, unknown>
+        if (record.type === "input_text") {
+          inputTextParts.push(record)
+        }
+        for (const entry of Object.values(record)) {
+          walk(entry)
+        }
+      }
+      walk(result.input)
+
+      expect(inputTextParts.length).toBeGreaterThan(0)
+      for (const part of inputTextParts) {
+        expect(typeof part.text).toBe("string")
+        expect(part.text).not.toBe("")
+      }
+      expect(JSON.stringify(result.input)).not.toContain(
+        '{"type":"input_text"}',
+      )
+    })
+  })
+
   it("drops text blocks with missing or empty text instead of emitting text-less input_text parts", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
       model: "gpt-5.4",
