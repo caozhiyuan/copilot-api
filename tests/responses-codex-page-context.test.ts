@@ -158,6 +158,32 @@ describe("Codex injected page context", () => {
     expect(JSON.stringify(result.messages)).toContain("Switched model")
   })
 
+  test("skips historical web_search_call items when switching a GPT thread to Messages", () => {
+    const result = translate([
+      { type: "message", role: "user", content: "Look up PR 500" },
+      {
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: "Searching" }],
+        encrypted_content: "enc-1",
+      },
+      {
+        type: "web_search_call",
+        id: "ws-1",
+        status: "completed",
+        action: { type: "open_page", url: "https://example.com" },
+      },
+      { type: "message", role: "assistant", content: "Checked PR 500" },
+      pageContext({
+        namespace: "codex_app",
+        name: "send_message_to_thread",
+        output: "<codex_delegation><input>Continue</input></codex_delegation>",
+      }),
+    ])
+    expect(result.messages).toHaveLength(3)
+    expect(result.messages[1].role).toBe("assistant")
+    expect(result.messages[2].role).toBe("user")
+  })
+
   test("preserves array content and images while omitting empty text blocks", () => {
     const result = translate([
       pageContext({

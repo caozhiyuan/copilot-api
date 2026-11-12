@@ -336,7 +336,8 @@ export function translateInputItems(
         })
         break
       }
-      case "additional_tools": {
+      case "additional_tools":
+      case "web_search_call": {
         break
       }
       default: {
