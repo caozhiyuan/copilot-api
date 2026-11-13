@@ -28,6 +28,7 @@ interface ServerProcess extends EventEmitter {
   stdout: NodeJS.ReadableStream | null
   stderr: NodeJS.ReadableStream | null
   kill: (signal?: NodeJS.Signals) => boolean
+  pid?: number
 }
 
 let serverProcess: ServerProcess | null = null
@@ -446,6 +447,23 @@ async function waitForServer(
   })
 }
 
+function taskkillProcessTree(pid: number): void {
+  try {
+    // Direct child's tree only. Do not tree-kill Copilot API.exe from NSIS:
+    // that also kills the in-app installer.
+    childProcess.execFile(
+      'taskkill',
+      ['/PID', String(pid), '/T', '/F'],
+      { windowsHide: true, timeout: 5000 },
+      () => {
+        // Best-effort after SIGKILL. The process may already have exited.
+      },
+    )
+  } catch {
+    // taskkill is unavailable; SIGKILL already ran.
+  }
+}
+
 function waitForProcessExit(proc: ServerProcess): Promise<void> {
   return new Promise((resolve) => {
     let settled = false
@@ -464,7 +482,19 @@ function waitForProcessExit(proc: ServerProcess): Promise<void> {
     const timeout = setTimeout(() => {
       // External Bun processes can ignore SIGTERM; do not leave a server behind.
       if ('exitCode' in proc) {
-        forceTimeout = setTimeout(finish, 1000)
+        forceTimeout = setTimeout(() => {
+          const pid = proc.pid
+          if (
+            process.platform === 'win32'
+            && typeof pid === 'number'
+            && pid > 0
+          ) {
+            taskkillProcessTree(pid)
+            forceTimeout = setTimeout(finish, 1000)
+            return
+          }
+          finish()
+        }, 1000)
         if (!proc.kill('SIGKILL')) finish()
       } else {
         finish()

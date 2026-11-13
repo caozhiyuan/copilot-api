@@ -301,6 +301,57 @@ test('reports a Bun spawn error without an unhandled error event', () => {
   `)
 })
 
+test('finishes stopping an unresponsive process without taskkill off Windows', () => {
+  runManagerScenario(`
+    bunRuntime = { available: true, version: '1.4.4', path: '/local/bun' }
+    const calls = []
+    spyOn(childProcess, 'execFile').mockImplementation((file, args) => {
+      calls.push([file, args])
+      return {}
+    })
+    await manager.startServer(0)
+    const proc = processes.at(-1)
+    proc.exitCode = null
+    proc.pid = 7
+    proc.kill = () => true
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = (callback, delay, ...args) => originalSetTimeout(callback, delay === 5000 || delay === 1000 ? 1 : delay, ...args)
+    try {
+      await manager.stopServer()
+      assert.deepEqual(calls, [])
+      assert.equal(manager.isRunning(), false)
+    } finally { globalThis.setTimeout = originalSetTimeout }
+  `)
+})
+
+test('tree-kills an unresponsive Windows child after the stop timeout', () => {
+  runManagerScenario(`
+    bunRuntime = { available: true, version: '1.4.4', path: 'C:\\\\tools\\\\bun.exe' }
+    const calls = []
+    spyOn(childProcess, 'execFile').mockImplementation((file, args) => {
+      calls.push([file, args])
+      return {}
+    })
+    await manager.startServer(0)
+    const proc = processes.at(-1)
+    proc.exitCode = null
+    proc.pid = 4242
+    proc.kill = () => true
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = (callback, delay, ...args) => originalSetTimeout(callback, delay === 5000 || delay === 1000 ? 1 : delay, ...args)
+    try {
+      await manager.stopServer()
+      assert.deepEqual(calls, [['taskkill', ['/PID', '4242', '/T', '/F']]])
+      assert.equal(manager.isRunning(), false)
+    } finally {
+      globalThis.setTimeout = originalSetTimeout
+      if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform)
+    }
+  `)
+})
+
 test('forces an unresponsive external process to exit before completing a stop', () => {
   runManagerScenario(`
     bunRuntime = { available: true, version: '1.4.4', path: '/local/bun' }
