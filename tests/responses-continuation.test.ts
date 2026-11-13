@@ -176,6 +176,207 @@ test("chooses the last opaque output anchor and keeps every new tool result", ()
   next.finish()
 })
 
+test.each([
+  { content: "answer" },
+  { content: [{ type: "input_text", text: "answer" }] },
+  { content: [{ type: "output_text", text: "answer" }] },
+  {
+    content: [
+      { type: "input_text", text: "an" },
+      { type: "input_text", text: "swer" },
+    ],
+  },
+  { content: [{ type: "refusal", refusal: "answer" }] },
+])(
+  "continues text-only answers across message representations (%j)",
+  ({ content }) => {
+    const connection = seed([text])
+    const replay = { role: "assistant", content, id: "client-message-id" }
+    const next = prepareResponsesContinuation(
+      payload([user, replay, user]),
+      connection,
+      false,
+    )
+    expect(next.payload).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [user],
+    })
+  },
+)
+
+test.each([thinking, output])(
+  "prefers the opaque anchor even when a matching text message is present (%j)",
+  (item) => {
+    const connection = seed([item, text])
+    const full = payload([user, text, user])
+    const next = prepareResponsesContinuation(full, connection, false)
+    expect(next.usedPrevious).toBe(false)
+    expect(next.payload).toBe(full)
+  },
+)
+
+test.each([
+  { role: "assistant", content: "different answer" },
+  { role: "assistant", content: "answer " },
+  { role: "assistant", content: [] },
+  { role: "assistant", content: null },
+  { role: "assistant", content: [{ type: "input_image", image_url: "image" }] },
+  { role: "assistant", content: [null] },
+  { role: "assistant", content: [{}] },
+  { role: "assistant", content: [{ type: "input_text", text: 1 }] },
+  { type: "reasoning", summary: [], encrypted_content: "other-cipher" },
+  output,
+  { type: "file_search_call" },
+  { type: "computer_call" },
+  { type: "image_generation_call" },
+  { type: "code_interpreter_call" },
+  { type: "local_shell_call" },
+  { type: "shell_call" },
+  { type: "apply_patch_call" },
+  { type: "mcp_call" },
+  { type: "mcp_list_tools" },
+  { type: "mcp_approval_request" },
+  { type: "program" },
+  { type: "program_output" },
+  { type: "tool_search_output", execution: "server", tools: [] },
+  { type: "additional_tools", role: "assistant", tools: [] },
+])(
+  "never searches older text when the last assistant item differs (%j)",
+  (last) => {
+    const connection = seed([text])
+    const full = payload([user, text, user, last, user])
+    const next = prepareResponsesContinuation(full, connection, false)
+    expect(next.usedPrevious).toBe(false)
+    expect(next.payload).toBe(full)
+  },
+)
+
+test.each([
+  { type: "function_call_output", call_id: "call-1", output: "ok" },
+  { type: "custom_tool_call_output", call_id: "call-1", output: "ok" },
+  { type: "computer_call_output", call_id: "call-1", output: {} },
+  { type: "local_shell_call_output", call_id: "call-1", output: "ok" },
+  { type: "shell_call_output", call_id: "call-1", output: [] },
+  { type: "apply_patch_call_output", call_id: "call-1", output: "ok" },
+  {
+    type: "tool_search_output",
+    execution: "client",
+    call_id: "call-1",
+    tools: [],
+  },
+  {
+    type: "mcp_approval_response",
+    approval_request_id: "approval-1",
+    approve: true,
+  },
+  {
+    type: "agent_message",
+    author: "agent-a",
+    recipient: "agent-b",
+    content: [],
+  },
+  { type: "additional_tools", role: "developer", tools: [] },
+])("preserves new client inputs after a matching text message (%j)", (item) => {
+  const connection = seed([text])
+  const next = prepareResponsesContinuation(
+    payload([user, text, item, user]),
+    connection,
+    false,
+  )
+  expect(next.payload).toMatchObject({
+    previous_response_id: "resp-1",
+    input: [item, user],
+  })
+})
+
+test("advances the response ID when a tool turn ends with a text-only answer", () => {
+  const connection = seed()
+  const next = prepareResponsesContinuation(
+    payload([user, output, result]),
+    connection,
+    false,
+  )
+  next.observe(complete("resp-2", [text]))
+  next.finish()
+  const third = prepareResponsesContinuation(
+    payload([user, output, result, text, user]),
+    connection,
+    false,
+  )
+  expect(third.payload).toMatchObject({
+    previous_response_id: "resp-2",
+    input: [user],
+  })
+})
+
+test.each([
+  payload("next"),
+  { ...payload(), previous_response_id: "client-response" },
+  { ...payload(), generate: false },
+])(
+  "clears an older checkpoint after an ineligible completed request (%j)",
+  (request) => {
+    const connection = seed()
+    const next = prepareResponsesContinuation(request, connection, false)
+    next.observe(complete("resp-2", [text]))
+    next.finish()
+    expect(
+      prepareResponsesContinuation(
+        payload([user, output, result]),
+        connection,
+        false,
+      ).usedPrevious,
+    ).toBe(false)
+  },
+)
+
+test("text fallback uses done-event text instead of a different terminal snapshot", () => {
+  const connection = new Connection()
+  const first = prepareResponsesContinuation(payload(), connection, false)
+  first.observe({
+    type: "response.output_item.done",
+    sequence_number: 1,
+    output_index: 0,
+    item: text,
+  })
+  first.observe(
+    complete("resp-text", [
+      { ...text, content: [{ type: "output_text", text: "different" }] },
+    ]),
+  )
+  first.finish()
+  expect(
+    prepareResponsesContinuation(payload([user, text, user]), connection, false)
+      .payload,
+  ).toMatchObject({ previous_response_id: "resp-text", input: [user] })
+})
+
+test.each([
+  { items: [] },
+  { items: null },
+  { items: [{ ...text, content: "" }] },
+  {
+    items: [
+      { ...text, content: [{ type: "input_image", image_url: "image" }] },
+    ],
+  },
+  { items: [{ ...text, content: [{ type: "refusal", refusal: 1 }] }] },
+  { items: [text, { type: "reasoning", encrypted_content: "", summary: [] }] },
+  { items: [text, { type: "future_server_item" }] },
+])(
+  "clears an older checkpoint when a completed response has no usable anchor (%j)",
+  ({ items }) => {
+    const connection = seed()
+    const full = payload([user, output, result])
+    const next = prepareResponsesContinuation(full, connection, false)
+    next.observe(complete("resp-2", items))
+    next.finish()
+    expect(
+      prepareResponsesContinuation(full, connection, false).usedPrevious,
+    ).toBe(false)
+  },
+)
+
 test("retains the latest completed tool turn across an unfinished request", () => {
   const connection = seed()
   const next = prepareResponsesContinuation(
@@ -230,6 +431,7 @@ test("cancelling after completion leaves the previous checkpoint committed", () 
 test.each([
   { ...thinking, encrypted_content: "interrupted-cipher" },
   { ...output, call_id: "interrupted-call" },
+  text,
 ])("uses the interrupted response's own ID and anchor (%j)", (item) => {
   const connection = seed()
   const controller = new AbortController()

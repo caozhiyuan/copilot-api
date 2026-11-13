@@ -3,7 +3,11 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
+import type {
+  ResponseInputItem,
+  ResponsesPayload,
+  ResponsesResult,
+} from "~/lib/types/responses"
 
 type ListenerEvent = {
   data?: unknown
@@ -259,6 +263,7 @@ const createResponsesResult = (
           { ...item, encrypted_content: "completed-cipher" }
         : item,
       )
+    : model === "gpt-text-continuation" ? [continuationOutput[1]]
     : [],
   output_text: "",
   parallel_tool_calls: false,
@@ -1305,10 +1310,11 @@ const getContinuationRequestId = () =>
 const sendContinuationTurn = async (
   input: ResponsesPayload["input"],
   clientSignal = new AbortController().signal,
+  model = "gpt-continuation",
 ) =>
   collectStreamChunks(
     (await createResponses(
-      { model: "gpt-continuation", stream: true, input },
+      { model, stream: true, input },
       {
         requestId: getContinuationRequestId(),
         initiator: "user",
@@ -1318,6 +1324,34 @@ const sendContinuationTurn = async (
       },
     )) as AsyncIterable<unknown>,
   )
+
+test("Copilot websocket continues text-only answers and retries a missing ID with full input", async () => {
+  await withAffinity("text-only-continuation", async () => {
+    const history: Array<ResponseInputItem> = [...continuationInput]
+    const send = () =>
+      sendContinuationTurn(history, undefined, "gpt-text-continuation")
+    for (let turn = 0; turn < 3; turn++) {
+      await send()
+      const sent = continuationRequest(0, turn)
+      if (turn === 0) expect(sent.previous_response_id).toBeUndefined()
+      else {
+        expect(sent.previous_response_id).toBe(`resp-${turn}`)
+        expect(sent.input).toEqual(history.slice(-1))
+      }
+      history.push(continuationOutput[1], {
+        ...continuationInput[0],
+        content: `question ${turn + 1}`,
+      })
+    }
+    MockWebSocket.continuationError = { code: "previous_response_not_found" }
+    const chunks = await send()
+    expect(continuationRequest(0, 3).previous_response_id).toBe("resp-3")
+    expect(MockWebSocket.instances).toHaveLength(2)
+    expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
+    expect(continuationRequest(1, 0).input).toEqual(history)
+    expect(chunks.at(-1)?.event).toBe("response.completed")
+  })
+})
 
 test("Copilot websocket continues an existing stable pool key and isolates agents", async () => {
   await withAffinity("agent-a", async () => {
