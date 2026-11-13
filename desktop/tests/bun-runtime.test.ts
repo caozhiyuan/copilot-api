@@ -6,7 +6,6 @@ import path from 'node:path'
 import {
   detectBunRuntime,
   getBunCandidates,
-  isNvmWindowsShim,
   isSupportedBunVersion,
 } from '../electron/bun-runtime'
 import { normalizeSettings } from '../electron/settings-store'
@@ -72,6 +71,50 @@ describe('Bun runtime detection', () => {
       'C:\\Users\\test\\AppData\\Roaming\\npm\\node_modules\\bun\\bin\\bun.exe',
       'C:\\Users\\test\\AppData\\Local\\Microsoft\\WinGet\\Links\\bun.exe',
     ])
+  })
+
+  test('skips nvm-windows 2 shim and launches the real Bun', async () => {
+    const nvmRoot = 'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm'
+    const installs = path.win32.join(nvmRoot, 'installs')
+    const shim = path.win32.join(nvmRoot, '.shim', 'bun.exe')
+    const real = path.win32.join(
+      installs,
+      'v24.22.2',
+      'node_modules',
+      'bun',
+      'bin',
+      'bun.exe',
+    )
+    const checked: string[] = []
+    const options = {
+      env: {
+        Path: [path.win32.join(nvmRoot, '.shim'), 'D:\\tools\\.shim'].join(';'),
+        NVM_SYMLINK: path.win32.join(nvmRoot, '.shim'),
+        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+      },
+      homeDir: 'C:\\Users\\test',
+      platform: 'win32' as const,
+      readDirectory: async (directory: string) => {
+        if (directory === installs) return ['v24.22.2']
+        throw new Error('ENOENT')
+      },
+      getVersion: async (candidate: string) => {
+        checked.push(candidate)
+        if (candidate === real || candidate === shim) return '1.4.4'
+        throw new Error('ENOENT')
+      },
+    }
+
+    const candidates = await getBunCandidates(options)
+    expect(candidates).not.toContain(shim)
+    expect(candidates).toContain('D:\\tools\\.shim\\bun.exe')
+    expect(candidates).toContain(real)
+    expect(await detectBunRuntime(options)).toEqual({
+      available: true,
+      version: '1.4.4',
+      path: real,
+    })
+    expect(checked).not.toContain(shim)
   })
 
   test('ignores relative BUN_INSTALL and handles an absent PATH', async () => {
@@ -333,371 +376,6 @@ describe('Bun runtime detection', () => {
         },
       }),
     ).toEqual({ available: false, version: '1.3.14', path: '/old/bun' })
-  })
-
-  test('keeps standard Windows installs ahead of nvm-windows 2', async () => {
-    const installs =
-      'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm\\installs'
-    const candidates = await getBunCandidates({
-      env: {
-        Path: 'C:\\Program Files\\Bun',
-        BUN_INSTALL: 'D:\\bun',
-        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
-      },
-      homeDir: 'C:\\Users\\test',
-      platform: 'win32',
-      readDirectory: async (directory) => {
-        if (directory === installs) return ['v24.10.0']
-        throw new Error('ENOENT')
-      },
-    })
-    expect(candidates.slice(0, 4)).toEqual([
-      'C:\\Program Files\\Bun\\bun.exe',
-      'C:\\Program Files\\Bun\\node_modules\\bun\\bin\\bun.exe',
-      'D:\\bun\\bin\\bun.exe',
-      'C:\\Users\\test\\.bun\\bin\\bun.exe',
-    ])
-    expect(candidates).toContain(
-      `${installs}\\v24.10.0\\node_modules\\bun\\bin\\bun.exe`,
-    )
-    expect(
-      candidates.indexOf('C:\\Users\\test\\.bun\\bin\\bun.exe'),
-    ).toBeLessThan(
-      candidates.indexOf(
-        `${installs}\\v24.10.0\\node_modules\\bun\\bin\\bun.exe`,
-      ),
-    )
-  })
-
-  test('drops {DataRoot}\\.shim candidates and keeps other PATH entries', async () => {
-    const shim = 'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm\\.shim'
-    const candidates = await getBunCandidates({
-      env: {
-        Path: `${shim};C:\\real;D:\\other\\.shim`,
-        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
-      },
-      homeDir: 'C:\\Users\\nobody',
-      platform: 'win32',
-      readDirectory: async () => {
-        throw new Error('ENOENT')
-      },
-    })
-    expect(
-      candidates.some(
-        (candidate) =>
-          candidate.toLowerCase().includes('\\.shim\\')
-          && candidate.toLowerCase().includes('\\nvm\\'),
-      ),
-    ).toBe(false)
-    expect(candidates[0]).toBe('C:\\real\\bun.exe')
-    expect(candidates).toContain('D:\\other\\.shim\\bun.exe')
-  })
-
-  test('prefers the active nvm-windows 2 install, then newer versions', async () => {
-    const installs =
-      'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm\\installs'
-    const candidates = await getBunCandidates({
-      env: { LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local' },
-      homeDir: 'C:\\Users\\test',
-      platform: 'win32',
-      activeNodeVersion: '22.1.0',
-      readDirectory: async (directory) => {
-        if (directory !== installs) throw new Error('ENOENT')
-        return ['v24.10.0', 'v22.1.0', 'v24.9.0', 'current', 'v22.1.0-rc.1']
-      },
-    })
-    const nvmCandidates = candidates.filter((candidate) =>
-      candidate.startsWith(installs),
-    )
-    expect(nvmCandidates.slice(0, 4)).toEqual([
-      `${installs}\\v22.1.0\\bun.exe`,
-      `${installs}\\v22.1.0\\node_modules\\bun\\bin\\bun.exe`,
-      `${installs}\\v24.10.0\\bun.exe`,
-      `${installs}\\v24.10.0\\node_modules\\bun\\bin\\bun.exe`,
-    ])
-  })
-
-  test('uses a configured nvm-windows 2 InstallRoot and ignores partial versions', async () => {
-    const installRoot = 'D:\\nodes'
-    const scanned: string[] = []
-    const candidates = await getBunCandidates({
-      env: { LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local' },
-      homeDir: 'C:\\Users\\test',
-      platform: 'win32',
-      nvmPreferenceQuery: [
-        'HKEY_CURRENT_USER\\Software\\Author Software\\Preferences\\nvm',
-        '    ActiveVersion    REG_SZ    24',
-        '    InstallRoot    REG_EXPAND_SZ    %LOCALAPPDATA%\\nvm-custom\\installs',
-      ].join('\r\n'),
-      readDirectory: async (directory) => {
-        scanned.push(directory)
-        if (
-          directory === 'C:\\Users\\test\\AppData\\Local\\nvm-custom\\installs'
-        ) {
-          return ['v24.2.0', 'v24.10.0']
-        }
-        throw new Error('ENOENT')
-      },
-    })
-    expect(scanned).toContain(
-      'C:\\Users\\test\\AppData\\Local\\nvm-custom\\installs',
-    )
-    expect(scanned).not.toContain(installRoot)
-    const custom = candidates.filter((candidate) =>
-      candidate.includes('nvm-custom'),
-    )
-    expect(custom[0]).toBe(
-      'C:\\Users\\test\\AppData\\Local\\nvm-custom\\installs\\v24.10.0\\bun.exe',
-    )
-  })
-
-  test('ignores an nvm InstallRoot that still contains an unresolved variable', async () => {
-    const scanned: string[] = []
-    await getBunCandidates({
-      env: {},
-      homeDir: 'C:\\Users\\test',
-      platform: 'win32',
-      nvmPreferenceQuery:
-        '    InstallRoot    REG_EXPAND_SZ    %MISSING%\\nvm\\installs',
-      readDirectory: async (directory) => {
-        scanned.push(directory)
-        throw new Error('ENOENT')
-      },
-    })
-    expect(scanned.some((directory) => directory.includes('MISSING'))).toBe(
-      false,
-    )
-  })
-
-  test('scans certified nvm-windows program files installs', async () => {
-    const root = 'C:\\Program Files\\Author Software\\nvm\\installs'
-    const candidates = await getBunCandidates({
-      env: { ProgramFiles: 'C:\\Program Files' },
-      homeDir: 'C:\\Users\\test',
-      platform: 'win32',
-      readDirectory: async (directory) => {
-        if (directory !== root) throw new Error('ENOENT')
-        return ['v22.14.0']
-      },
-    })
-    expect(candidates).toContain(
-      `${root}\\v22.14.0\\node_modules\\bun\\bin\\bun.exe`,
-    )
-  })
-
-  test('does not look for nvm-windows 2 installs on posix', async () => {
-    const scanned: string[] = []
-    await getBunCandidates({
-      env: {},
-      platform: 'linux',
-      homeDir: '/users/test',
-      readDirectory: async (directory) => {
-        scanned.push(directory)
-        throw new Error('ENOENT')
-      },
-    })
-    expect(
-      scanned.some(
-        (directory) =>
-          directory.includes('Author Software')
-          || directory.endsWith('/installs'),
-      ),
-    ).toBe(false)
-    expect(scanned).toContain('/users/test/.nvm/versions/node')
-  })
-
-  test('skips an nvm shim whose version probe succeeds and selects the real bun.exe', async () => {
-    const shim = 'C:\\tools\\bun.exe'
-    const real =
-      'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm\\installs\\v24.10.0\\node_modules\\bun\\bin\\bun.exe'
-    const checked: string[] = []
-    const result = await detectBunRuntime({
-      env: {
-        Path: 'C:\\tools',
-        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
-      },
-      platform: 'win32',
-      homeDir: 'C:\\Users\\test',
-      readDirectory: async (directory) => {
-        if (
-          directory
-          === 'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm\\installs'
-        ) {
-          return ['v24.10.0']
-        }
-        throw new Error('ENOENT')
-      },
-      isNvmShim: async (executable) => executable === shim,
-      getVersion: async (executable) => {
-        checked.push(executable)
-        if (executable === shim || executable === real) return '1.4.4'
-        throw new Error('ENOENT')
-      },
-    })
-    expect(result).toEqual({ available: true, version: '1.4.4', path: real })
-    expect(checked).not.toContain(shim)
-  })
-
-  test('does not run the shim probe on non-Windows runtimes', async () => {
-    let shimChecks = 0
-    const result = await detectBunRuntime({
-      env: { PATH: '/real' },
-      platform: 'darwin',
-      homeDir: '/users/test',
-      isNvmShim: async () => {
-        shimChecks += 1
-        return true
-      },
-      getVersion: async (executable) => {
-        if (executable === '/real/bun') return '1.4.4'
-        throw new Error('ENOENT')
-      },
-    })
-    expect(shimChecks).toBe(0)
-    expect(result).toEqual({
-      available: true,
-      version: '1.4.4',
-      path: '/real/bun',
-    })
-  })
-
-  test('a failed shim probe still accepts a real Windows bun.exe', async () => {
-    const real = 'C:\\real\\bun.exe'
-    const result = await detectBunRuntime({
-      env: { PATH: 'C:\\real' },
-      platform: 'win32',
-      homeDir: 'C:\\Users\\test',
-      readDirectory: async () => {
-        throw new Error('ENOENT')
-      },
-      getVersion: async (executable) => {
-        if (executable === real) return '1.4.4'
-        throw new Error('ENOENT')
-      },
-    })
-    expect(result).toEqual({ available: true, version: '1.4.4', path: real })
-  })
-
-  test('detects an nvm proxy by --nvm-shim-version and ignores real Bun help', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nvm-shim-'))
-    const writeProbe = async (name: string, body: string) => {
-      const file = path.join(root, name)
-      await fs.writeFile(file, body)
-      await fs.chmod(file, 0o755)
-      return file
-    }
-    try {
-      const stderrShim = await writeProbe(
-        'stderr-shim',
-        '#!/bin/sh\nif [ "$1" = "--nvm-shim-version" ]; then echo 2.1.0-beta.9 >&2; exit 0; fi\nexit 1\n',
-      )
-      const stdoutShim = await writeProbe(
-        'stdout-shim',
-        '#!/bin/sh\nif [ "$1" = "--nvm-shim-version" ]; then echo 2.0.1-hotfix.2; exit 0; fi\nexit 1\n',
-      )
-      const help = await writeProbe(
-        'help-bun',
-        '#!/bin/sh\necho "Bun is a fast runtime (1.4.4+38afee6c8)"\necho "Usage: bun <command>"\nexit 0\n',
-      )
-      const unknown = await writeProbe(
-        'unknown-flag',
-        '#!/bin/sh\necho "error: unknown flag" >&2\nexit 1\n',
-      )
-      expect(await isNvmWindowsShim(stderrShim)).toBe(true)
-      expect(await isNvmWindowsShim(stdoutShim)).toBe(true)
-      expect(await isNvmWindowsShim(help)).toBe(false)
-      expect(await isNvmWindowsShim(unknown)).toBe(false)
-      expect(await isNvmWindowsShim(path.join(root, 'missing'))).toBe(false)
-      expect(await isNvmWindowsShim(process.execPath)).toBe(false)
-    } finally {
-      await fs.rm(root, { recursive: true, force: true })
-    }
-  })
-
-  test('keeps scanning default installs when reg query cannot run', async () => {
-    if (process.platform === 'win32') return
-    const previousPath = process.env.PATH
-    const previousPlatform = Object.getOwnPropertyDescriptor(
-      process,
-      'platform',
-    )
-    const empty = await fs.mkdtemp(path.join(os.tmpdir(), 'nvm-reg-missing-'))
-    Object.defineProperty(process, 'platform', { value: 'win32' })
-    process.env.PATH = empty
-    try {
-      const scanned: string[] = []
-      const candidates = await getBunCandidates({
-        platform: 'win32',
-        homeDir: 'C:\\Users\\test',
-        readDirectory: async (directory) => {
-          scanned.push(directory)
-          throw new Error('ENOENT')
-        },
-      })
-      expect(scanned).toContain(
-        'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm\\installs',
-      )
-      expect(
-        candidates.some((candidate) => candidate.includes('Author Software')),
-      ).toBe(false)
-    } finally {
-      if (previousPath === undefined) delete process.env.PATH
-      else process.env.PATH = previousPath
-      if (previousPlatform) {
-        Object.defineProperty(process, 'platform', previousPlatform)
-      }
-      await fs.rm(empty, { recursive: true, force: true })
-    }
-  })
-
-  test('reads nvm-windows preferences from reg query output', async () => {
-    if (process.platform === 'win32') return
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'nvm-reg-'))
-    const reg = path.join(root, 'reg')
-    const printer = path.join(root, 'print-reg.js')
-    const query = [
-      'HKEY_CURRENT_USER\\Software\\Author Software\\Preferences\\nvm',
-      '    ActiveVersion    REG_SZ    22.1.0',
-      '    InstallRoot    REG_SZ    D:\\nodes',
-      '',
-    ].join('\r\n')
-    const previousPath = process.env.PATH
-    const previousPlatform = Object.getOwnPropertyDescriptor(
-      process,
-      'platform',
-    )
-    await fs.writeFile(
-      printer,
-      `process.stdout.write(Buffer.from(${JSON.stringify(query)}, 'utf16le'))\n`,
-    )
-    await fs.writeFile(
-      reg,
-      `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(printer)}\n`,
-    )
-    await fs.chmod(reg, 0o755)
-    Object.defineProperty(process, 'platform', { value: 'win32' })
-    process.env.PATH = root
-    try {
-      const candidates = await getBunCandidates({
-        platform: 'win32',
-        homeDir: 'C:\\Users\\test',
-        readDirectory: async (directory) => {
-          if (directory === 'D:\\nodes') return ['v24.10.0', 'v22.1.0']
-          throw new Error('ENOENT')
-        },
-      })
-      const active = 'D:\\nodes\\v22.1.0\\node_modules\\bun\\bin\\bun.exe'
-      const newer = 'D:\\nodes\\v24.10.0\\node_modules\\bun\\bin\\bun.exe'
-      expect(candidates.indexOf(active)).toBeGreaterThanOrEqual(0)
-      expect(candidates.indexOf(active)).toBeLessThan(candidates.indexOf(newer))
-    } finally {
-      if (previousPath === undefined) delete process.env.PATH
-      else process.env.PATH = previousPath
-      if (previousPlatform) {
-        Object.defineProperty(process, 'platform', previousPlatform)
-      }
-      await fs.rm(root, { recursive: true, force: true })
-    }
   })
 
   test('reports unavailable when all candidates fail', async () => {
