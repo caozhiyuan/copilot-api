@@ -73,6 +73,50 @@ describe('Bun runtime detection', () => {
     ])
   })
 
+  test('skips nvm-windows 2 shim and launches the real Bun', async () => {
+    const nvmRoot = 'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm'
+    const installs = path.win32.join(nvmRoot, 'installs')
+    const shim = path.win32.join(nvmRoot, '.shim', 'bun.exe')
+    const real = path.win32.join(
+      installs,
+      'v24.22.2',
+      'node_modules',
+      'bun',
+      'bin',
+      'bun.exe',
+    )
+    const checked: string[] = []
+    const options = {
+      env: {
+        Path: [path.win32.join(nvmRoot, '.shim'), 'D:\\tools\\.shim'].join(';'),
+        NVM_SYMLINK: path.win32.join(nvmRoot, '.shim'),
+        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+      },
+      homeDir: 'C:\\Users\\test',
+      platform: 'win32' as const,
+      readDirectory: async (directory: string) => {
+        if (directory === installs) return ['v24.22.2']
+        throw new Error('ENOENT')
+      },
+      getVersion: async (candidate: string) => {
+        checked.push(candidate)
+        if (candidate === real || candidate === shim) return '1.4.4'
+        throw new Error('ENOENT')
+      },
+    }
+
+    const candidates = await getBunCandidates(options)
+    expect(candidates).not.toContain(shim)
+    expect(candidates).toContain('D:\\tools\\.shim\\bun.exe')
+    expect(candidates).toContain(real)
+    expect(await detectBunRuntime(options)).toEqual({
+      available: true,
+      version: '1.4.4',
+      path: real,
+    })
+    expect(checked).not.toContain(shim)
+  })
+
   test('ignores relative BUN_INSTALL and handles an absent PATH', async () => {
     expect(
       (

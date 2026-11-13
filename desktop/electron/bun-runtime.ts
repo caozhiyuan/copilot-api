@@ -50,6 +50,13 @@ async function getNvmBinDirectories({
           env.LOCALAPPDATA ?? paths.join(homeDir, 'AppData', 'Local'),
           'nvm',
         ),
+        // nvm-windows 2 stores Node versions below this fixed location.
+        paths.join(
+          env.LOCALAPPDATA ?? paths.join(homeDir, 'AppData', 'Local'),
+          'Author Software',
+          'nvm',
+          'installs',
+        ),
       ]
     : [
         env.NVM_DIR,
@@ -95,6 +102,13 @@ export async function getBunCandidates({
   const candidates: string[] = []
   const addBinDirectory = (directory: string | undefined) => {
     if (!directory || !paths.isAbsolute(directory)) return
+    // nvm-windows 2's .shim/bun.exe is a proxy that starts Bun as a grandchild.
+    if (
+      windows
+      && paths.basename(directory).toLowerCase() === '.shim'
+      && paths.basename(paths.dirname(directory)).toLowerCase() === 'nvm'
+    )
+      return
     candidates.push(paths.join(directory, executable))
     if (windows) {
       // npm exposes bun.cmd here; execFile/spawn need the package's native exe.
