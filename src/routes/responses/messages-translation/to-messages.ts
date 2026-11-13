@@ -320,7 +320,7 @@ export function translateInputItems(
       }
       case "function_call_output":
       case "custom_tool_call_output": {
-        const injectedKind = appendCodexPageContext(item, messages)
+        const injectedKind = appendStandaloneFunctionOutput(item, messages)
         if (injectedKind) {
           if (injectedKind === "delegation") userMessageSeen = true
           break
@@ -349,67 +349,57 @@ export function translateInputItems(
   }
 }
 
-const CODEX_INJECTED_AGENT_OUTPUT_NAMES = new Set([
-  "browser_tabs",
-  "codex_apps_artifact_outline",
-  "codex_apps_artifact_platform",
-  "codex_apps_open_page",
-  "codex_apps_page_task_chat_reference",
-  "codex_code_review_current_pull_request",
-  "codex_git_state",
-  "ide_context",
-  "latex_document",
-])
-
-const CODEX_INJECTED_APP_OUTPUT_NAMES = new Set([
+const CODEX_DELEGATION_OUTPUT_NAMES = new Set([
   "create_thread",
   "handoff_thread",
   "send_message_to_thread",
 ])
 
-function isCodexInjectedOutput(namespace: string, name: string): boolean {
-  if (namespace === "agent") {
-    return (
-      CODEX_INJECTED_AGENT_OUTPUT_NAMES.has(name)
-      || /^(?:codex_apps_selected_page_part_[1-9]\d*_of_[1-9]\d*|codex_apps_writing_block_edits(?:_part_[1-9]\d*_of_[1-9]\d*)?)$/u.test(
-        name,
-      )
-    )
-  }
-  if (namespace === "codex_app") {
-    return CODEX_INJECTED_APP_OUTPUT_NAMES.has(name)
-  }
-  return namespace === "cloud_threads" && name === "send_message"
-}
-
-function appendCodexPageContext(
+function getStandaloneOutputKind(
   item: ResponseInputItem,
-  messages: Array<AnthropicInputMessage>,
 ): "context" | "delegation" | null {
   const namespace = getStringField(item, "namespace")
   const name = getStringField(item, "name")
   if (
     !isRecord(item)
     || item.type !== "function_call_output"
-    || (item.call_id !== undefined && item.call_id !== null)
-    || !namespace
-    || !name
-    || !isCodexInjectedOutput(namespace, name)
+    || item.call_id != null
+    || !namespace?.trim()
+    || !name?.trim()
   ) {
     return null
   }
 
-  // Codex Desktop injects untrusted context snapshots and cross-thread
-  // delegation payloads without a preceding tool call. Keep them as user
-  // context rather than an orphan tool_result or a system instruction.
-  const content = translateToolResultContent(item.output, `${item.type}.output`)
-  appendUserBlock(messages, { type: "text", text: `${namespace}.${name}:` })
+  return (
+      (namespace === "codex_app" && CODEX_DELEGATION_OUTPUT_NAMES.has(name))
+        || (namespace === "cloud_threads" && name === "send_message")
+    ) ?
+      "delegation"
+    : "context"
+}
+
+function appendStandaloneFunctionOutput(
+  item: ResponseInputItem,
+  messages: Array<AnthropicInputMessage>,
+): "context" | "delegation" | null {
+  const kind = getStandaloneOutputKind(item)
+  if (!kind) return null
+
+  // Named standalone outputs carry client context without a preceding tool call.
+  const content = translateToolResultContent(
+    (item as Record<string, unknown>).output,
+    "function_call_output.output",
+  )
+  appendUserBlock(messages, {
+    type: "text",
+    text: `${getStringField(item, "namespace")}.${getStringField(item, "name")}:`,
+  })
   if (typeof content === "string") {
     if (content) appendUserBlock(messages, { type: "text", text: content })
   } else {
     for (const block of content) appendUserBlock(messages, block)
   }
-  return namespace === "agent" ? "context" : "delegation"
+  return kind
 }
 
 export function translateInputMessage(
@@ -476,14 +466,7 @@ export function appendDeveloperPrompts(
     const role = getStringField(item, "role")
     if (
       type === "agent_message"
-      || (type === "function_call_output"
-        && isRecord(item)
-        && (item.call_id === undefined || item.call_id === null)
-        && getStringField(item, "namespace") !== "agent"
-        && isCodexInjectedOutput(
-          getStringField(item, "namespace") ?? "",
-          getStringField(item, "name") ?? "",
-        ))
+      || getStandaloneOutputKind(item) === "delegation"
     ) {
       break
     }
