@@ -107,7 +107,8 @@ export async function getBunCandidates({
       windows
       && paths.basename(directory).toLowerCase() === '.shim'
       && paths.basename(paths.dirname(directory)).toLowerCase() === 'nvm'
-    ) return
+    )
+      return
     candidates.push(paths.join(directory, executable))
     if (windows) {
       // npm exposes bun.cmd here; execFile/spawn need the package's native exe.
