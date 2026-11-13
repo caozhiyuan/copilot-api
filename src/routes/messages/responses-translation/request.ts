@@ -476,20 +476,12 @@ export const parseReasoningSignature = (
 
 export const createFunctionToolCall = (
   block: AnthropicToolUseBlock,
-  state: TranslationState,
 ): ResponseFunctionToolCallItem => ({
   type: "function_call",
   call_id: block.id,
   name: block.name,
   arguments: JSON.stringify(block.input),
   status: "completed",
-  ...((
-    (state.toolSearchMode === "bridge" && isDeferredToolName(block.name))
-    || (state.toolSearchMode === "native"
-      && state.loadedToolNames.has(block.name))
-  ) ?
-    { namespace: block.name }
-  : {}),
 })
 
 export const createToolSearchCall = (
@@ -530,7 +522,7 @@ export const createToolCall = (
     return createToolSearchCall(block, state.toolSearchMode)
   }
 
-  return createFunctionToolCall(block, state)
+  return createFunctionToolCall(block)
 }
 
 export const createFunctionCallOutput = (

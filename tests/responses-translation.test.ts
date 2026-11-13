@@ -1048,7 +1048,7 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     },
   )
 
-  it("preserves namespace on deferred tool_use history", () => {
+  it("replays deferred tool_use history as a function call", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
       model: "gpt-5.4",
       max_tokens: 1024,
@@ -1082,7 +1082,6 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
         type: "function_call",
         call_id: "call_shipping_eta",
         name: "get_shipping_eta",
-        namespace: "get_shipping_eta",
         arguments: '{"order_id":"order_42"}',
         status: "completed",
       },
