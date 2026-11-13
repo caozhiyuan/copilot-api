@@ -106,6 +106,16 @@ describe("Codex injected page context", () => {
       name: "codex_apps_writing_block_edits_part_1_of_2",
       output: "Writing block edit part 1",
     },
+    {
+      namespace: "agent",
+      name: "future_context",
+      output: "A new Desktop context snapshot",
+    },
+    {
+      namespace: "slack",
+      name: "notifications",
+      output: "Alice mentioned you.",
+    },
   ])(
     "preserves injected $namespace.$name outputs without call IDs",
     ({ namespace, name, output }) => {
@@ -126,37 +136,73 @@ describe("Codex injected page context", () => {
     },
   )
 
-  test("treats delegated thread outputs as a user turn boundary for later developer updates", () => {
-    const result = translate([
-      { type: "message", role: "developer", content: "Initial instructions" },
-      pageContext({
-        namespace: "codex_app",
-        name: "send_message_to_thread",
-        output:
-          "<codex_delegation><input>First task</input></codex_delegation>",
-      }),
-      { type: "message", role: "assistant", content: "Done" },
-      {
-        type: "message",
-        role: "developer",
-        content: "<model_instructions>Switched model</model_instructions>",
-      },
-      pageContext({
-        namespace: "codex_app",
-        name: "send_message_to_thread",
-        output:
-          "<codex_delegation><input>Second task</input></codex_delegation>",
-      }),
-    ])
-    expect(result.system).toEqual([
-      {
-        type: "text",
-        text: "Initial instructions",
-        cache_control: { type: "ephemeral" },
-      },
-    ])
-    expect(JSON.stringify(result.messages)).toContain("Switched model")
-  })
+  test.each([
+    { namespace: "codex_app", name: "create_thread" },
+    { namespace: "codex_app", name: "send_message_to_thread" },
+    { namespace: "codex_app", name: "handoff_thread" },
+    { namespace: "cloud_threads", name: "send_message" },
+  ])(
+    "keeps later developer updates after $namespace.$name in messages",
+    ({ namespace, name }) => {
+      const result = translate([
+        { type: "message", role: "developer", content: "Initial instructions" },
+        pageContext({
+          namespace,
+          name,
+          output:
+            "<codex_delegation><input>First task</input></codex_delegation>",
+        }),
+        { type: "message", role: "assistant", content: "Done" },
+        {
+          type: "message",
+          role: "developer",
+          content: "<model_instructions>Switched model</model_instructions>",
+        },
+        pageContext({
+          namespace,
+          name,
+          output:
+            "<codex_delegation><input>Second task</input></codex_delegation>",
+        }),
+      ])
+      expect(result.system).toEqual([
+        {
+          type: "text",
+          text: "Initial instructions",
+          cache_control: { type: "ephemeral" },
+        },
+      ])
+      expect(JSON.stringify(result.messages)).toContain("Switched model")
+    },
+  )
+
+  test.each([
+    { namespace: "agent", name: "codex_apps_open_page" },
+    { namespace: "agent", name: "future_context" },
+    { namespace: "slack", name: "notifications" },
+    { namespace: "codex_app", name: "list_threads" },
+    { namespace: "cloud_threads", name: "list_threads" },
+  ])(
+    "treats $namespace.$name context as a user boundary for developer updates",
+    (identity) => {
+      const result = translate([
+        { type: "message", role: "developer", content: "Initial instructions" },
+        pageContext(identity),
+        {
+          type: "message",
+          role: "developer",
+          content: "More initial instructions",
+        },
+        { type: "message", role: "user", content: "hi" },
+      ])
+      expect(JSON.stringify(result.system)).not.toContain(
+        "More initial instructions",
+      )
+      expect(JSON.stringify(result.messages)).toContain(
+        "More initial instructions",
+      )
+    },
+  )
 
   test("skips historical web_search_call items when switching a GPT thread to Messages", () => {
     const result = translate([
@@ -225,15 +271,16 @@ describe("Codex injected page context", () => {
   )
 
   test.each([
-    { name: "read_file" },
     { name: undefined },
-    { name: "codex_apps_selected_page_part_0_of_1" },
-    { name: "codex_apps_selected_page_part_1_of_1_extra" },
-    { name: "codex_apps_writing_block_edits_part_0_of_1" },
-    { namespace: "functions" },
-    { namespace: "codex_app", name: "list_threads" },
-    { namespace: "cloud_threads", name: "list_threads" },
+    { name: null },
+    { name: "" },
+    { name: " " },
+    { name: 123 },
     { namespace: undefined },
+    { namespace: null },
+    { namespace: "" },
+    { namespace: " " },
+    { namespace: 123 },
     { type: "custom_tool_call_output" },
     { call_id: "" },
     { call_id: 123 },
