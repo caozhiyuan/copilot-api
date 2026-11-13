@@ -177,11 +177,13 @@ describe("Codex injected page context", () => {
   )
 
   test.each([
+    { namespace: "agent", name: "codex_apps_open_page" },
     { namespace: "agent", name: "future_context" },
+    { namespace: "slack", name: "notifications" },
     { namespace: "codex_app", name: "list_threads" },
     { namespace: "cloud_threads", name: "list_threads" },
   ])(
-    "preserves initial developer prompts around $namespace.$name context",
+    "treats $namespace.$name context as a user boundary for developer updates",
     (identity) => {
       const result = translate([
         { type: "message", role: "developer", content: "Initial instructions" },
@@ -193,10 +195,10 @@ describe("Codex injected page context", () => {
         },
         { type: "message", role: "user", content: "hi" },
       ])
-      expect(JSON.stringify(result.system)).toContain(
+      expect(JSON.stringify(result.system)).not.toContain(
         "More initial instructions",
       )
-      expect(JSON.stringify(result.messages)).not.toContain(
+      expect(JSON.stringify(result.messages)).toContain(
         "More initial instructions",
       )
     },

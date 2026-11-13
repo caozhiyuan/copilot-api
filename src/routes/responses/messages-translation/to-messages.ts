@@ -320,9 +320,8 @@ export function translateInputItems(
       }
       case "function_call_output":
       case "custom_tool_call_output": {
-        const injectedKind = appendStandaloneFunctionOutput(item, messages)
-        if (injectedKind) {
-          if (injectedKind === "delegation") userMessageSeen = true
+        if (appendStandaloneFunctionOutput(item, messages)) {
+          userMessageSeen = true
           break
         }
         appendUserBlock(messages, {
@@ -349,41 +348,21 @@ export function translateInputItems(
   }
 }
 
-const CODEX_DELEGATION_OUTPUT_NAMES = new Set([
-  "create_thread",
-  "handoff_thread",
-  "send_message_to_thread",
-])
-
-function getStandaloneOutputKind(
-  item: ResponseInputItem,
-): "context" | "delegation" | null {
-  const namespace = getStringField(item, "namespace")
-  const name = getStringField(item, "name")
-  if (
-    !isRecord(item)
-    || item.type !== "function_call_output"
-    || item.call_id != null
-    || !namespace?.trim()
-    || !name?.trim()
-  ) {
-    return null
-  }
-
+function isStandaloneFunctionOutput(item: ResponseInputItem): boolean {
   return (
-      (namespace === "codex_app" && CODEX_DELEGATION_OUTPUT_NAMES.has(name))
-        || (namespace === "cloud_threads" && name === "send_message")
-    ) ?
-      "delegation"
-    : "context"
+    isRecord(item)
+    && item.type === "function_call_output"
+    && item.call_id == null
+    && Boolean(getStringField(item, "namespace")?.trim())
+    && Boolean(getStringField(item, "name")?.trim())
+  )
 }
 
 function appendStandaloneFunctionOutput(
   item: ResponseInputItem,
   messages: Array<AnthropicInputMessage>,
-): "context" | "delegation" | null {
-  const kind = getStandaloneOutputKind(item)
-  if (!kind) return null
+): boolean {
+  if (!isStandaloneFunctionOutput(item)) return false
 
   // Named standalone outputs carry client context without a preceding tool call.
   const content = translateToolResultContent(
@@ -399,7 +378,7 @@ function appendStandaloneFunctionOutput(
   } else {
     for (const block of content) appendUserBlock(messages, block)
   }
-  return kind
+  return true
 }
 
 export function translateInputMessage(
@@ -464,10 +443,7 @@ export function appendDeveloperPrompts(
     if (prompts.length >= MAX_DEVELOPER_PROMPTS) break
     const type = getItemType(item)
     const role = getStringField(item, "role")
-    if (
-      type === "agent_message"
-      || getStandaloneOutputKind(item) === "delegation"
-    ) {
+    if (type === "agent_message" || isStandaloneFunctionOutput(item)) {
       break
     }
     if ((type === undefined || type === "message") && role === "user") break
