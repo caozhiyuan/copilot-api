@@ -224,6 +224,19 @@ test.each([
   { role: "assistant", content: [null] },
   { role: "assistant", content: [{}] },
   { role: "assistant", content: [{ type: "input_text", text: 1 }] },
+  { type: "additional_tools", role: "assistant", tools: [] },
+])(
+  "never searches older text when the last assistant message differs (%j)",
+  (last) => {
+    const connection = seed([text])
+    const full = payload([user, text, user, last, user])
+    const next = prepareResponsesContinuation(full, connection, false)
+    expect(next.usedPrevious).toBe(false)
+    expect(next.payload).toBe(full)
+  },
+)
+
+test.each([
   { type: "reasoning", summary: [], encrypted_content: "other-cipher" },
   output,
   { type: "file_search_call" },
@@ -239,15 +252,19 @@ test.each([
   { type: "program" },
   { type: "program_output" },
   { type: "tool_search_output", execution: "server", tools: [] },
-  { type: "additional_tools", role: "assistant", tools: [] },
 ])(
-  "never searches older text when the last assistant item differs (%j)",
+  "finds the last assistant message and skips subsequent assistant items (%j)",
   (last) => {
     const connection = seed([text])
-    const full = payload([user, text, user, last, user])
-    const next = prepareResponsesContinuation(full, connection, false)
-    expect(next.usedPrevious).toBe(false)
-    expect(next.payload).toBe(full)
+    const next = prepareResponsesContinuation(
+      payload([user, text, last, user]),
+      connection,
+      false,
+    )
+    expect(next.payload).toMatchObject({
+      previous_response_id: "resp-1",
+      input: [user],
+    })
   },
 )
 

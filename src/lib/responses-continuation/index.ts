@@ -132,7 +132,7 @@ function findDeltaStart(
 ): number {
   const index =
     anchor.type === "assistant_text" ?
-      input.findLastIndex(isAssistantItem)
+      input.findLastIndex((item) => "role" in item && item.role === "assistant")
     : input.findLastIndex((item) => {
         const candidate = getAnchor(item)
         return (

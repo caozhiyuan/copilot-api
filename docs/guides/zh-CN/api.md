@@ -47,7 +47,7 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 ### Responses WebSocket 续接
 
-内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，可复用同一连接上最近一次完整成功的 response，或受支持的中断检查点。优先使用不透明锚点：思考项的 `encrypted_content`，或工具调用的类型及 `call_id`。只有响应没有可用的不透明锚点，且最后一项为非空纯文本助手消息时，才使用该消息文本的 SHA-256 hash 兜底。锚点以 `response.output_item.done` 为准；终态输出只补齐缺失项。下轮请求仍从 input 尾部向前匹配不透明锚点；文本锚点只比较最后一条助手 item，不向更早的文本查找。字符串和文本块统一为相同文本后比较，不去除空白。匹配成功后，跳过紧接着的助手内容，从下一条非助手内容（如用户消息或客户端工具结果）开始发送增量，并带上 `previous_response_id`。不保存助手文本或 item 数量，只保存 response ID、对应锚点和最新 input 压缩检查点的 hash。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
+内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，可复用同一连接上最近一次完整成功的 response，或受支持的中断检查点。优先使用不透明锚点：思考项的 `encrypted_content`，或工具调用的类型及 `call_id`。只有响应没有可用的不透明锚点，且最后一项为非空纯文本助手消息时，才使用该消息文本的 SHA-256 hash 兜底。锚点以 `response.output_item.done` 为准；终态输出只补齐缺失项。下轮请求仍从 input 尾部向前匹配不透明锚点；文本锚点只比较最后一条 `role: "assistant"` 消息，不向更早的文本查找。字符串和文本块统一为相同文本后比较，不去除空白。匹配成功后，跳过紧接着的助手内容，从下一条非助手内容（如用户消息或客户端工具结果）开始发送增量，并带上 `previous_response_id`。不保存助手文本或 item 数量，只保存 response ID、对应锚点和最新 input 压缩检查点的 hash。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
 
 锚点缺失或不匹配、没有新增 input、重新连接或压缩检查点变化时，均发送完整 input。最新完整响应没有可用锚点时，会清除旧检查点。中断响应只有在 `status` 为 `incomplete` 且 `incomplete_details.reason` 为 `interrupted` 时，才可保存自身的 ID 和锚点。锚点不校验更早的历史；修改或重排历史后，需要显式传入 `previous_response_id: null` 或新建会话。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次；客户端显式传入的 response ID 保持不变。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。
 
