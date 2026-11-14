@@ -36,7 +36,7 @@ export function createToolRegistry(
   ).toLowerCase()
   const options: MessagesToolOptions = {
     strictCustomTools: !upstreamModel.includes("claude"),
-    describeSchemaUnions: upstreamModel.startsWith("claude"),
+    describeSchemaUnions: /^(?:anthropic\/)?claude/u.test(upstreamModel),
   }
   const registry: MessagesToolRegistry = {
     byAlias: new Map(),

@@ -1121,6 +1121,9 @@ describe("Responses Lite to Messages translation", () => {
 
   test.each([
     { model: "custom/CLAUDE-sonnet-4.6", describeUnions: true },
+    { model: "openrouter/anthropic/claude-sonnet-4.6", describeUnions: true },
+    { model: "custom/ANTHROPIC/CLAUDE-sonnet-4.6", describeUnions: true },
+    { model: "openrouter/anthropic/glm-5.3-flash", describeUnions: false },
     { model: "claude-relay/glm-5.3-flash", describeUnions: false },
     { model: "custom/vendor-Claude-model", describeUnions: false },
   ])(
