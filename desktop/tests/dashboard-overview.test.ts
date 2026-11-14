@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { Window } from 'happy-dom'
+import type { Window } from 'happy-dom'
 import { act, createElement } from 'react'
 import type { Root } from 'react-dom/client'
+import { createTestDom } from './helpers/dom'
 
 import App from '../src/App'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
@@ -83,29 +84,10 @@ let openAuthConfig: ReturnType<
   typeof mock<(returnTab: 'dashboard' | 'providers') => void>
 >
 let currentAuthMode: DesktopAuthMode = 'provider'
-const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
+let cleanupDom: () => Promise<void>
 
 beforeEach(async () => {
-  win = new Window({ url: 'http://localhost' })
-  const globals: Record<string, unknown> = {
-    window: win,
-    document: win.document,
-    navigator: win.navigator,
-    HTMLElement: win.HTMLElement,
-    HTMLInputElement: win.HTMLInputElement,
-    HTMLTextAreaElement: win.HTMLTextAreaElement,
-    Event: win.Event,
-    MouseEvent: win.MouseEvent,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  }
-  for (const [name, value] of Object.entries(globals)) {
-    previousGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      writable: true,
-      value,
-    })
-  }
+  ;({ win, root, container, cleanup: cleanupDom } = await createTestDom())
   getProviderConfig = mock(() =>
     Promise.resolve(structuredClone(providerConfig)),
   )
@@ -169,22 +151,13 @@ beforeEach(async () => {
       onWindowMaximizeChange: () => () => {},
     },
   })
-  container = document.createElement('div')
-  document.body.append(container)
-  const { createRoot } = await import('react-dom/client')
-  root = createRoot(container)
 })
 
 afterEach(async () => {
   await act(async () => {
     root.unmount()
   })
-  await win.happyDOM.close()
-  for (const [name, descriptor] of previousGlobals) {
-    if (descriptor) Object.defineProperty(globalThis, name, descriptor)
-    else Reflect.deleteProperty(globalThis, name)
-  }
-  previousGlobals.clear()
+  await cleanupDom()
 })
 
 function createEventsPage(count: number): TokenUsageEventsPage {

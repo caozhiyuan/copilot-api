@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, test } from "bun:test"
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -1622,6 +1622,7 @@ test.each(["acknowledgement-first", "terminal-first"] as const)(
 test.each(["rejected", "wrong-id", "timeout", "closed", "missing-id"] as const)(
   "falls back to full input when the interrupt cannot release the socket (%s)",
   async (mode) => {
+    const timeoutSpy = spyOn(globalThis, "setTimeout")
     await withAffinity(`interrupt-fallback-${mode}`, async () => {
       const { controller, socket, input, stream } =
         await startInterruptibleTurn()
@@ -1648,8 +1649,15 @@ test.each(["rejected", "wrong-id", "timeout", "closed", "missing-id"] as const)(
             response_id: "resp-other",
           }),
         )
-      if (mode === "timeout")
+      if (mode === "timeout") {
         socket.emitMessage(JSON.stringify(interruptAcknowledgement))
+        await delay(0)
+      }
+      if (mode === "timeout" || mode === "missing-id") {
+        const deadline = timeoutSpy.mock.calls.find(([, ms]) => ms === 10_000)
+        expect(deadline).toBeDefined()
+        deadline![0]()
+      }
 
       await resent
       await stream
@@ -1658,9 +1666,8 @@ test.each(["rejected", "wrong-id", "timeout", "closed", "missing-id"] as const)(
       expect(MockWebSocket.instances).toHaveLength(2)
       expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
       expect(continuationRequest(1, 0).input).toEqual(input)
-    })
+    }).finally(() => timeoutSpy.mockRestore())
   },
-  15000,
 )
 
 test("a cancelled interruption waiter releases its slot for the next request", async () => {

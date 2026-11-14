@@ -24,30 +24,12 @@ import {
   type createResponses as createCopilotResponses,
 } from "~/services/copilot/create-responses"
 
+import { createResponsesResult } from "./fixtures/responses"
+
 let responsesApiWebSocketEnabled = true
 
 const createResponses = mock((() =>
   Promise.resolve(streamChunks([]))) as typeof createCopilotResponses)
-
-const createResponsesResult = (model: string) => ({
-  created_at: 0,
-  error: null,
-  id: "resp-test",
-  incomplete_details: null,
-  instructions: null,
-  metadata: null,
-  model,
-  object: "response" as const,
-  output: [],
-  output_text: "",
-  parallel_tool_calls: false,
-  status: "completed",
-  temperature: null,
-  tool_choice: "auto",
-  tools: [],
-  top_p: null,
-  usage: null,
-})
 
 const createReasoningResult = (
   model: string,

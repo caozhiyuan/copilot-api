@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
+import type { ResponsesPayload } from "~/lib/types/responses"
 
 import {
   copilotHeaders,
@@ -23,6 +23,8 @@ import {
   prepareResponsesWebSocketRequest,
 } from "~/services/copilot/create-responses"
 
+import { createResponsesResult } from "./fixtures/responses"
+
 const originalFetch = globalThis.fetch
 const originalOauthApp = process.env.COPILOT_API_OAUTH_APP
 const originalConfigPath = PATHS.CONFIG_PATH
@@ -35,26 +37,6 @@ const originalState = {
   vsCodeSessionId: state.vsCodeSessionId,
   vsCodeVersion: state.vsCodeVersion,
 }
-
-const createResponsesResult = (model: string): ResponsesResult => ({
-  created_at: 0,
-  error: null,
-  id: "resp-test",
-  incomplete_details: null,
-  instructions: null,
-  metadata: null,
-  model,
-  object: "response",
-  output: [],
-  output_text: "",
-  parallel_tool_calls: false,
-  status: "completed",
-  temperature: null,
-  tool_choice: "auto",
-  tools: [],
-  top_p: null,
-  usage: null,
-})
 
 const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
   Promise.resolve(

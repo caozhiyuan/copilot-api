@@ -52,6 +52,10 @@ function runManagerScenario(scenario: string): void {
       await mock.module('./electron/i18n', () => ({
         tMain: (key, vars) => Promise.resolve(key + (vars ? ':' + JSON.stringify(vars) : '')),
       }))
+      // Keep health polling asynchronous without waiting 500ms per start.
+      const schedule = globalThis.setTimeout
+      globalThis.setTimeout = (callback, delay, ...args) =>
+        schedule(callback, delay === 500 ? 0 : delay, ...args)
       globalThis.fetch = () => Promise.resolve(new Response('ready'))
       const manager = await import('./electron/server-manager')
       const events = []
