@@ -14,17 +14,18 @@ import { setPluginRequestActualModel } from "~/lib/request-context"
 import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
 import { parseProviderModelAlias } from "~/lib/provider-model"
-import {
-  ensureConfiguredProviderModelAlias,
-  resolveProviderConfig,
-} from "~/lib/provider-resolver"
+import { resolveProviderConfig } from "~/lib/provider-resolver"
 import type {
   AlphaSearchRequest,
   AlphaSearchResponse,
 } from "~/routes/alpha-search/alpha-search-types"
 import { handleAlphaSearchResponses } from "~/routes/alpha-search/alpha-search-responses"
 import { forwardCodexAlphaSearch } from "~/services/codex/alpha-search"
-import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
+import {
+  createProviderProxyResponse,
+  forwardProviderAlphaSearch,
+  supportsNativeDeepSeekAlphaSearch,
+} from "~/services/providers/provider-proxy"
 
 const logger = createHandlerLogger("alpha-search-handler")
 
@@ -33,6 +34,7 @@ export const alphaSearchRoutes = new Hono()
 export const alphaSearchRouteDependencies = {
   findEndpointModel,
   forwardCodexAlphaSearch,
+  forwardProviderAlphaSearch,
   getAlphaSearchModel,
   handleAlphaSearchResponses,
   isAlphaSearchCodexPriorityEnabled,
@@ -209,7 +211,7 @@ export async function handleAlphaSearchRequest(
     }
     const resolvedSearchModel =
       alphaSearchRouteDependencies.resolveMappedModel(searchModel)
-    if (!(await isNativeResponsesModel(resolvedSearchModel))) {
+    if (!(await isNativeSearchModel(resolvedSearchModel))) {
       return invalidRequest(
         c,
         `Configured alphaSearchModel '${searchModel}' does not support the Responses endpoint required for alpha search`,
@@ -236,12 +238,21 @@ export async function handleAlphaSearchRequest(
     messagesBackedModel ? payload.model : requestedModel
 
   if (providerModelAlias) {
-    const configuredProviderModelAlias =
-      await ensureConfiguredProviderModelAlias(
-        providerModelAlias,
-        alphaSearchRouteDependencies.resolveProviderConfig,
+    const providerConfig =
+      await alphaSearchRouteDependencies.resolveProviderConfig(
+        providerModelAlias.provider,
       )
-    if (configuredProviderModelAlias) {
+    if (providerConfig) {
+      if (supportsNativeDeepSeekAlphaSearch(providerConfig)) {
+        setPluginRequestActualModel(payload.model, providerConfig.name)
+        const upstreamResponse =
+          await alphaSearchRouteDependencies.forwardProviderAlphaSearch(
+            providerConfig,
+            createAlphaSearchRequest(c.req.raw, payload),
+            { clientSignal: c.req.raw.signal },
+          )
+        return createProviderProxyResponse(upstreamResponse)
+      }
       return await alphaSearchRouteDependencies.handleAlphaSearchResponses(c, {
         provider: providerModelAlias.provider,
         request: payload,
@@ -265,6 +276,7 @@ async function isMessagesBackedModel(model: string): Promise<boolean> {
         providerAlias.provider,
       )
     if (!providerConfig) return false
+    if (supportsNativeDeepSeekAlphaSearch(providerConfig)) return false
     const effectiveType =
       alphaSearchRouteDependencies.resolveEffectiveProviderType(
         providerConfig,
@@ -286,7 +298,7 @@ async function isMessagesBackedModel(model: string): Promise<boolean> {
   )
 }
 
-async function isNativeResponsesModel(model: string): Promise<boolean> {
+async function isNativeSearchModel(model: string): Promise<boolean> {
   const providerAlias = parseProviderModelAlias(model)
   if (providerAlias) {
     const providerConfig =
@@ -295,10 +307,11 @@ async function isNativeResponsesModel(model: string): Promise<boolean> {
       )
     return (
       providerConfig !== null
-      && alphaSearchRouteDependencies.resolveEffectiveProviderType(
-        providerConfig,
-        providerAlias.model,
-      ) === "openai-responses"
+      && (supportsNativeDeepSeekAlphaSearch(providerConfig)
+        || alphaSearchRouteDependencies.resolveEffectiveProviderType(
+          providerConfig,
+          providerAlias.model,
+        ) === "openai-responses")
     )
   }
 

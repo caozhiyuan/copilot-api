@@ -73,11 +73,11 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域路由遇到无效 JSON 时统一返回 `400`（`invalid_request_error`），不再兜底转发给 Codex。大请求仍保持流式处理，上传过程中发现错误时中止转发。multipart 图片编辑继续支持。
 
-路由到 Codex 的图片请求要求已有可用的 Codex 登录态；其他图片路由使用对应 provider 的凭据。alpha-search 可以使用 Codex 后端或 Responses web-search 适配器。
+路由到 Codex 的图片请求要求已有可用的 Codex 登录态；其他图片路由使用对应 provider 的凭据。alpha-search 可以使用 Codex 后端、官方 DeepSeek base URL 对应的原生 Alpha Search，或 Responses web-search 适配器。
 
 | 端点                                                       | 方法 | 说明                                                                                                 |
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
-| `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
+| `POST /v1/alpha/search`            | `POST` | 将 alpha-search 请求路由到 Codex 后端或原生 DeepSeek，或在本地及通过 Responses web search 处理支持的命令。 |
 | `POST /v1/images/generations` | `POST` | 按 model mapping 或 provider 别名路由 JSON 图片生成请求。请求未携带 `Content-Type` 时默认补充 `application/json`。仅省略、空白或裸 `gpt-image-2` 自动选择 provider，其他型号保留并交给上游校验。 |
 | `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex、GitHub Copilot 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits`、`/github-copilot/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域的 multipart 编辑也会先暂存到磁盘，再以 multipart 转发，并按 `model` 记录用量。 |
 

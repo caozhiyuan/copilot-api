@@ -46,10 +46,27 @@ const STRIPPED_RESPONSE_HEADERS = [
   "upgrade",
 ] as const
 
+export function supportsNativeDeepSeekAlphaSearch(
+  providerConfig: ResolvedProviderConfig,
+): boolean {
+  return (
+    providerConfig.name === "deepseek"
+    && /^https:\/\/api\.deepseek\.com(?:\/anthropic)?(?:\/v1)?\/?$/u.test(
+      providerConfig.baseUrl,
+    )
+  )
+}
+
 export function resolveProviderEndpointUrl(
   providerConfig: ResolvedProviderConfig,
   endpoint: string,
 ): string {
+  if (
+    endpoint === "alpha/search"
+    && supportsNativeDeepSeekAlphaSearch(providerConfig)
+  ) {
+    return "https://api.deepseek.com/alpha/search"
+  }
   if (providerConfig.name === OPENCODE_GO_PROVIDER_NAME) {
     const base = normalizeProviderBaseUrl(providerConfig.baseUrl)
     const apiBase = /\/v\d+(?:alpha|beta)?$/u.test(base) ? base : `${base}/v1`
@@ -369,7 +386,12 @@ export async function forwardProviderAlphaSearch(
   request: Request,
   options: { clientSignal?: AbortSignal } = {},
 ): Promise<Response> {
-  const headers = buildProviderUpstreamHeaders(providerConfig, request.headers)
+  const headers = buildProviderUpstreamHeaders(
+    supportsNativeDeepSeekAlphaSearch(providerConfig) ?
+      { ...providerConfig, authType: "authorization", type: "openai-responses" }
+    : providerConfig,
+    request.headers,
+  )
   const body = await request.arrayBuffer()
   const transportConfig = getUpstreamTransportConfig()
 

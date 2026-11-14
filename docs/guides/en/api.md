@@ -69,11 +69,11 @@ Explicit `provider/model` aliases stay on that provider and preserve the upstrea
 
 JSON image requests must be UTF-8 encoded objects. Invalid JSON returns `400` (`invalid_request_error`) on both top-level and provider-scoped routes instead of falling back to Codex. Validation preserves large-request streaming and stops forwarding if an error is discovered during upload. Multipart image edits remain supported.
 
-Image requests routed to Codex require an active Codex login; other image routes use their provider's credentials. Alpha search can use either the Codex backend or a Responses web-search adapter.
+Image requests routed to Codex require an active Codex login; other image routes use their provider's credentials. Alpha search can use the Codex backend, native DeepSeek Alpha Search with an official DeepSeek base URL, or a Responses web-search adapter.
 
 | Endpoint                                                       | Method | Description                                                     |
 | -------------------------------------------------------------- | ------ | --------------------------------------------------------------- |
-| `POST /v1/alpha/search`                | `POST` | Routes Codex alpha-search requests to the Codex backend, or handles supported commands locally and through Responses web search. |
+| `POST /v1/alpha/search`                | `POST` | Routes alpha-search requests to Codex or native DeepSeek, or handles supported commands locally and through Responses web search. |
 | `POST /v1/images/generations` | `POST` | Routes a JSON image generation request by its model mapping or provider alias. Missing `Content-Type` defaults to `application/json`. Only missing, blank, or bare `gpt-image-2` models use automatic provider selection; other model names are preserved for upstream validation. |
 | `POST /v1/images/edits` | `POST` | Accepts JSON image references or `multipart/form-data` uploads. JSON requests retain their existing behavior, including `images: [{ image_url }]`, `images: [{ file_id }]`, and an optional `mask` reference. Multipart uploads accept `image`, `image[]`, and repeated image fields in their original order, plus an optional `mask`. Files are staged to disk, then converted to base64 data URLs and JSON for Codex, GitHub Copilot, or xAI. Model mappings and `provider/model` aliases apply. `/codex/v1/images/edits`, `/github-copilot/v1/images/edits`, and `/xai/v1/images/edits` also accept multipart; other provider-scoped multipart edits are staged to disk and forwarded as multipart with usage recorded against `model`. |
 
