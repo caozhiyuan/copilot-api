@@ -22,6 +22,7 @@ import type { ChatCompletionsPayload } from "~/lib/types/chat-completions"
 import type { ResponsesPayload } from "~/lib/types/responses"
 import type { GoogleModelsResponse } from "~/lib/types/google"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
+import { recordNativeAlphaSearchUsage } from "~/lib/token-usage/alpha-search"
 
 const OPENCODE_GO_PROVIDER_NAME = "opencode-go"
 const OPENCODE_SESSION_HEADER = "x-opencode-session"
@@ -395,7 +396,7 @@ export async function forwardProviderAlphaSearch(
   const body = await request.arrayBuffer()
   const transportConfig = getUpstreamTransportConfig()
 
-  return await fetchUpstreamWithLifecycle(
+  const response = await fetchUpstreamWithLifecycle(
     resolveProviderRequestUrl(providerConfig, request.url, "/v1/alpha/search"),
     {
       method: "POST",
@@ -408,6 +409,14 @@ export async function forwardProviderAlphaSearch(
       streamInactivityTimeoutMs: transportConfig.streamInactivityTimeoutMs,
     },
   )
+  await recordNativeAlphaSearchUsage(response, {
+    providerName: providerConfig.name,
+    requestBody: body,
+    requestHeaders: request.headers,
+    officialDeepSeek: supportsNativeDeepSeekAlphaSearch(providerConfig),
+    pricingCurrency: providerConfig.pricingCurrency,
+  })
+  return response
 }
 
 export async function forwardProviderImages(

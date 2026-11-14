@@ -12,6 +12,8 @@ import { Hono } from "hono"
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 import { supportsNativeDeepSeekAlphaSearch } from "~/services/providers/provider-proxy"
+import { traceIdMiddleware } from "~/lib/trace"
+import { requestEventsMiddleware } from "~/lib/request-events"
 
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
@@ -21,7 +23,9 @@ let modelMappings: Record<string, string> = {}
 
 const { state } = await import("~/lib/state")
 const { HTTPError } = await import("~/lib/error")
-const { closeUsageStore } = await import("~/lib/token-usage")
+const { closeUsageStore, getTokenUsageEventsPage } = await import(
+  "~/lib/token-usage"
+)
 const { forwardCodexAlphaSearch, resolveCodexAlphaSearchUrl } = await import(
   "~/services/codex/alpha-search"
 )
@@ -196,8 +200,12 @@ const fetchMock = mock(
     ),
 )
 
-function createApp() {
+function createApp(trackUsage = false) {
   const app = new Hono()
+  if (trackUsage) {
+    app.use(traceIdMiddleware)
+    app.use(requestEventsMiddleware(undefined, 4141))
+  }
   app.route("/alpha/search", alphaSearchRoutes)
   app.route("/v1/alpha/search", alphaSearchRoutes)
   app.route("/:provider/v1/alpha/search", providerAlphaSearchRoutes)
@@ -597,6 +605,136 @@ describe("Codex alpha search forwarding", () => {
   })
 })
 
+describe("native Alpha Search usage integration", () => {
+  test.each([
+    { provider: "codex", scoped: false, model: "gpt-6-luna", cost: 0 },
+    { provider: "codex", scoped: true, model: "gpt-6-luna", cost: 0 },
+    {
+      provider: "deepseek",
+      scoped: false,
+      model: "deepseek-flash",
+      cost: 5_000_000,
+    },
+    {
+      provider: "deepseek",
+      scoped: true,
+      model: "deepseek-flash",
+      cost: 5_000_000,
+    },
+  ])(
+    "records $provider native search (scoped=$scoped)",
+    async ({ provider, scoped, model, cost }) => {
+      alphaSearchCodexPriorityEnabled = false
+      fetchMock.mockImplementationOnce(() =>
+        Promise.resolve(
+          Response.json({
+            output: "Native answer",
+            results: [{ url: "https://example.com/result" }],
+          }),
+        ),
+      )
+      const userAgent =
+        "codex-tui/0.169.0 (Windows 10.0.26200; x86_64) vscode/1.145.2"
+      const response = await createApp(true).request(
+        scoped ? `/${provider}/v1/alpha/search` : "/v1/alpha/search",
+        {
+          method: "POST",
+          headers: {
+            "user-agent": userAgent,
+            "x-codex-turn-metadata": JSON.stringify({
+              session_id: "01a1da09-1ea6-7d40-a65d-d908e9344454",
+              thread_id: "01a1da09-1ea6-7d40-a65d-d908e9344454",
+            }),
+          },
+          body: JSON.stringify(
+            createFallbackPayload(
+              { search_query: [{ q: "native usage" }] },
+              { model: scoped ? model : `${provider}/${model}` },
+            ),
+          ),
+        },
+      )
+      expect(response.status).toBe(200)
+      await response.text()
+      const page = await getTokenUsageEventsPage({
+        period: "today",
+        page: 1,
+        pageSize: 20,
+      })
+      expect(page.items).toHaveLength(1)
+      expect(page.items[0]).toMatchObject({
+        endpoint: "alpha_search",
+        source: "provider",
+        provider_name: provider,
+        model,
+        session_id: "01a1da09-1ea6-7d40-a65d-d908e9344454",
+        user_agent: userAgent.slice(0, 64),
+        total_tokens: 0,
+        request_outcome: "completed",
+        cost: {
+          currency: provider === "deepseek" ? "CNY" : "USD",
+          total_cost_nanos: cost,
+        },
+      })
+      expect(page.items[0].duration_ms).toBeNumber()
+    },
+  )
+
+  test("keeps Responses-backed alpha search as one Responses usage record", async () => {
+    alphaSearchCodexPriorityEnabled = false
+    openrouterProviderConfig!.type = "openai-responses"
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(Response.json(createResponsesResult())),
+    )
+    const response = await createApp(true).request("/v1/alpha/search", {
+      method: "POST",
+      body: JSON.stringify(
+        createFallbackPayload(
+          { search_query: [{ q: "Responses backend" }] },
+          { model: "openrouter/gpt-6-luna" },
+        ),
+      ),
+    })
+    expect(response.status).toBe(200)
+    await response.text()
+    const page = await getTokenUsageEventsPage({
+      period: "today",
+      page: 1,
+      pageSize: 20,
+    })
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0].endpoint).toBe("responses")
+    expect(page.items[0].total_tokens).toBe(150)
+  })
+
+  test("does not apply official DeepSeek prices to a custom native endpoint", async () => {
+    deepseekProviderConfig!.baseUrl = "https://deepseek.example"
+    const response = await createApp(true).request(
+      "/deepseek/v1/alpha/search",
+      {
+        method: "POST",
+        body: JSON.stringify(
+          createFallbackPayload(
+            { search_query: [{ q: "custom" }] },
+            { model: "deepseek-flash" },
+          ),
+        ),
+      },
+    )
+    await response.text()
+    const page = await getTokenUsageEventsPage({
+      period: "today",
+      page: 1,
+      pageSize: 20,
+    })
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]).toMatchObject({
+      endpoint: "alpha_search",
+      cost: null,
+    })
+  })
+})
+
 describe("DeepSeek native alpha search", () => {
   test.each([
     {
@@ -628,7 +766,9 @@ describe("DeepSeek native alpha search", () => {
 
         expect(response.status).toBe(status)
         expect(await response.text()).toBe(body)
-        expect(clone).toHaveBeenCalledTimes(verbose ? 1 : 0)
+        expect(clone).toHaveBeenCalledTimes(
+          (verbose ? 1 : 0) + (status === 200 ? 1 : 0),
+        )
       } finally {
         clone.mockRestore()
       }

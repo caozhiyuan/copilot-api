@@ -121,7 +121,7 @@ function toPersistedEvent(
 ): PersistedTokenUsageEvent | null {
   const now = new Date()
   const cost = resolveTokenUsageCost({ ...input, at: now })
-  if (!hasAnyToken(input) && !cost) {
+  if (input.endpoint !== "alpha_search" && !hasAnyToken(input) && !cost) {
     return null
   }
 

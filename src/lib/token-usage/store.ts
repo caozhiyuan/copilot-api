@@ -17,6 +17,7 @@ import {
 export type TokenUsageSource = "copilot" | "provider"
 
 export type TokenUsageEndpoint =
+  | "alpha_search"
   | "chat_completions"
   | "embeddings"
   | "images_generations"

@@ -334,7 +334,7 @@ test("alpha search exposes the Codex priority override from its existing parsed 
   alphaSearchRouteDependencies.resolveProviderConfig = () =>
     Promise.resolve({ ...provider, name: "codex", type: "openai-responses" })
   alphaSearchRouteDependencies.forwardCodexAlphaSearch = async (request) => {
-    expect(await request.json()).toMatchObject({ model: "gpt-5.6-luna" })
+    expect(await request.json()).toMatchObject({ model: "gpt-6-luna" })
     return Response.json({ ok: true })
   }
   app.post("/alpha/search", (c) => handleAlphaSearchRequest(c))
@@ -347,7 +347,7 @@ test("alpha search exposes the Codex priority override from its existing parsed 
   await plugins.flush()
   expect(actuals[0]).toMatchObject({
     model: "claude-client",
-    actualModel: "codex/gpt-5.6-luna",
+    actualModel: "codex/gpt-6-luna",
   })
-  expect(ends[0].actualModel).toBe("codex/gpt-5.6-luna")
+  expect(ends[0].actualModel).toBe("codex/gpt-6-luna")
 })
