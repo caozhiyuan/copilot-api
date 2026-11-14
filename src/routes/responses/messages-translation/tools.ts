@@ -159,14 +159,89 @@ export function registerMessagesTool(
       { description: registration.description }
     : {}),
     input_schema:
-      registration.kind === "custom" ?
-        CUSTOM_TOOL_INPUT_SCHEMA
-      : (registration.parameters ?? { type: "object", properties: {} }),
+      registration.kind === "custom" ? CUSTOM_TOOL_INPUT_SCHEMA
+      : registration.parameters ?
+        flattenTopLevelSchemaUnion(registration.parameters)
+      : { type: "object", properties: {} },
     ...(registration.kind === "custom" && strictCustomTools ?
       { strict: true }
     : {}),
   })
   return descriptor
+}
+
+const SCHEMA_UNIONS = [
+  ["allOf", "allOf"],
+  ["anyOf", "anyOf"],
+  ["oneOf", "anyOf"],
+] as const
+
+/**
+ * Anthropic rejects tool input schemas with a top-level oneOf, anyOf, or
+ * allOf. Fold the alternatives into one object schema: merge their properties
+ * and require only the fields every alternative requires (any of them for
+ * allOf). The tool still validates the arguments it receives.
+ */
+function flattenTopLevelSchemaUnion(
+  parameters: Record<string, unknown>,
+): Record<string, unknown> {
+  const { allOf, anyOf, oneOf, properties, required, ...schema } = parameters
+  if (allOf === undefined && anyOf === undefined && oneOf === undefined) {
+    return parameters
+  }
+
+  const mergedProperties = new Map(
+    Object.entries(isRecord(properties) ? properties : {}),
+  )
+  const mergedRequired = new Set(getStringArray(required))
+  for (const [key, propertyCombinator] of SCHEMA_UNIONS) {
+    const variants = parameters[key]
+    if (!Array.isArray(variants)) continue
+
+    const definitions = new Map<string, Array<unknown>>()
+    for (const variant of variants) {
+      if (!isRecord(variant) || !isRecord(variant.properties)) continue
+      for (const [name, definition] of Object.entries(variant.properties)) {
+        if (mergedProperties.has(name)) continue
+        const known = definitions.get(name) ?? []
+        const serialized = JSON.stringify(definition)
+        if (!known.some((entry) => JSON.stringify(entry) === serialized)) {
+          known.push(definition)
+        }
+        definitions.set(name, known)
+      }
+    }
+    for (const [name, known] of definitions) {
+      mergedProperties.set(
+        name,
+        known.length === 1 ? known[0] : { [propertyCombinator]: known },
+      )
+    }
+
+    const requiredLists = variants.map((variant) =>
+      isRecord(variant) ? getStringArray(variant.required) : [],
+    )
+    const requiredNames =
+      key === "allOf" ?
+        requiredLists.flat()
+      : (requiredLists[0] ?? []).filter((name) =>
+          requiredLists.every((list) => list.includes(name)),
+        )
+    for (const name of requiredNames) mergedRequired.add(name)
+  }
+
+  return {
+    ...schema,
+    type: "object",
+    properties: Object.fromEntries(mergedProperties),
+    ...(mergedRequired.size > 0 ? { required: [...mergedRequired] } : {}),
+  }
+}
+
+function getStringArray(value: unknown): Array<string> {
+  return Array.isArray(value) ?
+      value.filter((item): item is string => typeof item === "string")
+    : []
 }
 
 export function createMessagesToolDescriptor(
