@@ -1049,15 +1049,7 @@ describe("Responses Lite to Messages translation", () => {
           },
         ],
       },
-      {
-        type: "object",
-        properties: {
-          kind: { anyOf: [{ const: "file" }, { const: "url" }] },
-          path: { type: "string" },
-          url: { type: "string" },
-        },
-        required: ["kind"],
-      },
+      {},
     ],
     [
       "allOf",
@@ -1075,35 +1067,65 @@ describe("Responses Lite to Messages translation", () => {
       },
       {
         type: "object",
-        properties: {
-          path: { type: "string" },
-          encoding: { type: "string" },
-          limit: { type: "integer" },
-        },
-        required: ["path", "encoding"],
+        properties: { path: { type: "string" } },
+        required: ["path"],
       },
     ],
   ])(
-    "flattens a top-level %s in function tool schemas",
-    (_, parameters, inputSchema) => {
+    "moves a top-level %s into the function tool description",
+    (key, parameters, inputSchema) => {
+      Object.freeze(parameters)
       const result = translate({
         input: "Run it",
-        tools: [{ type: "function", name: "js", parameters, strict: false }],
+        tools: [
+          {
+            type: "function",
+            name: "js",
+            description: "Run JavaScript.",
+            parameters,
+            strict: false,
+          },
+        ],
       })
 
       expect(result.messagesPayload.tools?.[0]?.input_schema).toEqual(
         inputSchema,
       )
+      const description = result.messagesPayload.tools?.[0]?.description
+      const requirement =
+        key === "oneOf" ? "exactly one"
+        : key === "anyOf" ? "at least one"
+        : "all"
+      expect(description?.startsWith("Run JavaScript.\n\n")).toBe(true)
+      expect(description).toContain(`satisfy ${requirement} of`)
+      expect(description).toContain(`(${key})`)
+      expect(description).toContain(JSON.stringify(parameters[key]))
     },
   )
 
+  test("preserves nested schema unions without adding a description", () => {
+    const parameters = {
+      type: "object",
+      properties: {
+        value: { oneOf: [{ type: "string" }, { type: "integer" }] },
+      },
+    }
+    const result = translate({
+      input: "Run it",
+      tools: [{ type: "function", name: "js", parameters }],
+    })
+
+    expect(result.messagesPayload.tools?.[0]?.input_schema).toBe(parameters)
+    expect(result.messagesPayload.tools?.[0]).not.toHaveProperty("description")
+  })
+
   test.each([
-    { model: "custom/CLAUDE-sonnet-4.6", flatten: true },
-    { model: "claude-relay/glm-5.3-flash", flatten: false },
-    { model: "custom/vendor-Claude-model", flatten: false },
+    { model: "custom/CLAUDE-sonnet-4.6", describeUnions: true },
+    { model: "claude-relay/glm-5.3-flash", describeUnions: false },
+    { model: "custom/vendor-Claude-model", describeUnions: false },
   ])(
-    "limits schema union flattening to Claude-prefixed target $model",
-    ({ model, flatten }) => {
+    "limits schema union descriptions to Claude-prefixed target $model",
+    ({ model, describeUnions }) => {
       const parameters = {
         oneOf: [
           {
@@ -1115,7 +1137,7 @@ describe("Responses Lite to Messages translation", () => {
       }
       const result = translateResponsesToMessages(
         {
-          model: flatten ? "public-alias" : "claude-sonnet-4.6",
+          model: describeUnions ? "public-alias" : "claude-sonnet-4.6",
           input: "Run it",
           tools: [{ type: "function", name: "js", parameters, strict: false }],
         },
@@ -1123,14 +1145,17 @@ describe("Responses Lite to Messages translation", () => {
       )
 
       expect(result.messagesPayload.tools?.[0]?.input_schema).toEqual(
-        flatten ?
-          {
-            type: "object",
-            properties: { value: { type: "string" } },
-            required: ["value"],
-          }
-        : parameters,
+        describeUnions ? {} : parameters,
       )
+      const description = result.messagesPayload.tools?.[0]?.description
+      if (describeUnions) {
+        expect(description?.startsWith("The complete arguments object")).toBe(
+          true,
+        )
+        expect(description).toContain("satisfy exactly one of")
+      } else {
+        expect(description).toBeUndefined()
+      }
     },
   )
 
