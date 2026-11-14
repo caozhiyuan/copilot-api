@@ -2,11 +2,7 @@ import { describe, expect, mock, test } from "bun:test"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ProviderModelAlias } from "~/lib/provider-model"
-import {
-  getDefaultImageModel,
-  selectDefaultImageModel,
-  type ImageProvider,
-} from "~/lib/image-models"
+import { getDefaultImageModel, type ImageProvider } from "~/lib/image-models"
 import { resolveImageRequestModel } from "~/routes/images/default-model"
 
 const codex = "codex/gpt-image-2"
@@ -40,16 +36,6 @@ function dependencies(available: Array<ImageProvider>) {
 }
 
 describe("default image models", () => {
-  test.each([
-    { ids: [xai, copilot, codex], expected: codex },
-    { ids: [xai, copilot], expected: copilot },
-    { ids: [xai], expected: xai },
-    { ids: ["codex/gpt-6-sol"], expected: undefined },
-    { ids: [], expected: undefined },
-  ])("chooses $expected from the available image IDs", ({ ids, expected }) => {
-    expect(selectDefaultImageModel(ids)).toBe(expected)
-  })
-
   test("provides defaults only for the three supported image providers", () => {
     expect(getDefaultImageModel("codex")).toBe("gpt-image-2")
     expect(getDefaultImageModel("github-copilot")).toBe("gpt-image-2.5-flare")

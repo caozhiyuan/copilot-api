@@ -7,7 +7,6 @@ const en: Locale = {
     generate: 'Generate image',
     edit: 'Edit image',
     video: 'Generate video',
-    provider: 'Provider',
     gateway: 'Gateway default',
     model: 'Model',
     prompt: 'Prompt',
@@ -17,11 +16,6 @@ const en: Locale = {
     size: 'Image size',
     quality: 'Quality',
     count: 'Images',
-    outputFormat: 'Output format',
-    frameCount: 'Frame count',
-    frameDurationMs: 'Frame duration (ms)',
-    gifHint:
-      'Use a model that supports animated GIF output, such as codex/gpt-image-2.',
     auto: 'Auto',
     low: 'Low',
     medium: 'Medium',
@@ -49,7 +43,6 @@ const en: Locale = {
     saved: 'Saved',
     viewOriginal: 'View original',
     closePreview: 'Close preview',
-    useAsInput: 'Edit this image',
     failed: 'Request failed. Try again.',
     videoFailed: 'Video generation failed or expired.',
     pending: 'Generating video. Checking every 5 seconds…',
@@ -226,7 +219,6 @@ const en: Locale = {
     serviceAddress: 'Service address',
     authHeader: 'Auth header',
     copy: 'Copy',
-    quotaUsage: 'GitHub Copilot Quota',
     subscriptionQuota: 'Subscription quota',
     tabSubscriptions: 'Subscriptions',
     quotaRefreshAll: 'Refresh all',
@@ -266,7 +258,6 @@ const en: Locale = {
     quotaResetsOn: 'resets {{date}}',
     quotaUnavailable: 'No quota details reported.',
     quotaUsedPercent: '{{percent}}% used',
-    quotaRemainingPercent: '{{percent}}% remaining',
     providerOverview: 'Providers',
     providerOverviewSummary: '{{enabled}} / {{total}} enabled',
     providerOverviewManage: 'Manage',
@@ -275,12 +266,10 @@ const en: Locale = {
     refresh: 'Refresh',
     tokenUsage: 'Token usage',
     tokenUsageAllModels: 'All models',
-    tokenUsageCache: 'Cache',
     tokenUsageCacheRead: 'Cache read',
     tokenUsageCacheWrite: 'Cache write',
     tokenUsageCacheHitRate: 'Cache hit rate',
     tokenUsageCost: 'Cost',
-    tokenUsageEndpoint: 'Endpoint',
     tokenUsageAverageFirstToken: 'Avg. TTFT',
     tokenUsageOutputSpeed: 'Output speed',
     tokenUsageDuration: 'Duration',
@@ -298,14 +287,12 @@ const en: Locale = {
     tokenUsagePeriodThisMonth: 'This month',
     tokenUsagePeriodLast30Days: '30 days',
     tokenUsagePeriodLifetime: 'Lifetime',
-    tokenUsageProvider: 'Provider',
     tokenUsageRequests: 'Requests',
     tokenUsageSession: 'Session',
     tokenUsageSessionBreakdown: 'Session breakdown',
     tokenUsageSessionsCount: '{{n}} sessions',
     tokenUsageSessionsLoadFailed:
       'Failed to load session usage. Click Refresh to retry.',
-    tokenUsageSource: 'Source',
     tokenUsageTime: 'Time',
     tokenUsageTotal: 'Total',
     tokenUsageTotalCost: 'Total Cost',
@@ -328,7 +315,6 @@ const en: Locale = {
     stop: 'Stop',
     running: 'Running',
     notStarted: 'Not started',
-    logout: 'Log out',
     settings: 'Settings',
     appSettings: 'App settings',
     advancedConfig: 'Advanced config',
@@ -347,9 +333,6 @@ const en: Locale = {
     fileQuit: 'Quit',
     view: 'View',
     viewReload: 'Reload',
-    viewZoomIn: 'Zoom In',
-    viewZoomOut: 'Zoom Out',
-    viewZoomReset: 'Reset Zoom',
     help: 'Help',
     helpAbout: 'About',
     aboutVersion: 'Version',
@@ -360,7 +343,6 @@ const en: Locale = {
       'Bun >= 1.4.4 was not found; using the bundled Node.js runtime. Install or upgrade Bun to enable it.',
     runtime: 'Server runtime: {{runtime}}',
     spawnFailed: 'Failed to launch the server process: {{message}}',
-    tokenNotFound: 'Token not found',
     authRequired:
       'No usable authorization found. Configure a GitHub token or at least one provider first',
     portInUse:
@@ -500,7 +482,6 @@ const en: Locale = {
     close: 'Close',
     saveApply: 'Save and apply',
     save: 'Save configuration',
-    synced: 'Configuration synchronized',
     unsaved: '{{count}} unsaved changes',
     unsavedOther: 'Unsaved changes',
     offline:
@@ -636,19 +617,8 @@ const en: Locale = {
     },
   },
   advancedConfig: {
-    title: 'Model mappings',
-    subtitle:
-      'Manage the shared model mappings through the running service API so new requests to /v1/messages, /v1/messages/count_tokens, /v1/responses, and /v1/chat/completions pick up changes immediately.',
-    back: 'Back to dashboard',
-    modelMappingsTitle: 'Model mappings',
     modelMappingsDesc:
       'Map a requested model name to a target model ID or provider/model alias. Shared across all interfaces.',
-    scopeLabel: 'Scope',
-    scopeNote:
-      'One shared mapping set applies to POST /v1/messages, POST /v1/messages/count_tokens, POST /v1/responses, and POST /v1/chat/completions. Matching is exact and the app will not trim or normalize the model name for you.',
-    restartNote:
-      'Changes are applied to the running service immediately after a successful save.',
-    configPath: 'Config path',
     addMapping: 'Add mapping',
     mapCodex: 'Map Codex models',
     mapCopilot: 'Map GitHub Copilot review',
@@ -659,17 +629,6 @@ const en: Locale = {
     sourceModel: 'Requested model',
     targetModel: 'Target model',
     remove: 'Remove',
-    emptyTitle: 'No mappings yet',
-    emptyDescription:
-      'Add a rule to remap an incoming model name before any supported top-level interface resolves the actual upstream model.',
-    saveHelp:
-      'Only the modelMappings field is updated through the service API. Other config values remain untouched.',
-    saved:
-      'Saved through the service API. New requests to /v1/messages, /v1/messages/count_tokens, /v1/responses, and /v1/chat/completions will use the updated mappings immediately.',
-    loadFailed: 'Failed to load model mappings',
-    saveFailed: 'Failed to save model mappings',
-    serverRequired:
-      'Start the local service before loading or saving model mappings through the API.',
     validationIncomplete:
       'Each mapping row must include both a requested model and a target model.',
     validationDuplicate: 'Duplicate requested model: {{model}}',

@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react'
+import { createDefaultSettings } from '../../shared/default-settings'
 import type {
   BunRuntimeStatus,
   DesktopProxyMode,
@@ -243,30 +244,9 @@ export default function SettingsModal({
   const { t, setLangPref } = useLanguage()
   const { setThemePref } = useTheme()
   const [section, setSection] = useState<Section>(initialSection)
-  const [settings, setSettings] = useState<DesktopSettings>({
-    serverRuntime: 'bun',
-    apiHome: '',
-    sqliteDbPath: '',
-    oauthApp: 'default',
-    enterpriseUrl: '',
-    host: '',
-    lastPort: 4141,
-    launchAtLogin: false,
-    autoStartServer: false,
-    minimizeToTray: false,
-    accountType: 'individual',
-    verbose: false,
-    showToken: false,
-    showCreate: false,
-    language: 'auto',
-    theme: 'auto',
-    proxy: {
-      mode: 'system',
-      http_proxy: 'http://127.0.0.1:8888',
-      https_proxy: 'http://127.0.0.1:8888',
-      no_proxy: 'localhost,127.0.0.1',
-    },
-  })
+  const [settings, setSettings] = useState<DesktopSettings>(
+    createDefaultSettings,
+  )
   const [initialSettings, setInitialSettings] =
     useState<DesktopSettings | null>(null)
   const [saving, setSaving] = useState(false)

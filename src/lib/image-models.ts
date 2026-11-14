@@ -18,15 +18,3 @@ export function getDefaultImageModel(provider: string): string | undefined {
   )
   return name ? DEFAULT_IMAGE_MODELS[name] : undefined
 }
-
-/** Model discovery includes defaults only for providers with usable credentials. */
-export function selectDefaultImageModel(
-  modelIds: Iterable<string>,
-): string | undefined {
-  const available = new Set(modelIds)
-  for (const provider of IMAGE_PROVIDER_PRIORITY) {
-    const id = `${provider}/${DEFAULT_IMAGE_MODELS[provider]}`
-    if (available.has(id)) return id
-  }
-  return undefined
-}

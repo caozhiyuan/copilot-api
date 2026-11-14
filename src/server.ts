@@ -124,5 +124,3 @@ export function createServer(options: CreateServerOptions = {}): Hono {
 
   return server
 }
-
-export const server = createServer()

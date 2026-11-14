@@ -133,36 +133,6 @@ export const resolveResponsesToolSearchName = (params: {
     CLAUDE_TOOL_SEARCH_NAME
   : resolveBridgeToolSearchName(params.tools)
 
-export const hasDeferredNamespaceTool = (
-  tools: Array<unknown> | null | undefined,
-): boolean =>
-  Array.isArray(tools)
-  && tools.some((tool) => {
-    if (!tool || typeof tool !== "object") {
-      return false
-    }
-
-    const record = tool as Record<string, unknown>
-    if (record.type !== "namespace" || typeof record.name !== "string") {
-      return false
-    }
-
-    if (!isDeferredToolName(record.name)) {
-      return false
-    }
-
-    const namespaceTools = record.tools
-    return (
-      Array.isArray(namespaceTools)
-      && namespaceTools.some(
-        (entry) =>
-          entry
-          && typeof entry === "object"
-          && (entry as Record<string, unknown>).defer_loading === true,
-      )
-    )
-  })
-
 export const listDeferredToolNames = (
   tools: Array<ToolSearchToolLike>,
 ): Array<string> => [
@@ -313,5 +283,3 @@ export const selectDeferredToolsByNames = (
     return tool ? [tool] : []
   })
 }
-
-export const hasDeferredMcpNamespaceTool = hasDeferredNamespaceTool

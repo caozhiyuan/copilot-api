@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 import type { DesktopProxySettings, DesktopSettings } from '../src/types/ipc'
+import { createDefaultSettings } from '../shared/default-settings'
 
 const SETTINGS_PATH = path.join(
   os.homedir(),
@@ -13,30 +14,7 @@ const SETTINGS_PATH = path.join(
   'desktop-config.json',
 )
 
-const DEFAULT_SETTINGS: DesktopSettings = {
-  serverRuntime: 'bun',
-  apiHome: '',
-  sqliteDbPath: '',
-  oauthApp: 'default',
-  enterpriseUrl: '',
-  host: '',
-  lastPort: 4141,
-  launchAtLogin: false,
-  autoStartServer: false,
-  minimizeToTray: false,
-  accountType: 'individual',
-  verbose: false,
-  showToken: false,
-  showCreate: false,
-  language: 'auto',
-  theme: 'auto',
-  proxy: {
-    mode: 'system',
-    http_proxy: 'http://127.0.0.1:8888',
-    https_proxy: 'http://127.0.0.1:8888',
-    no_proxy: 'localhost,127.0.0.1',
-  },
-}
+const DEFAULT_SETTINGS: DesktopSettings = createDefaultSettings()
 
 let launchAtLoginFallback = DEFAULT_SETTINGS.launchAtLogin
 

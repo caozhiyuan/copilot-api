@@ -48,7 +48,8 @@ const { providerImageRoutes } = await import("~/routes/provider/images/route")
 const { multipartEditDependencies } = await import(
   "~/routes/images/multipart-edits"
 )
-const { createServer, server } = await import("~/server")
+const { createServer } = await import("~/server")
+const server = createServer()
 const { closeUsageStore, getTokenUsageEventsPage } = await import(
   "~/lib/token-usage"
 )

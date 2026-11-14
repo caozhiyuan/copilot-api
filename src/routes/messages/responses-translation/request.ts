@@ -833,22 +833,6 @@ export const convertToolToFunction = (tool: AnthropicTool): FunctionTool => ({
   ...(tool.description ? { description: tool.description } : {}),
 })
 
-export const convertDeferredToolToNamespace = (tool: AnthropicTool): Tool => ({
-  type: "namespace",
-  name: tool.name,
-  ...(tool.description ? { description: tool.description } : {}),
-  tools: [
-    {
-      type: "function",
-      name: tool.name,
-      parameters: normalizeToolSchema(tool.input_schema),
-      strict: tool.strict ?? false,
-      defer_loading: true,
-      ...(tool.description ? { description: tool.description } : {}),
-    },
-  ],
-})
-
 export const convertAnthropicToolChoice = (
   choice: AnthropicMessagesPayload["tool_choice"],
   toolSearchMode: ResponsesToolSearchMode,

@@ -4,10 +4,6 @@ import { Agent, ProxyAgent, setGlobalDispatcher, type Dispatcher } from "undici"
 
 let proxyEnvDispatcher: Dispatcher | undefined
 
-export function getProxyEnvDispatcher(): Dispatcher | undefined {
-  return proxyEnvDispatcher
-}
-
 export function initProxyFromEnv(): void {
   try {
     const direct = new Agent()

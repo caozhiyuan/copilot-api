@@ -190,10 +190,6 @@ function resolveReportedProviderCost(
   }
 }
 
-export function getCostAmount(totalCostNanos: number): number {
-  return totalCostNanos / COST_NANOS_PER_UNIT
-}
-
 export function xaiUsdTicksToCost(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ?
       value / 10_000_000_000
