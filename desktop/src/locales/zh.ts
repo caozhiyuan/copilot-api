@@ -606,6 +606,11 @@ const zh: Locale = {
     restartNote: '保存成功后会立刻刷新当前服务进程中的配置缓存。',
     configPath: '配置路径',
     addMapping: '新增映射',
+    mapCodex: 'Codex 一键映射',
+    mapCopilot: 'GitHub Copilot 一键映射',
+    quickMappingsHelp:
+      'Codex 将全部模型名映射到 codex/模型名；GitHub Copilot 仅将 codex-auto-review 映射到 gpt-6-luna。更新同名规则，保存后生效。',
+    quickMappingsLoadFailed: '加载一键映射失败，请重新进入此分组重试。',
     sourceModel: '请求模型',
     targetModel: '目标模型',
     remove: '删除',

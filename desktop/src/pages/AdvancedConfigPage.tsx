@@ -590,6 +590,7 @@ export default function AdvancedConfigPage({
             </p>
           : section === 'mappings' ?
             <ModelMappingsPage
+              active={active}
               rows={rows}
               onChange={changeMappings}
               disabled={busy || !document}

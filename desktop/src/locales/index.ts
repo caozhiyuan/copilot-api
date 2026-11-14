@@ -480,6 +480,10 @@ export interface Locale {
     restartNote: string
     configPath: string
     addMapping: string
+    mapCodex: string
+    mapCopilot: string
+    quickMappingsHelp: string
+    quickMappingsLoadFailed: string
     sourceModel: string
     targetModel: string
     remove: string
