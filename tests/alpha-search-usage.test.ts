@@ -5,6 +5,7 @@ import {
   closeUsageStore,
   getTokenUsageEventsPage,
   getTokenUsageSummary,
+  recordTokenUsageEvent,
 } from "~/lib/token-usage"
 import { recordNativeAlphaSearchUsage } from "~/lib/token-usage/alpha-search"
 
@@ -66,6 +67,24 @@ async function record(
 }
 
 describe("native Alpha Search usage", () => {
+  test("keeps search requests separate from normal model summaries", async () => {
+    recordTokenUsageEvent({
+      endpoint: "responses",
+      source: "provider",
+      providerName: "deepseek",
+      model: "deepseek-flash",
+      input_tokens: 10,
+    })
+    await record()
+
+    const summary = await getTokenUsageSummary("today")
+    expect(summary.byModel.map((row) => row.model).sort()).toEqual([
+      "deepseek-flash",
+      "deepseek-flash_search",
+    ])
+    expect(summary.byModel.every((row) => row.request_count === 1)).toBe(true)
+  })
+
   test.each([200, 429])(
     "records Codex with zero tokens and zero cost, status %s",
     async (status) => {
@@ -79,7 +98,7 @@ describe("native Alpha Search usage", () => {
         endpoint: "alpha_search",
         source: "provider",
         provider_name: "codex",
-        model: "gpt-6-luna",
+        model: "gpt-6-luna_search",
         session_id: "payload-session",
         input_tokens: 0,
         output_tokens: 0,
@@ -234,7 +253,7 @@ describe("native Alpha Search usage", () => {
       rawRequest: "invalid JSON",
       headers: { "x-codex-turn-metadata": "invalid JSON" },
     })
-    expect(row.model).toBe("unknown")
+    expect(row.model).toBe("unknown_search")
     expect(row.session_id).toBe("")
   })
 

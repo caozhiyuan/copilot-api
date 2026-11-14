@@ -669,7 +669,7 @@ describe("native Alpha Search usage integration", () => {
         endpoint: "alpha_search",
         source: "provider",
         provider_name: provider,
-        model,
+        model: `${model}_search`,
         session_id: "01a1da09-1ea6-7d40-a65d-d908e9344454",
         user_agent: userAgent.slice(0, 64),
         total_tokens: 0,
@@ -707,6 +707,7 @@ describe("native Alpha Search usage integration", () => {
     })
     expect(page.items).toHaveLength(1)
     expect(page.items[0].endpoint).toBe("responses")
+    expect(page.items[0].model).toBe("gpt-6-luna")
     expect(page.items[0].total_tokens).toBe(150)
   })
 

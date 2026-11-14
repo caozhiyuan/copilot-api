@@ -86,6 +86,8 @@ export async function recordNativeAlphaSearchUsage(
   )
   const model = text(payload.model) ?? "unknown"
   const prefix = `${options.providerName}/`
+  const usageModel =
+    model.startsWith(prefix) ? model.slice(prefix.length) : model
   const pricingCurrency =
     (
       options.officialDeepSeek
@@ -98,7 +100,7 @@ export async function recordNativeAlphaSearchUsage(
     source: "provider",
     providerName: options.providerName,
     pricingCurrency,
-    model: model.startsWith(prefix) ? model.slice(prefix.length) : model,
+    model: `${usageModel}_search`,
     sessionId: text(metadata.session_id) ?? text(metadata.thread_id),
     fallbackSessionId: text(payload.id),
     cost:

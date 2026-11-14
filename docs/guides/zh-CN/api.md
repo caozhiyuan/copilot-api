@@ -91,7 +91,7 @@ xAI 默认请求 `b64_json`；上游仅返回 URL 时，从 xAI 输出 CDN 下�
 
 对于路由到 Codex 后端的请求，网关会使用当前 Codex 登录态覆盖客户端的 authorization 和 account header，并保留兼容的请求元数据。基于 Responses 的 alpha-search 则遵循所选 Copilot 或 provider 的路由。
 
-原生 Alpha Search 请求会在 Token usage 中以 `endpoint: "alpha_search"` 记录实际 provider/model、会话和耗时，token 数为 0。现有会话请求头优先；缺少时依次使用 `x-codex-turn-metadata.session_id`、`thread_id`、请求 `id`。Codex 原生搜索费用记为 0 美元。官方 DeepSeek Alpha Search 按 [Search/Fetch 官方价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)计算，默认每千次操作 5 元人民币，provider 配置为 USD 时每千次 0.75 美元；响应提供成功操作计数时优先使用该计数，否则按提交的 search/open/find 命令及返回结果估算，费用来源标记为 `estimate`。缺少上游计数时无法准确扣除批量请求中的部分失败操作。HTTP 失败和空搜索结果费用为 0。二次转发到 Responses 的请求保留现有 Responses 用量记录，不额外增加 Alpha Search 记录。
+原生 Alpha Search 请求会在 Token usage 中以 `endpoint: "alpha_search"` 记录实际 provider、会话和耗时，模型名追加 `_search` 后缀（如 `deepseek-flash_search`），与普通模型分开汇总，token 数为 0。现有会话请求头优先；缺少时依次使用 `x-codex-turn-metadata.session_id`、`thread_id`、请求 `id`。Codex 原生搜索费用记为 0 美元。官方 DeepSeek Alpha Search 按 [Search/Fetch 官方价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)计算，默认每千次操作 5 元人民币，provider 配置为 USD 时每千次 0.75 美元；响应提供成功操作计数时优先使用该计数，否则按提交的 search/open/find 命令及返回结果估算，费用来源标记为 `estimate`。缺少上游计数时无法准确扣除批量请求中的部分失败操作。HTTP 失败和空搜索结果费用为 0。二次转发到 Responses 的请求保留现有 Responses 用量记录，不额外增加 Alpha Search 记录。
 
 ### xAI 视频端点
 
