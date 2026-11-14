@@ -824,7 +824,7 @@ describe("Alpha search Responses adapter", () => {
     })
   })
 
-  test("rewrites non-gpt models to gpt-5.6-luna when prioritizing Codex", async () => {
+  test("rewrites non-gpt models to gpt-6-luna when prioritizing Codex", async () => {
     const response = await createApp().request("/alpha/search", {
       method: "POST",
       body: JSON.stringify(
@@ -840,7 +840,7 @@ describe("Alpha search Responses adapter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [, init] = fetchMock.mock.calls[0] ?? []
     expect(await new Response(init?.body).json()).toMatchObject({
-      model: "gpt-5.6-luna",
+      model: "gpt-6-luna",
     })
   })
 

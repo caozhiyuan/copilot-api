@@ -189,7 +189,7 @@ export async function handleAlphaSearchRequest(
       await alphaSearchRouteDependencies.resolveProviderConfig("codex")
     if (codexProviderConfig) {
       if (!payload.model.startsWith("gpt")) {
-        payload.model = "gpt-5.6-luna"
+        payload.model = "gpt-6-luna"
       }
       return await forwardCodexAlphaSearchRequest(
         createAlphaSearchRequest(c.req.raw, payload),
