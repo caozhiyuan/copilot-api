@@ -1097,6 +1097,43 @@ describe("Responses Lite to Messages translation", () => {
     },
   )
 
+  test.each([
+    { model: "custom/CLAUDE-sonnet-4.6", flatten: true },
+    { model: "claude-relay/glm-5.3-flash", flatten: false },
+    { model: "custom/vendor-Claude-model", flatten: false },
+  ])(
+    "limits schema union flattening to Claude-prefixed target $model",
+    ({ model, flatten }) => {
+      const parameters = {
+        oneOf: [
+          {
+            type: "object",
+            properties: { value: { type: "string" } },
+            required: ["value"],
+          },
+        ],
+      }
+      const result = translateResponsesToMessages(
+        {
+          model: flatten ? "public-alias" : "claude-sonnet-4.6",
+          input: "Run it",
+          tools: [{ type: "function", name: "js", parameters, strict: false }],
+        },
+        { model },
+      )
+
+      expect(result.messagesPayload.tools?.[0]?.input_schema).toEqual(
+        flatten ?
+          {
+            type: "object",
+            properties: { value: { type: "string" } },
+            required: ["value"],
+          }
+        : parameters,
+      )
+    },
+  )
+
   test.each([undefined, null, ""])(
     "reuses default tool aliases for historical namespace %j",
     (namespace) => {

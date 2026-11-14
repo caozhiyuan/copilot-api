@@ -1,3 +1,5 @@
+import consola from "consola"
+
 import {
   getUpstreamTransportConfig,
   type ResolvedProviderConfig,
@@ -19,7 +21,9 @@ export async function forwardGoogleGenerateContent(
   requestHeaders: Headers,
   options: { stream: boolean; clientSignal: AbortSignal; sessionId?: string },
 ): Promise<Response> {
-  const modelId = encodeURIComponent(model.replace(/^models\//u, ""))
+  const upstreamModel = model.replace(/^models\//u, "")
+  consola.log(`<-- model: ${upstreamModel}`)
+  const modelId = encodeURIComponent(upstreamModel)
   const method = options.stream ? "streamGenerateContent" : "generateContent"
   const url = new URL(
     resolveProviderEndpointUrl(provider, `models/${modelId}:${method}`),
@@ -29,7 +33,7 @@ export async function forwardGoogleGenerateContent(
   applyOpencodeSessionHeader(provider, headers, options.sessionId)
   headers.accept = options.stream ? "text/event-stream" : "application/json"
   const transport = getUpstreamTransportConfig()
-  setPluginRequestActualModel(model.replace(/^models\//u, ""), provider.name)
+  setPluginRequestActualModel(upstreamModel, provider.name)
   return await fetchUpstreamWithLifecycle(
     url,
     {
