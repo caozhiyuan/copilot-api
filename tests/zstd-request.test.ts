@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 
 import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
-import { server } from "~/server"
+import { createServer } from "~/server"
 
 const createApp = () => {
   const app = new Hono()
@@ -21,8 +21,8 @@ const createApp = () => {
 
 describe("zstd request middleware", () => {
   test("is registered only on Responses API routes", () => {
-    const registeredPaths = server.routes
-      .filter((route) => route.handler === zstdDecompressionMiddleware)
+    const registeredPaths = createServer()
+      .routes.filter((route) => route.handler === zstdDecompressionMiddleware)
       .map((route) => route.path)
 
     expect(registeredPaths).toEqual([

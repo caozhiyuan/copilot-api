@@ -71,7 +71,6 @@
     "src/lib/config-editor-errors.ts",
     "src/lib/config-editor.ts",
     "src/lib/config-fields.ts",
-    "src/lib/copilot-usage-display.ts",
     "src/lib/media-upload.ts",
     "src/lib/model-mappings-editor.ts",
     "src/lib/provider-management-auth.ts",

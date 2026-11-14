@@ -235,14 +235,6 @@ export const sanitizeOversizedInputImages = (
   )
 }
 
-export const sanitizeAllInputImages = (payload: ResponsesPayload): number => {
-  if (!Array.isArray(payload.input)) {
-    return 0
-  }
-
-  return sanitizeInputImages(payload.input, () => true)
-}
-
 export const normalizeInputImageDetails = (
   payload: ResponsesPayload,
 ): number => {

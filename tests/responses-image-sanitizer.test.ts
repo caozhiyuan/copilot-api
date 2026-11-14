@@ -9,7 +9,6 @@ import type {
 
 import {
   normalizeInputImageDetails,
-  sanitizeAllInputImages,
   sanitizeOversizedInputImages,
 } from "~/routes/responses/utils"
 
@@ -73,7 +72,7 @@ describe("sanitizeOversizedInputImages", () => {
     ).toEqual({ detail: "low", image_url: imageUrl, type: "input_image" })
   })
 
-  test("replaces all input images for a retry after payload rejection", () => {
+  test("replaces every input image exceeding the configured size limit", () => {
     const firstImageUrl = imageDataUrl(1024)
     const secondImageUrl = imageDataUrl(1024)
     const payload = {
@@ -98,7 +97,7 @@ describe("sanitizeOversizedInputImages", () => {
       model: "gpt-test",
     } as unknown as ResponsesPayload
 
-    const sanitized = sanitizeAllInputImages(payload)
+    const sanitized = sanitizeOversizedInputImages(payload, 1)
 
     expect(sanitized).toBe(2)
     expect(JSON.stringify(payload)).not.toContain(firstImageUrl)

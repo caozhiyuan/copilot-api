@@ -650,7 +650,3 @@ export async function clearCodexCredentials(): Promise<void> {
     writeProtectedFile(PATHS.CODEX_CREDENTIAL_PATH, ""),
   )
 }
-
-export async function hasCodexCredentials(): Promise<boolean> {
-  return ((await readCodexCredentialStore())?.accounts.length ?? 0) > 0
-}
