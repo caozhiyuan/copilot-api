@@ -65,7 +65,7 @@ export function resolveProviderEndpointUrl(
     endpoint === "alpha/search"
     && supportsNativeDeepSeekAlphaSearch(providerConfig)
   ) {
-    return "https://api.deepseek.com/alpha/search"
+    return new URL(`/${endpoint}`, providerConfig.baseUrl).toString()
   }
   if (providerConfig.name === OPENCODE_GO_PROVIDER_NAME) {
     const base = normalizeProviderBaseUrl(providerConfig.baseUrl)
