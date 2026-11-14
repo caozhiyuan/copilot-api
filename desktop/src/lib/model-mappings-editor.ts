@@ -39,6 +39,20 @@ export function modelMappingsToRows(
   )
 }
 
+export function mergeModelMappingRows(
+  rows: ModelMappingRow[],
+  modelMappings: Record<string, string>,
+): ModelMappingRow[] {
+  const pending = new Map(Object.entries(modelMappings))
+  const next = rows.map((row) => {
+    const target = pending.get(row.source)
+    if (target === undefined) return row
+    pending.delete(row.source)
+    return { ...row, target }
+  })
+  return [...next, ...modelMappingsToRows(Object.fromEntries(pending))]
+}
+
 export function buildModelMappingsFromRows(
   rows: ModelMappingRow[],
 ): ModelMappingsValidationResult {

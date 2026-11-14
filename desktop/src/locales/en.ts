@@ -650,6 +650,12 @@ const en: Locale = {
       'Changes are applied to the running service immediately after a successful save.',
     configPath: 'Config path',
     addMapping: 'Add mapping',
+    mapCodex: 'Map Codex models',
+    mapCopilot: 'Map GitHub Copilot review',
+    quickMappingsHelp:
+      'Codex maps all its model names to codex/model. GitHub Copilot only maps codex-auto-review to gpt-6-luna. Matching rules are updated; save to apply.',
+    quickMappingsLoadFailed:
+      'Could not load quick mappings. Reopen this section to retry.',
     sourceModel: 'Requested model',
     targetModel: 'Target model',
     remove: 'Remove',

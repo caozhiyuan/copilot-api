@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import {
   createModelMappingRow,
+  mergeModelMappingRows,
   type ModelMappingRow,
 } from '../lib/model-mappings-editor'
 
@@ -8,6 +10,7 @@ interface ModelMappingsPageProps {
   rows: ModelMappingRow[]
   onChange: (rows: ModelMappingRow[]) => void
   disabled?: boolean
+  active?: boolean
 }
 
 // Controlled by AdvancedConfigPage so mapping changes share its JSON draft,
@@ -16,8 +19,40 @@ export default function ModelMappingsPage({
   rows,
   onChange,
   disabled,
+  active = true,
 }: ModelMappingsPageProps) {
   const { t } = useLanguage()
+  const [enabledProviders, setEnabledProviders] = useState<string[]>([])
+  const [codexModels, setCodexModels] = useState<string[]>([])
+  const [modelsError, setModelsError] = useState(false)
+  useEffect(() => {
+    if (!active || disabled) return
+    let current = true
+    setEnabledProviders([])
+    setCodexModels([])
+    setModelsError(false)
+    const load = async () => {
+      // Reuse Providers' availability check, including Copilot's saved token.
+      const config = await window.electronAPI.getProviderManagementConfig()
+      if (!current) return
+      const enabled = config.providers
+        .filter((provider) => provider.enabled)
+        .map((provider) => provider.name)
+      setEnabledProviders(enabled)
+      if (enabled.includes('codex')) {
+        const options = await window.electronAPI.getProviderModelOptions()
+        if (current) setCodexModels(options.codex ?? [])
+      }
+    }
+    void load().catch(() => {
+      if (current) setModelsError(true)
+    })
+    return () => {
+      current = false
+    }
+  }, [active, disabled])
+  const codexEnabled = enabledProviders.includes('codex')
+  const copilotEnabled = enabledProviders.includes('github-copilot')
   const changeRow = (id: string, field: 'source' | 'target', value: string) => {
     onChange(
       rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)),
@@ -50,6 +85,60 @@ export default function ModelMappingsPage({
           {t('advancedConfig.addMapping')}
         </button>
       </div>
+      {(codexEnabled || copilotEnabled || modelsError) && (
+        <div className="border-b border-line-soft bg-sunken/50 px-4 py-3">
+          <div className="flex flex-wrap gap-2">
+            {codexEnabled && (
+              <button
+                type="button"
+                disabled={disabled || codexModels.length === 0}
+                onClick={() =>
+                  onChange(
+                    mergeModelMappingRows(
+                      rows,
+                      Object.fromEntries(
+                        codexModels.map((model) => [model, `codex/${model}`]),
+                      ),
+                    ),
+                  )
+                }
+                className="rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('advancedConfig.mapCodex')}
+              </button>
+            )}
+            {copilotEnabled && (
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() =>
+                  onChange(
+                    mergeModelMappingRows(rows, {
+                      'codex-auto-review': 'gpt-6-luna',
+                    }),
+                  )
+                }
+                className="rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {t('advancedConfig.mapCopilot')}
+              </button>
+            )}
+          </div>
+          {(codexEnabled || copilotEnabled) && (
+            <p className="mt-2 text-[11px] leading-relaxed text-ink-soft">
+              {t('advancedConfig.quickMappingsHelp')}
+            </p>
+          )}
+          {modelsError && (
+            <p
+              role="alert"
+              className="mt-2 text-[12px] text-rose-600 dark:text-rose-400"
+            >
+              {t('advancedConfig.quickMappingsLoadFailed')}
+            </p>
+          )}
+        </div>
+      )}
       {rows.map((row) => (
         <div
           key={row.id}
