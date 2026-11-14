@@ -19,7 +19,6 @@ import type {
 import type {
   CreateResponsesReturn,
   ResponsesPayload,
-  ResponsesResult,
   ResponsesTransport,
 } from "~/lib/types/responses"
 
@@ -28,6 +27,8 @@ import { installModelsDevCatalog } from "~/lib/models-dev-cache"
 import { closeUsageStore, getTokenUsageEventsPage } from "~/lib/token-usage"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
+
+import { createResponsesResult } from "./fixtures/responses"
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 
@@ -1631,23 +1632,3 @@ const parseSseEvents = (
   }
   return events
 }
-
-const createResponsesResult = (model: string): ResponsesResult => ({
-  created_at: 0,
-  error: null,
-  id: "resp-test",
-  incomplete_details: null,
-  instructions: null,
-  metadata: null,
-  model,
-  object: "response",
-  output: [],
-  output_text: "",
-  parallel_tool_calls: false,
-  status: "completed",
-  temperature: null,
-  tool_choice: "auto",
-  tools: [],
-  top_p: null,
-  usage: null,
-})

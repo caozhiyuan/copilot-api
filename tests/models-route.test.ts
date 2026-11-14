@@ -3639,7 +3639,7 @@ describe("model routes", () => {
     ["/codex/v1/models", "headers"],
     ["/codex/v1/models", "body"],
   ])(
-    "%s falls back to the bundled Codex catalog after 3 seconds waiting for %s",
+    "%s falls back to the bundled Codex catalog when %s time out",
     async (endpoint, phase) => {
       enableCodexCatalog()
       state.codexAccountId = "cold-catalog-account"
@@ -3664,10 +3664,19 @@ describe("model routes", () => {
           )
         },
       })
-      const timeoutSpy = spyOn(AbortSignal, "timeout")
+      const timeout = new AbortController()
+      const timeoutError = Object.assign(new Error("Catalog timed out"), {
+        name: "TimeoutError",
+      })
+      const timeoutSpy = spyOn(AbortSignal, "timeout").mockReturnValue(
+        timeout.signal,
+      )
       fetchMock.mockImplementationOnce(async (_url, init) => {
-        const response = await originalFetch(server.url, init)
+        const pending = originalFetch(server.url, init)
+        if (phase === "headers") timeout.abort(timeoutError)
+        const response = await pending
         receivedHeaders = true
+        timeout.abort(timeoutError)
         return response
       })
 

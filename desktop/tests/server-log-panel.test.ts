@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { Window } from 'happy-dom'
+import type { Window } from 'happy-dom'
 import { act, createElement } from 'react'
 import type { Root } from 'react-dom/client'
+import { createTestDom } from './helpers/dom'
 
 import ServerLogPanel from '../src/components/ServerLogPanel'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
@@ -11,26 +12,10 @@ let win: Window
 let root: Root
 let container: HTMLDivElement
 let logListener: ((log: ServerLogRecord) => void) | null
-const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
+let cleanupDom: () => Promise<void>
 
 beforeEach(async () => {
-  win = new Window({ url: 'http://localhost' })
-  const globals: Record<string, unknown> = {
-    window: win,
-    document: win.document,
-    navigator: win.navigator,
-    HTMLElement: win.HTMLElement,
-    Event: win.Event,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  }
-  for (const [name, value] of Object.entries(globals)) {
-    previousGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      writable: true,
-      value,
-    })
-  }
+  ;({ win, root, container, cleanup: cleanupDom } = await createTestDom())
 
   logListener = null
   Object.defineProperty(win, 'electronAPI', {
@@ -44,20 +29,11 @@ beforeEach(async () => {
       },
     },
   })
-  container = document.createElement('div')
-  document.body.append(container)
-  const { createRoot } = await import('react-dom/client')
-  root = createRoot(container)
 })
 
 afterEach(async () => {
   await act(async () => root.unmount())
-  await win.happyDOM.close()
-  for (const [name, descriptor] of previousGlobals) {
-    if (descriptor) Object.defineProperty(globalThis, name, descriptor)
-    else Reflect.deleteProperty(globalThis, name)
-  }
-  previousGlobals.clear()
+  await cleanupDom()
 })
 
 async function renderPanel(variant: 'failure' | 'page') {

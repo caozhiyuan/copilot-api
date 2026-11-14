@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { Window } from 'happy-dom'
+import type { Window } from 'happy-dom'
 import { act, createElement } from 'react'
 import type { Root } from 'react-dom/client'
+import { createTestDom } from './helpers/dom'
 
 import SettingsModal from '../src/components/SettingsModal'
 import Header from '../src/components/Header'
@@ -52,7 +53,7 @@ let saveServerKeys: ReturnType<
 >
 let alert: ReturnType<typeof mock<(message: string) => void>>
 let onClose: ReturnType<typeof mock<() => void>>
-const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
+let cleanupDom: () => Promise<void>
 
 function persistKeys(update: ServerKeysConfigUpdate): ServerKeysConfig {
   keys = {
@@ -65,25 +66,7 @@ function persistKeys(update: ServerKeysConfigUpdate): ServerKeysConfig {
 beforeEach(async () => {
   settings = structuredClone(initialSettings)
   keys = { apiKeys: ['old-api'], adminApiKey: 'old-admin' }
-  win = new Window({ url: 'http://localhost' })
-  const globals: Record<string, unknown> = {
-    window: win,
-    document: win.document,
-    navigator: win.navigator,
-    HTMLElement: win.HTMLElement,
-    HTMLInputElement: win.HTMLInputElement,
-    HTMLTextAreaElement: win.HTMLTextAreaElement,
-    Event: win.Event,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  }
-  for (const [name, value] of Object.entries(globals)) {
-    previousGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      writable: true,
-      value,
-    })
-  }
+  ;({ win, root, container, cleanup: cleanupDom } = await createTestDom())
   saveSettings = mock((update: DesktopSettings) => {
     settings = structuredClone(update)
     return Promise.resolve()
@@ -110,20 +93,11 @@ beforeEach(async () => {
     },
   })
   Object.defineProperty(win, 'alert', { configurable: true, value: alert })
-  container = document.createElement('div')
-  document.body.append(container)
-  const { createRoot } = await import('react-dom/client')
-  root = createRoot(container)
 })
 
 afterEach(async () => {
   await act(async () => root.unmount())
-  await win.happyDOM.close()
-  for (const [name, descriptor] of previousGlobals) {
-    if (descriptor) Object.defineProperty(globalThis, name, descriptor)
-    else Reflect.deleteProperty(globalThis, name)
-  }
-  previousGlobals.clear()
+  await cleanupDom()
 })
 
 async function render() {

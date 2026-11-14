@@ -9,6 +9,8 @@ import { codexResponsesDependencies } from "~/services/codex/create-responses"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
 
+import { createResponsesResult } from "./fixtures/responses"
+
 let providerConfig: ResolvedProviderConfig | null = null
 
 const { closeUsageStore } = await import("~/lib/token-usage")
@@ -46,26 +48,6 @@ const defaultTaskTitleDependencies = { ...taskTitleDependencies }
 const originalFetch = globalThis.fetch
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
-
-const createResponsesResult = (model: string): ResponsesResult => ({
-  created_at: 0,
-  error: null,
-  id: "resp-test",
-  incomplete_details: null,
-  instructions: null,
-  metadata: null,
-  model,
-  object: "response",
-  output: [],
-  output_text: "",
-  parallel_tool_calls: false,
-  status: "completed",
-  temperature: null,
-  tool_choice: "auto",
-  tools: [],
-  top_p: null,
-  usage: null,
-})
 
 const parseJsonRequestBody = (body: unknown): unknown => {
   if (typeof body !== "string") {

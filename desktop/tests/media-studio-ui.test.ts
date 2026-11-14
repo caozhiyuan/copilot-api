@@ -7,9 +7,10 @@ import {
   spyOn,
   test,
 } from 'bun:test'
-import { Window } from 'happy-dom'
+import type { Window } from 'happy-dom'
 import { act, createElement } from 'react'
 import type { Root } from 'react-dom/client'
+import { createTestDom } from './helpers/dom'
 import MediaStudioPage from '../src/pages/MediaStudioPage'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
 import type {
@@ -22,7 +23,7 @@ import type {
 let win: Window
 let root: Root
 let container: HTMLDivElement
-const previousGlobals = new Map<string, PropertyDescriptor | undefined>()
+let cleanupDom: () => Promise<void>
 let createImages = mock(
   (_id: string, _input: ImageCreationInput): Promise<CreatedImage[]> =>
     Promise.resolve([
@@ -50,26 +51,7 @@ let fetchModels = mock((): Promise<unknown> =>
 let timers: ReturnType<typeof spyOn<typeof globalThis, 'setTimeout'>>
 
 beforeEach(async () => {
-  win = new Window({ url: 'http://localhost' })
-  for (const [name, value] of Object.entries({
-    window: win,
-    document: win.document,
-    navigator: win.navigator,
-    HTMLElement: win.HTMLElement,
-    HTMLInputElement: win.HTMLInputElement,
-    HTMLTextAreaElement: win.HTMLTextAreaElement,
-    Event: win.Event,
-    KeyboardEvent: win.KeyboardEvent,
-    MouseEvent: win.MouseEvent,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  })) {
-    previousGlobals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      writable: true,
-      value,
-    })
-  }
+  ;({ win, root, container, cleanup: cleanupDom } = await createTestDom())
   createImages = mock((_id, _input) =>
     Promise.resolve([
       {
@@ -101,20 +83,11 @@ beforeEach(async () => {
     },
   })
   timers = spyOn(globalThis, 'setTimeout')
-  container = document.createElement('div')
-  document.body.append(container)
-  const { createRoot } = await import('react-dom/client')
-  root = createRoot(container)
 })
 afterEach(async () => {
   await act(async () => root.unmount())
   timers.mockRestore()
-  await win.happyDOM.close()
-  for (const [name, descriptor] of previousGlobals) {
-    if (descriptor) Object.defineProperty(globalThis, name, descriptor)
-    else Reflect.deleteProperty(globalThis, name)
-  }
-  previousGlobals.clear()
+  await cleanupDom()
 })
 
 async function render(serverRunning = true) {
