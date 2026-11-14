@@ -41,6 +41,7 @@ const { providerAlphaSearchRouteDependencies, providerAlphaSearchRoutes } =
   await import("~/routes/provider/alpha-search/route")
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
+const originalDbPath = process.env[DB_PATH_ENV]
 
 const originalFetch = globalThis.fetch
 const originalResponsesDependencies = { ...alphaSearchResponsesDependencies }
@@ -323,7 +324,9 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await closeUsageStore()
-  Reflect.deleteProperty(process.env, DB_PATH_ENV)
+  if (originalDbPath === undefined)
+    Reflect.deleteProperty(process.env, DB_PATH_ENV)
+  else process.env[DB_PATH_ENV] = originalDbPath
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch = originalFetch
   state.codexAccessToken = undefined
   state.codexAccountId = undefined
