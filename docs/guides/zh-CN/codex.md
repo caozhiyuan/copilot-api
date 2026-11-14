@@ -73,7 +73,7 @@ enabled = false
 > [!NOTE]
 > `name` 一定要配置为 `"OpenAI"`。
 >
-> **GitHub Copilot 用户需在 `[features]` 中设置 `instant_interrupt = false`。** 这样插话会走常规 steer 路径，等待当前模型响应完成，保留 WebSocket 复用和增量续接的机会。
+> **GitHub Copilot 用户需在 `[features]` 中设置 `instant_interrupt = false`**，或在 ChatGPT Desktop 的 **Settings → General → Follow-up behavior** 中选择 **Queue**。这样插话会走常规 steer 路径，等待当前模型响应完成，保留 WebSocket 复用和增量续接的机会。
 >
 > **多 Agent 混用：** 在网关配置或桌面端高级配置中开启 [`codexMultiAgentV1`](configuration.md#codex-多-agent-兼容性)，使用 V1 明文任务消息混用 GPT 与第三方模型，避开 V2 的 GPT 原生加密消息兼容限制。默认 V2，切换后需新建会话。
 >
