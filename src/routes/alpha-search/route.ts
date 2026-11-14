@@ -11,7 +11,7 @@ import {
 import { forwardError } from "~/lib/error"
 import { setPluginRequestModel } from "~/lib/request-events"
 import { setPluginRequestActualModel } from "~/lib/request-context"
-import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
+import { createHandlerLogger, debugJson, debugJsonAsync } from "~/lib/logger"
 import { findEndpointModel } from "~/lib/models"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
@@ -245,12 +245,27 @@ export async function handleAlphaSearchRequest(
     if (providerConfig) {
       if (supportsNativeDeepSeekAlphaSearch(providerConfig)) {
         setPluginRequestActualModel(payload.model, providerConfig.name)
+        debugJson(logger, "alpha_search.provider.request", {
+          body: payload,
+          provider: providerConfig.name,
+        })
         const upstreamResponse =
           await alphaSearchRouteDependencies.forwardProviderAlphaSearch(
             providerConfig,
             createAlphaSearchRequest(c.req.raw, payload),
             { clientSignal: c.req.raw.signal },
           )
+        await debugJsonAsync(
+          logger,
+          "alpha_search.provider.response",
+          async () => ({
+            body: parseDebugBody<AlphaSearchResponse>(
+              await upstreamResponse.clone().text(),
+            ),
+            provider: providerConfig.name,
+            statusCode: upstreamResponse.status,
+          }),
+        )
         return createProviderProxyResponse(upstreamResponse)
       }
       return await alphaSearchRouteDependencies.handleAlphaSearchResponses(c, {

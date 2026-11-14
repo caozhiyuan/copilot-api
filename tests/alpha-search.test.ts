@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
@@ -590,6 +598,43 @@ describe("Codex alpha search forwarding", () => {
 })
 
 describe("DeepSeek native alpha search", () => {
+  test.each([
+    {
+      verbose: true,
+      status: 200,
+      body: '{"output":"native search result","results":[]}',
+    },
+    { verbose: true, status: 502, body: "upstream failed" },
+    {
+      verbose: false,
+      status: 200,
+      body: '{"output":"native search result","results":[]}',
+    },
+  ])(
+    "logs native responses lazily without consuming them: %j",
+    async ({ verbose, status, body }) => {
+      state.verbose = verbose
+      fetchMock.mockImplementationOnce(() =>
+        Promise.resolve(new Response(body, { status })),
+      )
+      const clone = spyOn(Response.prototype, "clone")
+      try {
+        const response = await requestFallback(
+          createFallbackPayload(
+            { search_query: [{ q: "native logging" }] },
+            { model: "deepseek/deepseek-flash" },
+          ),
+        )
+
+        expect(response.status).toBe(status)
+        expect(await response.text()).toBe(body)
+        expect(clone).toHaveBeenCalledTimes(verbose ? 1 : 0)
+      } finally {
+        clone.mockRestore()
+      }
+    },
+  )
+
   test.each([
     "https://api.deepseek.com",
     "https://api.deepseek.com/v1",
