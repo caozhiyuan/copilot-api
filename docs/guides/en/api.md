@@ -69,11 +69,11 @@ Explicit `provider/model` aliases stay on that provider and preserve the upstrea
 
 JSON image requests must be UTF-8 encoded objects. Invalid JSON returns `400` (`invalid_request_error`) on both top-level and provider-scoped routes instead of falling back to Codex. Validation preserves large-request streaming and stops forwarding if an error is discovered during upload. Multipart image edits remain supported.
 
-Image requests routed to Codex require an active Codex login; other image routes use their provider's credentials. Alpha search can use either the Codex backend or a Responses web-search adapter.
+Image requests routed to Codex require an active Codex login; other image routes use their provider's credentials. Alpha search can use the Codex backend, native DeepSeek Alpha Search with an official DeepSeek base URL, or a Responses web-search adapter.
 
 | Endpoint                                                       | Method | Description                                                     |
 | -------------------------------------------------------------- | ------ | --------------------------------------------------------------- |
-| `POST /v1/alpha/search`                | `POST` | Routes Codex alpha-search requests to the Codex backend, or handles supported commands locally and through Responses web search. |
+| `POST /v1/alpha/search`                | `POST` | Routes alpha-search requests to Codex or native DeepSeek, or handles supported commands locally and through Responses web search. |
 | `POST /v1/images/generations` | `POST` | Routes a JSON image generation request by its model mapping or provider alias. Missing `Content-Type` defaults to `application/json`. Only missing, blank, or bare `gpt-image-2` models use automatic provider selection; other model names are preserved for upstream validation. |
 | `POST /v1/images/edits` | `POST` | Accepts JSON image references or `multipart/form-data` uploads. JSON requests retain their existing behavior, including `images: [{ image_url }]`, `images: [{ file_id }]`, and an optional `mask` reference. Multipart uploads accept `image`, `image[]`, and repeated image fields in their original order, plus an optional `mask`. Files are staged to disk, then converted to base64 data URLs and JSON for Codex, GitHub Copilot, or xAI. Model mappings and `provider/model` aliases apply. `/codex/v1/images/edits`, `/github-copilot/v1/images/edits`, and `/xai/v1/images/edits` also accept multipart; other provider-scoped multipart edits are staged to disk and forwarded as multipart with usage recorded against `model`. |
 
@@ -86,6 +86,8 @@ When an image model resolves to `xai/model`, the common route translates OpenAI 
 The default xAI response format is `b64_json`. URL-only output is downloaded from the xAI output CDN with a 32 MiB limit; failure returns `502`. Explicit `response_format: "url"` skips downloading. Provider-scoped xAI JSON retains its native behavior, and multipart edits use the xAI conversion.
 
 For requests routed to the Codex backend, the gateway replaces client authorization and account headers with the active Codex login and preserves compatible request metadata. Responses-backed alpha search instead follows the selected Copilot or provider route.
+
+Native Alpha Search calls appear in Token usage with `endpoint: "alpha_search"`, zero token counts, and their actual provider/model. The session falls back to `x-codex-turn-metadata.session_id`, then `thread_id`, then the request `id`, after existing session headers. Codex Alpha Search has a recorded USD cost of zero. Official DeepSeek Alpha Search uses the official Search/Fetch price: [CNY 5 per 1,000 operations](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/) by default, or [USD 0.75 per 1,000](https://api-docs.deepseek.com/guides/search/#billing) when the provider uses USD. If successful tool counts are present in the response, those counts are used; otherwise fees are estimated from submitted search/open/find commands and available results, with `cost.source: "estimate"`. Batch partial failures cannot be reconciled without upstream counts. Failed HTTP requests and empty searches have zero fees. Requests adapted to Responses retain their existing Responses usage record without an extra Alpha Search record.
 
 ### xAI Video Endpoints
 

@@ -73,11 +73,11 @@ Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程�
 
 JSON 图片请求必须为 UTF-8 编码的对象。顶层和 provider 作用域路由遇到无效 JSON 时统一返回 `400`（`invalid_request_error`），不再兜底转发给 Codex。大请求仍保持流式处理，上传过程中发现错误时中止转发。multipart 图片编辑继续支持。
 
-路由到 Codex 的图片请求要求已有可用的 Codex 登录态；其他图片路由使用对应 provider 的凭据。alpha-search 可以使用 Codex 后端或 Responses web-search 适配器。
+路由到 Codex 的图片请求要求已有可用的 Codex 登录态；其他图片路由使用对应 provider 的凭据。alpha-search 可以使用 Codex 后端、官方 DeepSeek base URL 对应的原生 Alpha Search，或 Responses web-search 适配器。
 
 | 端点                                                       | 方法 | 说明                                                                                                 |
 | ---------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
-| `POST /v1/alpha/search`            | `POST` | 将 Codex alpha-search 请求路由到 Codex 后端，或在本地及通过 Responses web search 处理支持的命令。 |
+| `POST /v1/alpha/search`            | `POST` | 将 alpha-search 请求路由到 Codex 后端或原生 DeepSeek，或在本地及通过 Responses web search 处理支持的命令。 |
 | `POST /v1/images/generations` | `POST` | 按 model mapping 或 provider 别名路由 JSON 图片生成请求。请求未携带 `Content-Type` 时默认补充 `application/json`。仅省略、空白或裸 `gpt-image-2` 自动选择 provider，其他型号保留并交给上游校验。 |
 | `POST /v1/images/edits` | `POST` | 接受 JSON 图片引用或 `multipart/form-data` 上传。JSON 保持现有行为，支持 `images: [{ image_url }]`、`images: [{ file_id }]` 和可选的 `mask` 引用。multipart 支持 `image`、`image[]`、重复图片字段及可选 `mask`，并保留图片出现顺序；文件先流式落盘，发往 Codex、GitHub Copilot 或 xAI 时再转换为 base64 data URL 和 JSON。支持 model mapping 与 `provider/model` 别名。`/codex/v1/images/edits`、`/github-copilot/v1/images/edits` 和 `/xai/v1/images/edits` 同样接受 multipart；其他 provider 作用域的 multipart 编辑也会先暂存到磁盘，再以 multipart 转发，并按 `model` 记录用量。 |
 
@@ -90,6 +90,8 @@ multipart 上传总大小上限为 128 MiB，单文件上限为 64 MiB，最多 
 xAI 默认请求 `b64_json`；上游仅返回 URL 时，从 xAI 输出 CDN 下载图片并补充 base64，下载上限 32 MiB，失败返回 `502`。显式设置 `response_format: "url"` 时不下载。provider 作用域的 xAI JSON 保持原生行为，multipart 编辑使用 xAI 转换。
 
 对于路由到 Codex 后端的请求，网关会使用当前 Codex 登录态覆盖客户端的 authorization 和 account header，并保留兼容的请求元数据。基于 Responses 的 alpha-search 则遵循所选 Copilot 或 provider 的路由。
+
+原生 Alpha Search 请求会在 Token usage 中以 `endpoint: "alpha_search"` 记录实际 provider/model、会话和耗时，token 数为 0。现有会话请求头优先；缺少时依次使用 `x-codex-turn-metadata.session_id`、`thread_id`、请求 `id`。Codex 原生搜索费用记为 0 美元。官方 DeepSeek Alpha Search 按 [Search/Fetch 官方价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)计算，默认每千次操作 5 元人民币，provider 配置为 USD 时每千次 0.75 美元；响应提供成功操作计数时优先使用该计数，否则按提交的 search/open/find 命令及返回结果估算，费用来源标记为 `estimate`。缺少上游计数时无法准确扣除批量请求中的部分失败操作。HTTP 失败和空搜索结果费用为 0。二次转发到 Responses 的请求保留现有 Responses 用量记录，不额外增加 Alpha Search 记录。
 
 ### xAI 视频端点
 
