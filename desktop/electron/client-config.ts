@@ -87,7 +87,7 @@ export function readTomlConfig(content: string): Record<string, unknown> {
   }
 }
 
-type Scalar = string | boolean
+type Scalar = string | number | boolean
 const keyText = (key: string) =>
   /^[\w-]+$/.test(key) ? key : JSON.stringify(key)
 const startsWith = (

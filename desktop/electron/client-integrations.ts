@@ -96,6 +96,30 @@ const CLAUDE_ENV_DEFAULTS = {
   CLAUDE_CODE_EFFORT_LEVEL: 'max',
   MCP_CONNECT_TIMEOUT_MS: '20000',
 }
+const CODEX_DEFAULTS: Array<[string[], string | number | boolean]> = [
+  [['model_reasoning_effort'], 'max'],
+  [['model_reasoning_summary'], 'auto'],
+  [['plan_mode_reasoning_effort'], 'max'],
+  [['model_context_window'], 400000],
+  [['sandbox_mode'], 'danger-full-access'],
+  [['approvals_reviewer'], 'auto_review'],
+  [['suppress_unstable_features_warning'], true],
+  [['web_search'], 'live'],
+  [['service_tier'], 'default'],
+  [['model_providers', 'copilot_api', 'supports_standalone_web_search'], true],
+  [['model_providers', 'copilot_api', 'request_max_retries'], 3],
+  [['model_providers', 'copilot_api', 'stream_max_retries'], 3],
+  [['model_providers', 'copilot_api', 'stream_idle_timeout_ms'], 300000],
+  [['features', 'remote_compaction_v2'], true],
+  [['features', 'api_key_model_discovery'], true],
+  [['features', 'default_mode_request_user_input'], true],
+  [['features', 'standalone_web_search'], true],
+  [['features', 'daemon_auto_start'], false],
+  [['features', 'prevent_idle_sleep'], true],
+  [['features', 'defer_mailbox_preemption'], true],
+  [['features', 'instant_interrupt'], false],
+  [['analytics', 'enabled'], false],
+]
 const PROVIDER_WRAPPER = `import provider from '../copilot-api/provider.js'
 import { readFileSync } from 'node:fs'
 
@@ -381,9 +405,8 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
       )
     } else if (input.client === 'codex') {
       const provider = ['model_providers', 'copilot_api']
-      const existing = record(
-        record(readTomlConfig(content).model_providers).copilot_api,
-      )
+      const config = readTomlConfig(content)
+      const existing = record(record(config.model_providers).copilot_api)
       if (
         existing.auth !== undefined
         || existing.experimental_bearer_token !== undefined
@@ -401,9 +424,16 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           [[...provider, 'requires_openai_auth'], true],
           [[...provider, 'wire_api'], 'responses'],
           [[...provider, 'supports_websockets'], false],
-          [['features', 'instant_interrupt'], false],
-          [['features', 'api_key_model_discovery'], true],
-          [['features', 'remote_compaction_v2'], true],
+          ...CODEX_DEFAULTS.filter(([keys]) => {
+            const value = keys.reduce<unknown>(
+              (current, key) => record(current)[key],
+              config,
+            )
+            return (
+              value === undefined
+              || (typeof value === 'string' && !value.trim())
+            )
+          }),
         ]),
       )
       for (const file of environmentFiles)

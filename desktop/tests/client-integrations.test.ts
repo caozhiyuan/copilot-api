@@ -482,17 +482,44 @@ describe('client setup and restore', () => {
     const manager = fixture()
     await manager.setup(await input(manager, 'codex'))
     expect(readTomlConfig(read('.codex/config.toml'))).toMatchObject({
+      model: 'codex/gpt-6.1-sol',
+      model_reasoning_effort: 'max',
+      model_reasoning_summary: 'auto',
+      plan_mode_reasoning_effort: 'max',
+      model_context_window: 400000,
+      sandbox_mode: 'danger-full-access',
+      approvals_reviewer: 'auto_review',
+      suppress_unstable_features_warning: true,
+      web_search: 'live',
+      service_tier: 'default',
       model_provider: 'copilot_api',
       model_providers: {
         copilot_api: {
           base_url: gateway.baseUrl,
           model_catalog_url: `${gateway.baseUrl}/models`,
           name: 'OpenAI',
+          env_key: 'GITHUB_COPILOT_API_KEY',
           requires_openai_auth: true,
           wire_api: 'responses',
+          supports_websockets: false,
+          supports_standalone_web_search: true,
+          request_max_retries: 3,
+          stream_max_retries: 3,
+          stream_idle_timeout_ms: 300000,
         },
       },
-      features: { keep: true, instant_interrupt: false },
+      features: {
+        keep: true,
+        instant_interrupt: false,
+        remote_compaction_v2: true,
+        api_key_model_discovery: true,
+        default_mode_request_user_input: true,
+        standalone_web_search: true,
+        daemon_auto_start: false,
+        prevent_idle_sleep: true,
+        defer_mailbox_preemption: true,
+      },
+      analytics: { enabled: false },
     })
     expect(read('.codex/auth.json')).toBe('{"login":"keep"}')
     expect(read('.bashrc')).toStartWith('# shell settings\n')
@@ -503,6 +530,39 @@ describe('client setup and restore', () => {
     expect(read('.codex/config.toml')).toBe(source)
     expect(read('.bashrc')).toBe('# shell settings\n')
     expect(fs.existsSync(path.join(directory, '.profile'))).toBe(false)
+  })
+  test('fills empty Codex defaults and retains nonempty custom values, false and zero', async () => {
+    const source =
+      'model_reasoning_effort = "high"\nmodel_reasoning_summary = ""\nmodel_context_window = ""\nservice_tier = " "\nsandbox_mode = "read-only"\nsuppress_unstable_features_warning = false\n[features]\nremote_compaction_v2 = false\napi_key_model_discovery = false\ninstant_interrupt = true\ndaemon_auto_start = true\n[analytics]\nenabled = true\n[model_providers.copilot_api]\nrequest_max_retries = 0\nstream_max_retries = 8\nstream_idle_timeout_ms = 12345\nsupports_standalone_web_search = false\n'
+    persist('.codex/config.toml', source)
+    const manager = fixture()
+    await manager.setup(await input(manager, 'codex'))
+    const updated = read('.codex/config.toml')
+    expect(readTomlConfig(updated)).toMatchObject({
+      model_reasoning_effort: 'high',
+      model_reasoning_summary: 'auto',
+      model_context_window: 400000,
+      service_tier: 'default',
+      sandbox_mode: 'read-only',
+      suppress_unstable_features_warning: false,
+      features: {
+        remote_compaction_v2: false,
+        api_key_model_discovery: false,
+        instant_interrupt: true,
+        daemon_auto_start: true,
+      },
+      analytics: { enabled: true },
+      model_providers: {
+        copilot_api: {
+          request_max_retries: 0,
+          stream_max_retries: 8,
+          stream_idle_timeout_ms: 12345,
+          supports_standalone_web_search: false,
+        },
+      },
+    })
+    await manager.setup(await input(manager, 'codex'))
+    expect(read('.codex/config.toml')).toBe(updated)
   })
   test('preserves a previous Codex environment value and refuses to overwrite an external environment change on restore', async () => {
     environment = 'original-user-key'
