@@ -6,15 +6,9 @@
 
 ## 与 Codex 一起使用
 
-这个 AI gateway 也可以为 Codex 提供后端能力。
+在 Codex 中添加网关地址和密钥，即可使用网关提供的模型。
 
 推荐使用 Codex `0.160.0` 或更高版本：这些客户端会从 `model_catalog_url` 加载模型目录，因此本地 `model_catalog_json` 文件是可选的。
-
-远程目录响应限制为 1 MiB JSON。合并后的目录超出该限制时，网关会优先保留通过 provider `agentsModels` 选中的模型，其余模型会被丢弃。请在 Provider 管理页选择需要的模型；如果需要完整列表，则生成本地目录文件。
-
-Codex 客户端目录始终排除仅输出图片的模型，即使 `agentsModels` 显式选择也不会展示；支持图片输入的聊天模型仍可按筛选规则展示。OpenCode 可以通过同一份名单发现仅输出图片的模型；普通聚合目录也包含图片模型，不受 `agentsModels` 限制。
-
-当 `modelMappings` 已将裸名 `model` 映射到同一个 `codex/model` 时，Codex 目录会省略重复的 `codex/model` 条目并保留裸名的完整元数据。默认的 `codex-auto-review` 和 `gpt-reserve` 映射也适用。显式前缀调用继续可用；映射到其他模型或 provider 时保留前缀条目。
 
 ### Codex `config.toml` 参考配置
 
@@ -36,7 +30,7 @@ approvals_reviewer = "auto_review"
 suppress_unstable_features_warning = true
 web_search = "live"
 service_tier = "default"
-# 可选：Codex 0.160.0+ 会使用上方的远程目录。仅当需要使用由
+# 可选：Codex 0.160.0+ 使用下方配置的远程目录。仅当需要使用由
 # docs/generate-model-catalog.sh 生成的本地完整目录时，才取消下一行注释。
 # model_catalog_json = "model_catalog.json"
 
@@ -120,7 +114,7 @@ setx GITHUB_COPILOT_API_KEY dummy
 ```json
 {
   "modelMappings": {
-    "codex-auto-review": "gpt-5.6-luna"
+    "codex-auto-review": "gpt-6-luna"
   }
 }
 ```
@@ -144,6 +138,12 @@ sh docs/generate-model-catalog.sh
 - **更新：** 网关模型或 provider 变化后，重新运行脚本并重启 Codex。
 
 ### Codex 模型目录与协议适配
+
+远程目录响应限制为 1 MiB JSON。合并后的目录超出该限制时，网关会优先保留通过 provider `agentsModels` 选中的模型，其余模型会被丢弃。请在 Provider 管理页选择需要的模型；如果需要完整列表，则生成本地目录文件。
+
+Codex 客户端目录始终排除仅输出图片的模型，即使 `agentsModels` 显式选择也不会展示；支持图片输入的聊天模型仍可按筛选规则展示。OpenCode 可以通过同一份名单发现仅输出图片的模型；普通聚合目录也包含图片模型，不受 `agentsModels` 限制。
+
+当 `modelMappings` 已将裸名 `model` 映射到同一个 `codex/model` 时，Codex 目录会省略重复的 `codex/model` 条目并保留裸名的完整元数据。默认的 `codex-auto-review` 和 `gpt-reserve` 映射也适用。显式前缀调用继续可用；映射到其他模型或 provider 时保留前缀条目。
 
 模型目录会按客户端版本适配：Codex `0.160.0` 及以上版本使用规范字段 `model_messages.instructions_template`，不再返回重复的旧字段 `base_instructions`；较旧客户端保留兼容字段。
 

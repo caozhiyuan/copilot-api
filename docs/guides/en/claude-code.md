@@ -4,7 +4,7 @@
 
 ## Using with Claude Code
 
-This AI gateway can be used to power [Claude Code](https://docs.anthropic.com/en/claude-code), an experimental conversational AI assistant for developers from Anthropic.
+Use this gateway with [Claude Code](https://docs.anthropic.com/en/claude-code) to access your configured model providers.
 
 Start the gateway, then configure Claude Code through `settings.json`:
 
@@ -16,7 +16,9 @@ npx @jeffreycao/copilot-api@latest start
 
 Create a `.claude/settings.json` file in your project's root directory with the environment variables Claude Code needs to use the gateway.
 
-Here is an example `.claude/settings.json` file:
+If the gateway has `auth.apiKeys` configured, replace `ANTHROPIC_AUTH_TOKEN` below with one of those gateway API keys. Otherwise, `dummy` is sufficient. This is the gateway key, not an upstream provider key.
+
+Example `.claude/settings.json`; adjust the models and optional settings as needed:
 
 ```json
 {
@@ -49,16 +51,27 @@ Here is an example `.claude/settings.json` file:
 }
 ```
 
+### Choose models
+
 - `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1"` enables gateway models in Claude Code's `/model` picker. See the [official gateway configuration guide](https://code.claude.com/docs/en/llm-gateway-connect#add-gateway-models-to-the-model-picker). For requests whose User-Agent contains `claude` (case-insensitive), `/v1/models` adds `my-claude-` to model names that do not already contain `claude`, preserving the provider prefix, and appends `[1m]` to every model ID regardless of its context window: `opencode-go/glm-5.3-flash` becomes `opencode-go/my-claude-glm-5.3-flash[1m]`, while `claude-opus-4-8` becomes `claude-opus-4-8[1m]`. Messages and token-counting requests remove the compatibility prefix and `[1m]` suffix before model mappings and provider routing. Other clients retain the existing model IDs.
 - The desktop's **Models shown in Coding Agent** selection applies to Codex, Claude Code, DeepSeek, and OpenCode discovery through `agentsModels`; selections use original upstream model IDs without `my-claude-`, `[1m]`, or the gateway provider prefix. Claude, Codex, and DeepSeek always exclude image-only models, even if selected. OpenCode can list selected image-only models; chat models that accept images remain eligible in all four clients.
 - Model display names identify their provider, for example `GLM-5.3-Flash (opencode-go)`. Existing labels are used as the base; a matching provider prefix or suffix is not repeated. Copilot entries use `github-copilot`.
 - Replace `ANTHROPIC_DEFAULT_FABLE_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL` according to your needs. Install plugins as needed; see [Plugin Integrations](integrations.md#plugin-integrations).
+
+### Auto review and background requests
+
 - `CLAUDE_CODE_AUTO_MODE_MODEL` (Claude Code v2.1.302+) selects the model for the client-side auto mode classifier; it does not change the server-side auto mode model. Keep `CLAUDE_CODE_AUTO_MODE_SERVER: "0"` to use the client-side classifier. The example uses `codex-auto-review`, which requires an enabled Codex provider and uses the gateway's default model mapping; replace it with another available model as needed. The gateway's `claudeAutoModel` override takes priority over the requested model: explicitly set `"claudeAutoModel": ""` in the gateway's [config.json](configuration.md#configuration-configjson) to disable this override, then restart the gateway or apply the change through the desktop app. Omitting `claudeAutoModel` restores the gateway's dynamic default override. Other routing rules still apply, including the `smallModels.copilot` warmup override on non-token-based-billing Copilot accounts.
 - `CLAUDE_CODE_TOTAL_TOKENS_REMINDER: "off"` disables Claude Code's total-tokens reminder, which injects a `<total_tokens>N tokens left</total_tokens>` block into the conversation to pace the model against a remaining token budget. The default budget is 15,000,000 (15M) tokens, which is not very meaningful, so it is turned off here.
 - Setting CLAUDE_CODE_ATTRIBUTION_HEADER to 0 can prevent Claude code from adding billing and version information in system prompts, thereby avoiding prompt cache invalidation.
 - Turning off CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION and CLAUDE_CODE_ENABLE_AWAY_SUMMARY can prevent quota from being consumed unnecessarily.
+
+### Web search and tool search
+
 - Claude Code WebSearch is supported for pure search requests. For Copilot, keep the global `messageApiWebSearchModel` set to a Responses-capable GPT model or a `provider/model` alias. For provider routes, use a native Anthropic provider or an `openai-responses` provider. Add `WebSearch` to `permissions.deny` only if you want to forbid this traffic.
 - The example keeps `ENABLE_TOOL_SEARCH` disabled. Set it to `"true"` if needed for native Claude models or GPT Responses providers that support client tool search. The gateway adapts Responses requests whose resolved model is `gpt-5.4` or newer, such as `gpt-6.1-sol`; both the model and upstream service must support the feature. Claude Code searches on the client and makes a follow-up request for each search, which can load several tools. Native search does not require the MCP bridge. Other models keep their existing behavior. See [GPT Tool Search](integrations.md#gpt-tool-search).
+
+### Context compaction and caching
+
 - `CLAUDE_CODE_AUTO_COMPACT_WINDOW`: Set the context capacity in tokens used for auto-compaction calculations. Defaults to the model's context window: 200K for standard models or 1M for extended context models. Use a lower value like `500000` on a 1M model (e.g., `claude-opus-4-6[1m]`) to treat the window as 500K for compaction purposes. The value is capped at the model's actual context window. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is applied as a percentage of this value. Setting this variable decouples the compaction threshold from the status line's `used_percentage`, which always uses the model's full context window.
 
 - `CLAUDE_CODE_PROMPT_CACHE_TTL`: In Claude Code v2.1.242+, set this to `1h` to request a one-hour prompt cache for Claude models; API key sessions default to five minutes. The gateway forwards the client-requested `extended-cache-ttl-2025-04-11` beta and `cache_control.ttl` on content blocks to Copilot Messages without adding a one-hour TTL itself. This setting does not apply to GPT models. Configure other requests, including subagents, separately with `subagentPromptCacheTtl` or `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`. See [Claude Code's prompt caching docs](https://code.claude.com/docs/en/prompt-caching#choose-the-ttl-yourself) for precedence rules.

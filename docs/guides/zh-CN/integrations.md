@@ -8,6 +8,16 @@
 
 ## GPT Tool Search
 
+先根据客户端和模型选择方式，不需要把所有插件都安装一遍：
+
+| 使用场景 | 配置方式 |
+| --- | --- |
+| Claude Code，使用支持原生工具搜索的 Claude 或 GPT Responses 上游 | 设置 `ENABLE_TOOL_SEARCH: "true"`，不需要 MCP bridge。 |
+| Claude Code，使用 GPT Responses 的 MCP bridge 兼容方式 | 设置 `ENABLE_TOOL_SEARCH: "false"`，安装 `tool-search` 插件或手动配置 MCP，二选一即可。 |
+| OpenCode v2 | 使用内置 Code Mode，不需要这个 MCP bridge。 |
+| OpenCode v1，通过网关使用 GPT Responses 工具搜索 | 按下方示例配置 MCP bridge。 |
+
+
 Claude Code 可以通过 `ENABLE_TOOL_SEARCH: "true"` 使用原生 ToolSearch。对于最终模型名为 `gpt-5.4` 及以上的 GPT Responses 请求，网关会将客户端搜索转换为 Responses `tool_search`；模型和上游服务需要支持 client 模式，例如支持该功能的 `gpt-6.1-sol` 上游。搜索命中后，Claude Code 会在后续请求中提供工具定义。此方式不需要 MCP bridge，配置示例见 [Claude Code](claude-code.md#manual-configuration-with-settingsjson)。
 
 原有 MCP bridge 仍可用于 Claude Code 和 opencode v1，前提是客户端加载 MCP server，并将 Anthropic Messages 流量发送到此网关。Claude Code 如选择 bridge，请将 `ENABLE_TOOL_SEARCH` 设为 `false`；同时启用时优先使用原生 ToolSearch。
@@ -69,6 +79,8 @@ Claude Code 集成现在拆分为两个插件：
 /plugin marketplace add https://github.com/caozhiyuan/copilot-api.git
 ```
 
+**`agent-inject` 是可选的。** 网关已经通过 Claude Code 原生请求头识别主会话和子代理，不再依赖旧 marker。只有需要该插件提供的提示规则时，才需要安装。
+
 按需从 marketplace 安装插件，例如：
 
 ```sh
@@ -102,6 +114,7 @@ Agent Context 插件位于 `plugin/opencode/agent-context.js`，注册 ID 为 `c
 
 ```sh
 # 克隆或下载本仓库后复制该插件
+mkdir -p ~/.config/opencode/plugins
 cp plugin/opencode/agent-context.js ~/.config/opencode/plugins/
 ```
 
@@ -116,5 +129,7 @@ cp plugin/opencode/agent-context.js ~/.config/opencode/plugins/
 - v2 使用原生的 `x-parent-session-id`，插件只处理根会话 ID，保留原生的子会话和会话 affinity 请求头
 
 v1 使用 `session.created`、`session.deleted`、`chat.message` 和 `chat.headers` 钩子；v2 使用 `session.hook("model.request", ...)` 修改请求头。原生的 `x-session-id` 保留为当前会话 ID。Messages 交互 ID、prompt cache key 和 OpenCode Go 缓存分组使用 trace 根会话，缺失时回退到 session affinity。Usage 使用当前 affinity，缺失时使用根会话。`metadata.user_id` 不再解析为会话信息，也不参与 proxy 模式选择。遇到父会话缺失、查询失败或循环引用时，保留已有请求头。
+
+### 会话识别细节
 
 Trace 依次读取 `x-claude-code-session-id`、`session-id`、`x-root-session-id`、`x-session-id`，并跳过空白值。OpenCode v1 保留 `x-opencode-session-id` affinity，v2 保留原生 session affinity；Messages 和 Responses 均使用 trace 子代理信息：仅当 root 和 affinity 均存在且不相等时判为子代理，不再判断客户端或子代理提示头；`session_id` 使用 root，`agent_id` 使用 affinity。现有 OpenCode 插件无需升级。`x-parent-session-id` 保留 OpenCode OAuth 转发用途，不参与归属和 affinity 判断。

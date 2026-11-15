@@ -6,70 +6,37 @@
 
 ## 项目概览
 
-这是一个小型 AI gateway，可以使用 GitHub Copilot、内置 `codex` provider，也可以使用 DashScope 等已配置的第三方 provider。GitHub Copilot 现在是可选能力：如果本地没有 GitHub token，只要至少配置了一个启用中的 provider，服务仍可按 provider-only 模式启动。
+Copilot API 把多个模型服务接到同一个本地地址。Claude Code、OpenCode、Codex 等客户端连接这个地址后，就能使用你已配置的模型。
 
-AI gateway 会从同一个本地端点暴露 OpenAI / Anthropic 兼容 API，让 [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)、OpenCode、Codex 和 OpenAI 兼容客户端可以共用同一个本地服务。
-
-在 GitHub Copilot 路径上，AI gateway 会在可用时优先使用 Copilot 原生的 Anthropic 风格 Messages API，在重工具调用场景下保留更原生的 Claude 行为。
-
-<a id="important-notes"></a>
-
-## 重要说明
-
-> [!IMPORTANT]
-> **使用前请先注意以下几点：**
->
-> 1. **Codex 配置：** 与 Codex 搭配使用时，请在 `~/.codex/config.toml` 中添加 gateway provider，详见 [Codex `config.toml` 参考配置](codex.md#codex-configtoml-参考配置)。
->
-> 2. **Claude Code 配置：** 与 Claude Code 搭配使用时，请将模型 ID 配置为 `claude-opus-4-8[1m]`。示例 claude `settings.json` 见 [通过 `settings.json` 手动配置](claude-code.md#manual-configuration-with-settingsjson)。
->
-> 3. **OpenCode 配置：** 与 OpenCode 搭配使用时，请使用 `@ai-sdk/anthropic` 配置 `~/.config/opencode/opencode.json`，详见 [与 OpenCode 一起使用](opencode.md#与-opencode-一起使用)。
->
-> 4. **内置 `copilot`、`codex` 与第三方 provider：** 执行 `bunx --bun @jeffreycao/copilot-api auth`，可选择 `copilot`、`codex`、`deepseek`、`custom` 等 provider。
->
-> 5. **注意事项：** 使用 GitHub Copilot 前请阅读 [GitHub Copilot 安全提示](../../../NOTICE.md#github-copilot-security-notice)。
+模型服务在配置中称为 provider。你可以登录 GitHub Copilot、Codex 或 xAI，也可以填写 DeepSeek、DashScope 等服务的 API Key。不使用 GitHub Copilot 也能运行，只需配置并启用至少一个模型服务。
 
 <a id="prerequisites"></a>
 
-## 前置要求
+## 准备运行环境
 
-- Bun >= 1.4.4（推荐）
-- 如果要通过 `npx` 运行已发布 CLI，需要 Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`
-- 只有在使用 GitHub Copilot provider 时，才需要已订阅 Copilot 的 GitHub 账号
-- 如果不使用 GitHub Copilot，需要至少一个已配置 provider 的 API key 或 OAuth 登录
+- 推荐使用 Bun >= 1.4.4；通过 Bun 运行已发布的包，不需要另外安装 Node.js。
+- 也可通过 npx 运行，Node.js 版本需满足 `^22.23.4 || ^24.22.1 || >=26.12.1`。
+- 使用 GitHub Copilot 时，需要有相应订阅的 GitHub 账号；使用其他服务时，需要该服务的 API Key 或账号。
 
-<a id="installation"></a>
+运行时安全更新说明见[项目首页](../../../README.zh-CN.md#quick-start)。
 
-## 安装
+## 配置账号或 API Key
 
-安装依赖：
+下面的命令使用 Bun。如果只安装了 Node.js，将 `bunx --bun @jeffreycao/copilot-api` 换成 `npx @jeffreycao/copilot-api@latest` 即可。
 
-```sh
-bun install
-```
-
-<a id="running-from-source"></a>
-
-## 从源码运行
-
-> [!NOTE]
-> 使用 `tsdown@0.23` 从源码构建时，需要 Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`。这只是构建期要求；已发布 CLI 的运行时要求为 Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`。
-
-本项目可以通过多种方式从源码运行：
-
-### 开发模式
+首次使用时，运行以下命令，按提示选择服务并完成登录或填写 API Key：
 
 ```sh
-bun run dev start
+bunx --bun @jeffreycao/copilot-api auth login
 ```
 
-### 生产模式
+例如，只使用 DashScope 时：
 
 ```sh
-bun run start start
+bunx --bun @jeffreycao/copilot-api auth login --provider dashscope
 ```
 
-> 结尾的 `start` 是传给 `src/main.ts` 的 CLI 子命令，不是笔误：`bun run dev start` 是 watch 模式，`bun run start start` 是生产模式。
+配置完成后，按下面的 Bun 或 npx 方式启动。默认配置下，首次直接运行 `start`，如果还没有可用的账号或模型服务，也会进入配置流程。使用 GitHub Copilot 前，请阅读[安全提示](../../../NOTICE.md#github-copilot-security-notice)。
 
 <a id="using-with-bun"></a>
 
@@ -94,7 +61,7 @@ bun run --bun copilot-api start
 
 ### 缓存与升级
 
-日常 `bunx` 启动建议不带 `@latest`；需要固定版本时可写明确版本号。在 Linux、Bun 1.4.0 上连续执行 `--help` 实测，带 `@latest` 每次都会重新进入依赖解析，不带后缀或固定版本的后续运行则复用缓存、没有安装输出。重新进入安装流程不代表全部依赖都会重新下载，缓存过期及 Bun 版本也可能影响该行为。
+日常启动可以不带 `@latest`，复用已缓存的安装；需要固定版本时，写上明确版本号。升级时再加 `@latest`。实际缓存行为会随 Bun 版本和缓存有效期变化。
 
 需要升级时，再明确指定最新版本：
 
@@ -118,19 +85,6 @@ bunx --bun @jeffreycao/copilot-api start --host 0.0.0.0 --port 8080
 
 绑定到 `0.0.0.0` 会将网关暴露到网络，因此服务要求至少配置一个网关 API Key，并将 CORS 限制为同源请求。
 
-如果只想做认证或 provider 配置：
-
-```sh
-bunx --bun @jeffreycao/copilot-api auth
-```
-
-如果要不依赖 GitHub Copilot 运行，先配置至少一个 provider，然后正常启动服务：
-
-```sh
-bunx --bun @jeffreycao/copilot-api auth login --provider dashscope
-bunx --bun @jeffreycao/copilot-api start
-```
-
 <a id="using-with-npx"></a>
 
 ## 通过 npx 使用
@@ -141,4 +95,53 @@ bunx --bun @jeffreycao/copilot-api start
 npx @jeffreycao/copilot-api@latest start
 ```
 
-token usage 存储使用 Node 内置的 `node:sqlite`，Node.js 22.13.0 起无需 `--experimental-sqlite`；Bun 则使用 `bun:sqlite`。
+Token 用量历史使用 Node 内置的 `node:sqlite`，Node.js 22.13.0 起无需 `--experimental-sqlite`；Bun 则使用 `bun:sqlite`。
+
+<a id="important-notes"></a>
+
+## 检查服务并连接客户端
+
+启动后，访问模型列表，确认服务可以连接：
+
+```sh
+curl http://localhost:4141/v1/models
+```
+
+如果配置了网关 API Key，请在请求中加上 `x-api-key` 请求头。网关 API Key 用于客户端连接本地网关；模型服务的 API Key 用于网关连接对应服务，两者用途不同。管理网关密钥的方法见[命令行参考](cli.md#auth-命令选项)。
+
+- **Claude Code**：在 `.claude/settings.json` 中设置网关地址和可用模型，见 [Claude Code 配置](claude-code.md#manual-configuration-with-settingsjson)。不要求使用某一个固定模型。
+- **OpenCode v2**：安装模型发现插件，使用 Responses 接口；v1 的 Anthropic SDK 配置保留在[OpenCode 指南](opencode.md#using-with-opencode)中。
+- **Codex**：在 `~/.codex/config.toml` 中添加网关配置，见 [Codex 参考配置](codex.md#codex-configtoml-参考配置)。
+
+<a id="running-from-source"></a>
+
+## 从源码运行
+
+<a id="installation"></a>
+
+下载仓库、进入项目目录，再安装依赖：
+
+```sh
+git clone https://github.com/caozhiyuan/copilot-api.git
+cd copilot-api
+bun install
+```
+
+> [!NOTE]
+> 使用 `tsdown@0.23` 从源码构建时，需要 Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`。这只是构建期要求；已发布 CLI 的运行时要求为 Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`。
+
+本项目可以通过多种方式从源码运行：
+
+### 开发模式
+
+```sh
+bun run dev start
+```
+
+### 生产模式
+
+```sh
+bun run start start
+```
+
+> 结尾的 `start` 是传给 `src/main.ts` 的 CLI 子命令，不是笔误：`bun run dev start` 是 watch 模式，`bun run start start` 是生产模式。

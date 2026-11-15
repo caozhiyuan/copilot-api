@@ -14,6 +14,7 @@
 | [Docker](docker.md) | Docker Compose、持久化存储与网络设置 |
 | [桌面应用](desktop.md) | 安装、账号管理与高级设置 |
 | [插件与工具搜索](integrations.md) | Claude Code / OpenCode 插件与 MCP 工具搜索桥接 |
+| [网关事件插件](gateway-plugins.md) | 编写服务端插件，获取请求状态、耗时和用量 |
 | [用量监控](usage.md) | 用量面板、Token 历史与配额监控 |
 | [命令行参考](cli.md) | 命令、参数与请求示例 |
 | [配置参考](configuration.md) | config.json 配置项、模型路由与传输设置 |
