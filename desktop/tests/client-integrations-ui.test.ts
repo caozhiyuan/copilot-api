@@ -158,6 +158,11 @@ describe('client integration page', () => {
     expect(dom.container.textContent).toContain('Checking…')
     expect(dom.container.textContent).not.toContain('Authentication disabled')
     expect(button(card('opencode'), 'Configure client').disabled).toBe(true)
+    expect(
+      card('opencode').querySelector<HTMLInputElement>(
+        'input[type="checkbox"]',
+      )!.checked,
+    ).toBe(true)
     expect(button(card('harness'), 'Install plugin').disabled).toBe(true)
     expect(getModels).toHaveBeenCalledTimes(2)
 
@@ -224,6 +229,10 @@ describe('client integration page', () => {
             canRestore: true,
           },
           pluginError: 'commandMissing',
+          pluginFailure: {
+            command: 'claude plugin list --json',
+            exitCode: '1',
+          },
         },
       }),
     )
@@ -248,6 +257,19 @@ describe('client integration page', () => {
       'Configuration saved, but plugin installation failed',
     )
     expect(card('claude').textContent).toContain('Client command not found')
+    expect(card('claude').textContent).toContain('claude plugin list --json')
+    expect(card('claude').textContent).toContain('Exit code: 1')
+    setup.mockImplementationOnce((input) =>
+      Promise.resolve({
+        data: {
+          status: { ...state.clients[0], ...input, state: 'configured' },
+          pluginError: 'commandFailed',
+          pluginFailure: { command: 'claude plugin list --json' },
+        },
+      }),
+    )
+    await click(card('claude'), 'Update configuration')
+    expect(card('claude').textContent).not.toContain('Exit code:')
   })
   test('installs OpenCode plugins while stopped and does not fetch model catalogs', async () => {
     state.apiKeys = []
@@ -255,17 +277,32 @@ describe('client integration page', () => {
     expect(getModels).not.toHaveBeenCalled()
     expect(dom.container.textContent).toContain('Authentication disabled')
     expect(dom.container.textContent).toContain('Start the gateway to load')
-    await act(async () =>
-      card('opencode')
-        .querySelector<HTMLInputElement>('input[type="checkbox"]')!
-        .click(),
-    )
+    expect(
+      card('opencode').querySelector<HTMLInputElement>(
+        'input[type="checkbox"]',
+      )!.checked,
+    ).toBe(true)
     await click(card('opencode'), 'Configure client')
     expect(setup.mock.calls[0][0]).toMatchObject({
       client: 'opencode',
       agentContext: true,
       apiKey: 'dummy',
     })
+  })
+  test('keeps Agent Context disabled after saving that choice', async () => {
+    await render(false)
+    await act(async () =>
+      card('opencode')
+        .querySelector<HTMLInputElement>('input[type="checkbox"]')!
+        .click(),
+    )
+    await click(card('opencode'), 'Configure client')
+    expect(setup.mock.calls[0][0].agentContext).toBe(false)
+    expect(
+      card('opencode').querySelector<HTMLInputElement>(
+        'input[type="checkbox"]',
+      )!.checked,
+    ).toBe(false)
   })
   test('preserves existing offline model choices and explains Codex environment activation', async () => {
     state.clients[2] = {

@@ -56,4 +56,10 @@ export interface ClientModelOption {
 export interface ClientSetupResult {
   status: ClientIntegrationStatus
   pluginError?: string
+  pluginFailure?: ClientCommandFailure
+}
+
+export interface ClientCommandFailure {
+  command: string
+  exitCode?: string
 }

@@ -2,7 +2,11 @@ import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { runClientCommand, type ClientExec } from '../electron/client-command'
+import {
+  ClientCommandError,
+  runClientCommand,
+  type ClientExec,
+} from '../electron/client-command'
 import {
   CLIENT_KEY_ENV,
   macEnvironmentAgent,
@@ -92,6 +96,61 @@ test('handles missing client commands and incomplete npm installations', async (
     'commandMissing',
   )
   expect(execute).not.toHaveBeenCalled()
+})
+test('runs native npm package bins directly on Windows instead of passing them to Node', async () => {
+  persist(
+    'bin/node_modules/@anthropic-ai/claude-code/package.json',
+    '{"bin":{"claude":"bin/claude.exe"}}',
+  )
+  persist(
+    'bin/node_modules/@anthropic-ai/claude-code/bin/claude.exe',
+    'MZ',
+    0o700,
+  )
+  persist('bin/node.exe', 'MZ', 0o700)
+  const args = ['plugin', 'list', '--json']
+  await runClientCommand('claude', args, {
+    ...commandOptions(),
+    platform: 'win32',
+  })
+  expect(execute.mock.calls[0][0]).toBe(
+    path.join(
+      directory,
+      'bin/node_modules/@anthropic-ai/claude-code/bin/claude.exe',
+    ),
+  )
+  expect(execute.mock.calls[0][1]).toEqual(args)
+})
+test('includes safe command diagnostics without forwarding CLI messages or output', async () => {
+  persist('bin/claude', '#!/bin/sh\n', 0o700)
+  execute.mockRejectedValueOnce(
+    Object.assign(new Error('private token'), {
+      code: 1,
+      stderr: 'private token',
+      stdout: 'private configuration',
+    }),
+  )
+  const error = await runClientCommand(
+    'claude',
+    ['plugin', 'marketplace', 'add', '/local/path with spaces'],
+    commandOptions(),
+  ).catch((error: unknown) => error)
+  expect(error).toBeInstanceOf(ClientCommandError)
+  expect((error as ClientCommandError).details).toEqual({
+    command: 'claude plugin marketplace add "/local/path with spaces"',
+    exitCode: '1',
+  })
+  expect(JSON.stringify(error)).not.toContain('private')
+  expect(
+    new ClientCommandError('claude', [], { code: 'ENOENT' }).details.exitCode,
+  ).toBe('ENOENT')
+  expect(
+    new ClientCommandError('claude', [], { code: 'private token' }).details
+      .exitCode,
+  ).toBeUndefined()
+  expect(
+    new ClientCommandError('claude', [], null).details.exitCode,
+  ).toBeUndefined()
 })
 test('persists Windows environment values through a fixed PowerShell script, without interpolating a key', async () => {
   const value = 'key-with-"$()&-characters'

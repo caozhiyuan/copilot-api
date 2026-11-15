@@ -18,6 +18,7 @@ const zh: Locale = {
     saved: '配置已保存，请重启客户端使其生效。',
     restored: '已恢复原始配置，请重启客户端使其生效。',
     pluginFailed: '配置已保存，但插件安装失败。',
+    commandExit: '退出码：{{code}}',
     stopped: '启动网关后可读取模型列表。服务停止时仍可更新已有配置或安装插件。',
     model: '默认主模型',
     smallModel: '快速小模型（Haiku）',

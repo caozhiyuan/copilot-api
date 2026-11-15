@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { getBunCandidates } from './bun-runtime'
+import type { ClientCommandFailure } from '../shared/client-integrations'
 
 const exec = promisify(execFile)
 export type ClientCommand = 'claude' | 'dsh'
@@ -19,6 +20,31 @@ interface ClientCommandOptions {
   homeDir?: string
   platform?: NodeJS.Platform
   execute?: ClientExec
+}
+
+export class ClientCommandError extends Error {
+  readonly details: ClientCommandFailure
+
+  constructor(command: ClientCommand, args: string[], cause: unknown) {
+    super('commandFailed')
+    const code =
+      cause && typeof cause === 'object' && 'code' in cause ?
+        cause.code
+      : undefined
+    // CLI output can contain credentials. Expose only our command and a stable
+    // process exit/error code, never stderr or the original error message.
+    this.details = {
+      command: [command, ...args]
+        .map((arg) => (/\s/.test(arg) ? JSON.stringify(arg) : arg))
+        .join(' '),
+      ...((
+        (typeof code === 'number' && Number.isInteger(code))
+        || (typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code))
+      ) ?
+        { exitCode: String(code) }
+      : {}),
+    }
+  }
 }
 
 export async function runClientCommand(
@@ -52,8 +78,8 @@ export async function runClientCommand(
       await fs.access(executable, fs.constants.X_OK)
       invocation = { file: executable, args }
     } catch {
-      // npm's Windows .cmd shims need a shell. Resolve the package's bin and
-      // invoke Node directly instead, keeping all arguments out of shell code.
+      // Resolve npm's package bin without running its Windows .cmd shim.
+      // Recent Claude packages contain a native executable; older ones use JS.
       const roots = [
         path.join(directory, 'node_modules'),
         path.resolve(directory, '../lib/node_modules'),
@@ -70,6 +96,10 @@ export async function runClientCommand(
           if (!bin) continue
           const script = path.resolve(packageRoot, bin)
           await fs.access(script)
+          if (path.extname(script).toLowerCase() === '.exe') {
+            invocation = { file: script, args }
+            break
+          }
           const node = path.join(
             directory,
             platform === 'win32' ? 'node.exe' : 'node',
@@ -103,8 +133,8 @@ export async function runClientCommand(
           },
         },
       )
-    } catch {
-      throw new Error('commandFailed')
+    } catch (error) {
+      throw new ClientCommandError(command, args, error)
     }
   }
   throw new Error('commandMissing')

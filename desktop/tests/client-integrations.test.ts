@@ -14,6 +14,7 @@ import {
   clientIntegrationReply,
 } from '../electron/client-integrations'
 import type { ClientId, ClientSetupInput } from '../shared/client-integrations'
+import { ClientCommandError } from '../electron/client-command'
 
 let directory: string
 let environment: string | null
@@ -202,6 +203,7 @@ describe('client setup and restore', () => {
     const envFields = readJsonConfig(read('.claude/settings.json'))
       .env as Record<string, unknown>
     expect(envFields).not.toHaveProperty('ANTHROPIC_MODEL')
+    expect(envFields).not.toHaveProperty('CLAUDE_CODE_USE_FOUNDRY')
     expect(envFields.CLAUDE_CODE_USE_BEDROCK).toBe('0')
     expect(run).not.toHaveBeenCalled()
     expect(
@@ -476,6 +478,27 @@ describe('client setup and restore', () => {
         (call) => call[1][1] === 'uninstall' && call[1].includes('--keep-data'),
       ),
     ).toBe(true)
+  })
+
+  test('returns the failed plugin command and exit code while retaining the saved configuration', async () => {
+    const manager = fixture()
+    run.mockRejectedValueOnce(
+      new ClientCommandError('claude', ['plugin', 'list', '--json'], {
+        code: 1,
+        stderr: 'private token',
+      }),
+    )
+    const result = await manager.setup(
+      await input(manager, 'claude', { plugins: ['agent-inject'] }),
+    )
+    expect(result.pluginError).toBe('commandFailed')
+    expect(result.pluginFailure).toEqual({
+      command: 'claude plugin list --json',
+      exitCode: '1',
+    })
+    expect(result.status.canRestore).toBe(true)
+    expect(result.status.state).toBe('configured')
+    expect(JSON.stringify(result)).not.toContain('private token')
   })
 
   test('updates and enables existing Claude plugins without uninstalling them on restore', async () => {

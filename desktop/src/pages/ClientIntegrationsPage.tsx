@@ -5,6 +5,7 @@ import type { LocaleKey } from '../locales'
 import type { ClientIntegrationReply } from '../types/ipc'
 import {
   CLIENT_ERROR_CODES,
+  type ClientCommandFailure,
   type ClientId,
   type ClientIntegrationStatus,
   type ClientIntegrationsState,
@@ -34,7 +35,7 @@ const initialClientStatuses: ClientIntegrationStatus[] = clientColumns
     model: '',
     smallModel: '',
     nativeToolSearch: false,
-    agentContext: false,
+    agentContext: true,
     plugins: [],
   }))
 type ClientCheckState = 'checking' | 'error' | undefined
@@ -259,17 +260,20 @@ function ClientCard({
   const [nativeToolSearch, setNativeToolSearch] = useState(
     status.nativeToolSearch,
   )
-  const [agentContext, setAgentContext] = useState(status.agentContext)
+  const [agentContext, setAgentContext] = useState(
+    status.state === 'unconfigured' || status.agentContext,
+  )
   const [plugins, setPlugins] = useState(status.plugins)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [pluginError, setPluginError] = useState('')
+  const [pluginFailure, setPluginFailure] = useState<ClientCommandFailure>()
   useEffect(() => {
     setModel(status.model)
     setSmallModel(status.smallModel === status.model ? '' : status.smallModel)
     setNativeToolSearch(status.nativeToolSearch)
-    setAgentContext(status.agentContext)
+    setAgentContext(status.state === 'unconfigured' || status.agentContext)
     setPlugins(status.plugins)
   }, [status])
   const names = {
@@ -287,6 +291,7 @@ function ClientCard({
     setError('')
     setNotice('')
     setPluginError('')
+    setPluginFailure(undefined)
     try {
       if (operation === 'open')
         unwrap(await window.electronAPI.openClientConfig(status.client))
@@ -316,6 +321,7 @@ function ClientCard({
         onUpdate(result.status)
         setNotice('saved')
         setPluginError(result.pluginError ?? '')
+        setPluginFailure(result.pluginFailure)
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'operationFailed')
@@ -514,6 +520,18 @@ function ClientCard({
           className="mt-3 text-xs leading-5 text-amber-600 dark:text-amber-400"
         >
           {t('clients.pluginFailed')} {errorText(t, pluginError)}
+          {pluginFailure && (
+            <>
+              <code className="mt-2 block break-all whitespace-pre-wrap rounded-lg bg-sunken px-3 py-2 font-mono text-ink-soft">
+                {pluginFailure.command}
+              </code>
+              {pluginFailure.exitCode && (
+                <span className="mt-1 block">
+                  {t('clients.commandExit', { code: pluginFailure.exitCode })}
+                </span>
+              )}
+            </>
+          )}
         </p>
       )}
     </section>

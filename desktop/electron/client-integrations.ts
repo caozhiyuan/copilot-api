@@ -11,7 +11,7 @@ import {
   readJsonConfig,
   readTomlConfig,
 } from './client-config'
-import { runClientCommand } from './client-command'
+import { ClientCommandError, runClientCommand } from './client-command'
 import {
   CLIENT_KEY_ENV,
   macEnvironmentAgent,
@@ -301,7 +301,6 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           [['env', 'ANTHROPIC_MODEL'], undefined],
           [['env', 'CLAUDE_CODE_USE_VERTEX'], '0'],
           [['env', 'CLAUDE_CODE_USE_BEDROCK'], '0'],
-          [['env', 'CLAUDE_CODE_USE_FOUNDRY'], '0'],
           ...PLUGINS.filter(
             (plugin) =>
               !input.plugins.includes(plugin)
@@ -550,11 +549,14 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           throw error
         }
         let pluginError: string | undefined
+        let pluginFailure: ClientSetupResult['pluginFailure']
         if (data.client === 'claude') {
           try {
             await installClaudePlugins(data.plugins, next)
           } catch (error) {
             pluginError = errorCode(error)
+            if (error instanceof ClientCommandError)
+              pluginFailure = error.details
           }
         }
         for (const file of next.files) file.applied = hash(readFile(file.path))
@@ -562,6 +564,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         return {
           status: await status(data.client),
           ...(pluginError ? { pluginError } : {}),
+          ...(pluginFailure ? { pluginFailure } : {}),
         }
       })
     },
