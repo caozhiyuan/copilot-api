@@ -10,7 +10,7 @@ const en: Locale = {
     noAuth: 'Authentication disabled · dummy',
     keyNumber: 'Gateway key {{n}}',
     refresh: 'Refresh',
-    loading: 'Checking client configuration…',
+    loading: 'Checking…',
     configure: 'Configure client',
     update: 'Update configuration',
     working: 'Working…',

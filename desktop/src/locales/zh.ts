@@ -9,7 +9,7 @@ const zh: Locale = {
     noAuth: '未启用鉴权 · dummy',
     keyNumber: '网关密钥 {{n}}',
     refresh: '刷新',
-    loading: '正在检查客户端配置…',
+    loading: '检查中…',
     configure: '一键配置',
     update: '更新配置',
     working: '处理中…',

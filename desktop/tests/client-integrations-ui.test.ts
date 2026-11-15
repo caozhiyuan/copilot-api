@@ -98,11 +98,14 @@ afterEach(async () => {
   await act(async () => dom.root.unmount())
   await dom.cleanup()
 })
-async function render(serverRunning = true) {
+async function render(serverRunning = true, initialBaseUrl?: string) {
   await act(async () =>
     dom.root.render(
       createElement(LanguageProvider, {
-        children: createElement(ClientIntegrationsPage, { serverRunning }),
+        children: createElement(ClientIntegrationsPage, {
+          serverRunning,
+          initialBaseUrl,
+        }),
       }),
     ),
   )
@@ -139,6 +142,36 @@ async function profile(value: string) {
 }
 
 describe('client integration page', () => {
+  test('shows all cards immediately while configuration loads and fills saved settings in later', async () => {
+    let complete!: (
+      reply: ClientIntegrationReply<ClientIntegrationsState>,
+    ) => void
+    readState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve
+        }),
+    )
+    await render(true, 'http://localhost:5141')
+    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(4)
+    expect(dom.container.textContent).toContain('http://localhost:5141')
+    expect(dom.container.textContent).toContain('Checking…')
+    expect(dom.container.textContent).not.toContain('Authentication disabled')
+    expect(button(card('opencode'), 'Configure client').disabled).toBe(true)
+    expect(button(card('harness'), 'Install plugin').disabled).toBe(true)
+    expect(getModels).toHaveBeenCalledTimes(2)
+
+    state.clients[2].model = 'existing-model'
+    state.harnessProfiles = ['desktop']
+    await act(async () => complete({ data: structuredClone(state) }))
+    expect(card('codex').querySelector('select')!.value).toBe('existing-model')
+    expect(card('harness').querySelector('input')!.value).toBe('desktop')
+    expect(button(card('opencode'), 'Configure client').disabled).toBe(false)
+    expect(button(card('harness'), 'Install plugin').disabled).toBe(false)
+    await profile('custom-profile')
+    await click(dom.container, 'Refresh')
+    expect(card('harness').querySelector('input')!.value).toBe('custom-profile')
+  })
   test('shows four clients, only OpenCode v2, and masked gateway key choices', async () => {
     await render()
     expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(4)
@@ -146,7 +179,7 @@ describe('client integration page', () => {
       [...dom.container.querySelectorAll('[data-client] h3')].map(
         (heading) => heading.textContent,
       ),
-    ).toEqual(['Codex', 'OpenCode v2', 'Claude Code', 'DeepSeek Harness'])
+    ).toEqual(['Codex', 'Claude Code', 'OpenCode v2', 'DeepSeek Harness'])
     expect(card('opencode').textContent).toContain('OpenCode v2 only')
     expect(dom.container.textContent).not.toContain('OpenCode v1')
     expect(dom.container.textContent).not.toContain('private-gateway-key')
@@ -268,6 +301,8 @@ describe('client integration page', () => {
     await render()
     expect(dom.container.textContent).toContain('The operation failed')
     expect(dom.container.textContent).not.toContain('private-error-content')
+    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(4)
+    expect(button(card('opencode'), 'Configure client').disabled).toBe(true)
     getModels.mockResolvedValue({ error: 'modelsFailed' })
     await click(dom.container, 'Refresh')
     expect(dom.container.textContent).toContain('Could not load the models')

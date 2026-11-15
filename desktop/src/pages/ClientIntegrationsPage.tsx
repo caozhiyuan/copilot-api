@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { primaryButtonClass } from '../lib/button-styles'
 import type { LocaleKey } from '../locales'
@@ -17,7 +17,27 @@ const fieldClass =
 const buttonClass =
   'rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-soft transition hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-40'
 const primaryClass = `px-3 py-2 ${primaryButtonClass}`
-const clientOrder: ClientId[] = ['codex', 'opencode', 'claude']
+const clientColumns: ClientId[][] = [['codex', 'claude'], ['opencode']]
+const clientOrder: Record<ClientId, string> = {
+  codex: 'order-1',
+  opencode: 'order-2',
+  claude: 'order-3',
+}
+const initialClientStatuses: ClientIntegrationStatus[] = clientColumns
+  .flat()
+  .map((client) => ({
+    client,
+    configPath: '',
+    revision: '',
+    state: 'unconfigured',
+    canRestore: false,
+    model: '',
+    smallModel: '',
+    nativeToolSearch: false,
+    agentContext: false,
+    plugins: [],
+  }))
+type ClientCheckState = 'checking' | 'error' | undefined
 type Translate = ReturnType<typeof useLanguage>['t']
 
 function errorText(t: Translate, code: string) {
@@ -32,8 +52,10 @@ function unwrap<T>(reply: ClientIntegrationReply<T>): T {
 
 export default function ClientIntegrationsPage({
   serverRunning,
+  initialBaseUrl = '',
 }: {
   serverRunning: boolean
+  initialBaseUrl?: string
 }) {
   const { t } = useLanguage()
   const [state, setState] = useState<ClientIntegrationsState>()
@@ -45,6 +67,16 @@ export default function ClientIntegrationsPage({
   const [error, setError] = useState('')
   const [modelError, setModelError] = useState(false)
   const [refresh, setRefresh] = useState(0)
+  const displayState = state ?? {
+    baseUrl: initialBaseUrl,
+    apiKeys: [],
+    clients: initialClientStatuses,
+    harnessProfiles: [],
+  }
+  const checkState: ClientCheckState =
+    loading ? 'checking'
+    : state ? undefined
+    : 'error'
 
   useEffect(() => {
     let active = true
@@ -115,7 +147,7 @@ export default function ClientIntegrationsPage({
           disabled={loading}
           onClick={() => setRefresh((value) => value + 1)}
         >
-          {t('clients.refresh')}
+          {t(loading ? 'clients.loading' : 'clients.refresh')}
         </button>
       </div>
       {error && (
@@ -123,79 +155,98 @@ export default function ClientIntegrationsPage({
           {errorText(t, error)}
         </p>
       )}
-      {loading && !state && (
-        <p className="text-sm text-ink-faint">{t('clients.loading')}</p>
-      )}
-      {state && (
-        <>
-          <div className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2">
-            <div>
-              <p className="text-xs text-ink-faint">{t('clients.gateway')}</p>
-              <p className="mt-2 break-all font-mono text-sm text-ink">
-                {state.baseUrl}
-              </p>
-            </div>
-            <label className="text-xs text-ink-soft">
-              {t('clients.apiKey')}
-              <select
-                className={fieldClass}
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-              >
-                {state.apiKeys.length ?
-                  state.apiKeys.map((key, index) => (
-                    <option key={key} value={key}>
-                      {t('clients.keyNumber', { n: index + 1 })}
-                    </option>
-                  ))
-                : <option value="dummy">{t('clients.noAuth')}</option>}
-              </select>
-            </label>
+      <>
+        <div className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2">
+          <div>
+            <p className="text-xs text-ink-faint">{t('clients.gateway')}</p>
+            <p className="mt-2 break-all font-mono text-sm text-ink">
+              {displayState.baseUrl || '—'}
+            </p>
           </div>
-          {!serverRunning && (
-            <p className="text-xs leading-5 text-ink-faint">
-              {t('clients.stopped')}
-            </p>
-          )}
-          {modelError && (
-            <p
-              role="alert"
-              className="text-xs text-amber-600 dark:text-amber-400"
+          <label className="text-xs text-ink-soft">
+            {t('clients.apiKey')}
+            <select
+              className={fieldClass}
+              value={apiKey}
+              disabled={!!checkState}
+              onChange={(event) => setApiKey(event.target.value)}
             >
-              {t('clients.errors.modelsFailed')}
-            </p>
-          )}
-          <div className="grid items-stretch gap-4 lg:auto-rows-fr lg:grid-cols-2">
-            {clientOrder
-              .flatMap((client) =>
-                state.clients.filter((status) => status.client === client),
-              )
-              .map((status) => (
-                <ClientCard
-                  key={status.client}
-                  status={status}
-                  apiKey={apiKey}
-                  models={models[status.client] ?? []}
-                  onUpdate={updateStatus}
+              {!state ?
+                <option value={apiKey}>
+                  {t(
+                    checkState === 'error' ? 'clients.error' : (
+                      'clients.loading'
+                    ),
+                  )}
+                </option>
+              : displayState.apiKeys.length ?
+                displayState.apiKeys.map((key, index) => (
+                  <option key={key} value={key}>
+                    {t('clients.keyNumber', { n: index + 1 })}
+                  </option>
+                ))
+              : <option value="dummy">{t('clients.noAuth')}</option>}
+            </select>
+          </label>
+        </div>
+        {!serverRunning && (
+          <p className="text-xs leading-5 text-ink-faint">
+            {t('clients.stopped')}
+          </p>
+        )}
+        {modelError && (
+          <p
+            role="alert"
+            className="text-xs text-amber-600 dark:text-amber-400"
+          >
+            {t('clients.errors.modelsFailed')}
+          </p>
+        )}
+        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+          {clientColumns.map((clients, index) => (
+            <div key={index} className="contents lg:flex lg:flex-col lg:gap-4">
+              {clients
+                .flatMap((client) =>
+                  displayState.clients.filter(
+                    (status) => status.client === client,
+                  ),
+                )
+                .map((status) => (
+                  <ClientCard
+                    key={status.client}
+                    status={status}
+                    checkState={checkState}
+                    apiKey={apiKey}
+                    models={models[status.client] ?? []}
+                    onUpdate={updateStatus}
+                    t={t}
+                  />
+                ))}
+              {index === 1 && (
+                <HarnessCard
+                  profiles={displayState.harnessProfiles}
+                  checking={!!checkState}
                   t={t}
                 />
-              ))}
-            <HarnessCard profiles={state.harnessProfiles} t={t} />
-          </div>
-        </>
-      )}
+              )}
+            </div>
+          ))}
+        </div>
+      </>
     </div>
   )
 }
 
 function ClientCard({
   status,
+  checkState,
   apiKey,
   models,
   onUpdate,
   t,
 }: {
   status: ClientIntegrationStatus
+  checkState: ClientCheckState
   apiKey: string
   models: ClientModelOption[]
   onUpdate: (status: ClientIntegrationStatus) => void
@@ -314,22 +365,26 @@ function ClientCard({
   return (
     <section
       data-client={status.client}
-      className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5"
+      className={`${clientOrder[status.client]} flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5`}
     >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-ink">
           {names[status.client]}
         </h3>
         <span
-          className={`rounded-full px-2.5 py-1 text-[11px] ${status.state === 'configured' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-sunken text-ink-faint'}`}
+          className={`rounded-full px-2.5 py-1 text-[11px] ${!checkState && status.state === 'configured' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-sunken text-ink-faint'}`}
         >
-          {t(`clients.${status.state}`)}
+          {t(
+            checkState === 'checking' ? 'clients.loading' : (
+              `clients.${checkState ?? status.state}`
+            ),
+          )}
         </span>
       </div>
       <p className="mt-2 text-xs leading-5 text-ink-faint">
         {t(descriptions[status.client])}
       </p>
-      <fieldset disabled={busy} className="mt-5 flex-1 space-y-4">
+      <fieldset disabled={busy || !!checkState} className="mt-5 space-y-4">
         {status.client !== 'opencode' && (
           <>
             {chooseModel(t('clients.model'), model, setModel)}
@@ -406,6 +461,7 @@ function ClientCard({
           className={primaryClass}
           disabled={
             busy
+            || !!checkState
             || (status.client !== 'opencode' && !model)
             || status.state === 'error'
           }
@@ -419,7 +475,7 @@ function ClientCard({
         </button>
         <button
           className={buttonClass}
-          disabled={busy || status.state === 'unconfigured'}
+          disabled={busy || !!checkState || status.state === 'unconfigured'}
           onClick={() => void action('open')}
         >
           {t('clients.open')}
@@ -427,7 +483,7 @@ function ClientCard({
         {status.canRestore && (
           <button
             className={buttonClass}
-            disabled={busy}
+            disabled={busy || !!checkState}
             onClick={() => void action('restore')}
           >
             {t('clients.restore')}
@@ -464,13 +520,27 @@ function ClientCard({
   )
 }
 
-function HarnessCard({ profiles, t }: { profiles: string[]; t: Translate }) {
+function HarnessCard({
+  profiles,
+  checking,
+  t,
+}: {
+  profiles: string[]
+  checking: boolean
+  t: Translate
+}) {
   const [profile, setProfile] = useState(
     profiles.includes('web') ? 'web' : (profiles[0] ?? 'web'),
   )
   const [busy, setBusy] = useState(false)
   const [installed, setInstalled] = useState(false)
   const [error, setError] = useState('')
+  const profileInitialized = useRef(false)
+  useEffect(() => {
+    if (checking || profileInitialized.current) return
+    profileInitialized.current = true
+    setProfile(profiles.includes('web') ? 'web' : (profiles[0] ?? 'web'))
+  }, [profiles, checking])
   const install = async () => {
     setBusy(true)
     setError('')
@@ -487,7 +557,7 @@ function HarnessCard({ profiles, t }: { profiles: string[]; t: Translate }) {
   return (
     <section
       data-client="harness"
-      className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5"
+      className="order-4 flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5"
     >
       <h3 className="text-base font-semibold text-ink">DeepSeek Harness</h3>
       <p className="mt-2 text-xs leading-5 text-ink-faint">
@@ -503,7 +573,7 @@ function HarnessCard({ profiles, t }: { profiles: string[]; t: Translate }) {
             setProfile(event.target.value)
             setInstalled(false)
           }}
-          disabled={busy}
+          disabled={busy || checking}
         />
         <datalist id="harness-profiles">
           {profiles.map((name) => (
@@ -514,10 +584,10 @@ function HarnessCard({ profiles, t }: { profiles: string[]; t: Translate }) {
       <p className="mt-3 text-[11px] leading-5 text-ink-faint">
         {t('clients.harnessHint')}
       </p>
-      <div className="mt-auto flex flex-col items-start pt-5">
+      <div className="mt-5 flex flex-col items-start">
         <button
           className={primaryClass}
-          disabled={busy || !/^[\w-]{1,80}$/.test(profile)}
+          disabled={busy || checking || !/^[\w-]{1,80}$/.test(profile)}
           onClick={() => void install()}
         >
           {t(busy ? 'clients.working' : 'clients.installPlugin')}
