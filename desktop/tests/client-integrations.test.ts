@@ -486,10 +486,16 @@ describe('client setup and restore', () => {
     for (const section of [
       'model_providers.copilot_api',
       'features',
+      'desktop',
       'analytics',
     ])
       expect(rendered).toContain(`[${section}]\n`)
-    expect(rendered).not.toMatch(/^(model_providers|features|analytics)\./m)
+    expect(rendered).not.toMatch(
+      /^(model_providers|features|desktop|analytics)\./m,
+    )
+    expect(rendered).toContain(
+      'enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "max"]',
+    )
     expect(readTomlConfig(read('.codex/config.toml'))).toMatchObject({
       model: 'codex/gpt-6.1-sol',
       model_reasoning_effort: 'max',
@@ -529,6 +535,16 @@ describe('client setup and restore', () => {
         defer_mailbox_preemption: true,
       },
       analytics: { enabled: false },
+      desktop: {
+        'enabled-reasoning-efforts': [
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+          'ultra',
+          'max',
+        ],
+      },
     })
     expect(read('.codex/auth.json')).toBe('{"login":"keep"}')
     expect(read('.bashrc')).toStartWith('# shell settings\n')
@@ -542,7 +558,7 @@ describe('client setup and restore', () => {
   })
   test('fills empty Codex defaults and retains nonempty custom values, false and zero', async () => {
     const source =
-      'model_reasoning_effort = "high"\nmodel_reasoning_summary = ""\nmodel_context_window = ""\nservice_tier = " "\nsandbox_mode = "read-only"\nsuppress_unstable_features_warning = false\n[features]\nremote_compaction_v2 = false\napi_key_model_discovery = false\ninstant_interrupt = true\ndaemon_auto_start = true\n[analytics]\nenabled = true\n[model_providers.copilot_api]\nrequest_max_retries = 0\nstream_max_retries = 8\nstream_idle_timeout_ms = 12345\nsupports_standalone_web_search = false\n'
+      'model_reasoning_effort = "high"\nmodel_reasoning_summary = ""\nmodel_context_window = ""\nservice_tier = " "\nsandbox_mode = "read-only"\nsuppress_unstable_features_warning = false\n[features]\nremote_compaction_v2 = false\napi_key_model_discovery = false\ninstant_interrupt = true\ndaemon_auto_start = true\n[desktop]\nenabled-reasoning-efforts = []\n[analytics]\nenabled = true\n[model_providers.copilot_api]\nrequest_max_retries = 0\nstream_max_retries = 8\nstream_idle_timeout_ms = 12345\nsupports_standalone_web_search = false\n'
     persist('.codex/config.toml', source)
     const manager = fixture()
     await manager.setup(await input(manager, 'codex'))
@@ -561,6 +577,16 @@ describe('client setup and restore', () => {
         daemon_auto_start: true,
       },
       analytics: { enabled: true },
+      desktop: {
+        'enabled-reasoning-efforts': [
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+          'ultra',
+          'max',
+        ],
+      },
       model_providers: {
         copilot_api: {
           request_max_retries: 0,
@@ -572,6 +598,17 @@ describe('client setup and restore', () => {
     })
     await manager.setup(await input(manager, 'codex'))
     expect(read('.codex/config.toml')).toBe(updated)
+  })
+  test('preserves a custom Codex desktop reasoning effort list', async () => {
+    persist(
+      '.codex/config.toml',
+      '[desktop]\nenabled-reasoning-efforts = ["medium", "max"]\n',
+    )
+    const manager = fixture()
+    await manager.setup(await input(manager, 'codex'))
+    expect(readTomlConfig(read('.codex/config.toml')).desktop).toEqual({
+      'enabled-reasoning-efforts': ['medium', 'max'],
+    })
   })
   test('preserves a previous Codex environment value and refuses to overwrite an external environment change on restore', async () => {
     environment = 'original-user-key'

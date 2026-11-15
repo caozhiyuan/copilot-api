@@ -43,7 +43,7 @@ test('converts the previous dotted output to sections in codex.md field order', 
     'analytics',
   ])
     expect(result).toContain(`[${section}]\n`)
-  expect(result).not.toMatch(/^(model_providers|features|analytics)\./m)
+  expect(result).not.toMatch(/^(model_providers|features|desktop|analytics)\./m)
   expect(formatCodexConfig(result)).toBe(result)
 })
 

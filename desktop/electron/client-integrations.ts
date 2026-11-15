@@ -106,7 +106,8 @@ const CLAUDE_ENV_DEFAULTS = {
   CLAUDE_CODE_EFFORT_LEVEL: 'max',
   MCP_CONNECT_TIMEOUT_MS: '20000',
 }
-const CODEX_DEFAULTS: Array<[string[], string | number | boolean]> = [
+type CodexDefault = string | number | boolean | string[]
+const CODEX_DEFAULTS: Array<[string[], CodexDefault]> = [
   [['model_reasoning_effort'], 'max'],
   [['model_reasoning_summary'], 'auto'],
   [['plan_mode_reasoning_effort'], 'max'],
@@ -128,6 +129,10 @@ const CODEX_DEFAULTS: Array<[string[], string | number | boolean]> = [
   [['features', 'prevent_idle_sleep'], true],
   [['features', 'defer_mailbox_preemption'], true],
   [['features', 'instant_interrupt'], false],
+  [
+    ['desktop', 'enabled-reasoning-efforts'],
+    ['low', 'medium', 'high', 'xhigh', 'ultra', 'max'],
+  ],
   [['analytics', 'enabled'], false],
 ]
 const PROVIDER_WRAPPER = `import provider from '../copilot-api/provider.js'
@@ -443,6 +448,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
               return (
                 value === undefined
                 || (typeof value === 'string' && !value.trim())
+                || (Array.isArray(value) && value.length === 0)
               )
             }),
           ]),

@@ -87,7 +87,7 @@ export function readTomlConfig(content: string): Record<string, unknown> {
   }
 }
 
-type Scalar = string | number | boolean
+type Scalar = string | number | boolean | string[]
 const keyText = (key: string) =>
   /^[\w-]+$/.test(key) ? key : JSON.stringify(key)
 const startsWith = (
@@ -136,7 +136,10 @@ export function patchTomlConfig(
         )
       }
     }
-    const serialized = JSON.stringify(value)
+    const serialized =
+      Array.isArray(value) ?
+        `[${value.map((entry) => JSON.stringify(entry)).join(', ')}]`
+      : JSON.stringify(value)
     if (found) {
       const [start, end] = found.value.range
       result = result.slice(0, start) + serialized + result.slice(end)
