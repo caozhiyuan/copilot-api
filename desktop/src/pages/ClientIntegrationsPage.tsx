@@ -99,7 +99,7 @@ export default function ClientIntegrationsPage({
     )
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-5 lg:p-7">
+    <div className="w-full space-y-5 px-5 pb-5 pt-3 sm:px-6 sm:pb-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-ink">
