@@ -19,6 +19,7 @@ import {
 import { getProviderTypeLabel } from '../lib/provider-type-labels'
 import { buildServerBaseUrl } from '../lib/server-url'
 import AdvancedConfigPage from './AdvancedConfigPage'
+import ClientIntegrationsPage from './ClientIntegrationsPage'
 import MediaStudioPage from './MediaStudioPage'
 import ProviderManagementPanel from '../components/ProviderManagementPanel'
 import type {
@@ -57,6 +58,7 @@ type DashboardTab =
   | 'tokenUsage'
   | 'subscriptions'
   | 'providers'
+  | 'clients'
   | 'advancedConfig'
   | 'studio'
   | 'logs'
@@ -68,6 +70,7 @@ type DashboardTab =
  */
 const TABS_WITHOUT_START_FORM: ReadonlyArray<DashboardTab> = [
   'providers',
+  'clients',
   'advancedConfig',
   'studio',
 ]
@@ -879,6 +882,7 @@ export default function DashboardPage({
       key: 'providers',
       label: t('providers.title'),
     },
+    { icon: <IconLaunch />, key: 'clients', label: t('clients.title') },
     { icon: <IconLaunch />, key: 'studio', label: t('studio.title') },
     {
       icon: <IconAdvancedConfig />,
@@ -1358,6 +1362,12 @@ export default function DashboardPage({
           <ProviderManagementPanel
             serverRunning={started && !stopping}
             onOpenAuthConfig={handleChangeAuth}
+          />
+        )}
+
+        {tab === 'clients' && (
+          <ClientIntegrationsPage
+            serverRunning={started && !stopping && !restarting}
           />
         )}
 

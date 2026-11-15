@@ -1,6 +1,70 @@
 import type { Locale } from './index'
 
 const zh: Locale = {
+  clients: {
+    title: '客户端接入',
+    description: '将本机 Coding 客户端接入网关，配置对当前操作系统用户生效。',
+    gateway: '网关地址',
+    apiKey: '网关 API Key',
+    noAuth: '未启用鉴权 · dummy',
+    keyNumber: '网关密钥 {{n}}',
+    refresh: '刷新',
+    loading: '正在检查客户端配置…',
+    configure: '一键配置',
+    update: '更新配置',
+    working: '处理中…',
+    open: '打开配置',
+    restore: '恢复备份',
+    saved: '配置已保存，请重启客户端使其生效。',
+    restored: '已恢复原始配置，请重启客户端使其生效。',
+    pluginFailed: '配置已保存，但插件安装失败。',
+    stopped: '启动网关后可读取模型列表。服务停止时仍可更新已有配置或安装插件。',
+    model: '默认主模型',
+    smallModel: '快速小模型（Haiku）',
+    sameModel: '跟随默认主模型',
+    chooseModel: '请选择模型',
+    modelHint: '列表遵循 Provider 启用状态及 Coding Agent 展示模型设置。',
+    claudeDescription:
+      '选择默认模型并接入 Claude Code。主模型同时用于 Opus、Sonnet 和 Fable 别名。',
+    opencodeDescription:
+      '仅支持 OpenCode v2。安装 Provider 插件，自动发现网关模型，包含图片模型。',
+    codexDescription:
+      '配置 Responses Provider、默认模型及远程模型目录，沿用已有的 Codex 登录。',
+    nativeToolSearch: '启用原生 Tool Search（需要上游支持）',
+    agentInject: 'Agent 提示规则（agent-inject）',
+    toolSearchBridge: 'Tool Search MCP bridge（tool-search）',
+    agentContext: '安装 Agent Context，归并根会话',
+    optionalPlugins: 'Claude Code 可选插件',
+    codexRestart:
+      '网关密钥已写入用户环境变量。请完全退出并重新打开 Codex 和终端；Linux 桌面应用需重新登录系统。',
+    harnessDescription:
+      '将 dsh-copilot-api 插件安装到已有的 DeepSeek Harness profile。',
+    harnessHint:
+      '需要本机已安装 dsh。网关地址和 API Key 可按需在 Harness 中设置。',
+    profile: 'Harness profile',
+    installPlugin: '安装插件',
+    pluginInstalled: '插件已安装，请重启 DeepSeek Harness。',
+    unconfigured: '未配置',
+    configured: '已配置',
+    outdated: '需要更新',
+    error: '检查配置',
+    errors: {
+      invalidConfig: '已有配置格式无效或结构不兼容，请打开配置修正后重试。',
+      symlinkConfig: '配置是符号链接，请直接编辑其目标文件。',
+      invalidInput: '请检查所选模型和安装选项。',
+      toolSearchConflict: '原生 Tool Search 和 MCP bridge 请选择一种。',
+      conflict:
+        '磁盘上的配置已变化，请刷新后重试。恢复操作不会覆盖安装后的其他修改。',
+      invalidKey: '网关密钥已变化，请刷新并选择当前密钥。',
+      noBackup: '没有可恢复的备份。',
+      commandMissing: '未找到客户端命令，请安装客户端并重新打开 Copilot API。',
+      commandFailed:
+        '客户端命令执行失败，请检查客户端安装、profile 及网络后重试。',
+      environmentFailed: '更新用户环境变量失败，请检查系统权限后重试。',
+      modelsFailed: '读取模型失败，请检查网关状态后刷新。',
+      operationFailed: '操作失败，请检查文件权限后重试。',
+    },
+  },
   studio: {
     title: '创作',
     description: '用文字和图片，生成新的画面与视频。',

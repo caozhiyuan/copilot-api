@@ -31,6 +31,7 @@ import type {
 type IpcHandler = (event: unknown, ...parameters: unknown[]) => unknown
 const handlers = new Map<string, IpcHandler>()
 const openExternal = mock(() => Promise.resolve())
+const openPath = mock(() => Promise.resolve(''))
 let saveDialogResult: { canceled: boolean; filePath?: string } = {
   canceled: true,
 }
@@ -82,7 +83,7 @@ await mock.module('electron', () => ({
       handlers.set(channel, handler),
     on: () => {},
   },
-  shell: { openExternal },
+  shell: { openExternal, openPath },
   dialog: { showSaveDialog },
   BrowserWindow: class {},
   nativeImage: {
@@ -135,6 +136,7 @@ async function invoke(
 beforeEach(async () => {
   handlers.clear()
   openExternal.mockClear()
+  openPath.mockClear()
   showSaveDialog.mockClear()
   saveDialogResult = { canceled: true }
   rendererListeners.clear()
@@ -1351,5 +1353,76 @@ describe('desktop configuration editor bridge', () => {
     expect(handlers.has('config:get-document')).toBe(true)
     expect(handlers.has('config:save-document')).toBe(true)
     expect(handlers.has('config:apply-document')).toBe(true)
+  })
+})
+
+describe('desktop client integration IPC', () => {
+  test('exposes client configuration and plugin operations through preload', async () => {
+    await import('../electron/preload')
+    if (!preloadApi) throw new Error('Preload bridge was not exposed')
+    await preloadApi.getClientIntegrations()
+    await preloadApi.getClientModels('claude')
+    const input = {
+      client: 'claude' as const,
+      revision: 'revision',
+      apiKey: 'test-key',
+      model: 'gpt',
+      smallModel: '',
+      nativeToolSearch: false,
+      agentContext: false,
+      plugins: [],
+    }
+    await preloadApi.setupClient(input)
+    await preloadApi.restoreClient('claude', 'revision')
+    await preloadApi.openClientConfig('claude')
+    await preloadApi.installHarnessPlugin('desktop')
+    expect(rendererInvoke).toHaveBeenCalledWith('clients:get-state')
+    expect(rendererInvoke).toHaveBeenCalledWith('clients:get-models', 'claude')
+    expect(rendererInvoke).toHaveBeenCalledWith('clients:setup', input)
+    expect(rendererInvoke).toHaveBeenCalledWith(
+      'clients:restore',
+      'claude',
+      'revision',
+    )
+    expect(rendererInvoke).toHaveBeenCalledWith('clients:open-config', 'claude')
+    expect(rendererInvoke).toHaveBeenCalledWith(
+      'clients:install-harness',
+      'desktop',
+    )
+  })
+  test('uses the actual running or saved gateway address and never supplies the admin key', async () => {
+    const runningState = (await invoke('clients:get-state')) as {
+      data: { baseUrl: string; apiKeys: string[] }
+    }
+    expect(runningState.data.baseUrl).toBe('http://127.0.0.1:4141')
+    expect(runningState.data.apiKeys).toEqual(['old-api'])
+    running = false
+    settings.lastPort = 6161
+    settings.host = '0.0.0.0'
+    const stoppedState = (await invoke('clients:get-state')) as {
+      data: { baseUrl: string }
+    }
+    expect(stoppedState.data.baseUrl).toBe('http://localhost:6161')
+    expect(await invoke('clients:setup', {})).toEqual({ error: 'invalidInput' })
+    expect(await invoke('clients:restore', 'bad-client', '')).toHaveProperty(
+      'error',
+    )
+    expect(await invoke('clients:get-models', 'opencode')).toHaveProperty(
+      'error',
+    )
+    expect(
+      await invoke('clients:install-harness', '../invalid-profile'),
+    ).toHaveProperty('error')
+    expect(await invoke('clients:open-config', 'bad-client')).toHaveProperty(
+      'error',
+    )
+    expect(await invoke('clients:open-config', 'claude')).toEqual({
+      data: undefined,
+    })
+    expect(openPath).toHaveBeenCalledTimes(1)
+    openPath.mockResolvedValueOnce('could not open')
+    expect(await invoke('clients:open-config', 'claude')).toEqual({
+      error: 'operationFailed',
+    })
   })
 })

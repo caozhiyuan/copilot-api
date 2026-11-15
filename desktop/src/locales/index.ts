@@ -1,8 +1,52 @@
 import type { ConfigFieldId, ConfigSection } from '../lib/config-fields'
 import en from './en'
 import zh from './zh'
+import type { ClientErrorCode } from '../../shared/client-integrations'
 
 export interface Locale {
+  clients: {
+    title: string
+    description: string
+    gateway: string
+    apiKey: string
+    noAuth: string
+    keyNumber: string
+    refresh: string
+    loading: string
+    configure: string
+    update: string
+    working: string
+    open: string
+    restore: string
+    saved: string
+    restored: string
+    pluginFailed: string
+    stopped: string
+    model: string
+    smallModel: string
+    sameModel: string
+    chooseModel: string
+    modelHint: string
+    claudeDescription: string
+    opencodeDescription: string
+    codexDescription: string
+    nativeToolSearch: string
+    agentInject: string
+    toolSearchBridge: string
+    agentContext: string
+    optionalPlugins: string
+    codexRestart: string
+    harnessDescription: string
+    harnessHint: string
+    profile: string
+    installPlugin: string
+    pluginInstalled: string
+    unconfigured: string
+    configured: string
+    outdated: string
+    error: string
+    errors: Record<ClientErrorCode, string>
+  }
   studio: {
     title: string
     description: string

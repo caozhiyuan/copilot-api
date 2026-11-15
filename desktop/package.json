@@ -24,7 +24,9 @@
     "package:linux": "bun run build:server && electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
-    "electron-updater": "^6.3.4"
+    "electron-updater": "^6.3.4",
+    "jsonc-parser": "^3.3.1",
+    "toml-eslint-parser": "^1.0.3"
   },
   "build": {
     "appId": "com.copilot-api.desktop",
@@ -44,6 +46,15 @@
       "resources/**/*"
     ],
     "extraResources": [
+      {
+        "from": "../plugin",
+        "to": "client-plugins/plugin",
+        "filter": ["claude/**/*", "opencode/**/*"]
+      },
+      {
+        "from": "../.claude-plugin",
+        "to": "client-plugins/.claude-plugin"
+      },
       {
         "from": "../dist",
         "to": "server",

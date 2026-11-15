@@ -1,0 +1,659 @@
+import { createHash } from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { z } from 'zod'
+import { writeFileAtomically } from '../../src/lib/atomic-file'
+import {
+  isObject,
+  patchJsonConfig,
+  patchTomlConfig,
+  readJsonConfig,
+  readTomlConfig,
+} from './client-config'
+import { runClientCommand } from './client-command'
+import {
+  CLIENT_KEY_ENV,
+  macEnvironmentAgent,
+  patchShellEnvironment,
+  readClientEnvironment,
+  writeClientEnvironment,
+} from './client-environment'
+import {
+  CLIENT_ERROR_CODES,
+  type ClientId,
+  type ClientIntegrationStatus,
+  type ClientModelOption,
+  type ClientPlugin,
+  type ClientSetupInput,
+  type ClientSetupResult,
+} from '../shared/client-integrations'
+
+const clientSchema = z.enum(['claude', 'opencode', 'codex'])
+const setupSchema = z
+  .object({
+    client: clientSchema,
+    revision: z.string().regex(/^[a-f0-9]{64}$/),
+    apiKey: z
+      .string()
+      .min(1)
+      .max(4096)
+      .regex(/^[^\r\n\0]+$/),
+    model: z
+      .string()
+      .max(500)
+      .regex(/^[^\r\n\0]*$/),
+    smallModel: z
+      .string()
+      .max(500)
+      .regex(/^[^\r\n\0]*$/),
+    nativeToolSearch: z.boolean(),
+    agentContext: z.boolean(),
+    plugins: z.array(z.enum(['agent-inject', 'tool-search'])),
+  })
+  .strict()
+const backupSchema = z.object({
+  files: z.array(
+    z.object({
+      path: z.string(),
+      before: z.string().nullable(),
+      applied: z.string(),
+    }),
+  ),
+  environment: z
+    .object({ before: z.string().nullable(), applied: z.string() })
+    .optional(),
+  plugins: z.array(z.enum(['agent-inject', 'tool-search'])).optional(),
+})
+type Backup = z.infer<typeof backupSchema>
+type Snapshot = Map<string, string | null>
+const hash = (value: string | null) =>
+  createHash('sha256')
+    .update(value === null ? '\0missing' : '\0file' + value)
+    .digest('hex')
+const record = (value: unknown) => (isObject(value) ? value : {})
+const string = (value: unknown) => (typeof value === 'string' ? value : '')
+const PLUGINS: ClientPlugin[] = ['agent-inject', 'tool-search']
+const PROVIDER_WRAPPER = `import provider from '../copilot-api/provider.js'
+import { readFileSync } from 'node:fs'
+
+export default {
+  ...provider,
+  setup(ctx) {
+    const options = JSON.parse(readFileSync(new URL('../copilot-api/settings.json', import.meta.url), 'utf8'))
+    return provider.setup({ ...ctx, options: { ...ctx.options, ...options } })
+  },
+}
+`
+
+export interface ClientIntegrationOptions {
+  dataDir: string
+  resourceDir: string
+  getGateway: () => Promise<{ baseUrl: string; apiKeys: string[] }>
+  homeDir?: string
+  env?: NodeJS.ProcessEnv
+  platform?: NodeJS.Platform
+  runCommand?: typeof runClientCommand
+  readEnvironment?: () => Promise<string | null>
+  writeEnvironment?: (value: string | null) => Promise<void>
+  fetch?: typeof fetch
+}
+
+function readFile(file: string): string | null {
+  try {
+    if (fs.lstatSync(file).isSymbolicLink()) throw new Error('symlinkConfig')
+    return fs.readFileSync(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
+  }
+}
+
+export function createClientIntegrations(options: ClientIntegrationOptions) {
+  const home = options.homeDir ?? os.homedir()
+  const env = options.env ?? process.env
+  const platform = options.platform ?? process.platform
+  const configHome = (value: string | undefined, fallback: string) =>
+    value && path.isAbsolute(value) ? value : fallback
+  const claudeDir = configHome(
+    env.CLAUDE_CONFIG_DIR,
+    path.join(home, '.claude'),
+  )
+  const codexDir = configHome(env.CODEX_HOME, path.join(home, '.codex'))
+  const opencodeDir = path.join(
+    configHome(env.XDG_CONFIG_HOME, path.join(home, '.config')),
+    'opencode',
+  )
+  const configPaths: Record<ClientId, string> = {
+    claude: path.join(claudeDir, 'settings.json'),
+    codex: path.join(codexDir, 'config.toml'),
+    opencode: path.join(opencodeDir, 'copilot-api', 'settings.json'),
+  }
+  const providerFile = path.join(
+    opencodeDir,
+    'plugins',
+    'copilot-api-provider.js',
+  )
+  const providerSource = path.join(opencodeDir, 'copilot-api', 'provider.js')
+  const agentFile = path.join(opencodeDir, 'plugins', 'agent-context.js')
+  const environmentFiles =
+    platform === 'darwin' ?
+      [
+        path.join(
+          home,
+          'Library',
+          'LaunchAgents',
+          'com.copilot-api.client-env.plist',
+        ),
+      ]
+    : platform === 'win32' ? []
+    : ['.profile', '.bashrc', '.zshenv'].map((name) => path.join(home, name))
+  const files: Record<ClientId, string[]> = {
+    claude: [configPaths.claude],
+    opencode: [configPaths.opencode, providerFile, providerSource, agentFile],
+    codex: [configPaths.codex, ...environmentFiles],
+  }
+  const readEnvironment =
+    options.readEnvironment ?? (() => readClientEnvironment(platform))
+  const writeEnvironment =
+    options.writeEnvironment
+    ?? ((value) => writeClientEnvironment(value, platform))
+  const run = options.runCommand ?? runClientCommand
+  const asset = (relative: string) =>
+    fs.readFileSync(path.join(options.resourceDir, relative), 'utf8')
+  const backupPath = (client: ClientId) =>
+    path.join(options.dataDir, `${client}.json`)
+  const backup = (client: ClientId): Backup | undefined => {
+    const content = readFile(backupPath(client))
+    if (content === null) return undefined
+    const parsed = backupSchema.parse(JSON.parse(content))
+    if (parsed.files.some((file) => !files[client].includes(file.path)))
+      throw new Error('invalidConfig')
+    return parsed
+  }
+  const snapshot = (client: ClientId): Snapshot =>
+    new Map(files[client].map((file) => [file, readFile(file)]))
+  const revision = (
+    current: Snapshot,
+    environment: string | null,
+    saved: Backup | undefined,
+  ) => hash(JSON.stringify([[...current], environment, saved]))
+  const isKeyValid = (key: string, apiKeys: string[]) =>
+    apiKeys.length ? apiKeys.includes(key) : key === 'dummy'
+
+  async function status(client: ClientId): Promise<ClientIntegrationStatus> {
+    let current = new Map<string, string | null>()
+    let saved: Backup | undefined
+    let environment: string | null = null
+    const result: ClientIntegrationStatus = {
+      client,
+      configPath: configPaths[client],
+      revision: '',
+      state: 'unconfigured',
+      canRestore: false,
+      model: '',
+      smallModel: '',
+      nativeToolSearch: false,
+      agentContext: false,
+      plugins: [],
+    }
+    try {
+      current = snapshot(client)
+      saved = backup(client)
+      result.canRestore = saved !== undefined
+      if (client === 'codex') environment = await readEnvironment()
+      const { baseUrl, apiKeys } = await options.getGateway()
+      const content = current.get(configPaths[client]) ?? ''
+      const config =
+        client === 'codex' ? readTomlConfig(content) : readJsonConfig(content)
+      let configured = false
+      if (client === 'claude') {
+        const settings = record(config.env)
+        result.model = string(config.model)
+        result.smallModel = string(settings.ANTHROPIC_DEFAULT_HAIKU_MODEL)
+        result.nativeToolSearch = settings.ENABLE_TOOL_SEARCH === 'true'
+        result.plugins = PLUGINS.filter(
+          (plugin) =>
+            record(config.enabledPlugins)[`${plugin}@copilot-api-marketplace`]
+            === true,
+        )
+        configured =
+          settings.ANTHROPIC_BASE_URL === baseUrl
+          && isKeyValid(string(settings.ANTHROPIC_AUTH_TOKEN), apiKeys)
+          && !!result.model
+      } else if (client === 'codex') {
+        result.model = string(config.model)
+        const provider = record(record(config.model_providers).copilot_api)
+        configured =
+          config.model_provider === 'copilot_api'
+          && provider.base_url === baseUrl
+          && provider.model_catalog_url === `${baseUrl}/models`
+          && provider.env_key === CLIENT_KEY_ENV
+          && isKeyValid(environment ?? '', apiKeys)
+          && !!result.model
+      } else {
+        result.agentContext = current.get(agentFile) !== null
+        configured =
+          config.baseURL === `${baseUrl}/v1`
+          && isKeyValid(string(config.apiKey), apiKeys)
+          && current.get(providerFile) === PROVIDER_WRAPPER
+          && current.get(providerSource)
+            === asset('plugin/opencode/copilot-api-provider.js')
+        if (
+          result.agentContext
+          && current.get(agentFile)
+            !== asset('plugin/opencode/agent-context.js')
+        )
+          configured = false
+      }
+      const changed = saved?.files.some(
+        (file) => hash(current.get(file.path) ?? null) !== file.applied,
+      )
+      result.state =
+        configured && !changed ? 'configured'
+        : saved || content ? 'outdated'
+        : 'unconfigured'
+    } catch (error) {
+      result.state = 'error'
+      result.error = errorCode(error)
+    }
+    result.revision = revision(current, environment, saved)
+    return result
+  }
+
+  // One queue for config, environment, restore, and CLI operations. A rejected
+  // operation must not prevent subsequent operations from using the queue.
+  let pending = Promise.resolve()
+  function transaction<T>(operation: () => Promise<T>): Promise<T> {
+    const result = pending.then(operation)
+    pending = result.then(
+      () => {},
+      () => {},
+    )
+    return result
+  }
+
+  function desired(
+    input: ClientSetupInput,
+    current: Snapshot,
+    baseUrl: string,
+  ): Snapshot {
+    const changes: Snapshot = new Map()
+    const content = current.get(configPaths[input.client]) ?? ''
+    if (input.client === 'claude') {
+      const main = input.model.trim()
+      const small = input.smallModel.trim() || main
+      changes.set(
+        configPaths.claude,
+        patchJsonConfig(content, [
+          [['model'], main],
+          [['env', 'ANTHROPIC_BASE_URL'], baseUrl],
+          [['env', 'ANTHROPIC_AUTH_TOKEN'], input.apiKey],
+          [['env', 'CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY'], '1'],
+          [['env', 'ANTHROPIC_DEFAULT_FABLE_MODEL'], main],
+          [['env', 'ANTHROPIC_DEFAULT_OPUS_MODEL'], main],
+          [['env', 'ANTHROPIC_DEFAULT_SONNET_MODEL'], main],
+          [['env', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'], small],
+          [
+            ['env', 'ENABLE_TOOL_SEARCH'],
+            input.nativeToolSearch ? 'true' : 'false',
+          ],
+          [['env', 'ANTHROPIC_MODEL'], undefined],
+          [['env', 'CLAUDE_CODE_USE_VERTEX'], '0'],
+          [['env', 'CLAUDE_CODE_USE_BEDROCK'], '0'],
+          [['env', 'CLAUDE_CODE_USE_FOUNDRY'], '0'],
+          ...PLUGINS.filter(
+            (plugin) =>
+              !input.plugins.includes(plugin)
+              && record(readJsonConfig(content).enabledPlugins)[
+                `${plugin}@copilot-api-marketplace`
+              ] !== undefined,
+          ).map((plugin): [string[], unknown] => [
+            ['enabledPlugins', `${plugin}@copilot-api-marketplace`],
+            false,
+          ]),
+        ]),
+      )
+    } else if (input.client === 'codex') {
+      const provider = ['model_providers', 'copilot_api']
+      const existing = record(
+        record(readTomlConfig(content).model_providers).copilot_api,
+      )
+      if (
+        existing.auth !== undefined
+        || existing.experimental_bearer_token !== undefined
+      )
+        throw new Error('invalidConfig')
+      changes.set(
+        configPaths.codex,
+        patchTomlConfig(content, [
+          [['model'], input.model.trim()],
+          [['model_provider'], 'copilot_api'],
+          [[...provider, 'name'], 'OpenAI'],
+          [[...provider, 'base_url'], baseUrl],
+          [[...provider, 'model_catalog_url'], `${baseUrl}/models`],
+          [[...provider, 'env_key'], CLIENT_KEY_ENV],
+          [[...provider, 'requires_openai_auth'], true],
+          [[...provider, 'wire_api'], 'responses'],
+          [[...provider, 'supports_websockets'], false],
+          [['features', 'instant_interrupt'], false],
+          [['features', 'api_key_model_discovery'], true],
+          [['features', 'remote_compaction_v2'], true],
+        ]),
+      )
+      for (const file of environmentFiles)
+        changes.set(
+          file,
+          platform === 'darwin' ?
+            macEnvironmentAgent(input.apiKey)
+          : patchShellEnvironment(current.get(file) ?? '', input.apiKey),
+        )
+    } else {
+      changes.set(
+        configPaths.opencode,
+        JSON.stringify(
+          { baseURL: `${baseUrl}/v1`, apiKey: input.apiKey },
+          null,
+          2,
+        ) + '\n',
+      )
+      changes.set(providerFile, PROVIDER_WRAPPER)
+      changes.set(
+        providerSource,
+        asset('plugin/opencode/copilot-api-provider.js'),
+      )
+      if (input.agentContext)
+        changes.set(agentFile, asset('plugin/opencode/agent-context.js'))
+      else if (current.get(agentFile) !== null) changes.set(agentFile, null)
+    }
+    return changes
+  }
+
+  function writeSnapshot(changes: Snapshot) {
+    for (const [file, content] of changes) {
+      if (readFile(file) === content) continue
+      if (content === null) fs.rmSync(file, { force: true })
+      else writeFileAtomically(file, content)
+    }
+  }
+
+  async function installClaudePlugins(plugins: ClientPlugin[], saved: Backup) {
+    if (!plugins.length) return
+    const listed = await run('claude', ['plugin', 'list', '--json'])
+    const installed: unknown = JSON.parse(listed.stdout)
+    if (!Array.isArray(installed)) throw new Error('commandFailed')
+    const marketplace = path.join(options.dataDir, 'claude-marketplace')
+    for (const relative of [
+      '.claude-plugin/marketplace.json',
+      ...fs
+        .readdirSync(path.join(options.resourceDir, 'plugin/claude'), {
+          recursive: true,
+        })
+        .filter((entry) => typeof entry === 'string')
+        .map((entry) => `plugin/claude/${entry}`),
+    ]) {
+      const source = path.join(options.resourceDir, relative)
+      if (fs.statSync(source).isFile())
+        writeFileAtomically(
+          path.join(marketplace, relative),
+          fs.readFileSync(source, 'utf8'),
+        )
+    }
+    await run('claude', [
+      'plugin',
+      'marketplace',
+      'add',
+      marketplace,
+      '--scope',
+      'user',
+    ])
+    for (const plugin of plugins) {
+      const existing = installed.find(
+        (item: unknown) =>
+          record(item).id === `${plugin}@copilot-api-marketplace`
+          && record(item).scope === 'user',
+      ) as unknown
+      const existed = existing !== undefined
+      await run('claude', [
+        'plugin',
+        existed ? 'update' : 'install',
+        `${plugin}@copilot-api-marketplace`,
+        '--scope',
+        'user',
+      ])
+      if (existed && record(existing).enabled !== true)
+        await run('claude', [
+          'plugin',
+          'enable',
+          `${plugin}@copilot-api-marketplace`,
+          '--scope',
+          'user',
+        ])
+      if (!existed && !saved.plugins?.includes(plugin))
+        saved.plugins = [...(saved.plugins ?? []), plugin]
+      for (const file of saved.files) file.applied = hash(readFile(file.path))
+      writeFileAtomically(backupPath('claude'), JSON.stringify(saved))
+    }
+  }
+
+  return {
+    status,
+    async getState() {
+      const gateway = await options.getGateway()
+      let harnessProfiles: string[] = []
+      try {
+        harnessProfiles = fs
+          .readdirSync(path.join(home, '.dsh', 'profiles'))
+          .map((name) => name.replace(/\.ya?ml$/i, ''))
+          .filter((name) => /^[\w-]+$/.test(name))
+      } catch {
+        /* Harness may not be installed. */
+      }
+      return {
+        ...gateway,
+        clients: await Promise.all(
+          (['claude', 'opencode', 'codex'] as const).map(status),
+        ),
+        harnessProfiles: [...new Set(harnessProfiles)].sort(),
+      }
+    },
+    async getModels(clientInput: unknown): Promise<ClientModelOption[]> {
+      const client = z.enum(['claude', 'codex']).parse(clientInput)
+      const { baseUrl, apiKeys } = await options.getGateway()
+      const response = await (options.fetch ?? fetch)(`${baseUrl}/v1/models`, {
+        headers: {
+          'x-api-key': apiKeys[0] ?? 'dummy',
+          'user-agent':
+            client === 'claude' ?
+              'claude-code/copilot-api-desktop'
+            : 'codex-cli/0.160.0 (copilot-api-desktop)',
+        },
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (!response.ok) throw new Error('modelsFailed')
+      const body = record(await response.json())
+      const models = client === 'codex' ? body.models : body.data
+      if (!Array.isArray(models)) throw new Error('modelsFailed')
+      return [
+        ...new Map(
+          models.flatMap((item: unknown) => {
+            const model = record(item)
+            const id = string(client === 'codex' ? model.slug : model.id)
+            return id ?
+                [[id, { id, name: string(model.display_name) || id }] as const]
+              : []
+          }),
+        ).values(),
+      ]
+    },
+    setup(input: unknown): Promise<ClientSetupResult> {
+      return transaction(async () => {
+        const parsed = setupSchema.safeParse(input)
+        if (!parsed.success) throw new Error('invalidInput')
+        const data = parsed.data
+        if (data.client !== 'opencode' && !data.model.trim())
+          throw new Error('invalidInput')
+        if (data.nativeToolSearch && data.plugins.includes('tool-search'))
+          throw new Error('toolSearchConflict')
+        const beforeStatus = await status(data.client)
+        if (beforeStatus.state === 'error') throw new Error(beforeStatus.error)
+        if (beforeStatus.revision !== data.revision) throw new Error('conflict')
+        const gateway = await options.getGateway()
+        if (!isKeyValid(data.apiKey, gateway.apiKeys))
+          throw new Error('invalidKey')
+        const current = snapshot(data.client)
+        const saved = backup(data.client)
+        const environment =
+          data.client === 'codex' ? await readEnvironment() : null
+        if (revision(current, environment, saved) !== data.revision)
+          throw new Error('conflict')
+        const changes = desired(data, current, gateway.baseUrl)
+        const next: Backup = {
+          files: saved?.files.map((file) => ({ ...file })) ?? [],
+          ...(saved?.plugins ? { plugins: [...saved.plugins] } : {}),
+        }
+        for (const [file] of changes)
+          if (!next.files.some((entry) => entry.path === file))
+            next.files.push({
+              path: file,
+              before: current.get(file) ?? null,
+              applied: '',
+            })
+        if (data.client === 'codex')
+          next.environment = {
+            before: saved?.environment ? saved.environment.before : environment,
+            applied: data.apiKey,
+          }
+        for (const file of next.files)
+          file.applied = hash(
+            changes.has(file.path) ?
+              changes.get(file.path)!
+            : (current.get(file.path) ?? null),
+          )
+        // Persist the original snapshot before changing any client files.
+        writeFileAtomically(backupPath(data.client), JSON.stringify(next))
+        try {
+          writeSnapshot(changes)
+          if (data.client === 'codex') await writeEnvironment(data.apiKey)
+        } catch (error) {
+          writeSnapshot(
+            new Map(
+              [...changes.keys()].map((file) => [
+                file,
+                current.get(file) ?? null,
+              ]),
+            ),
+          )
+          if (saved)
+            writeFileAtomically(backupPath(data.client), JSON.stringify(saved))
+          else fs.rmSync(backupPath(data.client), { force: true })
+          throw error
+        }
+        let pluginError: string | undefined
+        if (data.client === 'claude') {
+          try {
+            await installClaudePlugins(data.plugins, next)
+          } catch (error) {
+            pluginError = errorCode(error)
+          }
+        }
+        for (const file of next.files) file.applied = hash(readFile(file.path))
+        writeFileAtomically(backupPath(data.client), JSON.stringify(next))
+        return {
+          status: await status(data.client),
+          ...(pluginError ? { pluginError } : {}),
+        }
+      })
+    },
+    restore(clientInput: unknown, expectedRevision: unknown) {
+      return transaction(async () => {
+        const client = clientSchema.parse(clientInput)
+        const currentStatus = await status(client)
+        if (currentStatus.revision !== expectedRevision)
+          throw new Error('conflict')
+        const saved = backup(client)
+        if (!saved) throw new Error('noBackup')
+        const current = snapshot(client)
+        if (
+          saved.files.some(
+            (file) => hash(current.get(file.path) ?? null) !== file.applied,
+          )
+        )
+          throw new Error('conflict')
+        if (
+          saved.environment
+          && (await readEnvironment()) !== saved.environment.applied
+        )
+          throw new Error('conflict')
+        // Remove only user-scope plugins first installed by this integration;
+        // keep their data and leave pre-existing installations alone.
+        if (client === 'claude') {
+          for (const plugin of [...(saved.plugins ?? [])]) {
+            await run('claude', [
+              'plugin',
+              'uninstall',
+              `${plugin}@copilot-api-marketplace`,
+              '--scope',
+              'user',
+              '--keep-data',
+            ])
+            saved.plugins = saved.plugins?.filter((item) => item !== plugin)
+            for (const file of saved.files)
+              file.applied = hash(readFile(file.path))
+            writeFileAtomically(backupPath(client), JSON.stringify(saved))
+          }
+        }
+        try {
+          writeSnapshot(
+            new Map(saved.files.map((file) => [file.path, file.before])),
+          )
+          if (saved.environment)
+            await writeEnvironment(saved.environment.before)
+        } catch (error) {
+          writeSnapshot(current)
+          throw error
+        }
+        fs.rmSync(backupPath(client))
+        return status(client)
+      })
+    },
+    openPath(clientInput: unknown) {
+      const client = clientSchema.parse(clientInput)
+      return configPaths[client]
+    },
+    installHarness(profileInput: unknown) {
+      return transaction(async () => {
+        const profile = z
+          .string()
+          .regex(/^[\w-]{1,80}$/)
+          .parse(profileInput)
+        await run('dsh', [
+          'plugin',
+          '--profile',
+          profile,
+          'add',
+          'dsh-copilot-api',
+        ])
+      })
+    },
+  }
+}
+
+const ERROR_CODES = new Set<string>(CLIENT_ERROR_CODES)
+export function errorCode(error: unknown) {
+  return error instanceof Error && ERROR_CODES.has(error.message) ?
+      error.message
+    : 'operationFailed'
+}
+
+// CLI errors can contain configuration content. Only stable, translated error
+// codes cross IPC; command output and gateway credentials never do.
+export async function clientIntegrationReply<T>(
+  operation: () => T | Promise<T>,
+): Promise<{ data: T } | { error: string }> {
+  try {
+    return { data: await operation() }
+  } catch (error) {
+    return { error: errorCode(error) }
+  }
+}

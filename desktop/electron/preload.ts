@@ -103,6 +103,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     provider: 'github-copilot' | 'codex' | 'xai' | 'opencode-go',
   ) => ipcRenderer.invoke('server:fetch-subscription-usage', provider),
   fetchModels: () => ipcRenderer.invoke('server:fetch-models'),
+  getClientIntegrations: () => ipcRenderer.invoke('clients:get-state'),
+  getClientModels: (client: string) =>
+    ipcRenderer.invoke('clients:get-models', client),
+  setupClient: (input: unknown) => ipcRenderer.invoke('clients:setup', input),
+  restoreClient: (client: string, revision: string) =>
+    ipcRenderer.invoke('clients:restore', client, revision),
+  openClientConfig: (client: string) =>
+    ipcRenderer.invoke('clients:open-config', client),
+  installHarnessPlugin: (profile: string) =>
+    ipcRenderer.invoke('clients:install-harness', profile),
   createImages: (id: string, input: ImageCreationInput) =>
     ipcRenderer.invoke('media:create-images', id, input),
   createVideo: (id: string, input: VideoCreationInput) =>

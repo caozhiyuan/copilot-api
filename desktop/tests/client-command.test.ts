@@ -1,0 +1,154 @@
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { runClientCommand, type ClientExec } from '../electron/client-command'
+import {
+  CLIENT_KEY_ENV,
+  macEnvironmentAgent,
+  patchShellEnvironment,
+  readClientEnvironment,
+  writeClientEnvironment,
+} from '../electron/client-environment'
+
+let directory: string
+let execute: ReturnType<typeof mock<ClientExec>>
+const originalEnvironment = process.env[CLIENT_KEY_ENV]
+beforeEach(() => {
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'client-command-'))
+  execute = mock(() => Promise.resolve({ stdout: 'done', stderr: '' }))
+})
+afterEach(() => {
+  fs.rmSync(directory, { recursive: true, force: true })
+  if (originalEnvironment === undefined) delete process.env[CLIENT_KEY_ENV]
+  else process.env[CLIENT_KEY_ENV] = originalEnvironment
+})
+function persist(file: string, content: string, mode = 0o600) {
+  const destination = path.join(directory, file)
+  fs.mkdirSync(path.dirname(destination), { recursive: true })
+  fs.writeFileSync(destination, content, { mode })
+}
+function commandOptions() {
+  return {
+    homeDir: directory,
+    platform: 'linux' as const,
+    env: { PATH: path.join(directory, 'bin') },
+    execute,
+  }
+}
+
+test('runs a native client executable with argument arrays and an augmented PATH', async () => {
+  persist('bin/claude', '#!/bin/sh\n', 0o700)
+  await runClientCommand(
+    'claude',
+    ['plugin', 'install', 'agent-inject@copilot-api-marketplace'],
+    commandOptions(),
+  )
+  expect(execute.mock.calls[0][0]).toBe(path.join(directory, 'bin/claude'))
+  expect(execute.mock.calls[0][1]).toEqual([
+    'plugin',
+    'install',
+    'agent-inject@copilot-api-marketplace',
+  ])
+  expect(execute.mock.calls[0][2]).toMatchObject({
+    windowsHide: true,
+    timeout: 120000,
+  })
+  execute.mockRejectedValueOnce(new Error('private CLI stderr'))
+  await expect(
+    runClientCommand('claude', ['plugin'], commandOptions()),
+  ).rejects.toThrow('commandFailed')
+})
+test('resolves npm JS bins without a shell, including sibling Node and lib/node_modules', async () => {
+  persist(
+    'bin/node_modules/@deepseek-ai/dsh/package.json',
+    '{"bin":{"dsh":"cli.js"}}',
+  )
+  persist('bin/node_modules/@deepseek-ai/dsh/cli.js', '// cli')
+  persist('bin/node', '#!/bin/sh\n', 0o700)
+  await runClientCommand(
+    'dsh',
+    ['plugin', '--profile', 'desktop', 'add', 'dsh-copilot-api'],
+    commandOptions(),
+  )
+  expect(execute.mock.calls[0][0]).toBe(path.join(directory, 'bin/node'))
+  expect(execute.mock.calls[0][1][0]).toEndWith('@deepseek-ai/dsh/cli.js')
+  fs.rmSync(path.join(directory, 'bin/node_modules'), { recursive: true })
+  fs.rmSync(path.join(directory, 'bin/node'))
+  persist(
+    'lib/node_modules/@anthropic-ai/claude-code/package.json',
+    '{"bin":"cli.js"}',
+  )
+  persist('lib/node_modules/@anthropic-ai/claude-code/cli.js', '// cli')
+  await runClientCommand('claude', ['plugin'], commandOptions())
+  expect(execute.mock.calls[1][0]).toBe('node')
+})
+test('handles missing client commands and incomplete npm installations', async () => {
+  persist(
+    'bin/node_modules/@deepseek-ai/dsh/package.json',
+    '{"name":"incomplete"}',
+  )
+  await expect(runClientCommand('dsh', [], commandOptions())).rejects.toThrow(
+    'commandMissing',
+  )
+  expect(execute).not.toHaveBeenCalled()
+})
+test('persists Windows environment values through a fixed PowerShell script, without interpolating a key', async () => {
+  const value = 'key-with-"$()&-characters'
+  await writeClientEnvironment(value, 'win32', execute)
+  const [file, args, options] = execute.mock.calls[0]
+  expect(file).toBe('powershell.exe')
+  expect(args.join(' ')).not.toContain(value)
+  expect(options.env?.COPILOT_API_SETUP_KEY).toBe(value)
+  expect(process.env[CLIENT_KEY_ENV]).toBe(value)
+  execute.mockResolvedValueOnce({ stdout: 'original-key\r\n', stderr: '' })
+  expect(await readClientEnvironment('win32', execute)).toBe('original-key')
+  execute.mockResolvedValueOnce({ stdout: '\r\n', stderr: '' })
+  expect(await readClientEnvironment('win32', execute)).toBeNull()
+  await writeClientEnvironment(null, 'win32', execute)
+  expect(process.env[CLIENT_KEY_ENV]).toBeUndefined()
+})
+test('reads, sets and clears macOS launch environment values and handles an absent value', async () => {
+  execute.mockResolvedValueOnce({ stdout: 'key\n', stderr: '' })
+  expect(await readClientEnvironment('darwin', execute)).toBe('key')
+  execute.mockRejectedValueOnce(
+    Object.assign(new Error('missing'), { code: 1 }),
+  )
+  expect(await readClientEnvironment('darwin', execute)).toBeNull()
+  await writeClientEnvironment('new-key', 'darwin', execute)
+  expect(execute.mock.calls[2][1]).toEqual([
+    'setenv',
+    CLIENT_KEY_ENV,
+    'new-key',
+  ])
+  await writeClientEnvironment(null, 'darwin', execute)
+  expect(execute.mock.calls[3][1]).toEqual(['unsetenv', CLIENT_KEY_ENV])
+  execute.mockRejectedValueOnce(new Error('denied'))
+  await expect(readClientEnvironment('darwin', execute)).rejects.toThrow(
+    'environmentFailed',
+  )
+  execute.mockRejectedValueOnce(new Error('denied'))
+  await expect(
+    writeClientEnvironment('key', 'darwin', execute),
+  ).rejects.toThrow('environmentFailed')
+})
+test('patches shell startup files idempotently, quotes keys, and escapes persistent macOS XML', async () => {
+  const value = `key'$HOME"<&`
+  const patched = patchShellEnvironment('# original', value)
+  expect(patched).toStartWith('# original\n')
+  expect(patched).toContain(`'"'"'`)
+  expect(patchShellEnvironment(patched, value)).toBe(patched)
+  expect(patchShellEnvironment(patched, 'new')).not.toContain(value)
+  expect(() =>
+    patchShellEnvironment('# >>> copilot-api client key >>>', 'key'),
+  ).toThrow('invalidConfig')
+  expect(() =>
+    patchShellEnvironment('# <<< copilot-api client key <<<', 'key'),
+  ).toThrow('invalidConfig')
+  expect(macEnvironmentAgent(value)).toContain('&apos;$HOME&quot;&lt;&amp;')
+  await writeClientEnvironment('linux-key', 'linux', execute)
+  expect(await readClientEnvironment('linux', execute)).toBe('linux-key')
+  await writeClientEnvironment(null, 'linux', execute)
+  expect(await readClientEnvironment('linux', execute)).toBeNull()
+  expect(execute).not.toHaveBeenCalled()
+})

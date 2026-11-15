@@ -1,0 +1,577 @@
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
+import {
+  patchJsonConfig,
+  patchTomlConfig,
+  readJsonConfig,
+  readTomlConfig,
+} from '../electron/client-config'
+import {
+  createClientIntegrations,
+  clientIntegrationReply,
+} from '../electron/client-integrations'
+import type { ClientId, ClientSetupInput } from '../shared/client-integrations'
+
+let directory: string
+let environment: string | null
+let run: ReturnType<
+  typeof mock<
+    (
+      command: 'claude' | 'dsh',
+      args: string[],
+    ) => Promise<{ stdout: string; stderr: string }>
+  >
+>
+let writeEnvironment: ReturnType<
+  typeof mock<(value: string | null) => Promise<void>>
+>
+let gateway: { baseUrl: string; apiKeys: string[] }
+const resourceDir = path.resolve(import.meta.dir, '../..')
+const originalFetch = globalThis.fetch
+
+function fixture(
+  extra: Partial<Parameters<typeof createClientIntegrations>[0]> = {},
+) {
+  return createClientIntegrations({
+    homeDir: directory,
+    dataDir: path.join(directory, 'backups'),
+    resourceDir,
+    platform: 'linux',
+    env: {},
+    getGateway: () => Promise.resolve(gateway),
+    runCommand: run,
+    readEnvironment: () => Promise.resolve(environment),
+    writeEnvironment,
+    ...extra,
+  })
+}
+function persist(file: string, content: string) {
+  const destination = path.join(directory, file)
+  fs.mkdirSync(path.dirname(destination), { recursive: true })
+  fs.writeFileSync(destination, content)
+}
+function read(file: string) {
+  return fs.readFileSync(path.join(directory, file), 'utf8')
+}
+async function input(
+  manager: ReturnType<typeof fixture>,
+  client: ClientId,
+  overrides: Partial<ClientSetupInput> = {},
+): Promise<ClientSetupInput> {
+  return {
+    client,
+    revision: (await manager.status(client)).revision,
+    apiKey: gateway.apiKeys[0] ?? 'dummy',
+    model:
+      client === 'claude' ?
+        'codex/my-claude-gpt-6.1-sol[1m]'
+      : 'codex/gpt-6.1-sol',
+    smallModel: '',
+    nativeToolSearch: false,
+    agentContext: false,
+    plugins: [],
+    ...overrides,
+  }
+}
+beforeEach(() => {
+  directory = fs.mkdtempSync(path.join(os.tmpdir(), 'client-integrations-'))
+  environment = null
+  run = mock(() => Promise.resolve({ stdout: '', stderr: '' }))
+  writeEnvironment = mock((value) => {
+    environment = value
+    return Promise.resolve()
+  })
+  gateway = { baseUrl: 'http://localhost:5141', apiKeys: ['test-gateway-key'] }
+})
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  fs.rmSync(directory, { recursive: true, force: true })
+})
+
+describe('comment-preserving client config edits', () => {
+  test('merges JSONC without removing comments or unrelated settings', () => {
+    const source =
+      '{\n  // Keep this\n  "env": {"OTHER": "yes",},\n  "permissions": {"deny": ["Read(.env)"]},\n}\n'
+    const result = patchJsonConfig(source, [
+      [['env', 'ANTHROPIC_BASE_URL'], 'http://localhost:5141'],
+      [['model'], 'my-model'],
+    ])
+    expect(result).toContain('// Keep this')
+    expect(readJsonConfig(result)).toMatchObject({
+      env: { OTHER: 'yes', ANTHROPIC_BASE_URL: 'http://localhost:5141' },
+      permissions: { deny: ['Read(.env)'] },
+      model: 'my-model',
+    })
+    expect(patchJsonConfig('', [[['model'], 'test']])).toContain('test')
+    expect(() => patchJsonConfig('[1]', [])).toThrow('invalidConfig')
+    expect(() => readJsonConfig('{broken')).toThrow('invalidConfig')
+  })
+  test('preserves TOML comments, quoted keys, multiline values and other tables', () => {
+    const source =
+      '# Header\nmodel = "old" # main model\nnotes = """\n[model_providers.fake]\nnot a table\n"""\n[model_providers."copilot_api"]\nbase_url = "old" # keep\nother = true\n[features]\ninstant_interrupt = true\nkeep = true\n[projects."/work"]\ntrust_level = "trusted"\n'
+    const result = patchTomlConfig(source, [
+      [['model'], 'new'],
+      [['model_providers', 'copilot_api', 'base_url'], 'http://localhost:5141'],
+      [['model_providers', 'copilot_api', 'env_key'], 'GITHUB_COPILOT_API_KEY'],
+      [['features', 'instant_interrupt'], false],
+    ])
+    expect(result).toContain('# Header')
+    expect(result).toContain('"new" # main model')
+    expect(result).toContain('"http://localhost:5141" # keep')
+    expect(result).toContain('[projects."/work"]\ntrust_level = "trusted"')
+    expect(readTomlConfig(result)).toMatchObject({
+      model: 'new',
+      model_providers: { copilot_api: { other: true } },
+      features: { keep: true, instant_interrupt: false },
+    })
+  })
+  test('updates inline/dotted tables, CRLF and files without a final newline', () => {
+    for (const source of [
+      'model_providers = { copilot_api = { base_url = "old" } }\r\n',
+      'model_providers.copilot_api.base_url = "old"',
+      '[model_providers.copilot_api]\r\nbase_url = "old"\r\n',
+      'model_providers = {}',
+    ]) {
+      const result = patchTomlConfig(source, [
+        [['model_providers', 'copilot_api', 'base_url'], 'new'],
+        [['model_providers', 'copilot_api', 'env_key'], 'KEY'],
+        [['model'], 'gpt'],
+      ])
+      expect(readTomlConfig(result)).toMatchObject({
+        model: 'gpt',
+        model_providers: { copilot_api: { base_url: 'new', env_key: 'KEY' } },
+      })
+    }
+    expect(() => patchTomlConfig('[broken', [[['model'], 'new']])).toThrow(
+      'invalidConfig',
+    )
+    expect(() =>
+      patchTomlConfig('features = false', [
+        [['features', 'instant_interrupt'], false],
+      ]),
+    ).toThrow('invalidConfig')
+  })
+})
+
+describe('client setup and restore', () => {
+  test('inspects all clients without creating any files and respects custom config homes', async () => {
+    const manager = fixture({
+      env: {
+        CLAUDE_CONFIG_DIR: path.join(directory, 'claude-custom'),
+        CODEX_HOME: path.join(directory, 'codex-custom'),
+        XDG_CONFIG_HOME: path.join(directory, 'xdg'),
+      },
+    })
+    const state = await manager.getState()
+    expect(state.clients.map((client) => client.state)).toEqual([
+      'unconfigured',
+      'unconfigured',
+      'unconfigured',
+    ])
+    expect(state.clients[0].configPath).toContain('claude-custom')
+    expect(state.clients[1].configPath).toContain('xdg/opencode')
+    expect(state.clients[2].configPath).toContain('codex-custom')
+    expect(fs.readdirSync(directory)).toEqual([])
+  })
+  test('configures Claude default and fast models and restores the exact original JSONC', async () => {
+    const source =
+      '{\n // keep my permissions\n "model": "old", "env": {"OTHER":"keep","ANTHROPIC_MODEL":"pinned","CLAUDE_CODE_USE_BEDROCK":"1"}, "permissions": {"deny":["Read(.env)"]}\n}\n'
+    persist('.claude/settings.json', source)
+    const manager = fixture()
+    const result = await manager.setup(
+      await input(manager, 'claude', {
+        smallModel: 'my-claude-gpt-6-luna[1m]',
+      }),
+    )
+    expect(result.status.state).toBe('configured')
+    const config = readJsonConfig(read('.claude/settings.json'))
+    expect(config).toMatchObject({
+      model: 'codex/my-claude-gpt-6.1-sol[1m]',
+      env: {
+        OTHER: 'keep',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: 'codex/my-claude-gpt-6.1-sol[1m]',
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: 'my-claude-gpt-6-luna[1m]',
+        ANTHROPIC_BASE_URL: gateway.baseUrl,
+        ANTHROPIC_AUTH_TOKEN: 'test-gateway-key',
+      },
+    })
+    expect(read('.claude/settings.json')).toContain('// keep my permissions')
+    const envFields = readJsonConfig(read('.claude/settings.json'))
+      .env as Record<string, unknown>
+    expect(envFields).not.toHaveProperty('ANTHROPIC_MODEL')
+    expect(envFields.CLAUDE_CODE_USE_BEDROCK).toBe('0')
+    expect(run).not.toHaveBeenCalled()
+    expect(
+      fs.statSync(path.join(directory, 'backups/claude.json')).mode & 0o777,
+    ).toBe(0o600)
+    await manager.restore('claude', result.status.revision)
+    expect(read('.claude/settings.json')).toBe(source)
+    expect((await manager.status('claude')).canRestore).toBe(false)
+  })
+  test('keeps the first backup across repeated updates and uses dummy only without gateway auth', async () => {
+    gateway.apiKeys = []
+    const manager = fixture()
+    const initial = await input(manager, 'claude')
+    await expect(
+      manager.setup({ ...initial, apiKey: 'not-dummy' }),
+    ).rejects.toThrow('invalidKey')
+    await manager.setup(initial)
+    const first = read('.claude/settings.json')
+    await manager.setup(await input(manager, 'claude'))
+    expect(read('.claude/settings.json')).toBe(first)
+    const state = await manager.status('claude')
+    await manager.restore('claude', state.revision)
+    expect(fs.existsSync(path.join(directory, '.claude/settings.json'))).toBe(
+      false,
+    )
+  })
+  test('rejects stale revisions, later manual edits, invalid inputs and symlinks', async () => {
+    const manager = fixture()
+    const stale = await input(manager, 'claude')
+    persist('.claude/settings.json', '{"external":true}')
+    await expect(manager.setup(stale)).rejects.toThrow('conflict')
+    const configured = await manager.setup(await input(manager, 'claude'))
+    persist(
+      '.claude/settings.json',
+      read('.claude/settings.json') + '\n// external edit',
+    )
+    await expect(
+      manager.restore('claude', configured.status.revision),
+    ).rejects.toThrow('conflict')
+    await expect(
+      manager.restore('claude', (await manager.status('claude')).revision),
+    ).rejects.toThrow('conflict')
+    await expect(manager.setup({ ...stale, model: '' })).rejects.toThrow(
+      'invalidInput',
+    )
+    await expect(
+      manager.setup({ ...stale, apiKey: 'key\nline' }),
+    ).rejects.toThrow('invalidInput')
+    fs.rmSync(path.join(directory, '.claude/settings.json'))
+    persist('linked.json', '{}')
+    fs.symlinkSync(
+      path.join(directory, 'linked.json'),
+      path.join(directory, '.claude/settings.json'),
+    )
+    expect((await manager.status('claude')).error).toBe('symlinkConfig')
+    await expect(manager.setup(await input(manager, 'claude'))).rejects.toThrow(
+      'symlinkConfig',
+    )
+    expect(read('linked.json')).toBe('{}')
+  })
+  test('installs the actual OpenCode v2 provider and passes custom URL/key at runtime', async () => {
+    const manager = fixture()
+    const result = await manager.setup(
+      await input(manager, 'opencode', { agentContext: true }),
+    )
+    expect(result.status.state).toBe('configured')
+    expect(result.status.agentContext).toBe(true)
+    const fetchMock = mock(() =>
+      Promise.resolve(
+        Response.json({
+          data: [{ id: 'model', modelID: 'model', capabilities: {}, cost: [] }],
+        }),
+      ),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const imported = (await import(
+      pathToFileURL(
+        path.join(
+          directory,
+          '.config/opencode/plugins/copilot-api-provider.js',
+        ),
+      ).href
+    )) as { default: { setup: (ctx: unknown) => Promise<void> } }
+    const add = mock()
+    await imported.default.setup({
+      options: { refreshIntervalMs: 0 },
+      provider: { transform: (fn: (editor: unknown) => void) => fn({ add }) },
+    })
+    expect(fetchMock.mock.calls[0]).toMatchObject([
+      `${gateway.baseUrl}/v1/models`,
+      { headers: { 'x-api-key': 'test-gateway-key' } },
+    ])
+    expect(add.mock.calls[0][0]).toMatchObject({
+      info: {
+        settings: {
+          baseURL: `${gateway.baseUrl}/v1`,
+          apiKey: 'test-gateway-key',
+          compaction: { type: 'native' },
+        },
+      },
+    })
+    await manager.setup(
+      await input(manager, 'opencode', { agentContext: false }),
+    )
+    expect(
+      fs.existsSync(
+        path.join(directory, '.config/opencode/plugins/agent-context.js'),
+      ),
+    ).toBe(false)
+    await manager.restore(
+      'opencode',
+      (await manager.status('opencode')).revision,
+    )
+    expect(
+      fs.existsSync(
+        path.join(
+          directory,
+          '.config/opencode/plugins/copilot-api-provider.js',
+        ),
+      ),
+    ).toBe(false)
+  })
+  test('reports outdated gateway/key/plugin resources and repairs only its managed files', async () => {
+    persist('.config/opencode/opencode.json', '{"theme":"mine"}')
+    const manager = fixture()
+    await manager.setup(await input(manager, 'opencode'))
+    gateway.baseUrl = 'http://localhost:6161'
+    expect((await manager.status('opencode')).state).toBe('outdated')
+    await manager.setup(await input(manager, 'opencode'))
+    persist('.config/opencode/copilot-api/provider.js', '// old plugin')
+    expect((await manager.status('opencode')).state).toBe('outdated')
+    await manager.setup(await input(manager, 'opencode'))
+    expect((await manager.status('opencode')).state).toBe('configured')
+    expect(read('.config/opencode/opencode.json')).toBe('{"theme":"mine"}')
+  })
+  test('configures Codex without changing sign-in or unrelated settings and restores an absent environment value after updates', async () => {
+    const source =
+      '# original\nmodel = "old"\n[features]\nkeep = true\n[projects."/work"]\ntrust_level = "trusted"\n'
+    persist('.codex/config.toml', source)
+    persist('.codex/auth.json', '{"login":"keep"}')
+    persist('.bashrc', '# shell settings\n')
+    const manager = fixture()
+    await manager.setup(await input(manager, 'codex'))
+    expect(readTomlConfig(read('.codex/config.toml'))).toMatchObject({
+      model_provider: 'copilot_api',
+      model_providers: {
+        copilot_api: {
+          base_url: gateway.baseUrl,
+          model_catalog_url: `${gateway.baseUrl}/models`,
+          name: 'OpenAI',
+          requires_openai_auth: true,
+          wire_api: 'responses',
+        },
+      },
+      features: { keep: true, instant_interrupt: false },
+    })
+    expect(read('.codex/auth.json')).toBe('{"login":"keep"}')
+    expect(read('.bashrc')).toStartWith('# shell settings\n')
+    await manager.setup(await input(manager, 'codex'))
+    expect((await manager.status('codex')).state).toBe('configured')
+    await manager.restore('codex', (await manager.status('codex')).revision)
+    expect(environment).toBeNull()
+    expect(read('.codex/config.toml')).toBe(source)
+    expect(read('.bashrc')).toBe('# shell settings\n')
+    expect(fs.existsSync(path.join(directory, '.profile'))).toBe(false)
+  })
+  test('preserves a previous Codex environment value and refuses to overwrite an external environment change on restore', async () => {
+    environment = 'original-user-key'
+    const manager = fixture({ platform: 'win32' })
+    await manager.setup(await input(manager, 'codex'))
+    expect(fs.existsSync(path.join(directory, '.bashrc'))).toBe(false)
+    environment = 'external-key'
+    await expect(
+      manager.restore('codex', (await manager.status('codex')).revision),
+    ).rejects.toThrow('conflict')
+    environment = gateway.apiKeys[0]
+    await manager.restore('codex', (await manager.status('codex')).revision)
+    expect(environment).toBe('original-user-key')
+  })
+
+  test('rejects conflicting Codex authentication before modifying files or environment', async () => {
+    const source =
+      '[model_providers.copilot_api.auth]\ncommand = "custom-token-command"\n'
+    persist('.codex/config.toml', source)
+    const manager = fixture()
+    await expect(manager.setup(await input(manager, 'codex'))).rejects.toThrow(
+      'invalidConfig',
+    )
+    expect(read('.codex/config.toml')).toBe(source)
+    expect(writeEnvironment).not.toHaveBeenCalled()
+    expect((await manager.status('codex')).canRestore).toBe(false)
+  })
+  test('creates a persistent macOS LaunchAgent and rolls files back if environment setup fails', async () => {
+    const manager = fixture({ platform: 'darwin' })
+    writeEnvironment.mockRejectedValueOnce(new Error('environmentFailed'))
+    await expect(manager.setup(await input(manager, 'codex'))).rejects.toThrow(
+      'environmentFailed',
+    )
+    expect(fs.existsSync(path.join(directory, '.codex/config.toml'))).toBe(
+      false,
+    )
+    expect((await manager.status('codex')).canRestore).toBe(false)
+    await manager.setup(await input(manager, 'codex'))
+    expect(
+      read('Library/LaunchAgents/com.copilot-api.client-env.plist'),
+    ).toContain('<key>RunAtLoad</key><true/>')
+    writeEnvironment.mockRejectedValueOnce(new Error('environmentFailed'))
+    await expect(
+      manager.restore('codex', (await manager.status('codex')).revision),
+    ).rejects.toThrow('environmentFailed')
+    expect((await manager.status('codex')).state).toBe('configured')
+  })
+  test('uses official Claude plugin commands, supports disabling a bridge and reports partial installation failures', async () => {
+    persist(
+      '.claude/settings.json',
+      '{"enabledPlugins":{"tool-search@copilot-api-marketplace":true,"other@market":true}}',
+    )
+    const manager = fixture()
+    await expect(
+      manager.setup(
+        await input(manager, 'claude', {
+          nativeToolSearch: true,
+          plugins: ['tool-search'],
+        }),
+      ),
+    ).rejects.toThrow('toolSearchConflict')
+    run.mockImplementation(async (command, args) => {
+      expect(command).toBe('claude')
+      if (args[1] === 'list') return { stdout: '[]', stderr: '' }
+      if (args[1] === 'install')
+        persist(
+          '.claude/settings.json',
+          patchJsonConfig(read('.claude/settings.json'), [
+            [['enabledPlugins', args[2]], true],
+          ]),
+        )
+      return { stdout: '', stderr: '' }
+    })
+    const result = await manager.setup(
+      await input(manager, 'claude', {
+        plugins: ['agent-inject'],
+        nativeToolSearch: true,
+      }),
+    )
+    expect(result.status.plugins).toEqual(['agent-inject'])
+    expect(
+      readJsonConfig(read('.claude/settings.json')).enabledPlugins,
+    ).toMatchObject({
+      'tool-search@copilot-api-marketplace': false,
+      'other@market': true,
+    })
+    expect(run.mock.calls[1][1]).toEqual([
+      'plugin',
+      'marketplace',
+      'add',
+      path.join(directory, 'backups/claude-marketplace'),
+      '--scope',
+      'user',
+    ])
+    expect(
+      read('backups/claude-marketplace/.claude-plugin/marketplace.json'),
+    ).toContain('copilot-api-marketplace')
+    run.mockRejectedValueOnce(new Error('commandMissing'))
+    const partial = await manager.setup(
+      await input(manager, 'claude', { plugins: ['agent-inject'] }),
+    )
+    expect(partial.pluginError).toBe('commandMissing')
+    expect(partial.status.canRestore).toBe(true)
+    await manager.restore('claude', partial.status.revision)
+    expect(
+      run.mock.calls.some(
+        (call) => call[1][1] === 'uninstall' && call[1].includes('--keep-data'),
+      ),
+    ).toBe(true)
+  })
+
+  test('updates and enables existing Claude plugins without uninstalling them on restore', async () => {
+    const manager = fixture()
+    run.mockImplementation((_command, args) =>
+      Promise.resolve({
+        stdout:
+          args[1] === 'list' ?
+            JSON.stringify([
+              {
+                id: 'agent-inject@copilot-api-marketplace',
+                scope: 'user',
+                enabled: false,
+              },
+            ])
+          : '',
+        stderr: '',
+      }),
+    )
+    await manager.setup(
+      await input(manager, 'claude', { plugins: ['agent-inject'] }),
+    )
+    expect(run.mock.calls.some((call) => call[1][1] === 'update')).toBe(true)
+    expect(run.mock.calls.some((call) => call[1][1] === 'enable')).toBe(true)
+    await manager.restore('claude', (await manager.status('claude')).revision)
+    expect(run.mock.calls.some((call) => call[1][1] === 'uninstall')).toBe(
+      false,
+    )
+  })
+  test('installs only the Harness plugin into the selected profile and sanitizes errors', async () => {
+    persist('.dsh/profiles/web.yaml', '# profile')
+    persist('.dsh/profiles/desktop/config.yaml', '# profile')
+    const manager = fixture()
+    expect((await manager.getState()).harnessProfiles).toEqual([
+      'desktop',
+      'web',
+    ])
+    await manager.installHarness('desktop')
+    expect(run).toHaveBeenCalledWith('dsh', [
+      'plugin',
+      '--profile',
+      'desktop',
+      'add',
+      'dsh-copilot-api',
+    ])
+    await expect(manager.installHarness('../../profile')).rejects.toThrow()
+    expect(read('.dsh/profiles/web.yaml')).toBe('# profile')
+    expect(
+      await clientIntegrationReply(() => {
+        throw new Error('secret-key-in-command-output')
+      }),
+    ).toEqual({ error: 'operationFailed' })
+    expect(await clientIntegrationReply(() => 42)).toEqual({ data: 42 })
+    await expect(
+      manager.restore('opencode', (await manager.status('opencode')).revision),
+    ).rejects.toThrow('noBackup')
+  })
+  test('fetches each client catalog with the right user agent and gateway authentication', async () => {
+    const fetchModels = mock((_url: unknown, options?: RequestInit) =>
+      Promise.resolve(
+        Response.json(
+          (
+            String(recordHeaders(options).get('user-agent')).startsWith(
+              'claude',
+            )
+          ) ?
+            { data: [{ id: 'my-claude-gpt[1m]', display_name: 'GPT (codex)' }] }
+          : {
+              models: [
+                { slug: 'codex/gpt', display_name: 'GPT (codex)' },
+                { slug: 'codex/gpt' },
+                {},
+              ],
+            },
+        ),
+      ),
+    )
+    const manager = fixture({ fetch: fetchModels as unknown as typeof fetch })
+    expect(await manager.getModels('claude')).toEqual([
+      { id: 'my-claude-gpt[1m]', name: 'GPT (codex)' },
+    ])
+    expect(await manager.getModels('codex')).toHaveLength(1)
+    expect(fetchModels.mock.calls[0][0]).toBe(`${gateway.baseUrl}/v1/models`)
+    expect(recordHeaders(fetchModels.mock.calls[0][1]).get('x-api-key')).toBe(
+      'test-gateway-key',
+    )
+    fetchModels.mockImplementation(() =>
+      Promise.resolve(new Response('', { status: 503 })),
+    )
+    await expect(manager.getModels('claude')).rejects.toThrow('modelsFailed')
+    fetchModels.mockImplementation(() =>
+      Promise.resolve(Response.json({ bad: [] })),
+    )
+    await expect(manager.getModels('codex')).rejects.toThrow('modelsFailed')
+  })
+})
+function recordHeaders(options?: RequestInit) {
+  return new Headers(options?.headers)
+}

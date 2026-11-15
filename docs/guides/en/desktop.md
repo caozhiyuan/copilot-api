@@ -36,6 +36,25 @@ Codex supports manual switching among up to 3 accounts and removal of inactive a
 
 The Dashboard summarizes requests, total tokens, cache hit rate, estimated cost, and the busiest model for the selected period. Token history uses SQLite from the selected runtime.
 
+### Connect coding clients
+
+Open **Client integrations** after configuring your providers. The page uses the gateway's current address and a selected gateway API key (or `dummy` when authentication is disabled). Start the service to load client-specific model lists; existing configurations and plugins can also be updated while it is stopped.
+
+<img src="../../screenshots/desktop-client-integrations.png" alt="Client integrations for Claude Code, OpenCode v2, Codex and DeepSeek Harness" width="1100" />
+
+| Client | Setup |
+| --- | --- |
+| Claude Code | Select a default model and an optional Haiku model. The main model also supplies the Opus, Sonnet and Fable aliases. Merge gateway settings into user `settings.json`; optionally install the bundled `agent-inject` or `tool-search` plugin through the Claude CLI. Native Tool Search and the MCP bridge are separate choices. |
+| OpenCode v2 | Install the bundled model-discovery provider and optionally Agent Context into the global plugin directory. Connection settings follow the selected address and key. OpenCode v1 is not supported by this page. |
+| Codex | Select a default model and configure the `copilot_api` Responses provider and remote model catalog. The gateway key is saved as the user environment variable `GITHUB_COPILOT_API_KEY`; existing Codex sign-in is preserved. |
+| DeepSeek Harness | Select an existing profile and run `dsh plugin --profile <profile> add dsh-copilot-api`. Configure a custom gateway address or key inside Harness when needed. |
+
+Install the clients themselves separately. Claude plugin installation requires a working `claude` command; Harness plugin installation requires `dsh` and its package-manager dependencies. Configuration targets the current OS user, including `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME` when set; Windows and WSL are separate environments.
+
+Configuration edits preserve unrelated settings and comments. **Restore backup** restores the state before the first setup, including files created by the integration and the previous Codex environment value. Newly installed Claude plugins are uninstalled with their data preserved; pre-existing plugins are kept. Restore refuses to overwrite subsequent external file or environment edits. Symbolic-link configurations require manual editing.
+
+Restart clients after setup. For Codex, fully quit and reopen both the app and terminals. macOS saves a user LaunchAgent to restore the key at login; Linux updates Bash/Zsh startup files and requires signing in again for desktop apps. **Refresh** reloads configuration status and available models after gateway changes.
+
 ### View subscriptions
 
 Open **Subscriptions** to view plan names, remaining allowances, reset times, and balances. Refresh providers individually or use **Refresh all**.

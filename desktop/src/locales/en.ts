@@ -1,6 +1,79 @@
 import type { Locale } from './index'
 
 const en: Locale = {
+  clients: {
+    title: 'Client integrations',
+    description:
+      'Connect your local coding clients to this gateway. Configuration applies to your current OS user.',
+    gateway: 'Gateway address',
+    apiKey: 'Gateway API key',
+    noAuth: 'Authentication disabled · dummy',
+    keyNumber: 'Gateway key {{n}}',
+    refresh: 'Refresh',
+    loading: 'Checking client configuration…',
+    configure: 'Configure client',
+    update: 'Update configuration',
+    working: 'Working…',
+    open: 'Open configuration',
+    restore: 'Restore backup',
+    saved: 'Configuration saved. Restart the client to load the changes.',
+    restored:
+      'Original configuration restored. Restart the client to load the changes.',
+    pluginFailed: 'Configuration saved, but plugin installation failed.',
+    stopped:
+      'Start the gateway to load the model lists. You can still update an existing configuration or install plugins while it is stopped.',
+    model: 'Default model',
+    smallModel: 'Fast model (Haiku)',
+    sameModel: 'Use the default model',
+    chooseModel: 'Choose a model',
+    modelHint:
+      'The model list follows enabled providers and their Coding Agent model selections.',
+    claudeDescription:
+      'Choose your default model and connect Claude Code. The main model also supplies the Opus, Sonnet and Fable aliases.',
+    opencodeDescription:
+      'OpenCode v2 only. Install the provider plugin to discover gateway models automatically, including image models.',
+    codexDescription:
+      'Configure the Responses provider, default model and remote model catalog. Uses your existing Codex sign-in.',
+    nativeToolSearch: 'Enable native Tool Search (requires upstream support)',
+    agentInject: 'Agent reminder rules (agent-inject)',
+    toolSearchBridge: 'Tool Search MCP bridge (tool-search)',
+    agentContext: 'Install Agent Context for root session grouping',
+    optionalPlugins: 'Optional Claude Code plugins',
+    codexRestart:
+      'The gateway key is saved to your user environment. Fully quit and reopen Codex and your terminal; on Linux, sign in again for desktop apps.',
+    harnessDescription:
+      'Install dsh-copilot-api into an existing DeepSeek Harness profile.',
+    harnessHint:
+      'Requires dsh on this computer. Set the gateway address and API key in Harness when needed.',
+    profile: 'Harness profile',
+    installPlugin: 'Install plugin',
+    pluginInstalled: 'Plugin installed. Restart DeepSeek Harness.',
+    unconfigured: 'Not configured',
+    configured: 'Configured',
+    outdated: 'Needs update',
+    error: 'Check configuration',
+    errors: {
+      invalidConfig:
+        'The existing configuration is invalid or has an incompatible structure. Open it to correct it first.',
+      symlinkConfig:
+        'The configuration is a symbolic link. Edit its target manually.',
+      invalidInput: 'Check the selected model and installation options.',
+      toolSearchConflict: 'Choose native Tool Search or the MCP bridge.',
+      conflict:
+        'Configuration changed on disk. Refresh before continuing. Restore is blocked when it would overwrite later edits.',
+      invalidKey: 'The gateway key changed. Refresh and choose a current key.',
+      noBackup: 'No backup is available.',
+      commandMissing:
+        'Client command not found. Install the client and reopen Copilot API.',
+      commandFailed:
+        'The client command failed. Check the client installation, profile and network, then retry.',
+      environmentFailed:
+        'Could not update the user environment. Check your OS permissions and retry.',
+      modelsFailed: 'Could not load the models. Check the gateway and refresh.',
+      operationFailed:
+        'The operation failed. Check file permissions and retry.',
+    },
+  },
   studio: {
     title: 'Create',
     description: 'Turn a prompt or an image into something new.',
