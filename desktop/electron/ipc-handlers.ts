@@ -308,8 +308,8 @@ export function registerIpcHandlers(
         }
       },
     }))
-  ipcMain.handle('clients:get-state', () =>
-    clientIntegrationReply(() => clients().getState()),
+  ipcMain.handle('clients:get-state', (_event, agent: unknown) =>
+    clientIntegrationReply(() => clients().getState(agent)),
   )
   ipcMain.handle('clients:get-models', (_event, client: unknown) =>
     clientIntegrationReply(() => clients().getModels(client)),

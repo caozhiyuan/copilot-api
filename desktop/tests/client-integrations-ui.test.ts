@@ -4,6 +4,8 @@ import ClientIntegrationsPage from '../src/pages/ClientIntegrationsPage'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
 import { createTestDom } from './helpers/dom'
 import type {
+  ClientAgent,
+  ClientModelOption,
   ClientIntegrationsState,
   ClientSetupInput,
 } from '../shared/client-integrations'
@@ -12,7 +14,7 @@ import type { ClientIntegrationReply } from '../src/types/ipc'
 let dom: Awaited<ReturnType<typeof createTestDom>>
 let state: ClientIntegrationsState
 let readState: ReturnType<
-  typeof mock<() => Promise<ClientIntegrationReply<ClientIntegrationsState>>>
+  typeof mock<Window['electronAPI']['getClientIntegrations']>
 >
 let setup: ReturnType<
   typeof mock<
@@ -51,7 +53,14 @@ beforeEach(async () => {
       plugins: [],
     })),
   }
-  readState = mock(() => Promise.resolve({ data: structuredClone(state) }))
+  readState = mock((agent) => {
+    const value = structuredClone(state)
+    value.clients = value.clients.filter(
+      (item) => !agent || item.client === agent,
+    )
+    if (agent && agent !== 'harness') value.harnessProfiles = []
+    return Promise.resolve({ data: value })
+  })
   setup = mock((input) =>
     Promise.resolve({
       data: {
@@ -102,7 +111,12 @@ afterEach(async () => {
   await act(async () => dom.root.unmount())
   await dom.cleanup()
 })
-async function render(serverRunning = true, initialBaseUrl?: string) {
+async function render(
+  serverRunning = true,
+  initialBaseUrl?: string,
+  agent?: ClientAgent,
+) {
+  if (agent) dom.win.localStorage.setItem('copilot-api-client-agent', agent)
   await act(async () =>
     dom.root.render(
       createElement(LanguageProvider, {
@@ -113,6 +127,15 @@ async function render(serverRunning = true, initialBaseUrl?: string) {
       }),
     ),
   )
+}
+async function selectAgent(agent: ClientAgent) {
+  await act(async () => {
+    const element = dom.container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Agent"]',
+    )!
+    element.value = agent
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+  })
 }
 function card(client: string) {
   return dom.container.querySelector<HTMLElement>(`[data-client="${client}"]`)!
@@ -146,7 +169,7 @@ async function profile(value: string) {
 }
 
 describe('client integration page', () => {
-  test('shows all cards immediately while configuration loads and fills saved settings in later', async () => {
+  test('shows only the selected agent immediately and fills saved settings in later', async () => {
     let complete!: (
       reply: ClientIntegrationReply<ClientIntegrationsState>,
     ) => void
@@ -157,51 +180,110 @@ describe('client integration page', () => {
         }),
     )
     await render(true, 'http://localhost:5141')
-    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(4)
+    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(1)
     expect(dom.container.textContent).toContain('http://localhost:5141')
     expect(dom.container.textContent).toContain('Checking…')
     expect(dom.container.textContent).not.toContain('Authentication disabled')
-    expect(button(card('opencode'), 'Configure client').disabled).toBe(true)
-    expect(
-      card('opencode').querySelector<HTMLInputElement>(
-        'input[type="checkbox"]',
-      )!.checked,
-    ).toBe(true)
-    expect(button(card('harness'), 'Install plugin').disabled).toBe(true)
-    expect(getModels).toHaveBeenCalledTimes(2)
+    expect(button(card('codex'), 'Configure client').disabled).toBe(true)
+    expect(getModels.mock.calls.map((call) => call[0])).toEqual(['codex'])
+    expect(readState).toHaveBeenCalledWith('codex')
 
     state.clients[2].model = 'existing-model'
     state.harnessProfiles = ['desktop']
     await act(async () => complete({ data: structuredClone(state) }))
     expect(card('codex').querySelector('select')!.value).toBe('existing-model')
+    expect(button(card('codex'), 'Configure client').disabled).toBe(false)
+    await selectAgent('harness')
     expect(card('harness').querySelector('input')!.value).toBe('desktop')
-    expect(button(card('opencode'), 'Configure client').disabled).toBe(false)
     expect(button(card('harness'), 'Install plugin').disabled).toBe(false)
     await profile('custom-profile')
     await click(dom.container, 'Refresh')
     expect(card('harness').querySelector('input')!.value).toBe('custom-profile')
   })
-  test('shows four clients, only OpenCode v2, and masked gateway key choices', async () => {
+  test('defaults to Codex, offers all four agents, and fetches only the selected catalogs', async () => {
     await render()
-    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(4)
-    expect(
-      [...dom.container.querySelectorAll('[data-client] h3')].map(
-        (heading) => heading.textContent,
-      ),
-    ).toEqual(['Codex', 'Claude Code', 'OpenCode v2', 'DeepSeek Harness'])
+    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(1)
+    const picker = dom.container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Agent"]',
+    )!
+    expect(picker.value).toBe('codex')
+    expect([...picker.options].map((option) => option.textContent)).toEqual([
+      'Codex',
+      'OpenCode v2',
+      'Claude Code',
+      'DeepSeek Harness',
+    ])
+    expect(getModels).toHaveBeenCalledWith('codex')
+    await selectAgent('opencode')
     expect(card('opencode').textContent).toContain('OpenCode v2 only')
     expect(dom.container.textContent).not.toContain('OpenCode v1')
     expect(dom.container.textContent).not.toContain('private-gateway-key')
     expect(dom.container.textContent).toContain('http://localhost:5141')
     expect(dom.container.textContent).toContain('Gateway key 1')
+    expect(getModels).toHaveBeenCalledTimes(1)
+    await selectAgent('claude')
     expect(button(card('claude'), 'Configure client').disabled).toBe(true)
     expect(getModels.mock.calls.map((call) => call[0])).toEqual([
-      'claude',
       'codex',
+      'claude',
+    ])
+    expect(readState.mock.calls.map((call) => call[0])).toEqual([
+      'codex',
+      'opencode',
+      'claude',
     ])
   })
-  test('requires a default model and saves four Claude aliases and the review model independently', async () => {
+  test('switches away from slow Codex checks and ignores late configuration and catalog replies', async () => {
+    let completeState!: (
+      reply: ClientIntegrationReply<ClientIntegrationsState>,
+    ) => void
+    let completeModels!: (
+      reply: ClientIntegrationReply<ClientModelOption[]>,
+    ) => void
+    readState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeState = resolve
+        }),
+    )
+    getModels.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeModels = resolve
+        }),
+    )
     await render()
+    await selectAgent('claude')
+    await select('claude', 0, 'codex/my-claude-gpt[1m]')
+    expect(button(card('claude'), 'Configure client').disabled).toBe(false)
+    await act(async () => {
+      completeState({ data: { ...state, clients: [state.clients[2]] } })
+      completeModels({ data: [{ id: 'late-codex-model', name: 'Late' }] })
+    })
+    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(1)
+    expect(card('claude').querySelector('select')!.value).toBe(
+      'codex/my-claude-gpt[1m]',
+    )
+    expect(card('claude').textContent).not.toContain('late-codex-model')
+    expect(button(card('claude'), 'Configure client').disabled).toBe(false)
+  })
+  test('ignores an invalid saved agent and remembers the selection when reopening the page', async () => {
+    dom.win.localStorage.setItem('copilot-api-client-agent', 'invalid-agent')
+    await render()
+    expect(card('codex')).not.toBeNull()
+    await selectAgent('opencode')
+    expect(dom.win.localStorage.getItem('copilot-api-client-agent')).toBe(
+      'opencode',
+    )
+    await act(async () => dom.root.render(null))
+    await render()
+    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(1)
+    expect(card('opencode')).not.toBeNull()
+    expect(readState.mock.calls.at(-1)?.[0]).toBe('opencode')
+    expect(getModels).toHaveBeenCalledTimes(1)
+  })
+  test('requires a default model and saves four Claude aliases and the review model independently', async () => {
+    await render(true, undefined, 'claude')
     expect(card('claude').querySelectorAll('select')[5].value).toBe('')
     await select('claude', 0, 'codex/my-claude-gpt[1m]')
     await select('claude', 1, 'my-claude-small[1m]')
@@ -241,7 +323,7 @@ describe('client integration page', () => {
       smallModel: 'existing-haiku',
       reviewModel: 'existing-review',
     })
-    await render(false)
+    await render(false, undefined, 'claude')
     expect(
       [...card('claude').querySelectorAll('select')].map((el) => el.value),
     ).toEqual([
@@ -276,7 +358,7 @@ describe('client integration page', () => {
         },
       }),
     )
-    await render()
+    await render(true, undefined, 'claude')
     await select('claude', 0, 'codex/my-claude-gpt[1m]')
     const checkboxes = card('claude').querySelectorAll<HTMLInputElement>(
       'input[type="checkbox"]',
@@ -319,10 +401,9 @@ describe('client integration page', () => {
   })
   test('installs OpenCode plugins while stopped and does not fetch model catalogs', async () => {
     state.apiKeys = []
-    await render(false)
+    await render(false, undefined, 'opencode')
     expect(getModels).not.toHaveBeenCalled()
     expect(dom.container.textContent).toContain('Authentication disabled')
-    expect(dom.container.textContent).toContain('Start the gateway to load')
     expect(
       card('opencode').querySelector<HTMLInputElement>(
         'input[type="checkbox"]',
@@ -336,7 +417,7 @@ describe('client integration page', () => {
     })
   })
   test('keeps Agent Context disabled after saving that choice', async () => {
-    await render(false)
+    await render(false, undefined, 'opencode')
     await act(async () =>
       card('opencode')
         .querySelector<HTMLInputElement>('input[type="checkbox"]')!
@@ -366,7 +447,8 @@ describe('client integration page', () => {
     expect(card('codex').textContent).toContain('Configuration changed on disk')
   })
   test('installs the Harness plugin for a selected profile, validates names and reports command errors', async () => {
-    await render()
+    await render(true, undefined, 'harness')
+    expect(getModels).not.toHaveBeenCalled()
     expect(card('harness').querySelector('input')!.value).toBe('web')
     await profile('desktop')
     await click(card('harness'), 'Install plugin')
@@ -384,19 +466,20 @@ describe('client integration page', () => {
     await render()
     expect(dom.container.textContent).toContain('The operation failed')
     expect(dom.container.textContent).not.toContain('private-error-content')
-    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(4)
-    expect(button(card('opencode'), 'Configure client').disabled).toBe(true)
+    expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(1)
+    expect(button(card('codex'), 'Configure client').disabled).toBe(true)
     getModels.mockResolvedValue({ error: 'modelsFailed' })
+    state.clients[2].model = 'codex/gpt'
     await click(dom.container, 'Refresh')
     expect(dom.container.textContent).toContain('Could not load the models')
     setup.mockResolvedValueOnce({ error: 'invalidKey' })
-    await click(card('opencode'), 'Configure client')
-    expect(card('opencode').textContent).toContain('The gateway key changed')
+    await click(card('codex'), 'Configure client')
+    expect(card('codex').textContent).toContain('The gateway key changed')
   })
   test('disables setup for invalid existing configuration and offers opening it', async () => {
     state.clients[1].state = 'error'
     state.clients[1].error = 'invalidConfig'
-    await render()
+    await render(true, undefined, 'opencode')
     expect(button(card('opencode'), 'Configure client').disabled).toBe(true)
     expect(card('opencode').textContent).toContain(
       'The existing configuration is invalid',

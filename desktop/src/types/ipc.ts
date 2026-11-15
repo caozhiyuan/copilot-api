@@ -1,5 +1,6 @@
 import type { LangPreference } from '../locales'
 import type {
+  ClientAgent,
   ClientId,
   ClientIntegrationsState,
   ClientIntegrationStatus,
@@ -404,9 +405,9 @@ declare global {
         provider: SubscriptionProvider,
       ) => Promise<SubscriptionUsage | null>
       fetchModels: () => Promise<unknown>
-      getClientIntegrations: () => Promise<
-        ClientIntegrationReply<ClientIntegrationsState>
-      >
+      getClientIntegrations: (
+        agent?: ClientAgent,
+      ) => Promise<ClientIntegrationReply<ClientIntegrationsState>>
       getClientModels: (
         client: 'claude' | 'codex',
       ) => Promise<ClientIntegrationReply<ClientModelOption[]>>

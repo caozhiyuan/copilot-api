@@ -1360,7 +1360,7 @@ describe('desktop client integration IPC', () => {
   test('exposes client configuration and plugin operations through preload', async () => {
     await import('../electron/preload')
     if (!preloadApi) throw new Error('Preload bridge was not exposed')
-    await preloadApi.getClientIntegrations()
+    await preloadApi.getClientIntegrations('claude')
     await preloadApi.getClientModels('claude')
     const input = {
       client: 'claude' as const,
@@ -1380,7 +1380,7 @@ describe('desktop client integration IPC', () => {
     await preloadApi.restoreClient('claude', 'revision')
     await preloadApi.openClientConfig('claude')
     await preloadApi.installHarnessPlugin('desktop')
-    expect(rendererInvoke).toHaveBeenCalledWith('clients:get-state')
+    expect(rendererInvoke).toHaveBeenCalledWith('clients:get-state', 'claude')
     expect(rendererInvoke).toHaveBeenCalledWith('clients:get-models', 'claude')
     expect(rendererInvoke).toHaveBeenCalledWith('clients:setup', input)
     expect(rendererInvoke).toHaveBeenCalledWith(
@@ -1395,11 +1395,20 @@ describe('desktop client integration IPC', () => {
     )
   })
   test('uses the actual running or saved gateway address and never supplies the admin key', async () => {
-    const runningState = (await invoke('clients:get-state')) as {
-      data: { baseUrl: string; apiKeys: string[] }
+    const runningState = (await invoke('clients:get-state', 'opencode')) as {
+      data: {
+        baseUrl: string
+        apiKeys: string[]
+        clients: Array<{ client: string }>
+        harnessProfiles: string[]
+      }
     }
     expect(runningState.data.baseUrl).toBe('http://127.0.0.1:4141')
     expect(runningState.data.apiKeys).toEqual(['old-api'])
+    expect(runningState.data.clients.map((item) => item.client)).toEqual([
+      'opencode',
+    ])
+    expect(runningState.data.harnessProfiles).toEqual([])
     running = false
     settings.lastPort = 6161
     settings.host = '0.0.0.0'
@@ -1408,6 +1417,9 @@ describe('desktop client integration IPC', () => {
     }
     expect(stoppedState.data.baseUrl).toBe('http://localhost:6161')
     expect(await invoke('clients:setup', {})).toEqual({ error: 'invalidInput' })
+    expect(await invoke('clients:get-state', 'invalid-agent')).toEqual({
+      error: 'invalidInput',
+    })
     expect(await invoke('clients:restore', 'bad-client', '')).toHaveProperty(
       'error',
     )

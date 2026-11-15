@@ -182,6 +182,27 @@ describe('client setup and restore', () => {
     expect(state.clients[2].configPath).toContain('codex-custom')
     expect(fs.readdirSync(directory)).toEqual([])
   })
+  test('inspects only the requested agent and skips unrelated environment and profile checks', async () => {
+    persist('.dsh/profiles/web.yaml', '# profile')
+    const readEnvironment = mock(() => Promise.resolve(null))
+    const manager = fixture({ readEnvironment })
+    for (const agent of ['claude', 'opencode'] as const) {
+      const state = await manager.getState(agent)
+      expect(state.clients.map((item) => item.client)).toEqual([agent])
+      expect(state.harnessProfiles).toEqual([])
+    }
+    const harness = await manager.getState('harness')
+    expect(harness.clients).toEqual([])
+    expect(harness.harnessProfiles).toEqual(['web'])
+    expect(readEnvironment).not.toHaveBeenCalled()
+    expect(
+      (await manager.getState('codex')).clients.map((item) => item.client),
+    ).toEqual(['codex'])
+    expect(readEnvironment).toHaveBeenCalledTimes(1)
+    await expect(manager.getState('invalid-agent')).rejects.toThrow(
+      'invalidInput',
+    )
+  })
   test('configures Claude default and fast models and restores the exact original JSONC', async () => {
     const source =
       '{\n // keep my permissions\n "model": "old", "env": {"OTHER":"keep","ANTHROPIC_MODEL":"pinned","CLAUDE_CODE_USE_BEDROCK":"1"}, "permissions": {"deny":["Read(.env)"]}\n}\n'

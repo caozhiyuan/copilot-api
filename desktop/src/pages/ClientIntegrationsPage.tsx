@@ -5,6 +5,7 @@ import type { LocaleKey } from '../locales'
 import type { ClientIntegrationReply } from '../types/ipc'
 import {
   CLIENT_ERROR_CODES,
+  type ClientAgent,
   type ClientCommandFailure,
   type ClientId,
   type ClientIntegrationStatus,
@@ -18,30 +19,32 @@ const fieldClass =
 const buttonClass =
   'rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-soft transition hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-40'
 const primaryClass = `px-3 py-2 ${primaryButtonClass}`
-const clientColumns: ClientId[][] = [['codex', 'claude'], ['opencode']]
-const clientOrder: Record<ClientId, string> = {
-  codex: 'order-1',
-  opencode: 'order-2',
-  claude: 'order-3',
+const agents: ClientAgent[] = ['codex', 'opencode', 'claude', 'harness']
+const agentNames: Record<ClientAgent, string> = {
+  codex: 'Codex',
+  opencode: 'OpenCode v2',
+  claude: 'Claude Code',
+  harness: 'DeepSeek Harness',
 }
-const initialClientStatuses: ClientIntegrationStatus[] = clientColumns
-  .flat()
-  .map((client) => ({
-    client,
-    configPath: '',
-    revision: '',
-    state: 'unconfigured',
-    canRestore: false,
-    model: '',
-    fableModel: '',
-    opusModel: '',
-    sonnetModel: '',
-    smallModel: '',
-    reviewModel: '',
-    nativeToolSearch: false,
-    agentContext: true,
-    plugins: [],
-  }))
+const agentPreferenceKey = 'copilot-api-client-agent'
+const initialClientStatuses: ClientIntegrationStatus[] = (
+  ['codex', 'opencode', 'claude'] as const
+).map((client) => ({
+  client,
+  configPath: '',
+  revision: '',
+  state: 'unconfigured',
+  canRestore: false,
+  model: '',
+  fableModel: '',
+  opusModel: '',
+  sonnetModel: '',
+  smallModel: '',
+  reviewModel: '',
+  nativeToolSearch: false,
+  agentContext: true,
+  plugins: [],
+}))
 type ClientCheckState = 'checking' | 'error' | undefined
 type Translate = ReturnType<typeof useLanguage>['t']
 
@@ -63,11 +66,15 @@ export default function ClientIntegrationsPage({
   initialBaseUrl?: string
 }) {
   const { t } = useLanguage()
+  const [agent, setAgent] = useState<ClientAgent>(
+    () =>
+      agents.find(
+        (value) => value === window.localStorage.getItem(agentPreferenceKey),
+      ) ?? 'codex',
+  )
   const [state, setState] = useState<ClientIntegrationsState>()
   const [apiKey, setApiKey] = useState('dummy')
-  const [models, setModels] = useState<
-    Partial<Record<ClientId, ClientModelOption[]>>
-  >({})
+  const [models, setModels] = useState<ClientModelOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [modelError, setModelError] = useState(false)
@@ -88,9 +95,9 @@ export default function ClientIntegrationsPage({
     setLoading(true)
     setError('')
     setModelError(false)
-    setModels({})
+    setModels([])
     void window.electronAPI
-      .getClientIntegrations()
+      .getClientIntegrations(agent)
       .then((reply) => {
         const value = unwrap(reply)
         if (!active) return
@@ -106,24 +113,34 @@ export default function ClientIntegrationsPage({
       .finally(() => {
         if (active) setLoading(false)
       })
-    if (serverRunning) {
-      for (const client of ['claude', 'codex'] as const) {
-        void window.electronAPI
-          .getClientModels(client)
-          .then((reply) => {
-            const value = unwrap(reply)
-            if (active)
-              setModels((current) => ({ ...current, [client]: value }))
-          })
-          .catch(() => {
-            if (active) setModelError(true)
-          })
-      }
+    if (serverRunning && (agent === 'claude' || agent === 'codex')) {
+      void window.electronAPI
+        .getClientModels(agent)
+        .then((reply) => {
+          const value = unwrap(reply)
+          if (active) setModels(value)
+        })
+        .catch(() => {
+          if (active) setModelError(true)
+        })
     }
     return () => {
       active = false
     }
-  }, [serverRunning, refresh])
+  }, [agent, serverRunning, refresh])
+
+  const selectAgent = (next: ClientAgent) => {
+    setAgent(next)
+    window.localStorage.setItem(agentPreferenceKey, next)
+    setState(undefined)
+    setModels([])
+    setError('')
+    setModelError(false)
+    setLoading(true)
+  }
+  const selectedStatus = displayState.clients.find(
+    (item) => item.client === agent,
+  )
 
   const updateStatus = (status: ClientIntegrationStatus) =>
     setState(
@@ -161,40 +178,63 @@ export default function ClientIntegrationsPage({
         </p>
       )}
       <>
-        <div className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs text-ink-faint">{t('clients.gateway')}</p>
-            <p className="mt-2 break-all font-mono text-sm text-ink">
-              {displayState.baseUrl || '—'}
-            </p>
-          </div>
+        <div
+          className={`grid gap-4 rounded-xl border border-line bg-surface p-4 ${agent === 'harness' ? '' : 'sm:grid-cols-3'}`}
+        >
           <label className="text-xs text-ink-soft">
-            {t('clients.apiKey')}
+            {t('clients.agent')}
             <select
+              aria-label={t('clients.agent')}
               className={fieldClass}
-              value={apiKey}
-              disabled={!!checkState}
-              onChange={(event) => setApiKey(event.target.value)}
+              value={agent}
+              onChange={(event) =>
+                selectAgent(event.target.value as ClientAgent)
+              }
             >
-              {!state ?
-                <option value={apiKey}>
-                  {t(
-                    checkState === 'error' ? 'clients.error' : (
-                      'clients.loading'
-                    ),
-                  )}
+              {agents.map((value) => (
+                <option key={value} value={value}>
+                  {agentNames[value]}
                 </option>
-              : displayState.apiKeys.length ?
-                displayState.apiKeys.map((key, index) => (
-                  <option key={key} value={key}>
-                    {t('clients.keyNumber', { n: index + 1 })}
-                  </option>
-                ))
-              : <option value="dummy">{t('clients.noAuth')}</option>}
+              ))}
             </select>
           </label>
+          {agent !== 'harness' && (
+            <>
+              <div>
+                <p className="text-xs text-ink-faint">{t('clients.gateway')}</p>
+                <p className="mt-2 break-all font-mono text-sm text-ink">
+                  {displayState.baseUrl || '—'}
+                </p>
+              </div>
+              <label className="text-xs text-ink-soft">
+                {t('clients.apiKey')}
+                <select
+                  className={fieldClass}
+                  value={apiKey}
+                  disabled={!!checkState}
+                  onChange={(event) => setApiKey(event.target.value)}
+                >
+                  {!state ?
+                    <option value={apiKey}>
+                      {t(
+                        checkState === 'error' ? 'clients.error' : (
+                          'clients.loading'
+                        ),
+                      )}
+                    </option>
+                  : displayState.apiKeys.length ?
+                    displayState.apiKeys.map((key, index) => (
+                      <option key={key} value={key}>
+                        {t('clients.keyNumber', { n: index + 1 })}
+                      </option>
+                    ))
+                  : <option value="dummy">{t('clients.noAuth')}</option>}
+                </select>
+              </label>
+            </>
+          )}
         </div>
-        {!serverRunning && (
+        {!serverRunning && (agent === 'claude' || agent === 'codex') && (
           <p className="text-xs leading-5 text-ink-faint">
             {t('clients.stopped')}
           </p>
@@ -207,36 +247,24 @@ export default function ClientIntegrationsPage({
             {t('clients.errors.modelsFailed')}
           </p>
         )}
-        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-          {clientColumns.map((clients, index) => (
-            <div key={index} className="contents lg:flex lg:flex-col lg:gap-4">
-              {clients
-                .flatMap((client) =>
-                  displayState.clients.filter(
-                    (status) => status.client === client,
-                  ),
-                )
-                .map((status) => (
-                  <ClientCard
-                    key={status.client}
-                    status={status}
-                    checkState={checkState}
-                    apiKey={apiKey}
-                    models={models[status.client] ?? []}
-                    onUpdate={updateStatus}
-                    t={t}
-                  />
-                ))}
-              {index === 1 && (
-                <HarnessCard
-                  profiles={displayState.harnessProfiles}
-                  checking={!!checkState}
-                  t={t}
-                />
-              )}
-            </div>
-          ))}
-        </div>
+        {agent === 'harness' ?
+          <HarnessCard
+            profiles={displayState.harnessProfiles}
+            checking={!!checkState}
+            t={t}
+          />
+        : selectedStatus && (
+            <ClientCard
+              key={agent}
+              status={selectedStatus}
+              checkState={checkState}
+              apiKey={apiKey}
+              models={models}
+              onUpdate={updateStatus}
+              t={t}
+            />
+          )
+        }
       </>
     </div>
   )
@@ -286,11 +314,6 @@ function ClientCard({
     setAgentContext(status.state === 'unconfigured' || status.agentContext)
     setPlugins(status.plugins)
   }, [status])
-  const names = {
-    claude: 'Claude Code',
-    opencode: 'OpenCode v2',
-    codex: 'Codex',
-  }
   const descriptions = {
     claude: 'clients.claudeDescription',
     opencode: 'clients.opencodeDescription',
@@ -364,7 +387,7 @@ function ClientCard({
       <label className="block text-xs text-ink-soft">
         {label}
         <select
-          aria-label={`${names[status.client]}: ${label}`}
+          aria-label={`${agentNames[status.client]}: ${label}`}
           className={fieldClass}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -383,11 +406,11 @@ function ClientCard({
   return (
     <section
       data-client={status.client}
-      className={`${clientOrder[status.client]} flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5`}
+      className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5"
     >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-ink">
-          {names[status.client]}
+          {agentNames[status.client]}
         </h3>
         <span
           className={`rounded-full px-2.5 py-1 text-[11px] ${!checkState && status.state === 'configured' ? 'bg-green-500/10 text-green-600 dark:text-green-400' : 'bg-sunken text-ink-faint'}`}
@@ -614,7 +637,7 @@ function HarnessCard({
   return (
     <section
       data-client="harness"
-      className="order-4 flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5"
+      className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5"
     >
       <h3 className="text-base font-semibold text-ink">DeepSeek Harness</h3>
       <p className="mt-2 text-xs leading-5 text-ink-faint">

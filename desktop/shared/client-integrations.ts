@@ -1,4 +1,5 @@
 export type ClientId = 'claude' | 'opencode' | 'codex'
+export type ClientAgent = ClientId | 'harness'
 export type ClientPlugin = 'agent-inject' | 'tool-search'
 export const CLIENT_ERROR_CODES = [
   'invalidConfig',

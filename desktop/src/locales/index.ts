@@ -7,6 +7,7 @@ export interface Locale {
   clients: {
     title: string
     description: string
+    agent: string
     gateway: string
     apiKey: string
     noAuth: string

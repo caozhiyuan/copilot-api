@@ -4,7 +4,8 @@ const en: Locale = {
   clients: {
     title: 'Client integrations',
     description:
-      'Connect your local coding clients to this gateway. Configuration applies to your current OS user.',
+      'Choose an agent to connect to this gateway. Configuration applies to your current OS user.',
+    agent: 'Agent',
     gateway: 'Gateway address',
     apiKey: 'Gateway API key',
     noAuth: 'Authentication disabled · dummy',

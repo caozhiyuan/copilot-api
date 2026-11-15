@@ -30,6 +30,7 @@ import {
 } from '../shared/client-integrations'
 
 const clientSchema = z.enum(['claude', 'opencode', 'codex'])
+const agentSchema = clientSchema.or(z.literal('harness')).optional()
 const modelSchema = z
   .string()
   .max(500)
@@ -467,22 +468,29 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
 
   return {
     status,
-    async getState() {
+    async getState(agentInput?: unknown) {
+      const selection = agentSchema.safeParse(agentInput)
+      if (!selection.success) throw new Error('invalidInput')
+      const agent = selection.data
       const gateway = await options.getGateway()
       let harnessProfiles: string[] = []
-      try {
-        harnessProfiles = fs
-          .readdirSync(path.join(home, '.dsh', 'profiles'))
-          .map((name) => name.replace(/\.ya?ml$/i, ''))
-          .filter((name) => /^[\w-]+$/.test(name))
-      } catch {
-        /* Harness may not be installed. */
+      if (!agent || agent === 'harness') {
+        try {
+          harnessProfiles = fs
+            .readdirSync(path.join(home, '.dsh', 'profiles'))
+            .map((name) => name.replace(/\.ya?ml$/i, ''))
+            .filter((name) => /^[\w-]+$/.test(name))
+        } catch {
+          /* Harness may not be installed. */
+        }
       }
+      const selectedClients: ClientId[] =
+        agent === 'harness' ? []
+        : agent ? [agent]
+        : ['claude', 'opencode', 'codex']
       return {
         ...gateway,
-        clients: await Promise.all(
-          (['claude', 'opencode', 'codex'] as const).map(status),
-        ),
+        clients: await Promise.all(selectedClients.map(status)),
         harnessProfiles: [...new Set(harnessProfiles)].sort(),
       }
     },

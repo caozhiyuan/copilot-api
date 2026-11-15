@@ -3,7 +3,8 @@ import type { Locale } from './index'
 const zh: Locale = {
   clients: {
     title: '客户端接入',
-    description: '将本机 Coding 客户端接入网关，配置对当前操作系统用户生效。',
+    description: '选择需要接入的 Agent，配置对当前操作系统用户生效。',
+    agent: 'Agent',
     gateway: '网关地址',
     apiKey: '网关 API Key',
     noAuth: '未启用鉴权 · dummy',

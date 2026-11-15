@@ -103,7 +103,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     provider: 'github-copilot' | 'codex' | 'xai' | 'opencode-go',
   ) => ipcRenderer.invoke('server:fetch-subscription-usage', provider),
   fetchModels: () => ipcRenderer.invoke('server:fetch-models'),
-  getClientIntegrations: () => ipcRenderer.invoke('clients:get-state'),
+  getClientIntegrations: (agent?: string) =>
+    ipcRenderer.invoke('clients:get-state', agent),
   getClientModels: (client: string) =>
     ipcRenderer.invoke('clients:get-models', client),
   setupClient: (input: unknown) => ipcRenderer.invoke('clients:setup', input),
