@@ -58,7 +58,6 @@ const zh: Locale = {
       invalidConfig: '已有配置格式无效或结构不兼容，请打开配置修正后重试。',
       symlinkConfig: '配置是符号链接，请直接编辑其目标文件。',
       invalidInput: '请检查所选模型和安装选项。',
-      toolSearchConflict: '原生 Tool Search 和 MCP bridge 请选择一种。',
       conflict:
         '磁盘上的配置已变化，请刷新后重试。恢复操作不会覆盖安装后的其他修改。',
       invalidKey: '网关密钥已变化，请刷新并选择当前密钥。',

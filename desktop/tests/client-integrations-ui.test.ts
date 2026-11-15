@@ -258,7 +258,7 @@ describe('client integration page', () => {
     expect(card('claude').querySelectorAll('select')[5].value).toBe('')
     expect(setup.mock.calls[0][0].opusModel).toBe('existing-default')
   })
-  test('keeps native Tool Search and its bridge exclusive and reports partial plugin failures', async () => {
+  test('toggles native Tool Search and its bridge independently and reports partial plugin failures', async () => {
     setup.mockImplementation((input) =>
       Promise.resolve({
         data: {
@@ -283,16 +283,22 @@ describe('client integration page', () => {
     )
     await act(async () => checkboxes[2].click())
     await act(async () => checkboxes[0].click())
-    expect(checkboxes[2].checked).toBe(false)
+    expect(checkboxes[2].checked).toBe(true)
     await act(async () => checkboxes[2].click())
-    expect(checkboxes[0].checked).toBe(false)
+    expect(checkboxes[0].checked).toBe(true)
+    await act(async () => checkboxes[2].click())
+    await act(async () => checkboxes[0].click())
+    expect(checkboxes[2].checked).toBe(true)
+    await act(async () => checkboxes[0].click())
     await act(async () => checkboxes[1].click())
     await click(card('claude'), 'Configure client')
     expect(setup.mock.calls[0][0].plugins).toEqual([
       'tool-search',
       'agent-inject',
     ])
-    expect(setup.mock.calls[0][0].nativeToolSearch).toBe(false)
+    expect(setup.mock.calls[0][0].nativeToolSearch).toBe(true)
+    expect(checkboxes[0].checked).toBe(true)
+    expect(checkboxes[2].checked).toBe(true)
     expect(card('claude').textContent).toContain(
       'Configuration saved, but plugin installation failed',
     )

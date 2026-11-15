@@ -500,14 +500,6 @@ describe('client setup and restore', () => {
     const manager = fixture({
       resourceDir: path.join(directory, 'missing-plugin-resources'),
     })
-    await expect(
-      manager.setup(
-        await input(manager, 'claude', {
-          nativeToolSearch: true,
-          plugins: ['tool-search'],
-        }),
-      ),
-    ).rejects.toThrow('toolSearchConflict')
     run.mockImplementation(async (command, args) => {
       expect(command).toBe('claude')
       if (args[1] === 'list') return { stdout: '[]', stderr: '' }
@@ -562,6 +554,36 @@ describe('client setup and restore', () => {
         (call) => call[1][1] === 'uninstall' && call[1].includes('--keep-data'),
       ),
     ).toBe(true)
+  })
+
+  test('saves native Tool Search and the tool-search plugin enabled together', async () => {
+    const manager = fixture()
+    run.mockImplementation((_command, args) => {
+      if (args[1] === 'install')
+        persist(
+          '.claude/settings.json',
+          patchJsonConfig(read('.claude/settings.json'), [
+            [['enabledPlugins', args[2]], true],
+          ]),
+        )
+      return Promise.resolve({
+        stdout: args[1] === 'list' ? '[]' : '',
+        stderr: '',
+      })
+    })
+    const result = await manager.setup(
+      await input(manager, 'claude', {
+        nativeToolSearch: true,
+        plugins: ['tool-search'],
+      }),
+    )
+    expect(result.pluginError).toBeUndefined()
+    expect(result.status.nativeToolSearch).toBe(true)
+    expect(result.status.plugins).toEqual(['tool-search'])
+    expect(readJsonConfig(read('.claude/settings.json'))).toMatchObject({
+      env: { ENABLE_TOOL_SEARCH: 'true' },
+      enabledPlugins: { 'tool-search@copilot-api-marketplace': true },
+    })
   })
 
   test('returns the failed plugin command and exit code while retaining the saved configuration', async () => {

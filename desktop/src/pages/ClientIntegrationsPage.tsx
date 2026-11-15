@@ -349,7 +349,6 @@ function ClientCard({
         [...current, plugin]
       : current.filter((item) => item !== plugin),
     )
-    if (checked && plugin === 'tool-search') setNativeToolSearch(false)
   }
   const chooseModel = (
     label: string,
@@ -458,13 +457,7 @@ function ClientCard({
               <input
                 type="checkbox"
                 checked={nativeToolSearch}
-                onChange={(event) => {
-                  setNativeToolSearch(event.target.checked)
-                  if (event.target.checked)
-                    setPlugins((current) =>
-                      current.filter((plugin) => plugin !== 'tool-search'),
-                    )
-                }}
+                onChange={(event) => setNativeToolSearch(event.target.checked)}
               />
               {t('clients.nativeToolSearch')}
             </label>

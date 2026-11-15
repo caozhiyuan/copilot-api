@@ -522,8 +522,6 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         const data = parsed.data
         if (data.client !== 'opencode' && !data.model.trim())
           throw new Error('invalidInput')
-        if (data.nativeToolSearch && data.plugins.includes('tool-search'))
-          throw new Error('toolSearchConflict')
         const beforeStatus = await status(data.client)
         if (beforeStatus.state === 'error') throw new Error(beforeStatus.error)
         if (beforeStatus.revision !== data.revision) throw new Error('conflict')

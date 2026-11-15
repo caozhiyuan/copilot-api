@@ -4,7 +4,6 @@ export const CLIENT_ERROR_CODES = [
   'invalidConfig',
   'symlinkConfig',
   'invalidInput',
-  'toolSearchConflict',
   'conflict',
   'invalidKey',
   'noBackup',

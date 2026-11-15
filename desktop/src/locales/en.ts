@@ -64,7 +64,6 @@ const en: Locale = {
       symlinkConfig:
         'The configuration is a symbolic link. Edit its target manually.',
       invalidInput: 'Check the selected model and installation options.',
-      toolSearchConflict: 'Choose native Tool Search or the MCP bridge.',
       conflict:
         'Configuration changed on disk. Refresh before continuing. Restore is blocked when it would overwrite later edits.',
       invalidKey: 'The gateway key changed. Refresh and choose a current key.',
