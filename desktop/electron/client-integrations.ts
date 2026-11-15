@@ -14,6 +14,7 @@ import {
   readTomlConfig,
 } from './client-config'
 import { ClientCommandError, runClientCommand } from './client-command'
+import { formatCodexConfig } from './codex-config'
 import {
   CLIENT_KEY_ENV,
   macEnvironmentAgent,
@@ -414,27 +415,29 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         throw new Error('invalidConfig')
       changes.set(
         configPaths.codex,
-        patchTomlConfig(content, [
-          [['model'], input.model.trim()],
-          [['model_provider'], 'copilot_api'],
-          [[...provider, 'name'], 'OpenAI'],
-          [[...provider, 'base_url'], baseUrl],
-          [[...provider, 'model_catalog_url'], `${baseUrl}/models`],
-          [[...provider, 'env_key'], CLIENT_KEY_ENV],
-          [[...provider, 'requires_openai_auth'], true],
-          [[...provider, 'wire_api'], 'responses'],
-          [[...provider, 'supports_websockets'], false],
-          ...CODEX_DEFAULTS.filter(([keys]) => {
-            const value = keys.reduce<unknown>(
-              (current, key) => record(current)[key],
-              config,
-            )
-            return (
-              value === undefined
-              || (typeof value === 'string' && !value.trim())
-            )
-          }),
-        ]),
+        formatCodexConfig(
+          patchTomlConfig(content, [
+            [['model'], input.model.trim()],
+            [['model_provider'], 'copilot_api'],
+            [[...provider, 'name'], 'OpenAI'],
+            [[...provider, 'base_url'], baseUrl],
+            [[...provider, 'model_catalog_url'], `${baseUrl}/models`],
+            [[...provider, 'env_key'], CLIENT_KEY_ENV],
+            [[...provider, 'requires_openai_auth'], true],
+            [[...provider, 'wire_api'], 'responses'],
+            [[...provider, 'supports_websockets'], false],
+            ...CODEX_DEFAULTS.filter(([keys]) => {
+              const value = keys.reduce<unknown>(
+                (current, key) => record(current)[key],
+                config,
+              )
+              return (
+                value === undefined
+                || (typeof value === 'string' && !value.trim())
+              )
+            }),
+          ]),
+        ),
       )
       for (const file of environmentFiles)
         changes.set(

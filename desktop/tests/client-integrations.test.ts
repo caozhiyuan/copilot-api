@@ -481,6 +481,14 @@ describe('client setup and restore', () => {
     persist('.bashrc', '# shell settings\n')
     const manager = fixture()
     await manager.setup(await input(manager, 'codex'))
+    const rendered = read('.codex/config.toml')
+    for (const section of [
+      'model_providers.copilot_api',
+      'features',
+      'analytics',
+    ])
+      expect(rendered).toContain(`[${section}]\n`)
+    expect(rendered).not.toMatch(/^(model_providers|features|analytics)\./m)
     expect(readTomlConfig(read('.codex/config.toml'))).toMatchObject({
       model: 'codex/gpt-6.1-sol',
       model_reasoning_effort: 'max',
