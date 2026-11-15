@@ -1370,6 +1370,36 @@ describe("Alpha search Responses adapter", () => {
     expect(createResponsesMock).not.toHaveBeenCalled()
   })
 
+  test.each([false, "cached", "indexed"])(
+    "keeps cached URL opens readable with external_web_access=%s",
+    async (mode) => {
+      const url = "https://example.com/cached"
+      createResponsesMock.mockImplementation(() =>
+        Promise.resolve(
+          createResponsesResult({
+            answer: "zero\nCached page text\ntwo",
+            sources: [],
+            citations: false,
+          }),
+        ),
+      )
+      await requestFallback(createFallbackPayload({ open: [{ ref_id: url }] }))
+
+      const response = await requestFallback(
+        createFallbackPayload(
+          { open: [{ ref_id: url, lineno: 1 }] },
+          { settings: { external_web_access: mode } },
+        ),
+      )
+      const body = (await response.json()) as { output: string }
+      expect(response.status).toBe(200)
+      expect(body.output).toContain("Open turn0view0")
+      expect(body.output).toContain("L1: Cached page text")
+      expect(body.output).not.toContain("supports live retrieval only")
+      expect(createResponsesMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
   test("computes time locally with the injected clock", async () => {
     const response = await requestFallback(
       createFallbackPayload({

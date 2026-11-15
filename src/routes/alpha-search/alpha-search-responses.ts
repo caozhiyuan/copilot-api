@@ -455,6 +455,7 @@ function processSearchCommands(
 function processOpenCommands(
   commands: AlphaSearchCommands,
   state: SearchOperationState,
+  liveAccessAllowed: boolean,
 ): void {
   for (const command of commands.open ?? []) {
     const directSnapshot = getSnapshot(state.session, command.ref_id)
@@ -474,7 +475,7 @@ function processOpenCommands(
       continue
     }
     const cached =
-      parseHttpUrl(command.ref_id) ? null : (
+      liveAccessAllowed && parseHttpUrl(command.ref_id) ? null : (
         findSnapshotByUrl(state.session, source.result.url)
       )
     if (cached) {
@@ -568,15 +569,16 @@ function processUnsupportedCommands(
 }
 
 function processCommandOperations(
-  commands: AlphaSearchCommands,
+  request: AlphaSearchRequest,
   state: SearchOperationState,
   now: number,
 ): void {
+  const commands = request.commands ?? {}
   processSearchCommands(commands, state)
   if ((commands.image_query?.length ?? 0) > 0) {
     state.warnings.push(IMAGE_UNSUPPORTED)
   }
-  processOpenCommands(commands, state)
+  processOpenCommands(commands, state, supportsLiveAccess(request))
   processClickCommands(commands, state)
   processFindCommands(commands, state)
   if ((commands.screenshot?.length ?? 0) > 0) {
@@ -1012,8 +1014,7 @@ export async function handleAlphaSearchResponses(
     nextReferenceIndex: 0,
   }
   const state = createSearchOperationState(session, turn)
-  const commands = request.commands ?? {}
-  processCommandOperations(commands, state, now)
+  processCommandOperations(request, state, now)
 
   addLiveAccessWarning(request, state)
 
