@@ -339,6 +339,45 @@ describe('client integration page', () => {
     expect(card('claude').querySelectorAll('select')[5].value).toBe('')
     expect(setup.mock.calls[0][0].opusModel).toBe('existing-default')
   })
+  test('reports successful restoration and any plugin uninstall failure together', async () => {
+    Object.assign(state.clients[0], {
+      state: 'configured',
+      model: 'existing-model',
+      canRestore: true,
+    })
+    restore.mockResolvedValueOnce({
+      data: {
+        ...state.clients[0],
+        state: 'unconfigured',
+        canRestore: false,
+        pluginError: 'commandFailed',
+        pluginFailure: {
+          command:
+            'claude plugin uninstall agent-inject@copilot-api-marketplace --scope user --keep-data',
+          exitCode: '1',
+        },
+      },
+    })
+    await render(false, undefined, 'claude')
+    await click(card('claude'), 'Restore backup')
+    expect(card('claude').textContent).toContain(
+      'Original configuration restored',
+    )
+    expect(card('claude').textContent).toContain(
+      'Configuration restored, but plugin removal failed',
+    )
+    expect(card('claude').textContent).toContain('The client command failed')
+    expect(card('claude').textContent).toContain('claude plugin uninstall')
+    expect(card('claude').textContent).toContain('Exit code: 1')
+    expect(card('claude').textContent).not.toContain(
+      'plugin installation failed',
+    )
+    expect(
+      [...card('claude').querySelectorAll('button')].some(
+        (item) => item.textContent === 'Restore backup',
+      ),
+    ).toBe(false)
+  })
   test('toggles native Tool Search and its bridge independently and reports partial plugin failures', async () => {
     setup.mockImplementation((input) =>
       Promise.resolve({

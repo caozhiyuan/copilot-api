@@ -21,6 +21,7 @@ const en: Locale = {
     restored:
       'Original configuration restored. Restart the client to load the changes.',
     pluginFailed: 'Configuration saved, but plugin installation failed.',
+    pluginUninstallFailed: 'Configuration restored, but plugin removal failed.',
     commandExit: 'Exit code: {{code}}',
     stopped:
       'Start the gateway to load the model lists. You can still update an existing configuration or install plugins while it is stopped.',

@@ -331,15 +331,16 @@ function ClientCard({
       if (operation === 'open')
         unwrap(await window.electronAPI.openClientConfig(status.client))
       else if (operation === 'restore') {
-        onUpdate(
-          unwrap(
-            await window.electronAPI.restoreClient(
-              status.client,
-              status.revision,
-            ),
+        const result = unwrap(
+          await window.electronAPI.restoreClient(
+            status.client,
+            status.revision,
           ),
         )
+        onUpdate(result)
         setNotice('restored')
+        setPluginError(result.pluginError ?? '')
+        setPluginFailure(result.pluginFailure)
       } else {
         const result = unwrap(
           await window.electronAPI.setupClient({
@@ -607,7 +608,12 @@ function ClientCard({
           role="alert"
           className="mt-3 text-xs leading-5 text-amber-600 dark:text-amber-400"
         >
-          {t('clients.pluginFailed')} {errorText(t, pluginError)}
+          {t(
+            notice === 'restored' ?
+              'clients.pluginUninstallFailed'
+            : 'clients.pluginFailed',
+          )}{' '}
+          {errorText(t, pluginError)}
           {pluginFailure && (
             <>
               <code className="mt-2 block break-all whitespace-pre-wrap rounded-lg bg-sunken px-3 py-2 font-mono text-ink-soft">

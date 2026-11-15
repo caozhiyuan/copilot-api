@@ -68,6 +68,11 @@ export interface ClientSetupResult {
   pluginFailure?: ClientCommandFailure
 }
 
+export interface ClientRestoreResult extends ClientIntegrationStatus {
+  pluginError?: string
+  pluginFailure?: ClientCommandFailure
+}
+
 export interface ClientCommandFailure {
   command: string
   exitCode?: string

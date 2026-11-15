@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ClientExec } from './client-command'
+import { loadWindowsEnvironmentNotifier } from './windows-environment'
 
 const exec = promisify(execFile)
 const execute: ClientExec = (file, args, options) =>
@@ -98,9 +99,13 @@ export async function writeClientEnvironment(
   value: string | null,
   platform = process.platform,
   run = execute,
+  loadNotifier = loadWindowsEnvironmentNotifier,
 ): Promise<void> {
+  let notify: Awaited<ReturnType<typeof loadNotifier>> | undefined
   try {
     if (platform === 'win32') {
+      // Resolve the native binding before mutating persistent credentials.
+      notify = await loadNotifier()
       try {
         await run('reg.exe', windowsRegistryArgs(value), {
           windowsHide: true,
@@ -124,5 +129,17 @@ export async function writeClientEnvironment(
     else process.env[CLIENT_KEY_ENV] = value
   } catch {
     throw new Error('environmentFailed')
+  }
+  if (notify) {
+    try {
+      if (!(await notify()))
+        console.warn(
+          'Windows environment change notification timed out or failed.',
+        )
+    } catch {
+      // Persistence already succeeded. A notification failure must not roll
+      // client files back while leaving the new registry value in place.
+      console.warn('Failed to notify Windows of the environment change.')
+    }
   }
 }

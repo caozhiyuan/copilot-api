@@ -28,6 +28,7 @@ import {
   type ClientIntegrationStatus,
   type ClientModelOption,
   type ClientPlugin,
+  type ClientRestoreResult,
   type ClientSetupInput,
   type ClientSetupResult,
 } from '../shared/client-integrations'
@@ -403,6 +404,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           [['env', 'ANTHROPIC_MODEL'], undefined],
           [['env', 'CLAUDE_CODE_USE_VERTEX'], '0'],
           [['env', 'CLAUDE_CODE_USE_BEDROCK'], '0'],
+          [['env', 'CLAUDE_CODE_USE_FOUNDRY'], '0'],
           ...Object.entries(CLAUDE_ENV_DEFAULTS)
             .filter(([key]) => environment[key] === undefined)
             .map(([key, value]): [string[], unknown] => [['env', key], value]),
@@ -712,7 +714,10 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         }
       })
     },
-    restore(clientInput: unknown, expectedRevision: unknown) {
+    restore(
+      clientInput: unknown,
+      expectedRevision: unknown,
+    ): Promise<ClientRestoreResult> {
       return transaction(async () => {
         const client = clientSchema.parse(clientInput)
         const currentStatus = await status(client)
@@ -734,17 +739,28 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           throw new Error('conflict')
         // Remove only user-scope plugins first installed by this integration;
         // keep their data and leave pre-existing installations alone.
+        let pluginError: string | undefined
+        let pluginFailure: ClientRestoreResult['pluginFailure']
         if (client === 'claude') {
           for (const plugin of [...(saved.plugins ?? [])]) {
-            await run('claude', [
-              'plugin',
-              'uninstall',
-              `${plugin}@copilot-api-marketplace`,
-              '--scope',
-              'user',
-              '--keep-data',
-            ])
-            saved.plugins = saved.plugins?.filter((item) => item !== plugin)
+            try {
+              await run('claude', [
+                'plugin',
+                'uninstall',
+                `${plugin}@copilot-api-marketplace`,
+                '--scope',
+                'user',
+                '--keep-data',
+              ])
+              saved.plugins = saved.plugins?.filter((item) => item !== plugin)
+            } catch (error) {
+              // Plugin cleanup must not prevent restoring configuration or keys.
+              if (!pluginError) {
+                pluginError = errorCode(error)
+                if (error instanceof ClientCommandError)
+                  pluginFailure = error.details
+              }
+            }
             for (const file of saved.files)
               file.applied = hash(readFile(file.path))
             writeFileAtomically(backupPath(client), JSON.stringify(saved))
@@ -761,7 +777,11 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           throw error
         }
         fs.rmSync(backupPath(client))
-        return status(client)
+        return {
+          ...(await status(client)),
+          ...(pluginError ? { pluginError } : {}),
+          ...(pluginFailure ? { pluginFailure } : {}),
+        }
       })
     },
     openPath(clientInput: unknown) {

@@ -22,6 +22,7 @@ export interface Locale {
     saved: string
     restored: string
     pluginFailed: string
+    pluginUninstallFailed: string
     commandExit: string
     stopped: string
     model: string

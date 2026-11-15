@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, expect, mock, spyOn, test } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -17,10 +17,15 @@ import {
 
 let directory: string
 let execute: ReturnType<typeof mock<ClientExec>>
+type LoadNotifier = NonNullable<Parameters<typeof writeClientEnvironment>[3]>
+let loadNotifier: ReturnType<typeof mock<LoadNotifier>>
+let notify: ReturnType<typeof mock<Awaited<ReturnType<LoadNotifier>>>>
 const originalEnvironment = process.env[CLIENT_KEY_ENV]
 beforeEach(() => {
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'client-command-'))
   execute = mock(() => Promise.resolve({ stdout: 'done', stderr: '' }))
+  notify = mock(() => Promise.resolve(true))
+  loadNotifier = mock(() => Promise.resolve(notify))
 })
 afterEach(() => {
   fs.rmSync(directory, { recursive: true, force: true })
@@ -157,9 +162,9 @@ test('includes safe command diagnostics without forwarding CLI messages or outpu
     new ClientCommandError('claude', [], null).details.exitCode,
   ).toBeUndefined()
 })
-test('reads and writes Windows user environment values through reg.exe, without PowerShell', async () => {
+test('reads and writes Windows user environment values through reg.exe and broadcasts native notifications', async () => {
   const value = 'key-with-"$()&-characters'
-  await writeClientEnvironment(value, 'win32', execute)
+  await writeClientEnvironment(value, 'win32', execute, loadNotifier)
   const [file, args, options] = execute.mock.calls[0]
   expect(file).toBe('reg.exe')
   expect(args).toEqual([
@@ -175,6 +180,7 @@ test('reads and writes Windows user environment values through reg.exe, without 
   ])
   expect(options).toMatchObject({ windowsHide: true, timeout: 10_000 })
   expect(process.env[CLIENT_KEY_ENV]).toBe(value)
+  expect(notify).toHaveBeenCalledTimes(1)
   execute.mockResolvedValueOnce({
     stdout: windowsRegistryValue(value),
     stderr: '',
@@ -201,7 +207,8 @@ test('reads and writes Windows user environment values through reg.exe, without 
   await expect(readClientEnvironment('win32', execute)).rejects.toThrow(
     'environmentFailed',
   )
-  await writeClientEnvironment(null, 'win32', execute)
+  expect(loadNotifier).toHaveBeenCalledTimes(1)
+  await writeClientEnvironment(null, 'win32', execute, loadNotifier)
   expect(execute.mock.calls.at(-1)?.[1]).toEqual([
     'delete',
     'HKCU\\Environment',
@@ -214,16 +221,91 @@ test('reads and writes Windows user environment values through reg.exe, without 
     Object.assign(new Error('missing'), { code: 1 }),
   )
   await expect(
-    writeClientEnvironment(null, 'win32', execute),
+    writeClientEnvironment(null, 'win32', execute, loadNotifier),
   ).resolves.toBeUndefined()
   execute.mockRejectedValueOnce(new Error('denied'))
-  await expect(writeClientEnvironment('key', 'win32', execute)).rejects.toThrow(
-    'environmentFailed',
-  )
+  await expect(
+    writeClientEnvironment('key', 'win32', execute, loadNotifier),
+  ).rejects.toThrow('environmentFailed')
+  expect(notify).toHaveBeenCalledTimes(3)
   expect(execute.mock.calls.every(([command]) => command === 'reg.exe')).toBe(
     true,
   )
 })
+
+test('notifies after persisting the full Windows key and updating the current process', async () => {
+  const value = 'long-key-' + 'x'.repeat(4096) + '-"$()&'
+  const operations: string[] = []
+  execute.mockImplementation(async () => {
+    operations.push('write')
+    return { stdout: '', stderr: '' }
+  })
+  loadNotifier.mockImplementation(async () => {
+    operations.push('load')
+    return notify
+  })
+  notify.mockImplementation(async () => {
+    expect(process.env[CLIENT_KEY_ENV]).toBe(value)
+    operations.push('notify')
+    return true
+  })
+  await writeClientEnvironment(value, 'win32', execute, loadNotifier)
+  expect(operations).toEqual(['load', 'write', 'notify'])
+  expect(execute.mock.calls[0][1]).toContain(value)
+})
+
+test('does not mutate Windows credentials when the native binding cannot load', async () => {
+  process.env[CLIENT_KEY_ENV] = 'previous-key'
+  loadNotifier.mockRejectedValueOnce(new Error('native load failed'))
+  await expect(
+    writeClientEnvironment('new-key', 'win32', execute, loadNotifier),
+  ).rejects.toThrow('environmentFailed')
+  expect(execute).not.toHaveBeenCalled()
+  expect(notify).not.toHaveBeenCalled()
+  expect(process.env[CLIENT_KEY_ENV]).toBe('previous-key')
+})
+
+test('does not notify or change the process value after a registry write failure', async () => {
+  process.env[CLIENT_KEY_ENV] = 'previous-key'
+  execute.mockRejectedValueOnce(new Error('access denied'))
+  await expect(
+    writeClientEnvironment('new-key', 'win32', execute, loadNotifier),
+  ).rejects.toThrow('environmentFailed')
+  expect(notify).not.toHaveBeenCalled()
+  expect(process.env[CLIENT_KEY_ENV]).toBe('previous-key')
+})
+
+test.each(['timeout', 'error'])(
+  'keeps successful Windows persistence when notification has a %s',
+  async (failure) => {
+    if (failure === 'timeout') notify.mockResolvedValueOnce(false)
+    else notify.mockRejectedValueOnce(new Error('private native error'))
+    const warn = spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await expect(
+        writeClientEnvironment('new-key', 'win32', execute, loadNotifier),
+      ).resolves.toBeUndefined()
+      expect(process.env[CLIENT_KEY_ENV]).toBe('new-key')
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('private')
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('new-key')
+    } finally {
+      warn.mockRestore()
+    }
+  },
+)
+
+test.each(['darwin', 'linux'] as const)(
+  'does not load the Windows binding on %s',
+  async (platform) => {
+    loadNotifier.mockRejectedValue(new Error('must not load'))
+    await writeClientEnvironment('key', platform, execute, loadNotifier)
+    expect(process.env[CLIENT_KEY_ENV]).toBe('key')
+    expect(loadNotifier).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+  },
+)
 test('reads, sets and clears macOS launch environment values and handles an absent value', async () => {
   execute.mockResolvedValueOnce({ stdout: 'key\n', stderr: '' })
   expect(await readClientEnvironment('darwin', execute)).toBe('key')

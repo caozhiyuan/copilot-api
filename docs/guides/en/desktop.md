@@ -51,7 +51,7 @@ Open **Client integrations** after configuring your providers. The page uses the
 
 Install the clients themselves separately. Claude plugin installation requires a working `claude` command and access to the GitHub marketplace; Harness plugin installation requires `dsh` and its package-manager dependencies. Configuration targets the current OS user, including `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME` when set; Windows and WSL are separate environments.
 
-Configuration edits preserve unrelated settings and comments. **Restore backup** restores the state before the first setup, including files created by the integration and the previous Codex environment value. Newly installed Claude plugins are uninstalled with their data preserved; pre-existing plugins are kept. Restore refuses to overwrite subsequent external file or environment edits. Symbolic-link configurations require manual editing.
+Configuration edits preserve unrelated settings and comments. **Restore backup** restores the state before the first setup, including files created by the integration and the previous Codex environment value. Newly installed Claude plugins are uninstalled with their data preserved; pre-existing plugins are kept. Plugin removal failures are reported separately and do not prevent configuration restoration. Restore refuses to overwrite subsequent external file or environment edits. Symbolic-link configurations require manual editing.
 
 Restart clients after setup. For Codex, fully quit and reopen both the app and terminals. macOS saves a user LaunchAgent to restore the key at login; Linux updates Bash/Zsh startup files and requires signing in again for desktop apps. **Refresh** reloads configuration status and available models after gateway changes.
 

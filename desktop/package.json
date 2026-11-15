@@ -26,6 +26,7 @@
   "dependencies": {
     "electron-updater": "^6.3.4",
     "jsonc-parser": "^3.3.1",
+    "koffi": "^3.3.8",
     "toml-eslint-parser": "^1.0.3"
   },
   "build": {
@@ -44,6 +45,9 @@
     "files": [
       "out/**/*",
       "resources/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/@koromix/koffi-*/**/*.node"
     ],
     "extraResources": [
       {

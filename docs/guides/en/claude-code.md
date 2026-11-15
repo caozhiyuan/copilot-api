@@ -36,6 +36,7 @@ Example `.claude/settings.json`; adjust the models and optional settings as need
     "CLAUDE_CODE_AUTO_MODE_MODEL": "codex-auto-review",
     "CLAUDE_CODE_USE_VERTEX": "0",
     "CLAUDE_CODE_USE_BEDROCK": "0",
+    "CLAUDE_CODE_USE_FOUNDRY": "0",
     "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",

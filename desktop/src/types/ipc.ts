@@ -3,8 +3,8 @@ import type {
   ClientAgent,
   ClientId,
   ClientIntegrationsState,
-  ClientIntegrationStatus,
   ClientModelOption,
+  ClientRestoreResult,
   ClientSetupInput,
   ClientSetupResult,
 } from '../../shared/client-integrations'
@@ -417,7 +417,7 @@ declare global {
       restoreClient: (
         client: ClientId,
         revision: string,
-      ) => Promise<ClientIntegrationReply<ClientIntegrationStatus>>
+      ) => Promise<ClientIntegrationReply<ClientRestoreResult>>
       openClientConfig: (
         client: ClientId,
       ) => Promise<ClientIntegrationReply<void>>

@@ -266,13 +266,13 @@ describe('client setup and restore', () => {
     const envFields = readJsonConfig(read('.claude/settings.json'))
       .env as Record<string, unknown>
     expect(envFields).not.toHaveProperty('ANTHROPIC_MODEL')
-    expect(envFields).not.toHaveProperty('CLAUDE_CODE_USE_FOUNDRY')
     expect(envFields).not.toHaveProperty('CLAUDE_CODE_AUTO_MODE_MODEL')
     expect(envFields).toMatchObject({
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400000',
       CLAUDE_CODE_AUTO_MODE_SERVER: '0',
       CLAUDE_CODE_USE_VERTEX: '0',
       CLAUDE_CODE_USE_BEDROCK: '0',
+      CLAUDE_CODE_USE_FOUNDRY: '0',
       DISABLE_NON_ESSENTIAL_MODEL_CALLS: '1',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
@@ -292,6 +292,25 @@ describe('client setup and restore', () => {
     expect(read('.claude/settings.json')).toBe(source)
     expect((await manager.status('claude')).canRestore).toBe(false)
   })
+  test('disables an existing Foundry connection and restores its exact original settings', async () => {
+    const source =
+      '{\n // Foundry connection\n "env":{"CLAUDE_CODE_USE_FOUNDRY":"1","ANTHROPIC_FOUNDRY_RESOURCE":"original-resource","ANTHROPIC_FOUNDRY_API_KEY":"original-foundry-key"}\n}\n'
+    persist('.claude/settings.json', source)
+    const manager = fixture()
+    const configured = await manager.setup(await input(manager, 'claude'))
+    expect(configured.status.state).toBe('configured')
+    expect(readJsonConfig(read('.claude/settings.json')).env).toMatchObject({
+      CLAUDE_CODE_USE_FOUNDRY: '0',
+      ANTHROPIC_BASE_URL: gateway.baseUrl,
+      ANTHROPIC_AUTH_TOKEN: gateway.apiKeys[0],
+      ANTHROPIC_FOUNDRY_RESOURCE: 'original-resource',
+      ANTHROPIC_FOUNDRY_API_KEY: 'original-foundry-key',
+    })
+    expect(run).not.toHaveBeenCalled()
+    await manager.restore('claude', configured.status.revision)
+    expect(read('.claude/settings.json')).toBe(source)
+  })
+
   test('saves four independent Claude aliases and the selected review model, and clears an unselected review', async () => {
     const manager = fixture()
     const choices = {
@@ -827,6 +846,123 @@ describe('client setup and restore', () => {
       false,
     )
   })
+
+  test.each([
+    { error: new Error('commandMissing'), code: 'commandMissing' },
+    {
+      error: new ClientCommandError(
+        'claude',
+        [
+          'plugin',
+          'uninstall',
+          'agent-inject@copilot-api-marketplace',
+          '--scope',
+          'user',
+          '--keep-data',
+        ],
+        { code: 1, stderr: 'private CLI output' },
+      ),
+      code: 'commandFailed',
+    },
+    { error: new Error('private CLI output'), code: 'operationFailed' },
+  ])(
+    'restores Claude files and keys after an uninstall error: $code',
+    async ({ error, code }) => {
+      const source =
+        '{\n // original settings\n "env":{"ANTHROPIC_AUTH_TOKEN":"original-key"}, "permissions":{"deny":["Read(.env)"]}\n}\n'
+      persist('.claude/settings.json', source)
+      const manager = fixture()
+      run.mockImplementation(async (_command, args) => {
+        if (args[1] === 'install')
+          persist(
+            '.claude/settings.json',
+            patchJsonConfig(read('.claude/settings.json'), [
+              [['enabledPlugins', args[2]], true],
+            ]),
+          )
+        return { stdout: args[1] === 'list' ? '[]' : '', stderr: '' }
+      })
+      const configured = await manager.setup(
+        await input(manager, 'claude', {
+          plugins: ['agent-inject', 'tool-search'],
+        }),
+      )
+      run.mockClear()
+      run.mockImplementation(async (_command, args) => {
+        if (args[2] === 'agent-inject@copilot-api-marketplace') throw error
+        persist(
+          '.claude/settings.json',
+          patchJsonConfig(read('.claude/settings.json'), [
+            [['enabledPlugins', args[2]], undefined],
+          ]),
+        )
+        return { stdout: '', stderr: '' }
+      })
+
+      const reply = await clientIntegrationReply(() =>
+        manager.restore('claude', configured.status.revision),
+      )
+      expect(reply).toMatchObject({
+        data: { client: 'claude', canRestore: false, pluginError: code },
+      })
+      if (error instanceof ClientCommandError)
+        expect(reply).toMatchObject({ data: { pluginFailure: error.details } })
+      else expect(reply).not.toHaveProperty('data.pluginFailure')
+      expect(JSON.stringify(reply)).not.toContain('private CLI output')
+      expect(read('.claude/settings.json')).toBe(source)
+      expect(fs.existsSync(path.join(directory, 'backups/claude.json'))).toBe(
+        false,
+      )
+      expect(run.mock.calls.map((call) => call[1])).toEqual([
+        [
+          'plugin',
+          'uninstall',
+          'agent-inject@copilot-api-marketplace',
+          '--scope',
+          'user',
+          '--keep-data',
+        ],
+        [
+          'plugin',
+          'uninstall',
+          'tool-search@copilot-api-marketplace',
+          '--scope',
+          'user',
+          '--keep-data',
+        ],
+      ])
+    },
+  )
+
+  test('removes newly created Claude settings even when every plugin uninstall fails', async () => {
+    const manager = fixture()
+    run.mockImplementation(async (_command, args) => ({
+      stdout: args[1] === 'list' ? '[]' : '',
+      stderr: '',
+    }))
+    const configured = await manager.setup(
+      await input(manager, 'claude', {
+        plugins: ['agent-inject', 'tool-search'],
+      }),
+    )
+    run.mockClear()
+    run.mockRejectedValue(new Error('commandMissing'))
+
+    expect(
+      await manager.restore('claude', configured.status.revision),
+    ).toMatchObject({
+      canRestore: false,
+      pluginError: 'commandMissing',
+    })
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(fs.existsSync(path.join(directory, '.claude/settings.json'))).toBe(
+      false,
+    )
+    expect(fs.existsSync(path.join(directory, 'backups/claude.json'))).toBe(
+      false,
+    )
+  })
+
   test('configures Harness env, installs its plugin and restores the first backup', async () => {
     persist('.dsh/profiles/web.yaml', '# profile')
     persist('.dsh/profiles/desktop/config.yaml', '# profile')
