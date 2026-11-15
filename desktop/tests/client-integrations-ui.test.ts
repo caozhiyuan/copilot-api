@@ -251,7 +251,7 @@ describe('client integration page', () => {
     expect(button(dom.container, 'Refresh').disabled).toBe(false)
     expect([...picker.options].map((option) => option.textContent)).toEqual([
       'Codex',
-      'OpenCode v2',
+      'OpenCode',
       'Claude Code',
       'DeepSeek Harness',
     ])

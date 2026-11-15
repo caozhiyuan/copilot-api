@@ -31,7 +31,7 @@ const legendClass = 'px-1 text-xs font-medium text-ink-soft'
 const agents: ClientAgent[] = ['codex', 'opencode', 'claude', 'harness']
 const agentNames: Record<ClientAgent, string> = {
   codex: 'Codex',
-  opencode: 'OpenCode v2',
+  opencode: 'OpenCode',
   claude: 'Claude Code',
   harness: 'DeepSeek Harness',
 }
