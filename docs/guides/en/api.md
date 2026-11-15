@@ -36,16 +36,10 @@ These endpoints mimic the OpenAI API structure.
 
 | Endpoint                    | Method | Description                                                      |
 | --------------------------- | ------ | ---------------------------------------------------------------- |
-| `POST /v1/responses`        | `POST` | OpenAI Most advanced interface for generating model responses. Supports `Content-Encoding: zstd` request bodies and `provider/model` aliases for `openai-responses` providers. Zstd request decompression is limited to Responses routes, including provider-scoped aliases. |
+| `POST /v1/responses`        | `POST` | Generates model responses using the OpenAI Responses API format. Supports `Content-Encoding: zstd` request bodies and `provider/model` aliases for `openai-responses` providers. Zstd request decompression is limited to Responses routes, including provider-scoped aliases. |
 | `POST /v1/chat/completions` | `POST` | Creates a model response for the given chat conversation. Supports `provider/model` aliases for `openai-compatible` providers and can be used without Copilot when the target provider is configured. |
 | `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) receive the merged Codex-format catalog, excluding image-only models. |
 | `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
-
-### Responses WebSocket continuation
-
-For the built-in Codex and GitHub Copilot providers, streamed requests using an upstream WebSocket may reuse the latest completed response or supported interrupted checkpoint on that same socket. The gateway prefers an opaque anchor: a reasoning item's `encrypted_content` or a tool call's type and `call_id`. If the response has no usable opaque anchor and ends with a nonempty text-only assistant message, it uses a SHA-256 hash of that message's text instead. Anchors come from `response.output_item.done`; terminal output fills only missing items. On the next request, opaque anchors are matched from the end of input as before; a text anchor is compared only with the last `role: "assistant"` message, without searching older text. String content and text blocks are normalized to the same text without trimming whitespace. After a match, subsequent assistant items are skipped and `previous_response_id` is sent with input starting at the next non-assistant item, such as a user message or client tool result. The gateway does not retain assistant text or item counts; it retains the response ID, its anchor, and the latest input compaction checkpoint hash. HTTP clients may use this optimization when their upstream transport is WebSocket; upstream HTTP requests are unchanged.
-
-Missing or mismatched anchors, no new input, reconnects, and changed compaction checkpoints send full input. A completed response without a usable anchor clears the older checkpoint. Interrupted responses may save their own ID and anchor only when `status` is `incomplete` and `incomplete_details.reason` is `interrupted`. Anchors do not verify earlier history: after editing or reordering history, explicitly send `previous_response_id: null` or start a new session. A rejected automatic response ID is retried once with full input before any response events have been forwarded. Client-supplied response IDs are left intact. See the [OpenAI WebSocket continuation contract](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works).
 
 ### Model Discovery Sources
 
@@ -61,7 +55,9 @@ All models.dev lists exclude deprecated models and those released before `2026-0
 
 The Codex model catalog, Copilot model cache, and other custom providers retain their existing remote discovery behavior.
 
-### Codex Backend Endpoints
+<a id="codex-backend-endpoints"></a>
+
+### Image and Search Endpoints
 
 Top-level image routes apply model mappings first. A missing or blank model, or the bare `gpt-image-2` name, selects the first available provider in this order: **Codex → GitHub Copilot → xAI**, using that provider's default image model. Availability checks the enabled provider and its credentials without querying model catalogs; if none is available, the gateway returns `404`.
 
@@ -143,6 +139,19 @@ OpenCode Go uses the configured provider API key and base URL to query `GET /v1/
 
 Subscription endpoints use the server's enabled provider and selected account. They return normalized `provider`, `planType`, `windows`, `credits`, and limit status fields, with `resetAt` in Unix seconds. Copilot calendar reset dates use `resetDate`; individual windows may report `unlimited`. Unavailable subscriptions return 404; upstream or credential failures return 502. The desktop and web Subscriptions tabs query these endpoints independently. Upstream credentials stay on the server.
 
+### Token Usage History Endpoints
+
+These endpoints query request usage, costs, and performance saved by the gateway, separately from subscription allowances.
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/token-usage` | `GET` | Usage summary for the selected period. |
+| `/token-usage/daily` | `GET` | Daily usage summaries. |
+| `/token-usage/events` | `GET` | Paginated request events. |
+| `/token-usage/sessions` | `GET` | Paginated session summaries. |
+
+All four accept `period`: `today` (default), `this_week`, `last_7_days`, `this_month`, `last_30_days`, or `lifetime`. Legacy `day`, `week`, and `month` values remain accepted. Paginated endpoints also accept `page` (default `1`) and `page_size` (default `20`). These paths have no `/v1` prefix and use regular gateway API key authentication. See [usage monitoring](usage.md#request-timing) for metric definitions.
+
 ### Admin / Configuration Endpoints
 
 These endpoints are reserved for local administrative actions and only accept `auth.adminApiKey`.
@@ -154,3 +163,9 @@ These endpoints are reserved for local administrative actions and only accept `a
 | `POST /admin/config/reload` | `POST` | Reloads configuration into the current server process without restarting. |
 
 The reload endpoint requires no request body and returns `{ configPath, reloaded: true }`. After changing the admin key on disk, authenticate the reload with the previous active key. Invalid JSON preserves the last working configuration. The desktop calls this endpoint automatically after saving gateway configuration.
+
+### Responses WebSocket continuation
+
+For the built-in Codex and GitHub Copilot providers, streamed requests using an upstream WebSocket may reuse the latest completed response or supported interrupted checkpoint on that same socket. The gateway prefers an opaque anchor: a reasoning item's `encrypted_content` or a tool call's type and `call_id`. If the response has no usable opaque anchor and ends with a nonempty text-only assistant message, it uses a SHA-256 hash of that message's text instead. Anchors come from `response.output_item.done`; terminal output fills only missing items. On the next request, opaque anchors are matched from the end of input as before; a text anchor is compared only with the last `role: "assistant"` message, without searching older text. String content and text blocks are normalized to the same text without trimming whitespace. After a match, subsequent assistant items are skipped and `previous_response_id` is sent with input starting at the next non-assistant item, such as a user message or client tool result. The gateway does not retain assistant text or item counts; it retains the response ID, its anchor, and the latest input compaction checkpoint hash. HTTP clients may use this optimization when their upstream transport is WebSocket; upstream HTTP requests are unchanged.
+
+Missing or mismatched anchors, no new input, reconnects, and changed compaction checkpoints send full input. A completed response without a usable anchor clears the older checkpoint. Interrupted responses may save their own ID and anchor only when `status` is `incomplete` and `incomplete_details.reason` is `interrupted`. Anchors do not verify earlier history: after editing or reordering history, explicitly send `previous_response_id: null` or start a new session. A rejected automatic response ID is retried once with full input before any response events have been forwarded. Client-supplied response IDs are left intact. See the [OpenAI WebSocket continuation contract](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works).

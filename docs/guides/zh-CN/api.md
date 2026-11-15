@@ -40,16 +40,10 @@ curl http://localhost:4141/admin/config/model-mappings \
 
 | 端点                        | 方法 | 说明                                                                                                     |
 | --------------------------- | ---- | -------------------------------------------------------------------------------------------------------- |
-| `POST /v1/responses`        | `POST` | OpenAI 中用于生成模型响应的高级接口。支持 `Content-Encoding: zstd` 请求体和 `openai-responses` provider 的 `provider/model` 别名。zstd 请求解压仅作用于 Responses 路由，包括 provider-scoped 别名路由。 |
+| `POST /v1/responses`        | `POST` | 使用 OpenAI Responses API 格式生成模型响应。支持 `Content-Encoding: zstd` 请求体和 `openai-responses` provider 的 `provider/model` 别名。zstd 请求解压仅作用于 Responses 路由，包括 provider-scoped 别名路由。 |
 | `POST /v1/chat/completions` | `POST` | 为给定聊天对话创建模型响应。支持 `openai-compatible` provider 的 `provider/model` 别名；目标 provider 已配置时可在没有 Copilot 的情况下使用。 |
 | `GET /v1/models`            | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求返回合并后的 Codex 格式目录，并排除仅输出图片的模型。 |
 | `POST /v1/embeddings`       | `POST` | 创建表示输入文本的向量嵌入。                                                                             |
-
-### Responses WebSocket 续接
-
-内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，可复用同一连接上最近一次完整成功的 response，或受支持的中断检查点。优先使用不透明锚点：思考项的 `encrypted_content`，或工具调用的类型及 `call_id`。只有响应没有可用的不透明锚点，且最后一项为非空纯文本助手消息时，才使用该消息文本的 SHA-256 hash 兜底。锚点以 `response.output_item.done` 为准；终态输出只补齐缺失项。下轮请求仍从 input 尾部向前匹配不透明锚点；文本锚点只比较最后一条 `role: "assistant"` 消息，不向更早的文本查找。字符串和文本块统一为相同文本后比较，不去除空白。匹配成功后，跳过紧接着的助手内容，从下一条非助手内容（如用户消息或客户端工具结果）开始发送增量，并带上 `previous_response_id`。不保存助手文本或 item 数量，只保存 response ID、对应锚点和最新 input 压缩检查点的 hash。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
-
-锚点缺失或不匹配、没有新增 input、重新连接或压缩检查点变化时，均发送完整 input。最新完整响应没有可用锚点时，会清除旧检查点。中断响应只有在 `status` 为 `incomplete` 且 `incomplete_details.reason` 为 `interrupted` 时，才可保存自身的 ID 和锚点。锚点不校验更早的历史；修改或重排历史后，需要显式传入 `previous_response_id: null` 或新建会话。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次；客户端显式传入的 response ID 保持不变。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。
 
 ### 模型发现来源
 
@@ -65,7 +59,9 @@ Claude、Codex 和 DeepSeek 客户端目录始终排除仅输出图片的模型�
 
 Codex model catalog、Copilot 模型缓存和其他自定义 provider 的远程发现保持原有行为。
 
-### Codex 后端端点
+<a id="codex-后端端点"></a>
+
+### 图片与搜索接口
 
 顶层图片路由先应用 model mapping。仅省略、空白模型或裸 `gpt-image-2` 会按 **Codex → GitHub Copilot → xAI** 选择首个可用 provider 的默认图片模型。可用性依据 provider 启用状态及凭据判断，不查询模型目录；没有可用 provider 时返回 `404`。
 
@@ -147,6 +143,19 @@ OpenCode Go 使用已配置的 provider API key 和 base URL 查询 `GET /v1/usa
 
 订阅接口使用服务端已启用的提供商和当前选中的账号，返回统一的 `provider`、`planType`、`windows`、`credits` 和额度限制状态，`resetAt` 使用 Unix 秒时间戳，Copilot 的日历重置日期使用 `resetDate`，额度窗口可通过 `unlimited` 表示无限制。订阅不可用时返回 404，上游或凭据查询失败时返回 502。桌面端和网页的订阅额度标签页分别查询这些接口，上游凭据保留在服务端。
 
+### Token 用量历史接口
+
+这些接口查询网关保存的请求用量、费用和性能数据，与上面的订阅额度接口分开。
+
+| 端点 | 方法 | 说明 |
+| --- | --- | --- |
+| `/token-usage` | `GET` | 查询所选时间范围的用量汇总。 |
+| `/token-usage/daily` | `GET` | 按日期查询用量汇总。 |
+| `/token-usage/events` | `GET` | 分页查询请求事件。 |
+| `/token-usage/sessions` | `GET` | 分页查询会话汇总。 |
+
+四个接口都支持 `period`：`today`（默认）、`this_week`、`last_7_days`、`this_month`、`last_30_days`、`lifetime`。旧值 `day`、`week`、`month` 也可使用。分页接口另支持 `page`（默认 `1`）和 `page_size`（默认 `20`）。接口使用普通网关 API Key 认证，路径不带 `/v1`。指标口径见[用量监控](usage.md#request-timing)。
+
 ### Admin / 配置端点
 
 这些端点用于本地管理操作，只接受 `auth.adminApiKey`。
@@ -158,3 +167,9 @@ OpenCode Go 使用已配置的 provider API key 和 base URL 查询 `GET /v1/usa
 | `POST /admin/config/reload` | `POST` | 重新读取配置并刷新当前服务进程，无需重启。 |
 
 刷新接口无需请求体，返回 `{ configPath, reloaded: true }`。修改 admin key 后，用修改前仍在生效的 key 发起刷新；无效 JSON 会保留上一次生效的配置。桌面端保存网关配置后会自动调用此接口。
+
+### Responses WebSocket 续接
+
+内置 Codex 和 GitHub Copilot provider 的流式请求走上游 WebSocket 时，可复用同一连接上最近一次完整成功的 response，或受支持的中断检查点。优先使用不透明锚点：思考项的 `encrypted_content`，或工具调用的类型及 `call_id`。只有响应没有可用的不透明锚点，且最后一项为非空纯文本助手消息时，才使用该消息文本的 SHA-256 hash 兜底。锚点以 `response.output_item.done` 为准；终态输出只补齐缺失项。下轮请求仍从 input 尾部向前匹配不透明锚点；文本锚点只比较最后一条 `role: "assistant"` 消息，不向更早的文本查找。字符串和文本块统一为相同文本后比较，不去除空白。匹配成功后，跳过紧接着的助手内容，从下一条非助手内容（如用户消息或客户端工具结果）开始发送增量，并带上 `previous_response_id`。不保存助手文本或 item 数量，只保存 response ID、对应锚点和最新 input 压缩检查点的 hash。客户端可以使用 HTTP 接入；该优化仅作用于上游 WebSocket，走 HTTP 上游的请求保持原样。
+
+锚点缺失或不匹配、没有新增 input、重新连接或压缩检查点变化时，均发送完整 input。最新完整响应没有可用锚点时，会清除旧检查点。中断响应只有在 `status` 为 `incomplete` 且 `incomplete_details.reason` 为 `interrupted` 时，才可保存自身的 ID 和锚点。锚点不校验更早的历史；修改或重排历史后，需要显式传入 `previous_response_id: null` 或新建会话。自动续接 ID 被拒绝且尚未向客户端转发 response 事件时，最多用完整 input 重试一次；客户端显式传入的 response ID 保持不变。参见 [OpenAI WebSocket 续接协议](https://developers.openai.com/api/docs/guides/websocket-mode#how-continuation-works)。

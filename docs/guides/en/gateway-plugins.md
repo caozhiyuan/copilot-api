@@ -1,5 +1,7 @@
 # Gateway event plugins
 
+[Home](../../../README.md) · [Documentation](README.md) · [简体中文](../zh-CN/gateway-plugins.md)
+
 Plugins are local `.mjs` files that observe request state and usage through events.
 The gateway provides common events; plugins can write JSONL logs and in-flight
 snapshots or integrate with other monitoring systems. Model information reuses

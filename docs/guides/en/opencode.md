@@ -14,18 +14,26 @@ After starting the gateway, copy [`plugin/opencode/copilot-api-provider.js`](../
 
 The plugin connects to `http://localhost:4141/v1`. Chat models use v2's bundled `@opencode/ai/providers/openai/responses` package using Responses, with `settings.compaction: { "type": "native" }`. It discovers models at startup and refreshes every 2 minutes. The provider is named `My Local`, and models appear as `local/<model ID>`. Discovery respects enabled gateway providers and `agentsModels`. Failed refreshes keep the last successful catalog and retry on the next interval.
 
+### Gateway key and address
+
+- `GITHUB_COPILOT_API_KEY`: the same gateway API key used by Codex; defaults to `dummy`.
+- `COPILOT_API_URL`: optionally overrides the gateway's `/v1` URL.
+
+If gateway `auth.apiKeys` is configured, set `GITHUB_COPILOT_API_KEY` to one of those keys. Otherwise, `dummy` is sufficient. This is a gateway key, not an upstream provider key. See the [Codex guide](codex.md#set-the-github_copilot_api_key-environment-variable) for environment setup.
+
+### Model discovery and image models
+
 The gateway's built-in image catalog supplies `github-copilot/gpt-image-2.5-flare`, `codex/gpt-image-2`, and `xai/grok-imagine-image-2.0` when their providers are available and their `agentsModels` selections allow them. These image entries are maintained separately from the bundled Codex chat catalog and do not require image listings in Copilot's models endpoint or xAI's models.dev data. OpenCode discovery, the desktop provider model picker, and the desktop Dashboard reuse this same image catalog. Image-only models use `type: "image"` and `@opencode/ai/providers/openai/images`, including additional image models discovered through models.dev. The plugin preserves the server's model packages and does not inject its own image models; manage image visibility through the gateway's provider settings instead of the former plugin `imageModels` option. OpenCode includes these image defaults automatically; the ordinary [aggregated model catalog](api.md#model-discovery-sources) also includes them by default for the desktop Dashboard and web viewer.
 
 When using explicit `agentsModels`, include the upstream image ID, such as `gpt-image-2` under `codex`. These image IDs are available in the desktop provider model picker. This allows image discovery in OpenCode; Claude, Codex, and DeepSeek client catalogs still exclude image-only models even when the shared selection includes them. The ordinary aggregated catalog used by the desktop Dashboard and web viewer includes image models independently of `agentsModels`.
 
 Image routes use the model selected in OpenCode and the shared `modelMappings` rules. Use a `provider/model` alias to pin the target, or map the selected model to that alias. Generation and editing share the same mappings; use distinct client aliases when they need different targets.
 
+### Native compaction
+
 With the current OpenCode v2 OpenAI Responses runtime, native compaction prefers a `compaction_trigger` appended to `input` on a regular `/v1/responses` request. The standalone `/v1/responses/compact` mechanism is used only when the route has no trigger support but does expose endpoint compaction; this gateway does not expose that standalone endpoint. Native compaction still requires the selected upstream model or gateway adapter to support the trigger. Reasoning variants use Responses `reasoning.effort`, not Anthropic `output_config.effort`.
 
-Environment variables:
-
-- `GITHUB_COPILOT_API_KEY`: the same gateway API key used by Codex; defaults to `dummy`.
-- `COPILOT_API_URL`: optionally overrides the gateway's `/v1` URL.
+### Capabilities, pricing, and context
 
 Discovery requests include `opencode` in the User-Agent so the gateway returns the v2 model structure. Capabilities, limits and prices reuse the matching provider's models.dev catalog, or `modelsDevProviderId` when configured. Gateway model settings and live upstream capabilities can override catalog limits. Prices include input, output, cache reads and writes, and context tiers, in USD per million tokens. Gateway model price settings override catalog prices; CNY prices, configured or built in, are converted at a fixed 6.7 rate and rounded to six decimals, while prices in other currencies are not returned as USD. Models with no known USD pricing have an empty `cost` array.
 

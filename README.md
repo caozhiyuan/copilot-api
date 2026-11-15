@@ -83,7 +83,7 @@ Every client talks to the same local endpoint. The gateway routes each request t
 | Client | Chat Completions | Responses | Anthropic Messages | Recommended |
 |---|:---:|:---:|:---:|---|
 | Claude Code | — | — | ✅ Native / Adapter | Anthropic Messages |
-| OpenCode | ✅ Native | ✅ Native / Adapter | ✅ Native / Adapter | Anthropic Messages |
+| OpenCode | ✅ Native | ✅ Native / Adapter | ✅ Native / Adapter | v2: Responses; v1: Messages |
 | Codex | — | ✅ Native / Adapter | — | Responses |
 | DeepSeek Harness | — | ✅ Native / Adapter | ✅ Native / Adapter | Responses |
 | OpenAI-compatible clients | ✅ Native | ✅ Native / Adapter | — | Chat Completions |
@@ -108,14 +108,15 @@ After the initial full-package installation, subsequent updates normally use dif
 
 | Guide | Contents |
 | --- | --- |
-| [Installation and Startup](docs/guides/en/getting-started.md) | Prerequisites, project overview, `npx` and source runs, provider-only mode without Copilot, and gateway API key setup |
+| [Installation and Startup](docs/guides/en/getting-started.md) | Prerequisites, project overview, `npx` and source runs, running without GitHub Copilot, and gateway API key setup |
 | [Claude Code](docs/guides/en/claude-code.md) | settings.json, gateway model discovery, model mappings, auto-compact window, and WebSearch behavior |
 | [OpenCode](docs/guides/en/opencode.md) | v2 Responses plugin and automatic model discovery, native compaction, model capabilities and pricing, context limits, and v1 Anthropic SDK setup |
 | [Codex](docs/guides/en/codex.md) | A full `config.toml` provider block, `GITHUB_COPILOT_API_KEY` environment variable setup, auto-review model mapping, generating `model_catalog.json`, and the merged model picker catalog with protocol adapters |
 | [DeepSeek Harness](docs/guides/en/dsh.md) | Install `dsh-copilot-api`, save the gateway API key, and choose Responses or Messages |
 | [Docker](docs/guides/en/docker.md) | Docker Compose quick start, the `/data` persistent mount and its ownership repair, supported environment variables, and host interface binding |
 | [Desktop App](docs/guides/en/desktop.md) | Copilot sign-in, Codex OAuth account switching, API-key providers, one-click start / stop, shared model mappings, advanced settings, and per-platform installers |
-| [Plugins and Tool Search](docs/guides/en/integrations.md) | The Responses `tool_search` MCP bridge (not needed on opencode v2, which already defers tools through Code Mode), Claude Code `agent-inject` and `tool-search` marketplace plugins, and the opencode subagent marker plugin |
+| [Plugins and Tool Search](docs/guides/en/integrations.md) | The Responses `tool_search` MCP bridge (not needed on opencode v2, which already defers tools through Code Mode), Claude Code `agent-inject` and `tool-search` marketplace plugins, and the OpenCode session context plugin |
+| [Gateway event plugins](docs/guides/en/gateway-plugins.md) | Observe request state, timing, and usage with server-side plugins |
 | [Usage Monitoring](docs/guides/en/usage.md) | The usage viewer URL and query parameters, period selectors, Copilot quota progress, token and cost metric cards, trend charts, and paginated request events |
 | [CLI Reference](docs/guides/en/cli.md) | Command structure, global options, and the full option sets for the `start`, `auth`, and `debug` subcommands with example usage |
 | [Configuration Reference](docs/guides/en/configuration.md) | Every `config.json` field: gateway and admin API keys, provider definitions, model mappings, WebSocket and HTTP transport, timeouts, and context management |

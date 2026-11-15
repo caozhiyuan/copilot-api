@@ -4,62 +4,35 @@
 
 ## Project Overview
 
-A small AI gateway that can use GitHub Copilot, the built-in `codex` provider, or configured third-party providers such as DashScope. GitHub Copilot is optional: if no GitHub token is available, the server can still start in provider-only mode as long as at least one enabled provider is configured.
+Copilot API connects multiple model providers to one local address. Point Claude Code, OpenCode, Codex, or another compatible client at the gateway to use your configured models.
 
-The gateway exposes OpenAI- and Anthropic-compatible APIs from one local endpoint, so tools like [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), OpenCode, Codex, and OpenAI-compatible clients can share the same local server.
-
-On the GitHub Copilot path, the gateway prefers Copilot's native Anthropic-style Messages API when available, preserving more Claude-native behavior for tool-heavy workflows.
-
-## Important Notes
-
-> [!IMPORTANT]
-> **Before using, please be aware of the following:**
->
-> 1. **Codex configuration:** When using with Codex, add the gateway provider to `~/.codex/config.toml`. See [Codex `config.toml` Reference](codex.md#codex-configtoml-reference).
->
-> 2. **Claude Code configuration:** When using with Claude Code, please configure the model ID as `claude-opus-4-8[1m]`. Example claude `settings.json` see [Manual Configuration with `settings.json`](claude-code.md#manual-configuration-with-settingsjson).
->
-> 3. **OpenCode configuration:** When using with OpenCode, configure `~/.config/opencode/opencode.json` with `@ai-sdk/anthropic`. See [Using with OpenCode](opencode.md#using-with-opencode).
->
-> 4. **Built-in `copilot`, `codex` and third-party providers:** Run `bunx --bun @jeffreycao/copilot-api auth` and choose `copilot`, `codex`, `deepseek`, `custom`, or other providers.
->
-> 5. **Note:** Before using GitHub Copilot, read the [GitHub Copilot Security Notice](../../../NOTICE.md#github-copilot-security-notice).
+Sign in to GitHub Copilot, Codex, or xAI, or configure an API key for a provider such as DeepSeek or DashScope. GitHub Copilot is optional; at least one configured and enabled provider is required.
 
 ## Prerequisites
 
-- Bun >= 1.4.4 (recommended)
-- Node.js `^22.23.4 || ^24.22.1 || >=26.12.1` if you plan to run the published CLI with `npx`
-- GitHub account with Copilot subscription only if you want to use the GitHub Copilot provider
-- An API key or OAuth login for at least one configured provider if you want to run without GitHub Copilot
+- Bun >= 1.4.4 is recommended. Running the published package with Bun does not require a separate Node.js installation.
+- Alternatively, use npx with Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`.
+- The GitHub Copilot provider requires a Copilot subscription. Other providers require their own API key or account.
 
-## Installation
+See the [home page](../../../README.md#quick-start) for runtime security updates.
 
-To install dependencies, run:
+## Configure an account or API key
 
-```sh
-bun install
-```
+The commands below use Bun. With Node.js only, replace `bunx --bun @jeffreycao/copilot-api` with `npx @jeffreycao/copilot-api@latest`.
 
-## Running from Source
-
-> [!NOTE]
-> Building from source with `tsdown@0.23` requires Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`. This is a build-time requirement only; the published CLI requires Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`.
-
-The project can be run from source in several ways:
-
-### Development Mode
+On first use, select a provider and follow the sign-in or API key prompts:
 
 ```sh
-bun run dev start
+bunx --bun @jeffreycao/copilot-api auth login
 ```
 
-### Production Mode
+For example, configure DashScope without GitHub Copilot:
 
 ```sh
-bun run start start
+bunx --bun @jeffreycao/copilot-api auth login --provider dashscope
 ```
 
-> The trailing `start` is the CLI subcommand passed to `src/main.ts`, not a typo: `bun run dev start` runs watch mode, `bun run start start` runs production.
+Then start the gateway with Bun or npx below. With the default configuration, a first `start` without an available account or provider also opens provider setup. Before using GitHub Copilot, read the [security notice](../../../NOTICE.md#github-copilot-security-notice).
 
 <a id="using-with-bun"></a>
 
@@ -84,7 +57,7 @@ Ensure Bun's global binary directory (`bun pm bin -g`) is on `PATH`. Running pla
 
 ### Cache and upgrades
 
-Omit `@latest` for routine `bunx` starts, or pin an exact package version for repeatable deployments. In repeated `--help` tests with Bun 1.4.0 on Linux, `@latest` re-entered dependency resolution on every invocation; unversioned and exact-version runs reused the warm install without installation output. Re-entering installation does not imply every dependency is downloaded again. Cache expiry and Bun versions can affect this behavior.
+For routine starts, omit `@latest` to reuse a cached installation, or pin an exact version. Use `@latest` when upgrading. Cache behavior can vary with the Bun version and cache expiry.
 
 Request the latest published version explicitly when upgrading:
 
@@ -108,18 +81,7 @@ bunx --bun @jeffreycao/copilot-api start --host 0.0.0.0 --port 8080
 
 Binding to `0.0.0.0` exposes the gateway to the network, so the server requires at least one gateway API key and restricts CORS to same-origin requests.
 
-For authentication or provider configuration only:
-
-```sh
-bunx --bun @jeffreycao/copilot-api auth
-```
-
-To run without GitHub Copilot, configure at least one provider first, then start the server normally:
-
-```sh
-bunx --bun @jeffreycao/copilot-api auth login --provider dashscope
-bunx --bun @jeffreycao/copilot-api start
-```
+<a id="using-with-npx"></a>
 
 ## Using with npx
 
@@ -130,3 +92,52 @@ npx @jeffreycao/copilot-api@latest start
 ```
 
 Token usage storage uses Node's built-in `node:sqlite`, available without `--experimental-sqlite` from Node.js 22.13.0. With Bun, storage uses `bun:sqlite` instead.
+
+<a id="important-notes"></a>
+
+## Check the service and connect a client
+
+After starting the gateway, check its model list:
+
+```sh
+curl http://localhost:4141/v1/models
+```
+
+If gateway API key authentication is enabled, include an `x-api-key` header. Gateway keys authenticate clients to this local service; upstream provider keys authenticate the gateway to model providers. See [CLI key management](cli.md#auth-command-options).
+
+- **Claude Code**: Configure the gateway address and an available model in `.claude/settings.json`; see [Claude Code setup](claude-code.md#manual-configuration-with-settingsjson). No single model ID is required.
+- **OpenCode v2**: Install the model discovery plugin, which uses Responses. The legacy v1 Anthropic SDK setup remains in the [OpenCode guide](opencode.md#using-with-opencode).
+- **Codex**: Add the gateway to `~/.codex/config.toml`; see the [Codex reference configuration](codex.md#codex-configtoml-reference).
+
+<a id="running-from-source"></a>
+
+## Running from Source
+
+<a id="installation"></a>
+
+Clone the repository, enter its directory, and install dependencies:
+
+```sh
+git clone https://github.com/caozhiyuan/copilot-api.git
+cd copilot-api
+bun install
+```
+
+> [!NOTE]
+> Building from source with `tsdown@0.23` requires Node.js `^22.18.0 || ^24.11.0 || >=26.0.0`. This is a build-time requirement only; the published CLI requires Node.js `^22.23.4 || ^24.22.1 || >=26.12.1`.
+
+The project can be run from source in several ways:
+
+### Development Mode
+
+```sh
+bun run dev start
+```
+
+### Production Mode
+
+```sh
+bun run start start
+```
+
+> The trailing `start` is the CLI subcommand passed to `src/main.ts`, not a typo: `bun run dev start` runs watch mode, `bun run start start` runs production.

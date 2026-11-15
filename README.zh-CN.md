@@ -22,17 +22,17 @@
   <a href="README.md">English</a> | 简体中文
 </p>
 
-Copilot API 是一个本地 AI 网关，让 Claude Code、OpenCode、Codex 等客户端通过统一的 API 使用 GitHub Copilot、内置 Codex、xAI 和第三方模型服务。
+Copilot API 是一个本地 AI 网关。你可以把 Claude Code、OpenCode、Codex 等客户端连接到它，再通过同一个地址使用 GitHub Copilot、Codex、xAI 或其他模型服务。
 
 <a id="highlights"></a>
 
 ## 功能亮点
 
-- **统一 API 网关**：在同一个本地端点上提供 OpenAI 兼容的 Chat Completions（`/v1/chat/completions`）、OpenAI Responses API（`/v1/responses`）和 Anthropic 兼容的 Messages（`/v1/messages`）。
-- **多 Provider 接入**：在同一个网关后面统一路由 GitHub Copilot、内置 `codex`、`xai` provider 和第三方 provider（Kimi、DeepSeek、DashScope、OpenRouter、OpenCode Go、Google Gemini 或从 models.dev 选择的自定义 provider）。GitHub Copilot 是可选能力——只要至少有一个启用中的 provider，无需 GitHub token 也能按 provider-only 模式启动。
-- **为 Coding Agent 而生**：为 Claude Code、OpenCode 和 Codex 提供完整的配置指南，包括 settings.json 网关模型发现和面向 Codex 的合并模型目录。
-- **Streaming 与 WebSocket**：三种面向客户端的协议都支持 SSE 流式输出。上游 Copilot Responses 流量会根据每个模型声明的端点选择 WebSocket 或 HTTP；内置 `codex` provider 的流式 Responses 请求默认走 WebSocket，关闭 `useResponsesApiWebSocket` 后改走 HTTP。
-- **桌面应用**：Electron 图形界面，支持 GitHub Copilot 登录、Codex 与 xAI OAuth、provider 配置、token 用量、日志查看和一键启动 / 停止。
+- **一个地址，三种接口**：提供 OpenAI 兼容的 Chat Completions（`/v1/chat/completions`）、OpenAI Responses（`/v1/responses`）和 Anthropic 兼容的 Messages（`/v1/messages`），方便不同客户端接入。
+- **支持多家模型服务**：可使用 GitHub Copilot、内置 Codex 和 xAI，也可接入 Kimi、DeepSeek、阿里云百炼（DashScope）、OpenRouter、OpenCode Go、Google Gemini 等服务。先登录账号或填写 API Key，再启动网关。不使用 GitHub Copilot 也可以运行，只需配置并启用至少一个模型服务（provider）。
+- **方便接入编程助手**：提供 Claude Code、OpenCode 和 Codex 的配置指南，支持在客户端自动显示网关提供的模型。
+- **支持流式输出**：三种接口都支持 SSE，可以边生成边返回内容。网关连接 Copilot 时会根据模型能力使用 WebSocket 或 HTTP；连接 Codex 时，流式请求默认使用 WebSocket，也可通过 `useResponsesApiWebSocket` 切换为 HTTP。
+- **提供桌面应用**：可在界面中登录 GitHub Copilot、Codex 和 xAI，配置模型服务，查看 Token 用量和日志，并一键启动或停止网关。
 
 <a id="quick-start"></a>
 
@@ -63,7 +63,7 @@ bunx --bun @jeffreycao/copilot-api start
 
 > [!NOTE]
 > 如需信任系统安装的 CA 证书（例如使用企业 HTTPS 代理时），`npx` 无需额外设置：Node.js >= 22.19.0 启动时会通过 [`tls.setDefaultCACertificates()`](https://nodejs.org/api/tls.html#tlssetdefaultcacertificatescerts) 自动合并系统 CA 证书。只有 Bun 需要在运行 `bunx --bun` 前设置 `NODE_USE_SYSTEM_CA=1`：bash/zsh 使用 `export NODE_USE_SYSTEM_CA=1`，PowerShell 使用 `$env:NODE_USE_SYSTEM_CA="1"`（Bun >= 1.4.4）。
-> Desktop 默认对子进程启用此设置，并保留显式配置的环境变量。
+> 桌面应用默认会为启动的服务设置这个变量；如果你已经设置过，则使用你的设置。
 
 验证网关已启动：
 
@@ -72,7 +72,7 @@ curl http://localhost:4141/v1/models
 ```
 
 > [!NOTE]
-> token usage 存储需要 Bun >= 1.4.4，或带内置 `node:sqlite` 的 Node.js（22.13.0 起可用）。请使用上方安全公告中的已修补 Node.js 版本。详见[通过 npx 使用](docs/guides/zh-CN/getting-started.md#using-with-npx)。
+> 保存 Token 用量历史需要 Bun >= 1.4.4，或带内置 `node:sqlite` 的 Node.js（22.13.0 起可用）。请使用上方安全公告中的已修补 Node.js 版本。详见[通过 npx 使用](docs/guides/zh-CN/getting-started.md#using-with-npx)。
 
 接下来可按你的客户端选择指南：[与 Claude Code 一起使用](docs/guides/zh-CN/claude-code.md#using-with-claude-code)、[与 OpenCode 一起使用](docs/guides/zh-CN/opencode.md#using-with-opencode)、[与 Codex 一起使用](docs/guides/zh-CN/codex.md#using-with-codex)、[与 DeepSeek Harness 一起使用](docs/guides/zh-CN/dsh.md#using-with-deepseek-harness)，或通过 [Docker](docs/guides/zh-CN/docker.md#using-with-docker) 运行。
 
@@ -82,26 +82,26 @@ curl http://localhost:4141/v1/models
 
 ## 兼容性
 
-所有客户端都访问同一个本地端点。网关会把每个请求路由到 GitHub Copilot、内置 `codex`、`xai` provider 或已配置的第三方 provider，并在 provider 使用不同协议时进行协议翻译。
+客户端统一连接网关的本地地址。网关根据所选模型，将请求发给 GitHub Copilot、Codex、xAI 或其他已配置的模型服务；双方协议不同时，由网关负责转换。
 
 **客户端 / 协议矩阵**
 
 | 客户端 | Chat Completions | Responses | Anthropic Messages | 推荐 |
 |---|:---:|:---:|:---:|---|
 | Claude Code | — | — | ✅ 原生 / 适配 | Anthropic Messages |
-| OpenCode | ✅ 原生 | ✅ 原生 / 适配 | ✅ 原生 / 适配 | Anthropic Messages |
+| OpenCode | ✅ 原生 | ✅ 原生 / 适配 | ✅ 原生 / 适配 | v2：Responses；v1：Messages |
 | Codex | — | ✅ 原生 / 适配 | — | Responses |
 | DeepSeek Harness | — | ✅ 原生 / 适配 | ✅ 原生 / 适配 | Responses |
 | OpenAI 兼容客户端 | ✅ 原生 | ✅ 原生 / 适配 | — | Chat Completions |
 | Anthropic 兼容客户端 | — | — | ✅ 原生 / 适配 | Anthropic Messages |
 
-**Provider 与协议。** 协议能力按模型决定。Chat Completions 必须使用原生端点，Responses 和 Messages 则可在存在受支持路径时进行适配。内置 `codex` provider 原生使用 Responses；第三方 provider 可选择 `anthropic`、`openai-compatible` 或 `openai-responses`，也可按模型覆盖。
+**模型服务与接口。** 能用哪些接口，取决于具体模型。Chat Completions 需要模型服务原生支持；Responses 和 Messages 在网关支持转换时，也能连接使用其他协议的模型。内置 `codex` provider 原生使用 Responses；第三方 provider 可选择 `anthropic`、`openai-compatible` 或 `openai-responses`，也可按模型覆盖。
 
 <a id="desktop-app"></a>
 
 ## 桌面应用
 
-更喜欢图形界面？`desktop/` 目录下的 Electron 桌面应用支持 GitHub Copilot 登录、OpenAI Codex 与 xAI OAuth，以及 Kimi、DeepSeek、DashScope、OpenRouter 或从 models.dev 选择的自定义 provider 的 API Key 配置——可以一键启动 / 停止本地服务，并在一个窗口里查看本地端点、鉴权 Header、可用模型、用量和日志。
+更喜欢图形界面？下载安装桌面应用后，就可以登录账号或填写 API Key，再一键启动本地服务。界面会显示服务地址、认证请求头、可用模型、用量和日志。
 
 <p align="center">
   <img src="docs/screenshots/desktop-dashboard.png" alt="Copilot API 桌面应用首页" width="49%" />
@@ -116,14 +116,15 @@ Windows x64（`.exe`）、macOS Apple Silicon（`.dmg`）和 Linux x64（`.AppIm
 
 | 文档 | 内容 |
 | --- | --- |
-| [安装与启动](docs/guides/zh-CN/getting-started.md) | 环境要求、项目概览、npx 与源码运行、无 Copilot 时的 provider-only 模式，以及网关 API Key 配置 |
+| [安装与启动](docs/guides/zh-CN/getting-started.md) | 环境要求、项目概览、npx 与源码运行、不登录 Copilot 使用其他模型服务，以及网关 API Key 配置 |
 | [Claude Code](docs/guides/zh-CN/claude-code.md) | settings.json、网关模型发现、模型映射、自动压缩窗口与 WebSearch 行为 |
 | [OpenCode](docs/guides/zh-CN/opencode.md) | v2 Responses 插件与自动模型发现、原生压缩、模型能力与价格、上下文上限，以及 v1 Anthropic SDK 配置 |
 | [Codex](docs/guides/zh-CN/codex.md) | 完整的 `config.toml` provider 配置块、`GITHUB_COPILOT_API_KEY` 环境变量设置、自动审核模型映射、生成 `model_catalog.json`，以及合并后的模型选择器目录与协议适配 |
 | [DeepSeek Harness](docs/guides/zh-CN/dsh.md) | 安装 `dsh-copilot-api`、保存网关 API 密钥，并选择 Responses 或 Messages |
 | [Docker](docs/guides/zh-CN/docker.md) | Docker Compose 快速启动、`/data` 持久化挂载与属主修复、支持的环境变量，以及监听所有网卡地址 |
 | [桌面应用](docs/guides/zh-CN/desktop.md) | Copilot 登录、Codex OAuth 账号切换、API Key provider、一键启停、共享模型映射、高级设置与各平台安装包 |
-| [插件与工具搜索](docs/guides/zh-CN/integrations.md) | Responses `tool_search` MCP 桥接（opencode v2 已通过 Code Mode 延迟加载工具，不需要）、Claude Code 的 `agent-inject` 与 `tool-search` 市场插件，以及 opencode 子代理标记插件 |
+| [插件与工具搜索](docs/guides/zh-CN/integrations.md) | Responses `tool_search` MCP 桥接（opencode v2 已通过 Code Mode 延迟加载工具，不需要）、Claude Code 的 `agent-inject` 与 `tool-search` 市场插件，以及 OpenCode 会话追踪插件 |
+| [网关事件插件](docs/guides/zh-CN/gateway-plugins.md) | 编写服务端监控插件，获取请求状态、耗时和用量 |
 | [用量监控](docs/guides/zh-CN/usage.md) | 用量面板地址与查询参数、时间范围选择、Copilot 配额进度、Token 与成本指标卡、趋势图，以及分页的请求事件列表 |
 | [命令行参考](docs/guides/zh-CN/cli.md) | 命令结构、全局选项，以及 `start`、`auth`、`debug` 子命令的完整参数与使用示例 |
 | [配置参考](docs/guides/zh-CN/configuration.md) | `config.json` 全部配置项：网关与管理 API Key、provider 定义、模型映射、WebSocket 与 HTTP 传输、超时与上下文管理 |
