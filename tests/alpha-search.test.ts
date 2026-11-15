@@ -1370,6 +1370,36 @@ describe("Alpha search Responses adapter", () => {
     expect(createResponsesMock).not.toHaveBeenCalled()
   })
 
+  test.each([false, "cached", "indexed"])(
+    "keeps cached URL opens readable with external_web_access=%s",
+    async (mode) => {
+      const url = "https://example.com/cached"
+      createResponsesMock.mockImplementation(() =>
+        Promise.resolve(
+          createResponsesResult({
+            answer: "zero\nCached page text\ntwo",
+            sources: [],
+            citations: false,
+          }),
+        ),
+      )
+      await requestFallback(createFallbackPayload({ open: [{ ref_id: url }] }))
+
+      const response = await requestFallback(
+        createFallbackPayload(
+          { open: [{ ref_id: url, lineno: 1 }] },
+          { settings: { external_web_access: mode } },
+        ),
+      )
+      const body = (await response.json()) as { output: string }
+      expect(response.status).toBe(200)
+      expect(body.output).toContain("Open turn0view0")
+      expect(body.output).toContain("L1: Cached page text")
+      expect(body.output).not.toContain("supports live retrieval only")
+      expect(createResponsesMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
   test("computes time locally with the injected clock", async () => {
     const response = await requestFallback(
       createFallbackPayload({
@@ -1535,6 +1565,68 @@ describe("Alpha search Responses adapter", () => {
     )
     expect(createResponsesMock).toHaveBeenCalledTimes(3)
   })
+
+  test.each(["URL", "search reference"])(
+    "retries a failed %s open with an explicit URL and refreshes cached references",
+    async (initialReference) => {
+      const url = "https://example.com/retry"
+      if (initialReference === "search reference") {
+        createResponsesMock.mockImplementation(() =>
+          Promise.resolve(createResponsesResult({ sources: [{ url }] })),
+        )
+        await requestFallback(
+          createFallbackPayload({ search_query: [{ q: "retry page" }] }),
+        )
+      }
+
+      createResponsesMock.mockImplementation(() =>
+        Promise.resolve(
+          createResponsesResult({
+            answer: "ClientConnectorDNSError",
+            sources: [],
+            citations: false,
+          }),
+        ),
+      )
+      const failed = await requestFallback(
+        createFallbackPayload({
+          open: [{ ref_id: initialReference === "URL" ? url : "turn0search0" }],
+        }),
+      )
+      const failedBody = (await failed.json()) as { output: string }
+      expect(failedBody.output).toContain("ClientConnectorDNSError")
+      const callsBeforeRetry = createResponsesMock.mock.calls.length
+
+      createResponsesMock.mockImplementation(() =>
+        Promise.resolve(
+          createResponsesResult({
+            answer: "Recovered page text",
+            sources: [],
+            citations: false,
+          }),
+        ),
+      )
+      const retried = await requestFallback(
+        createFallbackPayload({ open: [{ ref_id: url }] }),
+      )
+      const retriedBody = (await retried.json()) as { output: string }
+      expect(retriedBody.output).toContain("Recovered page text")
+      expect(retriedBody.output).not.toContain("ClientConnectorDNSError")
+      expect(createResponsesMock).toHaveBeenCalledTimes(callsBeforeRetry + 1)
+
+      const viewRef = initialReference === "URL" ? "turn0view0" : "turn1view0"
+      for (const refId of ["turn0search0", viewRef]) {
+        const cached = await requestFallback(
+          createFallbackPayload({ open: [{ ref_id: refId, lineno: 0 }] }),
+        )
+        const cachedBody = (await cached.json()) as { output: string }
+        expect(cachedBody.output).toContain(`Open ${viewRef}`)
+        expect(cachedBody.output).toContain("L0: Recovered page text")
+        expect(cachedBody.output).not.toContain("ClientConnectorDNSError")
+      }
+      expect(createResponsesMock).toHaveBeenCalledTimes(callsBeforeRetry + 1)
+    },
+  )
 
   test("uses Copilot find only when opened text cannot satisfy it locally", async () => {
     const results = [
