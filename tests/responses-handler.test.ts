@@ -18,7 +18,11 @@ import type {
   ResponseStreamEvent,
 } from "~/lib/types/responses"
 import type { CompletionPayloadOptions } from "~/routes/messages/handler"
-import { MESSAGES_TOOL_CALL_TIPS } from "~/routes/responses/messages-translation"
+import {
+  encodeMessagesCompaction,
+  MESSAGES_TOOL_CALL_TIPS,
+} from "~/routes/responses/messages-translation"
+import { COMPACTION_REPLAY_PROMPT } from "~/routes/responses/messages-translation/constants"
 import {
   createResponsesWebSocketStreamChunk,
   type createResponses as createCopilotResponses,
@@ -486,6 +490,47 @@ describe("responses injected page context", () => {
           output_text: "Hi!",
         })
       }
+    },
+  )
+})
+
+describe("Responses Messages compaction replay", () => {
+  test.each([false, true])(
+    "restores handoff text for Copilot with stream=%s",
+    async (stream) => {
+      const summary =
+        "DeepSeek prepared the change; preserve this context for review."
+      const action = { role: "user", content: "Review the next command" }
+      createResponses.mockImplementation((payload) =>
+        Promise.resolve(createResponsesResult(payload.model)),
+      )
+
+      const response = await createApp().request("/v1/responses", {
+        body: JSON.stringify({
+          model: "gpt-test",
+          stream,
+          input: [
+            {
+              type: "compaction",
+              id: "cmp-deepseek",
+              encrypted_content: encodeMessagesCompaction(summary),
+            },
+            action,
+          ],
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(200)
+      expect(createResponses.mock.calls[0][0].input).toEqual([
+        {
+          type: "message",
+          role: "user",
+          content: `${COMPACTION_REPLAY_PROMPT}${summary}`,
+        },
+        action,
+      ])
     },
   )
 })

@@ -145,6 +145,8 @@ Codex 客户端目录始终排除仅输出图片的模型，即使 `agentsModels
 
 当 `modelMappings` 已将裸名 `model` 映射到同一个 `codex/model` 时，Codex 目录会省略重复的 `codex/model` 条目并保留裸名的完整元数据。默认的 `codex-auto-review` 和 `gpt-reserve` 映射也适用。显式前缀调用继续可用；映射到其他模型或 provider 时保留前缀条目。
 
+使用 DeepSeek 等 Messages 适配模型后，自动审批可能将历史发送给 `codex-auto-review`。网关会把自身生成的压缩检查点还原为文本摘要再转发，保留审批所需的前文，避免 Codex 将摘要包装误当成原生密文而报 `invalid_encrypted_content`。此转换也适用于其他原生 Responses 模型；真正由上游加密的检查点仍原样透传。
+
 模型目录会按客户端版本适配：Codex `0.160.0` 及以上版本使用规范字段 `model_messages.instructions_template`，不再返回重复的旧字段 `base_instructions`；较旧客户端保留兼容字段。
 
 Codex 模型选择界面会展示网关已配置 provider 提供的模型：

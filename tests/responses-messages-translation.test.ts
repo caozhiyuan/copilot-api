@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 
 import type {
   AnthropicMessagesPayload,
@@ -645,6 +645,44 @@ describe("Responses Lite to Messages translation", () => {
     expect(decodeMessagesCompaction(encoded)).toBe(summary)
     expect(decodeMessagesCompaction(legacy)).toBe(summary)
     expect(decodeMessagesCompaction("not base64")).toBeNull()
+  })
+
+  test.each(["A", "0", "中文", "🙂"])(
+    "recognizes the Base64 prefix with summary %s",
+    (summary) => {
+      expect(decodeMessagesCompaction(encodeMessagesCompaction(summary))).toBe(
+        summary,
+      )
+    },
+  )
+
+  test("skips decoding content without a Messages compaction prefix", () => {
+    const values = [
+      "",
+      "native-ciphertext",
+      Buffer.from("native encrypted content").toString("base64"),
+    ]
+    const fromSpy = spyOn(Buffer, "from")
+
+    try {
+      for (const value of values) {
+        expect(decodeMessagesCompaction(value)).toBeNull()
+      }
+      expect(fromSpy).not.toHaveBeenCalled()
+    } finally {
+      fromSpy.mockRestore()
+    }
+  })
+
+  test("still validates the complete decoded prefix and canonical Base64", () => {
+    const wrongPrefix = MESSAGES_COMPACTION_PREFIX.replace(":v1:", ":v2:")
+    const wrongPayload = Buffer.from(`${wrongPrefix}QQ`).toString("base64")
+
+    expect(decodeMessagesCompaction(wrongPayload)).toBeNull()
+    expect(
+      decodeMessagesCompaction(`${encodeMessagesCompaction("handoff")}\n`),
+    ).toBeNull()
+    expect(decodeMessagesCompaction(encodeMessagesCompaction(""))).toBeNull()
   })
 
   test("removes built-in web search while preserving other top-level tools", () => {

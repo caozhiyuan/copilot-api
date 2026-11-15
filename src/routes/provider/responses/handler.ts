@@ -30,6 +30,7 @@ import {
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
   filterReasoningForTransport,
+  replayMessagesCompactionForResponses,
 } from "~/routes/responses/utils"
 import { handleResponsesViaMessages } from "~/routes/responses/messages-handler"
 import { getCodexTaskTitleModel } from "~/routes/responses/task-title"
@@ -154,6 +155,7 @@ export async function handleProviderResponsesForProvider(
   if (shouldCompactInput) {
     compactInputByLatestCompaction(payload)
   }
+  replayMessagesCompactionForResponses(payload)
 
   debugJson(logger, "Translated Responses request payload:", {
     contextManagement: payload.context_management,

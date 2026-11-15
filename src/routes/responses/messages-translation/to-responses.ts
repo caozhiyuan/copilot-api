@@ -25,6 +25,12 @@ import {
 import { isRecord } from "./parse"
 import { createStableHash } from "./tools"
 
+const MESSAGES_COMPACTION_BASE64_PREFIX = Buffer.from(
+  MESSAGES_COMPACTION_PREFIX,
+)
+  .toString("base64")
+  .slice(0, 16)
+
 export function translateAnthropicToResponses(
   response: AnthropicResponse,
   context: MessagesResponseTranslationContext,
@@ -114,6 +120,7 @@ export function encodeMessagesCompaction(summary: string): string {
 export function decodeMessagesCompaction(value: string): string | null {
   let payload = value
   if (!payload.startsWith(MESSAGES_COMPACTION_PREFIX)) {
+    if (!payload.startsWith(MESSAGES_COMPACTION_BASE64_PREFIX)) return null
     const decoded = Buffer.from(value, "base64")
     if (decoded.toString("base64") !== value) return null
     payload = decoded.toString("utf8")

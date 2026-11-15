@@ -143,6 +143,8 @@ Codex client catalogs always exclude image-only models, even when `agentsModels`
 
 When `modelMappings` maps a bare `model` to the same `codex/model`, the Codex catalog omits the duplicate `codex/model` entry and retains the bare entry's complete metadata. This also applies to the default `codex-auto-review` and `gpt-reserve` mappings. Explicit prefixed requests remain supported; mappings to another model or provider retain the prefixed entry.
 
+After using a Messages-backed model such as DeepSeek, automatic approval may send its history to `codex-auto-review`. The gateway restores its own compaction checkpoints as plain-text handoff summaries before forwarding them, preserving review context and preventing `invalid_encrypted_content` errors caused by Codex treating the summary wrapper as native ciphertext. This also applies to other native Responses models; checkpoints encrypted by an upstream backend remain unchanged.
+
 The catalog response adapts to the client version: Codex `0.160.0` and newer receive the canonical `model_messages.instructions_template` field without the deprecated `base_instructions` duplicate; older clients retain the legacy instruction fields.
 
 Codex's model picker includes models from the gateway's configured providers:
