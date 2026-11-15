@@ -215,7 +215,7 @@ describe('client setup and restore', () => {
       'unconfigured',
     ])
     expect(state.clients[0].configPath).toContain('claude-custom')
-    expect(state.clients[1].configPath).toContain('xdg/opencode')
+    expect(state.clients[1].configPath).toContain(path.join('xdg', 'opencode'))
     expect(state.clients[2].configPath).toContain('codex-custom')
     expect(fs.readdirSync(directory)).toEqual([])
   })
@@ -284,9 +284,10 @@ describe('client setup and restore', () => {
       MCP_CONNECT_TIMEOUT_MS: '20000',
     })
     expect(run).not.toHaveBeenCalled()
-    expect(
-      fs.statSync(path.join(directory, 'backups/claude.json')).mode & 0o777,
-    ).toBe(0o600)
+    const backup = path.join(directory, 'backups', 'claude.json')
+    expect(fs.existsSync(backup)).toBe(true)
+    if (process.platform !== 'win32')
+      expect(fs.statSync(backup).mode & 0o777).toBe(0o600)
     await manager.restore('claude', result.status.revision)
     expect(read('.claude/settings.json')).toBe(source)
     expect((await manager.status('claude')).canRestore).toBe(false)
@@ -680,6 +681,35 @@ describe('client setup and restore', () => {
         (call) => call[1][1] === 'uninstall' && call[1].includes('--keep-data'),
       ),
     ).toBe(true)
+  })
+
+  test('skips Claude plugin reinstallation when the selection is unchanged', async () => {
+    persist(
+      '.claude/settings.json',
+      '{"enabledPlugins":{"agent-inject@copilot-api-marketplace":true}}',
+    )
+    const manager = fixture()
+    run.mockImplementation((_command, args) =>
+      Promise.resolve({
+        stdout:
+          args[1] === 'list' ?
+            JSON.stringify([
+              {
+                id: 'agent-inject@copilot-api-marketplace',
+                scope: 'user',
+                enabled: true,
+              },
+            ])
+          : '',
+        stderr: '',
+      }),
+    )
+    const result = await manager.setup(
+      await input(manager, 'claude', { plugins: ['agent-inject'] }),
+    )
+    expect(result.pluginError).toBeUndefined()
+    expect(result.status.plugins).toEqual(['agent-inject'])
+    expect(run.mock.calls.map((call) => call[1][1])).toEqual(['list'])
   })
 
   test('saves native Tool Search and the tool-search plugin enabled together', async () => {

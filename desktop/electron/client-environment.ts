@@ -8,6 +8,31 @@ const execute: ClientExec = (file, args, options) =>
 export const CLIENT_KEY_ENV = 'GITHUB_COPILOT_API_KEY'
 const START = '# >>> copilot-api client key >>>'
 const END = '# <<< copilot-api client key <<<'
+const WINDOWS_ENVIRONMENT_KEY = 'HKCU\\Environment'
+const WINDOWS_VALUE_PATTERN = new RegExp(
+  `^\\s*${CLIENT_KEY_ENV}\\s+REG_(?:EXPAND_)?SZ\\s+(.*)$`,
+  'm',
+)
+
+function windowsRegistryArgs(value: string | null): string[] {
+  if (value === null)
+    return ['delete', WINDOWS_ENVIRONMENT_KEY, '/v', CLIENT_KEY_ENV, '/f']
+  return [
+    'add',
+    WINDOWS_ENVIRONMENT_KEY,
+    '/v',
+    CLIENT_KEY_ENV,
+    '/t',
+    'REG_SZ',
+    '/d',
+    value,
+    '/f',
+  ]
+}
+
+function windowsRegistryValue(stdout: string): string | null {
+  return WINDOWS_VALUE_PATTERN.exec(stdout)?.[1].replace(/\r$/, '') || null
+}
 
 export function patchShellEnvironment(content: string, value: string): string {
   const block = `${START}\nexport ${CLIENT_KEY_ENV}='${value.replaceAll("'", "'\"'\"'")}'\n${END}`
@@ -46,16 +71,11 @@ export async function readClientEnvironment(
   try {
     if (platform === 'win32') {
       const { stdout } = await run(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `[Environment]::GetEnvironmentVariable('${CLIENT_KEY_ENV}', 'User')`,
-        ],
+        'reg.exe',
+        ['query', WINDOWS_ENVIRONMENT_KEY, '/v', CLIENT_KEY_ENV],
         { windowsHide: true, timeout: 10_000 },
       )
-      return stdout.trim() || null
+      return windowsRegistryValue(stdout)
     }
     if (platform === 'darwin') {
       const { stdout } = await run(
@@ -67,10 +87,8 @@ export async function readClientEnvironment(
     }
     return process.env[CLIENT_KEY_ENV] ?? null
   } catch (error) {
-    if (
-      platform === 'darwin'
-      && (error as { code?: number | string }).code === 1
-    )
+    const code = (error as { code?: number | string }).code
+    if ((platform === 'darwin' || platform === 'win32') && code === 1)
       return null
     throw new Error('environmentFailed')
   }
@@ -83,20 +101,16 @@ export async function writeClientEnvironment(
 ): Promise<void> {
   try {
     if (platform === 'win32') {
-      await run(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `[Environment]::SetEnvironmentVariable('${CLIENT_KEY_ENV}', $env:COPILOT_API_SETUP_KEY, 'User')`,
-        ],
-        {
+      try {
+        await run('reg.exe', windowsRegistryArgs(value), {
           windowsHide: true,
           timeout: 10_000,
-          env: { ...process.env, COPILOT_API_SETUP_KEY: value ?? '' },
-        },
-      )
+        })
+      } catch (error) {
+        const missing =
+          value === null && (error as { code?: number | string }).code === 1
+        if (!missing) throw error
+      }
     } else if (platform === 'darwin') {
       await run(
         '/bin/launchctl',

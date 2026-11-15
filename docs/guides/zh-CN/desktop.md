@@ -46,12 +46,12 @@ Dashboard 顶部会汇总所选时间范围的请求数、总 Token、缓存命�
 
 | 客户端 | 一键操作 |
 | --- | --- |
-| Claude Code | 选择默认主模型和可选的 Haiku 小模型，主模型也用于 Opus、Sonnet、Fable 别名；合并写入用户 `settings.json`，可通过 Claude CLI 安装随桌面包分发的 `agent-inject`、`tool-search` 插件。原生 Tool Search 和 MCP bridge 分开选择。 |
+| Claude Code | 选择默认主模型和可选的 Haiku 小模型，主模型也用于 Opus、Sonnet、Fable 别名；合并写入用户 `settings.json`，可通过 Claude CLI 从 GitHub 上的 `copilot-api` marketplace 安装 `agent-inject`、`tool-search` 插件。原生 Tool Search 和 MCP bridge 分开选择。 |
 | OpenCode v2 | 将模型发现 Provider 和可选的 Agent Context 安装到全局插件目录，连接设置使用当前地址和密钥。此页面仅支持 v2。 |
 | Codex | 选择默认模型，配置 `copilot_api` Responses Provider 和远程模型目录；将网关密钥保存为用户环境变量 `GITHUB_COPILOT_API_KEY`，保留已有 Codex 登录。 |
 | DeepSeek Harness | 选择 profile，将 `COPILOT_API_BASE_URL` 和 `GITHUB_COPILOT_API_KEY` 保存到 `$DSH_HOME/.env`（默认 `~/.dsh/.env`），并安装 `dsh-copilot-api`。保留其他变量和注释，支持恢复原始文件；配置后请重启 Harness。 |
 
-客户端本体需单独安装。Claude 插件安装需要可用的 `claude` 命令；Harness 插件安装需要 `dsh` 及其包管理器依赖。配置对当前操作系统用户生效，并识别已设置的 `CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`XDG_CONFIG_HOME`；Windows 和 WSL 分别配置。
+客户端本体需单独安装。Claude 插件安装需要可用的 `claude` 命令并能访问 GitHub marketplace；Harness 插件安装需要 `dsh` 及其包管理器依赖。配置对当前操作系统用户生效，并识别已设置的 `CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`XDG_CONFIG_HOME`；Windows 和 WSL 分别配置。
 
 配置合并保留无关字段和注释。**恢复备份** 会恢复首次配置前的状态，包括接入时新建的文件和原有 Codex 环境变量值；仅移除本功能新安装的 Claude 插件并保留插件数据，保留预先安装的插件。恢复操作不会覆盖安装后的外部文件或环境变量修改。符号链接配置需手动编辑。
 

@@ -44,12 +44,12 @@ Open **Client integrations** after configuring your providers. The page uses the
 
 | Client | Setup |
 | --- | --- |
-| Claude Code | Select a default model and an optional Haiku model. The main model also supplies the Opus, Sonnet and Fable aliases. Merge gateway settings into user `settings.json`; optionally install the bundled `agent-inject` or `tool-search` plugin through the Claude CLI. Native Tool Search and the MCP bridge are separate choices. |
+| Claude Code | Select a default model and an optional Haiku model. The main model also supplies the Opus, Sonnet and Fable aliases. Merge gateway settings into user `settings.json`; optionally install the `agent-inject` or `tool-search` plugin from the GitHub-hosted `copilot-api` marketplace through the Claude CLI. Native Tool Search and the MCP bridge are separate choices. |
 | OpenCode v2 | Install the bundled model-discovery provider and optionally Agent Context into the global plugin directory. Connection settings follow the selected address and key. OpenCode v1 is not supported by this page. |
 | Codex | Select a default model and configure the `copilot_api` Responses provider and remote model catalog. The gateway key is saved as the user environment variable `GITHUB_COPILOT_API_KEY`; existing Codex sign-in is preserved. |
 | DeepSeek Harness | Select a profile, save `COPILOT_API_BASE_URL` and `GITHUB_COPILOT_API_KEY` to `$DSH_HOME/.env` (default `~/.dsh/.env`), and install `dsh-copilot-api`. Other variables and comments are preserved; Restore backup restores this file. Restart Harness after setup. |
 
-Install the clients themselves separately. Claude plugin installation requires a working `claude` command; Harness plugin installation requires `dsh` and its package-manager dependencies. Configuration targets the current OS user, including `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME` when set; Windows and WSL are separate environments.
+Install the clients themselves separately. Claude plugin installation requires a working `claude` command and access to the GitHub marketplace; Harness plugin installation requires `dsh` and its package-manager dependencies. Configuration targets the current OS user, including `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME` when set; Windows and WSL are separate environments.
 
 Configuration edits preserve unrelated settings and comments. **Restore backup** restores the state before the first setup, including files created by the integration and the previous Codex environment value. Newly installed Claude plugins are uninstalled with their data preserved; pre-existing plugins are kept. Restore refuses to overwrite subsequent external file or environment edits. Symbolic-link configurations require manual editing.
 

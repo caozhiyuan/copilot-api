@@ -16,6 +16,8 @@ import {
 
 const fieldClass =
   'mt-1.5 block w-full rounded-lg border border-line bg-canvas px-3 py-2 text-[13px] text-ink outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/15 disabled:opacity-50'
+const gatewayClass =
+  'mt-1.5 flex min-w-0 w-full items-center break-all border-y border-transparent py-2 font-mono text-[13px] text-ink'
 const buttonClass =
   'rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-soft transition hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-40'
 const primaryClass = `px-3 py-2 ${primaryButtonClass}`
@@ -197,11 +199,9 @@ export default function ClientIntegrationsPage({
               ))}
             </select>
           </label>
-          <div>
-            <p className="text-xs text-ink-faint">{t('clients.gateway')}</p>
-            <p className="mt-2 break-all font-mono text-sm text-ink">
-              {displayState.baseUrl || '—'}
-            </p>
+          <div className="min-w-0 text-xs text-ink-soft">
+            <p>{t('clients.gateway')}</p>
+            <p className={gatewayClass}>{displayState.baseUrl || '—'}</p>
           </div>
           <label className="text-xs text-ink-soft">
             {t('clients.apiKey')}

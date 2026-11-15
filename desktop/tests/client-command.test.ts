@@ -40,6 +40,9 @@ function commandOptions() {
     execute,
   }
 }
+function windowsRegistryValue(value: string, type = 'REG_SZ') {
+  return `\r\nHKEY_CURRENT_USER\\Environment\r\n    ${CLIENT_KEY_ENV}    ${type}    ${value}\r\n`
+}
 
 test('runs a native client executable with argument arrays and an augmented PATH', async () => {
   persist('bin/claude', '#!/bin/sh\n', 0o700)
@@ -76,7 +79,9 @@ test('resolves npm JS bins without a shell, including sibling Node and lib/node_
     commandOptions(),
   )
   expect(execute.mock.calls[0][0]).toBe(path.join(directory, 'bin/node'))
-  expect(execute.mock.calls[0][1][0]).toEndWith('@deepseek-ai/dsh/cli.js')
+  expect(execute.mock.calls[0][1][0]).toEndWith(
+    path.join('@deepseek-ai', 'dsh', 'cli.js'),
+  )
   fs.rmSync(path.join(directory, 'bin/node_modules'), { recursive: true })
   fs.rmSync(path.join(directory, 'bin/node'))
   persist(
@@ -152,20 +157,72 @@ test('includes safe command diagnostics without forwarding CLI messages or outpu
     new ClientCommandError('claude', [], null).details.exitCode,
   ).toBeUndefined()
 })
-test('persists Windows environment values through a fixed PowerShell script, without interpolating a key', async () => {
+test('reads and writes Windows user environment values through reg.exe, without PowerShell', async () => {
   const value = 'key-with-"$()&-characters'
   await writeClientEnvironment(value, 'win32', execute)
   const [file, args, options] = execute.mock.calls[0]
-  expect(file).toBe('powershell.exe')
-  expect(args.join(' ')).not.toContain(value)
-  expect(options.env?.COPILOT_API_SETUP_KEY).toBe(value)
+  expect(file).toBe('reg.exe')
+  expect(args).toEqual([
+    'add',
+    'HKCU\\Environment',
+    '/v',
+    CLIENT_KEY_ENV,
+    '/t',
+    'REG_SZ',
+    '/d',
+    value,
+    '/f',
+  ])
+  expect(options).toMatchObject({ windowsHide: true, timeout: 10_000 })
   expect(process.env[CLIENT_KEY_ENV]).toBe(value)
-  execute.mockResolvedValueOnce({ stdout: 'original-key\r\n', stderr: '' })
-  expect(await readClientEnvironment('win32', execute)).toBe('original-key')
-  execute.mockResolvedValueOnce({ stdout: '\r\n', stderr: '' })
+  execute.mockResolvedValueOnce({
+    stdout: windowsRegistryValue(value),
+    stderr: '',
+  })
+  expect(await readClientEnvironment('win32', execute)).toBe(value)
+  const [readFile, readArgs] = execute.mock.calls[1]
+  expect(readFile).toBe('reg.exe')
+  expect(readArgs).toEqual(['query', 'HKCU\\Environment', '/v', CLIENT_KEY_ENV])
+  execute.mockResolvedValueOnce({
+    stdout: windowsRegistryValue('expanded-%VALUE%', 'REG_EXPAND_SZ'),
+    stderr: '',
+  })
+  expect(await readClientEnvironment('win32', execute)).toBe('expanded-%VALUE%')
+  execute.mockResolvedValueOnce({
+    stdout: windowsRegistryValue(''),
+    stderr: '',
+  })
   expect(await readClientEnvironment('win32', execute)).toBeNull()
+  execute.mockRejectedValueOnce(
+    Object.assign(new Error('missing'), { code: 1 }),
+  )
+  expect(await readClientEnvironment('win32', execute)).toBeNull()
+  execute.mockRejectedValueOnce(Object.assign(new Error('denied'), { code: 5 }))
+  await expect(readClientEnvironment('win32', execute)).rejects.toThrow(
+    'environmentFailed',
+  )
   await writeClientEnvironment(null, 'win32', execute)
+  expect(execute.mock.calls.at(-1)?.[1]).toEqual([
+    'delete',
+    'HKCU\\Environment',
+    '/v',
+    CLIENT_KEY_ENV,
+    '/f',
+  ])
   expect(process.env[CLIENT_KEY_ENV]).toBeUndefined()
+  execute.mockRejectedValueOnce(
+    Object.assign(new Error('missing'), { code: 1 }),
+  )
+  await expect(
+    writeClientEnvironment(null, 'win32', execute),
+  ).resolves.toBeUndefined()
+  execute.mockRejectedValueOnce(new Error('denied'))
+  await expect(writeClientEnvironment('key', 'win32', execute)).rejects.toThrow(
+    'environmentFailed',
+  )
+  expect(execute.mock.calls.every(([command]) => command === 'reg.exe')).toBe(
+    true,
+  )
 })
 test('reads, sets and clears macOS launch environment values and handles an absent value', async () => {
   execute.mockResolvedValueOnce({ stdout: 'key\n', stderr: '' })

@@ -84,6 +84,15 @@ const hash = (value: string | null) =>
 const record = (value: unknown) => (isObject(value) ? value : {})
 const string = (value: unknown) => (typeof value === 'string' ? value : '')
 const PLUGINS: ClientPlugin[] = ['agent-inject', 'tool-search']
+const samePlugins = (left: ClientPlugin[], right: ClientPlugin[]) => {
+  const normalize = (plugins: ClientPlugin[]) => [...new Set(plugins)].sort()
+  const current = normalize(left)
+  const previous = normalize(right)
+  return (
+    current.length === previous.length
+    && current.every((plugin, index) => plugin === previous[index])
+  )
+}
 const CLAUDE_ENV_DEFAULTS = {
   CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400000',
   CLAUDE_CODE_AUTO_MODE_SERVER: '0',
@@ -483,11 +492,29 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
     }
   }
 
-  async function installClaudePlugins(plugins: ClientPlugin[], saved: Backup) {
+  async function installClaudePlugins(
+    plugins: ClientPlugin[],
+    previousPlugins: ClientPlugin[],
+    saved: Backup,
+  ) {
     if (!plugins.length) return
+    // One list call still detects plugins removed or disabled outside the app.
     const listed = await run('claude', ['plugin', 'list', '--json'])
     const installed: unknown = JSON.parse(listed.stdout)
     if (!Array.isArray(installed)) throw new Error('commandFailed')
+    const installedFor = (plugin: ClientPlugin) =>
+      installed.find(
+        (item: unknown) =>
+          record(item).id === `${plugin}@copilot-api-marketplace`
+          && record(item).scope === 'user',
+      ) as unknown
+    if (
+      samePlugins(plugins, previousPlugins)
+      && plugins.every(
+        (plugin) => record(installedFor(plugin)).enabled === true,
+      )
+    )
+      return
     await run('claude', [
       'plugin',
       'marketplace',
@@ -503,11 +530,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
       'copilot-api-marketplace',
     ])
     for (const plugin of plugins) {
-      const existing = installed.find(
-        (item: unknown) =>
-          record(item).id === `${plugin}@copilot-api-marketplace`
-          && record(item).scope === 'user',
-      ) as unknown
+      const existing = installedFor(plugin)
       const existed = existing !== undefined
       await run('claude', [
         'plugin',
@@ -655,7 +678,11 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         if (data.client === 'claude' || data.client === 'harness') {
           try {
             if (data.client === 'claude')
-              await installClaudePlugins(data.plugins, next)
+              await installClaudePlugins(
+                data.plugins,
+                beforeStatus.plugins,
+                next,
+              )
             else
               await run('dsh', [
                 'plugin',
