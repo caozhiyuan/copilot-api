@@ -206,7 +206,7 @@ describe("codex api helpers", () => {
     )
   })
 
-  test("excludes b3 and traceparent from websocket pool keys", () => {
+  test("excludes tracing headers from websocket pool keys", () => {
     state.codexAccessToken = "codex-token"
     state.codexAccountId = "codex-account"
 
@@ -223,12 +223,39 @@ describe("codex api helpers", () => {
     const traceId = "52a64ee0f3631c9e1292db876e42bde0"
 
     for (const spanId of ["c029695a2b515d4c", "55a7923ad197a664"]) {
-      const b3 = `${traceId}-${spanId}-1`
-      const traceparent = `00-${traceId}-${spanId}-01`
-      expect(prepare({ b3 }).poolKey).toBe(baseline.poolKey)
-      expect(prepare({ traceparent }).poolKey).toBe(baseline.poolKey)
-      expect(prepare({ b3, traceparent }).poolKey).toBe(baseline.poolKey)
-      expect(prepare({ b3 }).headers.b3).toBe(b3)
+      const sampled = spanId === "c029695a2b515d4c" ? "1" : "0"
+      const tracingHeaders = {
+        b3: `${traceId}-${spanId}-${sampled}`,
+        traceparent: `00-${traceId}-${spanId}-0${sampled}`,
+        tracestate: `vendor=${spanId}`,
+        baggage: `request=${spanId}`,
+        "x-b3-traceid": traceId,
+        "x-b3-spanid": spanId,
+        "x-b3-parentspanid": spanId,
+        "x-b3-sampled": sampled,
+        "x-b3-flags": sampled,
+        "x-b3-custom": spanId,
+      }
+      for (const [name, value] of Object.entries(tracingHeaders)) {
+        expect(prepare({ [name]: value }).poolKey).toBe(baseline.poolKey)
+        expect(prepare({ [name.toUpperCase()]: value }).poolKey).toBe(
+          baseline.poolKey,
+        )
+      }
+
+      const request = prepare(tracingHeaders)
+      expect(request.poolKey).toBe(baseline.poolKey)
+      for (const name of [
+        "b3",
+        "baggage",
+        "x-b3-spanid",
+        "x-b3-parentspanid",
+        "x-b3-sampled",
+        "x-b3-flags",
+        "x-b3-custom",
+      ] as const) {
+        expect(request.headers[name]).toBe(tracingHeaders[name])
+      }
     }
 
     expect(prepare({ "session-id": "session-2" }).poolKey).not.toBe(
