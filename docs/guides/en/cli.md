@@ -46,7 +46,7 @@ Passing the GitHub token on the command line exposes it to every local user thro
 | --provider   | Provider to log in with or configure (`copilot`, `codex`, `xai`, `opencode-go`, `kimi`, `deepseek`, `dashscope`, `openrouter`, or `custom`) | prompt | none |
 | --alias      | Optional Codex or xAI account alias, used with `--provider codex` or `--provider xai` | none | none |
 | --verbose    | Enable verbose logging    | false   | -v    |
-| --show-token | Show the selected provider's access token on auth | false   | none  |
+| --show-token | Show tokens during sign-in for GitHub Copilot and Codex only; xAI and API key sign-in do not echo credentials | false   | none  |
 
 Use `copilot-api auth login --provider copilot` only when you want to enable the GitHub Copilot provider. Copilot is not required for `codex` or third-party provider-only usage.
 

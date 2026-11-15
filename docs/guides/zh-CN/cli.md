@@ -50,7 +50,7 @@
 | --provider | 要登录或配置的 provider（`copilot`、`codex`、`xai`、`opencode-go`、`kimi`、`deepseek`、`dashscope`、`openrouter` 或 `custom`） | 交互选择 | 无 |
 | --alias | Codex 或 xAI 账号的可选别名，与 `--provider codex` 或 `--provider xai` 一起使用 | 无 | 无 |
 | --verbose | 启用详细日志 | false | -v |
-| --show-token | 登录时显示所选服务的访问 token | false | 无 |
+| --show-token | 登录时显示令牌，仅适用于 GitHub Copilot 和 Codex；xAI 和 API Key 登录不回显凭据 | false | 无 |
 
 只有在需要启用 GitHub Copilot provider 时，才需要执行 `copilot-api auth login --provider copilot`。使用 `codex` 或第三方 provider-only 模式不要求配置 Copilot。
 
