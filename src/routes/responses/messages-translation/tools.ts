@@ -206,7 +206,8 @@ function moveTopLevelSchemaUnionsToDescription(
   if (constraints.length === 0) return tool
   return {
     ...tool,
-    parameters,
+    // Anthropic requires input_schema.type, which a union-only schema lacks.
+    parameters: { type: "object", ...parameters },
     description: [tool.description, ...constraints]
       .filter(Boolean)
       .join("\n\n"),
