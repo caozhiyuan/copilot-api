@@ -1087,7 +1087,7 @@ describe("Responses Lite to Messages translation", () => {
           },
         ],
       },
-      {},
+      { type: "object" },
     ],
     [
       "allOf",
@@ -1141,6 +1141,44 @@ describe("Responses Lite to Messages translation", () => {
     },
   )
 
+  test("keeps $defs for $ref variants of a union-only schema", () => {
+    const $defs = {
+      FileTarget: {
+        type: "object",
+        properties: { path: { type: "string" } },
+        required: ["path"],
+      },
+      UrlTarget: {
+        type: "object",
+        properties: { url: { type: "string" } },
+        required: ["url"],
+      },
+    }
+    const anyOf = [
+      { $ref: "#/$defs/FileTarget" },
+      { $ref: "#/$defs/UrlTarget" },
+    ]
+    const result = translate({
+      input: "Run it",
+      tools: [
+        {
+          type: "function",
+          name: "open",
+          parameters: { $defs, anyOf },
+          strict: false,
+        },
+      ],
+    })
+
+    expect(result.messagesPayload.tools?.[0]?.input_schema).toEqual({
+      type: "object",
+      $defs,
+    })
+    expect(result.messagesPayload.tools?.[0]?.description).toContain(
+      JSON.stringify(anyOf),
+    )
+  })
+
   test("preserves nested schema unions without adding a description", () => {
     const parameters = {
       type: "object",
@@ -1186,7 +1224,7 @@ describe("Responses Lite to Messages translation", () => {
       )
 
       expect(result.messagesPayload.tools?.[0]?.input_schema).toEqual(
-        describeUnions ? {} : parameters,
+        describeUnions ? { type: "object" } : parameters,
       )
       const description = result.messagesPayload.tools?.[0]?.description
       if (describeUnions) {
