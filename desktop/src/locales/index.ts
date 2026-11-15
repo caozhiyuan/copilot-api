@@ -24,7 +24,12 @@ export interface Locale {
     commandExit: string
     stopped: string
     model: string
+    fableModel: string
+    opusModel: string
+    sonnetModel: string
     smallModel: string
+    reviewModel: string
+    clientDefault: string
     sameModel: string
     chooseModel: string
     modelHint: string

@@ -21,7 +21,11 @@ export interface ClientSetupInput {
   revision: string
   apiKey: string
   model: string
+  fableModel: string
+  opusModel: string
+  sonnetModel: string
   smallModel: string
+  reviewModel: string
   nativeToolSearch: boolean
   agentContext: boolean
   plugins: ClientPlugin[]
@@ -34,7 +38,11 @@ export interface ClientIntegrationStatus {
   state: 'unconfigured' | 'configured' | 'outdated' | 'error'
   canRestore: boolean
   model: string
+  fableModel: string
+  opusModel: string
+  sonnetModel: string
   smallModel: string
+  reviewModel: string
   nativeToolSearch: boolean
   agentContext: boolean
   plugins: ClientPlugin[]

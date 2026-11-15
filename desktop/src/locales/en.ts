@@ -24,13 +24,18 @@ const en: Locale = {
     stopped:
       'Start the gateway to load the model lists. You can still update an existing configuration or install plugins while it is stopped.',
     model: 'Default model',
-    smallModel: 'Fast model (Haiku)',
+    fableModel: 'Fable model',
+    opusModel: 'Opus model',
+    sonnetModel: 'Sonnet model',
+    smallModel: 'Haiku model',
+    reviewModel: 'Review model',
+    clientDefault: 'Use client default',
     sameModel: 'Use the default model',
     chooseModel: 'Choose a model',
     modelHint:
       'The model list follows enabled providers and their Coding Agent model selections.',
     claudeDescription:
-      'Choose your default model and connect Claude Code. The main model also supplies the Opus, Sonnet and Fable aliases.',
+      'Connect Claude Code and choose its default, Fable, Opus, Sonnet, Haiku and review models separately.',
     opencodeDescription:
       'OpenCode v2 only. Install the provider plugin to discover gateway models automatically, including image models.',
     codexDescription:

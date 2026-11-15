@@ -49,11 +49,7 @@
       {
         "from": "../plugin",
         "to": "client-plugins/plugin",
-        "filter": ["claude/**/*", "opencode/**/*"]
-      },
-      {
-        "from": "../.claude-plugin",
-        "to": "client-plugins/.claude-plugin"
+        "filter": ["opencode/**/*"]
       },
       {
         "from": "../dist",

@@ -30,6 +30,10 @@ import {
 } from '../shared/client-integrations'
 
 const clientSchema = z.enum(['claude', 'opencode', 'codex'])
+const modelSchema = z
+  .string()
+  .max(500)
+  .regex(/^[^\r\n\0]*$/)
 const setupSchema = z
   .object({
     client: clientSchema,
@@ -39,14 +43,12 @@ const setupSchema = z
       .min(1)
       .max(4096)
       .regex(/^[^\r\n\0]+$/),
-    model: z
-      .string()
-      .max(500)
-      .regex(/^[^\r\n\0]*$/),
-    smallModel: z
-      .string()
-      .max(500)
-      .regex(/^[^\r\n\0]*$/),
+    model: modelSchema,
+    fableModel: modelSchema,
+    opusModel: modelSchema,
+    sonnetModel: modelSchema,
+    smallModel: modelSchema,
+    reviewModel: modelSchema,
     nativeToolSearch: z.boolean(),
     agentContext: z.boolean(),
     plugins: z.array(z.enum(['agent-inject', 'tool-search'])),
@@ -77,7 +79,6 @@ const PLUGINS: ClientPlugin[] = ['agent-inject', 'tool-search']
 const CLAUDE_ENV_DEFAULTS = {
   CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400000',
   CLAUDE_CODE_AUTO_MODE_SERVER: '0',
-  CLAUDE_CODE_AUTO_MODE_MODEL: 'codex-auto-review',
   DISABLE_NON_ESSENTIAL_MODEL_CALLS: '1',
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
   CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
@@ -206,7 +207,11 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
       state: 'unconfigured',
       canRestore: false,
       model: '',
+      fableModel: '',
+      opusModel: '',
+      sonnetModel: '',
       smallModel: '',
+      reviewModel: '',
       nativeToolSearch: false,
       agentContext: false,
       plugins: [],
@@ -224,7 +229,11 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
       if (client === 'claude') {
         const settings = record(config.env)
         result.model = string(config.model)
+        result.fableModel = string(settings.ANTHROPIC_DEFAULT_FABLE_MODEL)
+        result.opusModel = string(settings.ANTHROPIC_DEFAULT_OPUS_MODEL)
+        result.sonnetModel = string(settings.ANTHROPIC_DEFAULT_SONNET_MODEL)
         result.smallModel = string(settings.ANTHROPIC_DEFAULT_HAIKU_MODEL)
+        result.reviewModel = string(settings.CLAUDE_CODE_AUTO_MODE_MODEL)
         result.nativeToolSearch = settings.ENABLE_TOOL_SEARCH === 'true'
         result.plugins = PLUGINS.filter(
           (plugin) =>
@@ -306,10 +315,23 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           [['env', 'ANTHROPIC_BASE_URL'], baseUrl],
           [['env', 'ANTHROPIC_AUTH_TOKEN'], input.apiKey],
           [['env', 'CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY'], '1'],
-          [['env', 'ANTHROPIC_DEFAULT_FABLE_MODEL'], main],
-          [['env', 'ANTHROPIC_DEFAULT_OPUS_MODEL'], main],
-          [['env', 'ANTHROPIC_DEFAULT_SONNET_MODEL'], main],
+          [
+            ['env', 'ANTHROPIC_DEFAULT_FABLE_MODEL'],
+            input.fableModel.trim() || main,
+          ],
+          [
+            ['env', 'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+            input.opusModel.trim() || main,
+          ],
+          [
+            ['env', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+            input.sonnetModel.trim() || main,
+          ],
           [['env', 'ANTHROPIC_DEFAULT_HAIKU_MODEL'], small],
+          [
+            ['env', 'CLAUDE_CODE_AUTO_MODE_MODEL'],
+            input.reviewModel.trim() || undefined,
+          ],
           [
             ['env', 'ENABLE_TOOL_SEARCH'],
             input.nativeToolSearch ? 'true' : 'false',
@@ -400,30 +422,19 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
     const listed = await run('claude', ['plugin', 'list', '--json'])
     const installed: unknown = JSON.parse(listed.stdout)
     if (!Array.isArray(installed)) throw new Error('commandFailed')
-    const marketplace = path.join(options.dataDir, 'claude-marketplace')
-    for (const relative of [
-      '.claude-plugin/marketplace.json',
-      ...fs
-        .readdirSync(path.join(options.resourceDir, 'plugin/claude'), {
-          recursive: true,
-        })
-        .filter((entry) => typeof entry === 'string')
-        .map((entry) => `plugin/claude/${entry}`),
-    ]) {
-      const source = path.join(options.resourceDir, relative)
-      if (fs.statSync(source).isFile())
-        writeFileAtomically(
-          path.join(marketplace, relative),
-          fs.readFileSync(source, 'utf8'),
-        )
-    }
     await run('claude', [
       'plugin',
       'marketplace',
       'add',
-      marketplace,
+      'https://github.com/caozhiyuan/copilot-api.git',
       '--scope',
       'user',
+    ])
+    await run('claude', [
+      'plugin',
+      'marketplace',
+      'update',
+      'copilot-api-marketplace',
     ])
     for (const plugin of plugins) {
       const existing = installed.find(

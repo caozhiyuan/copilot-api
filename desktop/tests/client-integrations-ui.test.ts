@@ -41,7 +41,11 @@ beforeEach(async () => {
       revision: `${client}-revision`,
       canRestore: false,
       model: '',
+      fableModel: '',
+      opusModel: '',
+      sonnetModel: '',
       smallModel: '',
+      reviewModel: '',
       nativeToolSearch: false,
       agentContext: false,
       plugins: [],
@@ -196,16 +200,25 @@ describe('client integration page', () => {
       'codex',
     ])
   })
-  test('requires a Claude default model and saves separate main/fast models', async () => {
+  test('requires a default model and saves four Claude aliases and the review model independently', async () => {
     await render()
+    expect(card('claude').querySelectorAll('select')[5].value).toBe('')
     await select('claude', 0, 'codex/my-claude-gpt[1m]')
     await select('claude', 1, 'my-claude-small[1m]')
+    await select('claude', 2, 'codex/my-claude-gpt[1m]')
+    await select('claude', 3, 'my-claude-small[1m]')
+    await select('claude', 4, 'my-claude-small[1m]')
+    await select('claude', 5, 'codex-auto-review')
     await click(card('claude'), 'Configure client')
     expect(setup.mock.calls[0][0]).toMatchObject({
       client: 'claude',
       revision: 'claude-revision',
       model: 'codex/my-claude-gpt[1m]',
+      fableModel: 'my-claude-small[1m]',
+      opusModel: 'codex/my-claude-gpt[1m]',
+      sonnetModel: 'my-claude-small[1m]',
       smallModel: 'my-claude-small[1m]',
+      reviewModel: 'codex-auto-review',
       apiKey: 'private-gateway-key',
     })
     expect(card('claude').textContent).toContain('Configuration saved')
@@ -217,6 +230,33 @@ describe('client integration page', () => {
     expect(card('claude').textContent).toContain(
       'Original configuration restored',
     )
+  })
+  test('loads each existing Claude model choice and leaves Review unselected when cleared', async () => {
+    Object.assign(state.clients[0], {
+      state: 'configured',
+      model: 'existing-default',
+      fableModel: 'existing-fable',
+      opusModel: 'existing-default',
+      sonnetModel: 'existing-sonnet',
+      smallModel: 'existing-haiku',
+      reviewModel: 'existing-review',
+    })
+    await render(false)
+    expect(
+      [...card('claude').querySelectorAll('select')].map((el) => el.value),
+    ).toEqual([
+      'existing-default',
+      'existing-fable',
+      'existing-default',
+      'existing-sonnet',
+      'existing-haiku',
+      'existing-review',
+    ])
+    await select('claude', 5, '')
+    await click(card('claude'), 'Update configuration')
+    expect(setup.mock.calls[0][0].reviewModel).toBe('')
+    expect(card('claude').querySelectorAll('select')[5].value).toBe('')
+    expect(setup.mock.calls[0][0].opusModel).toBe('existing-default')
   })
   test('keeps native Tool Search and its bridge exclusive and reports partial plugin failures', async () => {
     setup.mockImplementation((input) =>

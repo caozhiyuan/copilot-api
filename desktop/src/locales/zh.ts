@@ -21,12 +21,17 @@ const zh: Locale = {
     commandExit: '退出码：{{code}}',
     stopped: '启动网关后可读取模型列表。服务停止时仍可更新已有配置或安装插件。',
     model: '默认主模型',
-    smallModel: '快速小模型（Haiku）',
+    fableModel: 'Fable 模型',
+    opusModel: 'Opus 模型',
+    sonnetModel: 'Sonnet 模型',
+    smallModel: 'Haiku 模型',
+    reviewModel: 'Review 模型',
+    clientDefault: '使用客户端默认值',
     sameModel: '跟随默认主模型',
     chooseModel: '请选择模型',
     modelHint: '列表遵循 Provider 启用状态及 Coding Agent 展示模型设置。',
     claudeDescription:
-      '选择默认模型并接入 Claude Code。主模型同时用于 Opus、Sonnet 和 Fable 别名。',
+      '接入 Claude Code，分别选择默认主模型、Fable、Opus、Sonnet、Haiku 和 Review 模型。',
     opencodeDescription:
       '仅支持 OpenCode v2。安装 Provider 插件，自动发现网关模型，包含图片模型。',
     codexDescription:

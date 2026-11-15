@@ -62,15 +62,20 @@ async function input(
   client: ClientId,
   overrides: Partial<ClientSetupInput> = {},
 ): Promise<ClientSetupInput> {
+  const status = await manager.status(client)
   return {
     client,
-    revision: (await manager.status(client)).revision,
+    revision: status.revision,
     apiKey: gateway.apiKeys[0] ?? 'dummy',
     model:
       client === 'claude' ?
         'codex/my-claude-gpt-6.1-sol[1m]'
       : 'codex/gpt-6.1-sol',
+    fableModel: status.fableModel,
+    opusModel: status.opusModel,
+    sonnetModel: status.sonnetModel,
     smallModel: '',
+    reviewModel: status.reviewModel,
     nativeToolSearch: false,
     agentContext: false,
     plugins: [],
@@ -204,10 +209,10 @@ describe('client setup and restore', () => {
       .env as Record<string, unknown>
     expect(envFields).not.toHaveProperty('ANTHROPIC_MODEL')
     expect(envFields).not.toHaveProperty('CLAUDE_CODE_USE_FOUNDRY')
+    expect(envFields).not.toHaveProperty('CLAUDE_CODE_AUTO_MODE_MODEL')
     expect(envFields).toMatchObject({
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400000',
       CLAUDE_CODE_AUTO_MODE_SERVER: '0',
-      CLAUDE_CODE_AUTO_MODE_MODEL: 'codex-auto-review',
       CLAUDE_CODE_USE_VERTEX: '0',
       CLAUDE_CODE_USE_BEDROCK: '0',
       DISABLE_NON_ESSENTIAL_MODEL_CALLS: '1',
@@ -227,6 +232,38 @@ describe('client setup and restore', () => {
     await manager.restore('claude', result.status.revision)
     expect(read('.claude/settings.json')).toBe(source)
     expect((await manager.status('claude')).canRestore).toBe(false)
+  })
+  test('saves four independent Claude aliases and the selected review model, and clears an unselected review', async () => {
+    const manager = fixture()
+    const choices = {
+      fableModel: 'fable/custom-model',
+      opusModel: 'opus/custom-model',
+      sonnetModel: 'sonnet/custom-model',
+      smallModel: 'haiku/custom-model',
+      reviewModel: 'review/custom-model',
+    }
+    const configured = await manager.setup(
+      await input(manager, 'claude', choices),
+    )
+    expect(configured.status).toMatchObject(choices)
+    expect(readJsonConfig(read('.claude/settings.json')).env).toMatchObject({
+      ANTHROPIC_DEFAULT_FABLE_MODEL: choices.fableModel,
+      ANTHROPIC_DEFAULT_OPUS_MODEL: choices.opusModel,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: choices.sonnetModel,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: choices.smallModel,
+      CLAUDE_CODE_AUTO_MODE_MODEL: choices.reviewModel,
+    })
+    const cleared = await manager.setup(
+      await input(manager, 'claude', { ...choices, reviewModel: '' }),
+    )
+    expect(cleared.status.reviewModel).toBe('')
+    expect(
+      readJsonConfig(read('.claude/settings.json')).env,
+    ).not.toHaveProperty('CLAUDE_CODE_AUTO_MODE_MODEL')
+    await manager.restore('claude', cleared.status.revision)
+    expect(fs.existsSync(path.join(directory, '.claude/settings.json'))).toBe(
+      false,
+    )
   })
   test('preserves custom Claude environment defaults, including empty values, across updates', async () => {
     const custom = {
@@ -455,12 +492,14 @@ describe('client setup and restore', () => {
     ).rejects.toThrow('environmentFailed')
     expect((await manager.status('codex')).state).toBe('configured')
   })
-  test('uses official Claude plugin commands, supports disabling a bridge and reports partial installation failures', async () => {
+  test('installs Claude plugins from GitHub without bundled resources, supports disabling a bridge and reports partial failures', async () => {
     persist(
       '.claude/settings.json',
       '{"enabledPlugins":{"tool-search@copilot-api-marketplace":true,"other@market":true}}',
     )
-    const manager = fixture()
+    const manager = fixture({
+      resourceDir: path.join(directory, 'missing-plugin-resources'),
+    })
     await expect(
       manager.setup(
         await input(manager, 'claude', {
@@ -498,13 +537,19 @@ describe('client setup and restore', () => {
       'plugin',
       'marketplace',
       'add',
-      path.join(directory, 'backups/claude-marketplace'),
+      'https://github.com/caozhiyuan/copilot-api.git',
       '--scope',
       'user',
     ])
     expect(
-      read('backups/claude-marketplace/.claude-plugin/marketplace.json'),
-    ).toContain('copilot-api-marketplace')
+      fs.existsSync(path.join(directory, 'backups/claude-marketplace')),
+    ).toBe(false)
+    expect(run.mock.calls[2][1]).toEqual([
+      'plugin',
+      'marketplace',
+      'update',
+      'copilot-api-marketplace',
+    ])
     run.mockRejectedValueOnce(new Error('commandMissing'))
     const partial = await manager.setup(
       await input(manager, 'claude', { plugins: ['agent-inject'] }),

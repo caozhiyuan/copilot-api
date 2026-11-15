@@ -33,7 +33,11 @@ const initialClientStatuses: ClientIntegrationStatus[] = clientColumns
     state: 'unconfigured',
     canRestore: false,
     model: '',
+    fableModel: '',
+    opusModel: '',
+    sonnetModel: '',
     smallModel: '',
+    reviewModel: '',
     nativeToolSearch: false,
     agentContext: true,
     plugins: [],
@@ -254,9 +258,11 @@ function ClientCard({
   t: Translate
 }) {
   const [model, setModel] = useState(status.model)
-  const [smallModel, setSmallModel] = useState(
-    status.smallModel === status.model ? '' : status.smallModel,
-  )
+  const [fableModel, setFableModel] = useState(status.fableModel)
+  const [opusModel, setOpusModel] = useState(status.opusModel)
+  const [sonnetModel, setSonnetModel] = useState(status.sonnetModel)
+  const [smallModel, setSmallModel] = useState(status.smallModel)
+  const [reviewModel, setReviewModel] = useState(status.reviewModel)
   const [nativeToolSearch, setNativeToolSearch] = useState(
     status.nativeToolSearch,
   )
@@ -271,7 +277,11 @@ function ClientCard({
   const [pluginFailure, setPluginFailure] = useState<ClientCommandFailure>()
   useEffect(() => {
     setModel(status.model)
-    setSmallModel(status.smallModel === status.model ? '' : status.smallModel)
+    setFableModel(status.fableModel)
+    setOpusModel(status.opusModel)
+    setSonnetModel(status.sonnetModel)
+    setSmallModel(status.smallModel)
+    setReviewModel(status.reviewModel)
     setNativeToolSearch(status.nativeToolSearch)
     setAgentContext(status.state === 'unconfigured' || status.agentContext)
     setPlugins(status.plugins)
@@ -312,7 +322,11 @@ function ClientCard({
             revision: status.revision,
             apiKey,
             model,
+            fableModel,
+            opusModel,
+            sonnetModel,
             smallModel,
+            reviewModel,
             nativeToolSearch,
             agentContext,
             plugins,
@@ -341,9 +355,10 @@ function ClientCard({
     label: string,
     value: string,
     onChange: (value: string) => void,
-    small = false,
+    placeholder = t('clients.chooseModel'),
+    choices = models,
   ) => {
-    const available = [...models]
+    const available = [...choices]
     if (value && !available.some((item) => item.id === value))
       available.unshift({ id: value, name: value })
     return (
@@ -356,9 +371,7 @@ function ClientCard({
           onChange={(event) => onChange(event.target.value)}
           disabled={busy}
         >
-          <option value="">
-            {t(small ? 'clients.sameModel' : 'clients.chooseModel')}
-          </option>
+          <option value="">{placeholder}</option>
           {available.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name === item.id ? item.id : `${item.name} · ${item.id}`}
@@ -394,13 +407,46 @@ function ClientCard({
         {status.client !== 'opencode' && (
           <>
             {chooseModel(t('clients.model'), model, setModel)}
-            {status.client === 'claude'
-              && chooseModel(
-                t('clients.smallModel'),
-                smallModel,
-                setSmallModel,
-                true,
-              )}
+            {status.client === 'claude' && (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {chooseModel(
+                    t('clients.fableModel'),
+                    fableModel,
+                    setFableModel,
+                    t('clients.sameModel'),
+                  )}
+                  {chooseModel(
+                    t('clients.opusModel'),
+                    opusModel,
+                    setOpusModel,
+                    t('clients.sameModel'),
+                  )}
+                  {chooseModel(
+                    t('clients.sonnetModel'),
+                    sonnetModel,
+                    setSonnetModel,
+                    t('clients.sameModel'),
+                  )}
+                  {chooseModel(
+                    t('clients.smallModel'),
+                    smallModel,
+                    setSmallModel,
+                    t('clients.sameModel'),
+                  )}
+                </div>
+                {chooseModel(
+                  t('clients.reviewModel'),
+                  reviewModel,
+                  setReviewModel,
+                  t('clients.clientDefault'),
+                  [
+                    { id: 'codex-auto-review', name: 'codex-auto-review' },
+                    ...models.filter((item) => item.id !== 'codex-auto-review'),
+                  ],
+                )}
+              </>
+            )}
             <p className="text-[11px] leading-5 text-ink-faint">
               {t('clients.modelHint')}
             </p>
