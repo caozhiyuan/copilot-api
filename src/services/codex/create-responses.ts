@@ -679,5 +679,9 @@ const normalizeCodexWebSocketEvent = (event: ResponseStreamEvent): boolean => {
 
 function shouldIncludeHeader(headerName: string): boolean {
   const header = headerName.toLowerCase()
-  return !header.includes("trace") && !header.startsWith("x-codex-turn")
+  return (
+    header !== "b3"
+    && !header.includes("trace")
+    && !header.startsWith("x-codex-turn")
+  )
 }

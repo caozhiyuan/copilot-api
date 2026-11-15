@@ -206,6 +206,36 @@ describe("codex api helpers", () => {
     )
   })
 
+  test("excludes b3 and traceparent from websocket pool keys", () => {
+    state.codexAccessToken = "codex-token"
+    state.codexAccountId = "codex-account"
+
+    const prepare = (headers: Record<string, string> = {}) =>
+      prepareCodexResponsesWebSocketRequest(
+        { input: "hello", model: "gpt-5.4", stream: true },
+        new Headers({
+          "user-agent": "test-agent",
+          "session-id": "session-1",
+          ...headers,
+        }),
+      )
+    const baseline = prepare()
+    const traceId = "52a64ee0f3631c9e1292db876e42bde0"
+
+    for (const spanId of ["c029695a2b515d4c", "55a7923ad197a664"]) {
+      const b3 = `${traceId}-${spanId}-1`
+      const traceparent = `00-${traceId}-${spanId}-01`
+      expect(prepare({ b3 }).poolKey).toBe(baseline.poolKey)
+      expect(prepare({ traceparent }).poolKey).toBe(baseline.poolKey)
+      expect(prepare({ b3, traceparent }).poolKey).toBe(baseline.poolKey)
+      expect(prepare({ b3 }).headers.b3).toBe(b3)
+    }
+
+    expect(prepare({ "session-id": "session-2" }).poolKey).not.toBe(
+      baseline.poolKey,
+    )
+  })
+
   test("returns the static codex model catalog", () => {
     const models = getModels()
 
