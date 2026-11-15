@@ -207,6 +207,8 @@ describe('client integration page', () => {
       'select[aria-label="Agent"]',
     )!
     expect(picker.value).toBe('codex')
+    await selectAgent('codex')
+    expect(button(dom.container, 'Refresh').disabled).toBe(false)
     expect([...picker.options].map((option) => option.textContent)).toEqual([
       'Codex',
       'OpenCode v2',

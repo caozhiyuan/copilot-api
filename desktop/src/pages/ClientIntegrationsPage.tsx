@@ -130,6 +130,7 @@ export default function ClientIntegrationsPage({
   }, [agent, serverRunning, refresh])
 
   const selectAgent = (next: ClientAgent) => {
+    if (next === agent) return
     setAgent(next)
     window.localStorage.setItem(agentPreferenceKey, next)
     setState(undefined)
