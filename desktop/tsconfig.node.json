@@ -82,6 +82,7 @@
     "src/lib/token-usage-format.ts",
     "src/locales/**/*",
     "src/pages/AdvancedConfigPage.tsx",
+    "src/pages/ClientIntegrationsPage.tsx",
     "src/pages/AuthPage.tsx",
     "src/pages/DashboardPage.tsx",
     "src/pages/MediaStudioPage.tsx",

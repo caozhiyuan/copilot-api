@@ -1,6 +1,18 @@
 import fs from 'node:fs/promises'
+import path from 'node:path'
 
-import { ipcMain, shell, BrowserWindow, dialog, nativeImage } from 'electron'
+import {
+  app,
+  ipcMain,
+  shell,
+  BrowserWindow,
+  dialog,
+  nativeImage,
+} from 'electron'
+import {
+  createClientIntegrations,
+  clientIntegrationReply,
+} from './client-integrations'
 
 import {
   createMediaStudioClient,
@@ -32,6 +44,7 @@ import { saveProviderManagementConfig } from '../../src/lib/provider-management'
 import { getDesktopProviderManagementConfig } from './provider-management'
 import {
   isValidServerHost,
+  buildServerBaseUrl,
   resolveEffectiveServerHost,
 } from '../src/lib/server-url'
 import {
@@ -274,6 +287,47 @@ export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   options: IpcHandlersOptions = {},
 ): void {
+  let clientIntegrations:
+    ReturnType<typeof createClientIntegrations> | undefined
+  const clients = () =>
+    (clientIntegrations ??= createClientIntegrations({
+      dataDir: path.join(app.getPath('userData'), 'client-integrations'),
+      resourceDir:
+        app.isPackaged ?
+          path.join(process.resourcesPath, 'client-plugins')
+        : path.resolve(app.getAppPath(), '..'),
+      getGateway: async () => {
+        const settings = await readSettings()
+        const keys = await readServerKeysConfig()
+        return {
+          baseUrl: buildServerBaseUrl(
+            isRunning() ? getHost() : settings.host,
+            isRunning() ? getPort() : settings.lastPort,
+          ),
+          apiKeys: keys.apiKeys,
+        }
+      },
+    }))
+  ipcMain.handle('clients:get-state', (_event, agent: unknown) =>
+    clientIntegrationReply(() => clients().getState(agent)),
+  )
+  ipcMain.handle('clients:get-models', (_event, client: unknown) =>
+    clientIntegrationReply(() => clients().getModels(client)),
+  )
+  ipcMain.handle('clients:setup', (_event, input: unknown) =>
+    clientIntegrationReply(() => clients().setup(input)),
+  )
+  ipcMain.handle(
+    'clients:restore',
+    (_event, client: unknown, revision: unknown) =>
+      clientIntegrationReply(() => clients().restore(client, revision)),
+  )
+  ipcMain.handle('clients:open-config', (_event, client: unknown) =>
+    clientIntegrationReply(async () => {
+      const error = await shell.openPath(clients().openPath(client))
+      if (error) throw new Error('operationFailed')
+    }),
+  )
   const mediaClient = createMediaStudioClient({
     getBaseUrl: () => {
       if (!isRunning())

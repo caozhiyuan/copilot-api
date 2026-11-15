@@ -1,5 +1,16 @@
 import type { LangPreference } from '../locales'
 import type {
+  ClientAgent,
+  ClientId,
+  ClientIntegrationsState,
+  ClientIntegrationStatus,
+  ClientModelOption,
+  ClientSetupInput,
+  ClientSetupResult,
+} from '../../shared/client-integrations'
+
+export type ClientIntegrationReply<T> = { data: T } | { error: string }
+import type {
   SubscriptionProvider,
   SubscriptionUsage,
 } from '../../../src/lib/types/subscription-usage'
@@ -394,6 +405,22 @@ declare global {
         provider: SubscriptionProvider,
       ) => Promise<SubscriptionUsage | null>
       fetchModels: () => Promise<unknown>
+      getClientIntegrations: (
+        agent?: ClientAgent,
+      ) => Promise<ClientIntegrationReply<ClientIntegrationsState>>
+      getClientModels: (
+        client: 'claude' | 'codex',
+      ) => Promise<ClientIntegrationReply<ClientModelOption[]>>
+      setupClient: (
+        input: ClientSetupInput,
+      ) => Promise<ClientIntegrationReply<ClientSetupResult>>
+      restoreClient: (
+        client: ClientId,
+        revision: string,
+      ) => Promise<ClientIntegrationReply<ClientIntegrationStatus>>
+      openClientConfig: (
+        client: ClientId,
+      ) => Promise<ClientIntegrationReply<void>>
       createImages: (
         id: string,
         input: ImageCreationInput,

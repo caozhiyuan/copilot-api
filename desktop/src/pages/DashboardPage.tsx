@@ -19,6 +19,7 @@ import {
 import { getProviderTypeLabel } from '../lib/provider-type-labels'
 import { buildServerBaseUrl } from '../lib/server-url'
 import AdvancedConfigPage from './AdvancedConfigPage'
+import ClientIntegrationsPage from './ClientIntegrationsPage'
 import MediaStudioPage from './MediaStudioPage'
 import ProviderManagementPanel from '../components/ProviderManagementPanel'
 import type {
@@ -57,6 +58,7 @@ type DashboardTab =
   | 'tokenUsage'
   | 'subscriptions'
   | 'providers'
+  | 'clients'
   | 'advancedConfig'
   | 'studio'
   | 'logs'
@@ -68,6 +70,7 @@ type DashboardTab =
  */
 const TABS_WITHOUT_START_FORM: ReadonlyArray<DashboardTab> = [
   'providers',
+  'clients',
   'advancedConfig',
   'studio',
 ]
@@ -210,6 +213,23 @@ const IconProviders = () => (
     aria-hidden="true"
   >
     <path d="M8 3v4m8-4v4M6 7h12v3a6 6 0 0 1-12 0V7Zm6 9v5" />
+  </svg>
+)
+
+const IconClients = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </svg>
 )
 
@@ -879,6 +899,7 @@ export default function DashboardPage({
       key: 'providers',
       label: t('providers.title'),
     },
+    { icon: <IconClients />, key: 'clients', label: t('clients.title') },
     { icon: <IconLaunch />, key: 'studio', label: t('studio.title') },
     {
       icon: <IconAdvancedConfig />,
@@ -1358,6 +1379,13 @@ export default function DashboardPage({
           <ProviderManagementPanel
             serverRunning={started && !stopping}
             onOpenAuthConfig={handleChangeAuth}
+          />
+        )}
+
+        {tab === 'clients' && (
+          <ClientIntegrationsPage
+            initialBaseUrl={anthropicUrl}
+            serverRunning={started && !stopping && !restarting}
           />
         )}
 
