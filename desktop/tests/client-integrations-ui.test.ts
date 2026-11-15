@@ -142,6 +142,11 @@ describe('client integration page', () => {
   test('shows four clients, only OpenCode v2, and masked gateway key choices', async () => {
     await render()
     expect(dom.container.querySelectorAll('[data-client]')).toHaveLength(4)
+    expect(
+      [...dom.container.querySelectorAll('[data-client] h3')].map(
+        (heading) => heading.textContent,
+      ),
+    ).toEqual(['Codex', 'OpenCode v2', 'Claude Code', 'DeepSeek Harness'])
     expect(card('opencode').textContent).toContain('OpenCode v2 only')
     expect(dom.container.textContent).not.toContain('OpenCode v1')
     expect(dom.container.textContent).not.toContain('private-gateway-key')
