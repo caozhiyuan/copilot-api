@@ -1,6 +1,52 @@
 export type ClientId = 'claude' | 'opencode' | 'codex' | 'harness'
 export type ClientAgent = ClientId
 export type ClientPlugin = 'agent-inject' | 'tool-search'
+export const CODEX_SANDBOX_MODES = [
+  'danger-full-access',
+  'workspace-write',
+  'read-only',
+] as const
+export const CODEX_APPROVAL_REVIEWERS = ['auto_review', 'user'] as const
+export const CODEX_WEB_SEARCH_MODES = [
+  'live',
+  'indexed',
+  'cached',
+  'disabled',
+] as const
+export const CODEX_REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+] as const
+export interface CodexClientSettings {
+  sandboxMode: string
+  approvalsReviewer: string
+  webSearch: string
+  reasoningEffort: string
+  daemonAutoStart: boolean
+  defaultModeRequestUserInput: boolean
+  preventIdleSleep: boolean
+}
+export interface CodexClientOptions extends CodexClientSettings {
+  sandboxMode: (typeof CODEX_SANDBOX_MODES)[number]
+  approvalsReviewer: (typeof CODEX_APPROVAL_REVIEWERS)[number]
+  webSearch: (typeof CODEX_WEB_SEARCH_MODES)[number]
+}
+export const CODEX_CLIENT_DEFAULTS = {
+  sandboxMode: 'danger-full-access',
+  approvalsReviewer: 'auto_review',
+  webSearch: 'live',
+  reasoningEffort: 'max',
+  daemonAutoStart: false,
+  defaultModeRequestUserInput: true,
+  preventIdleSleep: true,
+} satisfies CodexClientOptions
+
 export const CLIENT_ERROR_CODES = [
   'invalidConfig',
   'symlinkConfig',
@@ -30,6 +76,7 @@ export interface ClientSetupInput {
   nativeToolSearch: boolean
   agentContext: boolean
   plugins: ClientPlugin[]
+  codex?: Partial<CodexClientOptions>
 }
 
 export interface ClientIntegrationStatus {
@@ -47,6 +94,7 @@ export interface ClientIntegrationStatus {
   nativeToolSearch: boolean
   agentContext: boolean
   plugins: ClientPlugin[]
+  codex?: CodexClientSettings
   error?: string
 }
 
@@ -60,6 +108,7 @@ export interface ClientIntegrationsState {
 export interface ClientModelOption {
   id: string
   name: string
+  reasoningEfforts?: string[]
 }
 
 export interface ClientSetupResult {

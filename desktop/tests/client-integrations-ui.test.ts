@@ -3,11 +3,14 @@ import { act, createElement } from 'react'
 import ClientIntegrationsPage from '../src/pages/ClientIntegrationsPage'
 import { LanguageProvider } from '../src/contexts/LanguageContext'
 import { createTestDom } from './helpers/dom'
-import type {
-  ClientAgent,
-  ClientModelOption,
-  ClientIntegrationsState,
-  ClientSetupInput,
+import {
+  CODEX_CLIENT_DEFAULTS,
+  type CodexClientSettings,
+  type ClientAgent,
+  type ClientModelOption,
+  type ClientIntegrationsState,
+  type ClientSetupInput,
+  type ClientIntegrationStatus,
 } from '../shared/client-integrations'
 import type { ClientIntegrationReply } from '../src/types/ipc'
 
@@ -26,6 +29,29 @@ let setup: ReturnType<
 let restore: ReturnType<typeof mock<Window['electronAPI']['restoreClient']>>
 let getModels: ReturnType<typeof mock<Window['electronAPI']['getClientModels']>>
 let open: ReturnType<typeof mock<Window['electronAPI']['openClientConfig']>>
+
+function savedStatus(input: ClientSetupInput): ClientIntegrationStatus {
+  const previous = state.clients.find((item) => item.client === input.client)!
+  return {
+    ...previous,
+    ...input,
+    codex:
+      input.client === 'codex' ?
+        {
+          ...CODEX_CLIENT_DEFAULTS,
+          ...previous.codex,
+          ...Object.fromEntries(
+            Object.entries(input.codex ?? {}).filter(
+              ([, value]) => value !== undefined,
+            ),
+          ),
+        }
+      : undefined,
+    state: 'configured',
+    canRestore: true,
+    revision: 'saved',
+  }
+}
 
 beforeEach(async () => {
   dom = await createTestDom()
@@ -63,13 +89,7 @@ beforeEach(async () => {
   setup = mock((input) =>
     Promise.resolve({
       data: {
-        status: {
-          ...state.clients.find((item) => item.client === input.client)!,
-          ...input,
-          state: 'configured',
-          canRestore: true,
-          revision: 'saved',
-        },
+        status: savedStatus(input),
       },
     }),
   )
@@ -89,7 +109,13 @@ beforeEach(async () => {
             { id: 'codex/my-claude-gpt[1m]', name: 'GPT (codex)' },
             { id: 'my-claude-small[1m]', name: 'Small (github-copilot)' },
           ]
-        : [{ id: 'codex/gpt', name: 'GPT (codex)' }],
+        : [
+            {
+              id: 'codex/gpt',
+              name: 'GPT (codex)',
+              reasoningEfforts: ['low', 'high', 'max', 'ultra'],
+            },
+          ],
     }),
   )
   open = mock(() => Promise.resolve({ data: undefined }))
@@ -153,6 +179,23 @@ async function select(client: string, index: number, value: string) {
     element.value = value
     element.dispatchEvent(new Event('change', { bubbles: true }))
   })
+}
+function codexField(label: string) {
+  return card('codex').querySelector<HTMLSelectElement>(
+    `select[aria-label="Codex: ${label}"]`,
+  )!
+}
+async function selectCodex(label: string, value: string) {
+  await act(async () => {
+    const element = codexField(label)
+    element.value = value
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+function featuresGroup() {
+  return [...card('codex').querySelectorAll('fieldset')].find(
+    (element) => element.querySelector('legend')?.textContent === 'Features',
+  )!
 }
 async function profile(value: string) {
   await act(async () => {
@@ -231,6 +274,202 @@ describe('client integration page', () => {
       'opencode',
       'claude',
     ])
+  })
+  test('groups Codex settings by function and offers official choices with the requested defaults', async () => {
+    await render()
+    expect(
+      [...card('codex').querySelectorAll('legend')].map(
+        (element) => element.textContent,
+      ),
+    ).toEqual(['Models', 'Sandbox and approvals', 'Search', 'Features'])
+    for (const [label, options, selected] of [
+      [
+        'Sandbox mode',
+        ['danger-full-access', 'workspace-write', 'read-only'],
+        'danger-full-access',
+      ],
+      ['Approval reviewer', ['auto_review', 'user'], 'auto_review'],
+      ['Web search', ['live', 'indexed', 'cached', 'disabled'], 'live'],
+    ] as const) {
+      expect([...codexField(label).options].map((item) => item.value)).toEqual([
+        ...options,
+      ])
+      expect(codexField(label).value).toBe(selected)
+    }
+    const features = featuresGroup().querySelectorAll<HTMLInputElement>('input')
+    expect([...features].map((element) => element.checked)).toEqual([
+      false,
+      true,
+      true,
+    ])
+    await selectCodex('Default model', 'codex/gpt')
+    expect(codexField('Reasoning effort').value).toBe('max')
+    await click(card('codex'), 'Configure client')
+    expect(setup.mock.calls[0][0].codex).toEqual(CODEX_CLIENT_DEFAULTS)
+  })
+  test('loads existing Codex choices, saves changed switches, and refreshes or restores their values', async () => {
+    const original: CodexClientSettings = {
+      ...CODEX_CLIENT_DEFAULTS,
+      sandboxMode: 'read-only',
+      approvalsReviewer: 'user',
+      webSearch: 'cached',
+      reasoningEffort: 'low',
+      daemonAutoStart: true,
+      defaultModeRequestUserInput: false,
+      preventIdleSleep: false,
+    }
+    Object.assign(state.clients[2], {
+      model: 'codex/gpt',
+      state: 'configured',
+      canRestore: true,
+      codex: original,
+    })
+    await render()
+    expect(codexField('Sandbox mode').value).toBe('read-only')
+    expect(codexField('Approval reviewer').value).toBe('user')
+    expect(codexField('Web search').value).toBe('cached')
+    expect(codexField('Reasoning effort').value).toBe('low')
+    expect(
+      [...featuresGroup().querySelectorAll<HTMLInputElement>('input')].map(
+        (element) => element.checked,
+      ),
+    ).toEqual([true, false, false])
+    await selectCodex('Sandbox mode', 'workspace-write')
+    await selectCodex('Approval reviewer', 'auto_review')
+    await selectCodex('Web search', 'indexed')
+    await selectCodex('Reasoning effort', 'high')
+    await act(async () => {
+      for (const input of featuresGroup().querySelectorAll<HTMLInputElement>(
+        'input',
+      ))
+        input.click()
+    })
+    await click(card('codex'), 'Update configuration')
+    expect(setup.mock.calls[0][0].codex).toEqual({
+      ...CODEX_CLIENT_DEFAULTS,
+      sandboxMode: 'workspace-write',
+      webSearch: 'indexed',
+      reasoningEffort: 'high',
+    })
+    await click(dom.container, 'Refresh')
+    expect(codexField('Sandbox mode').value).toBe('read-only')
+    expect(codexField('Reasoning effort').value).toBe('low')
+    expect(
+      [...featuresGroup().querySelectorAll<HTMLInputElement>('input')].map(
+        (element) => element.checked,
+      ),
+    ).toEqual([true, false, false])
+    restore.mockResolvedValueOnce({
+      data: {
+        ...state.clients[2],
+        codex: CODEX_CLIENT_DEFAULTS,
+        canRestore: false,
+      },
+    })
+    await click(card('codex'), 'Restore backup')
+    expect(codexField('Sandbox mode').value).toBe('danger-full-access')
+    expect(codexField('Web search').value).toBe('live')
+    expect(codexField('Reasoning effort').value).toBe('max')
+    expect(
+      [...featuresGroup().querySelectorAll<HTMLInputElement>('input')].map(
+        (element) => element.checked,
+      ),
+    ).toEqual([false, true, true])
+  })
+  test('links reasoning levels to model changes and keeps manual effort choices while the model stays selected', async () => {
+    getModels.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'wide',
+          name: 'Wide',
+          reasoningEfforts: ['ultra', 'medium', 'max', 'xhigh'],
+        },
+        {
+          id: 'limited',
+          name: 'Limited',
+          reasoningEfforts: ['high', 'low', 'ultra'],
+        },
+        {
+          id: 'no-reasoning',
+          name: 'No reasoning',
+          reasoningEfforts: ['none'],
+        },
+        {
+          id: 'future',
+          name: 'Future',
+          reasoningEfforts: ['future-low', 'future-high'],
+        },
+        { id: 'unknown', name: 'Unknown' },
+      ],
+    })
+    await render()
+    await selectCodex('Default model', 'wide')
+    expect(codexField('Reasoning effort').value).toBe('max')
+    expect(
+      [...codexField('Reasoning effort').options].map((option) => option.value),
+    ).toEqual(['ultra', 'medium', 'max', 'xhigh'])
+    await selectCodex('Reasoning effort', 'medium')
+    await selectCodex('Web search', 'disabled')
+    expect(codexField('Reasoning effort').value).toBe('medium')
+    await selectCodex('Default model', 'limited')
+    expect(codexField('Reasoning effort').value).toBe('high')
+    expect(
+      [...codexField('Reasoning effort').options].map((option) => option.value),
+    ).toEqual(['high', 'low', 'ultra'])
+    await selectCodex('Reasoning effort', 'low')
+    await act(async () =>
+      featuresGroup().querySelector<HTMLInputElement>('input')!.click(),
+    )
+    expect(codexField('Reasoning effort').value).toBe('low')
+    await selectCodex('Default model', 'no-reasoning')
+    expect(codexField('Reasoning effort').value).toBe('none')
+    await selectCodex('Default model', 'future')
+    expect(codexField('Reasoning effort').value).toBe('future-high')
+    await selectCodex('Default model', 'unknown')
+    expect(codexField('Reasoning effort').value).toBe('max')
+    await selectCodex('Default model', 'limited')
+    await click(card('codex'), 'Configure client')
+    expect(setup.mock.calls[0][0].codex?.reasoningEffort).toBe('high')
+  })
+  test('updates the default effort when a delayed model catalog supplies lower supported levels', async () => {
+    let complete!: (reply: ClientIntegrationReply<ClientModelOption[]>) => void
+    getModels.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve
+        }),
+    )
+    state.clients[2].model = 'limited'
+    await render()
+    expect(codexField('Reasoning effort').value).toBe('max')
+    await act(async () =>
+      complete({
+        data: [
+          { id: 'limited', name: 'Limited', reasoningEfforts: ['low', 'high'] },
+        ],
+      }),
+    )
+    expect(codexField('Reasoning effort').value).toBe('high')
+  })
+  test('shows existing future or legacy Codex options and leaves them untouched when updating another field', async () => {
+    state.clients[2].model = 'codex/gpt'
+    state.clients[2].codex = {
+      ...CODEX_CLIENT_DEFAULTS,
+      sandboxMode: 'future-sandbox',
+      approvalsReviewer: 'guardian_subagent',
+      webSearch: 'future-search',
+    }
+    await render(false)
+    expect(codexField('Sandbox mode').value).toBe('future-sandbox')
+    expect(codexField('Approval reviewer').value).toBe('guardian_subagent')
+    expect(codexField('Web search').value).toBe('future-search')
+    await selectCodex('Web search', 'live')
+    await click(card('codex'), 'Configure client')
+    expect(setup.mock.calls[0][0].codex).toMatchObject({
+      sandboxMode: undefined,
+      approvalsReviewer: undefined,
+      webSearch: 'live',
+    })
   })
   test('switches away from slow Codex checks and ignores late configuration and catalog replies', async () => {
     let completeState!: (
@@ -382,12 +621,7 @@ describe('client integration page', () => {
     setup.mockImplementation((input) =>
       Promise.resolve({
         data: {
-          status: {
-            ...state.clients[0],
-            ...input,
-            state: 'configured',
-            canRestore: true,
-          },
+          status: savedStatus(input),
           pluginError: 'commandMissing',
           pluginFailure: {
             command: 'claude plugin list --json',
@@ -428,7 +662,7 @@ describe('client integration page', () => {
     setup.mockImplementationOnce((input) =>
       Promise.resolve({
         data: {
-          status: { ...state.clients[0], ...input, state: 'configured' },
+          status: savedStatus(input),
           pluginError: 'commandFailed',
           pluginFailure: { command: 'claude plugin list --json' },
         },

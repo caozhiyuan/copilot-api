@@ -1,7 +1,10 @@
 import type { ConfigFieldId, ConfigSection } from '../lib/config-fields'
 import en from './en'
 import zh from './zh'
-import type { ClientErrorCode } from '../../shared/client-integrations'
+import type {
+  ClientErrorCode,
+  CodexClientOptions,
+} from '../../shared/client-integrations'
 
 export interface Locale {
   clients: {
@@ -38,6 +41,24 @@ export interface Locale {
     claudeDescription: string
     opencodeDescription: string
     codexDescription: string
+    sandboxMode: string
+    sandboxModes: Record<CodexClientOptions['sandboxMode'], string>
+    approvalsReviewer: string
+    approvalReviewers: Record<CodexClientOptions['approvalsReviewer'], string>
+    webSearch: string
+    webSearchModes: Record<CodexClientOptions['webSearch'], string>
+    reasoningEffort: string
+    reasoningEffortHint: string
+    daemonAutoStart: string
+    defaultModeRequestUserInput: string
+    preventIdleSleep: string
+    modelSettings: string
+    permissionsSettings: string
+    searchSettings: string
+    featuresSettings: string
+    toolsSettings: string
+    pluginsSettings: string
+    connectionSettings: string
     nativeToolSearch: string
     agentInject: string
     toolSearchBridge: string

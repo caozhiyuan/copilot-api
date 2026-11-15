@@ -8,6 +8,8 @@ Configure the gateway address and key in Codex to use its models.
 
 Recommended Codex version: `0.160.0` or newer. These clients can load the model catalog from `model_catalog_url`, so the local `model_catalog_json` file is optional.
 
+Desktop **Client integrations → Codex** groups settings into **Models**, **Sandbox and approvals**, **Search**, and **Features**. Selecting a model updates its available reasoning levels and defaults to its highest reasoning effort (`max` when supported); `ultra` remains a separate selectable execution mode. Existing choices are loaded from `config.toml` and can be changed before saving. The Features switches default to `daemon_auto_start = false`, `default_mode_request_user_input = true`, and `prevent_idle_sleep = true` when not configured.
+
 ### Codex `config.toml` Reference
 
 Add this to `~/.codex/config.toml`:
@@ -22,10 +24,12 @@ plan_mode_reasoning_effort = "max"
 # ChatGPT-signed-in Codex has no long-context surcharge above 272000 tokens.
 # API-key usage follows separate OpenAI API pricing.
 model_context_window = 400000
-# Sandbox policy. Use "workspace-write" to restrict it.
+# Sandbox options: "read-only", "workspace-write", "danger-full-access".
 sandbox_mode = "danger-full-access"
+# Approval reviewer options: "user", "auto_review".
 approvals_reviewer = "auto_review"
 suppress_unstable_features_warning = true
+# Web search options: "disabled", "cached", "indexed", "live".
 web_search = "live"
 service_tier = "default"
 # Optional: Codex 0.160.0+ loads the remote catalog configured below. Uncomment this only
@@ -61,6 +65,8 @@ enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "max"]
 [analytics]
 enabled = false
 ```
+
+See the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) for sandbox, reviewer, and search mode behavior. Reasoning levels depend on the selected model.
 
 > [!NOTE]
 > `name` must be set to `"OpenAI"`.

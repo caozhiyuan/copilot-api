@@ -40,13 +40,13 @@ The Dashboard summarizes requests, total tokens, cache hit rate, estimated cost,
 
 Open **Client integrations** after configuring your providers. The page uses the gateway's current address and a selected gateway API key (or `dummy` when authentication is disabled). Start the service to load client-specific model lists; existing configurations and plugins can also be updated while it is stopped.
 
-<img src="../../screenshots/desktop-client-integrations.png" alt="Client integrations for Claude Code, OpenCode v2, Codex and DeepSeek Harness" width="1100" />
+<img src="../../screenshots/desktop-client-integrations.png" alt="Codex client integration with model, reasoning effort, sandbox and approval settings" width="1100" />
 
 | Client | Setup |
 | --- | --- |
 | Claude Code | Select a default model and an optional Haiku model. The main model also supplies the Opus, Sonnet and Fable aliases. Merge gateway settings into user `settings.json`; optionally install the `agent-inject` or `tool-search` plugin from the GitHub-hosted `copilot-api` marketplace through the Claude CLI. Native Tool Search and the MCP bridge are separate choices. |
 | OpenCode v2 | Install the bundled model-discovery provider and optionally Agent Context into the global plugin directory. Connection settings follow the selected address and key. OpenCode v1 is not supported by this page. |
-| Codex | Select a default model and configure the `copilot_api` Responses provider and remote model catalog. The gateway key is saved as the user environment variable `GITHUB_COPILOT_API_KEY`; existing Codex sign-in is preserved. |
+| Codex | Select a model and its reasoning effort, sandbox mode, approval reviewer, web search mode, and Features switches in separate groups. Changing the model selects its highest supported reasoning effort. Configure the `copilot_api` Responses provider and remote model catalog; save the gateway key as the user environment variable `GITHUB_COPILOT_API_KEY`, preserving existing Codex sign-in. |
 | DeepSeek Harness | Select a profile, save `COPILOT_API_BASE_URL` and `GITHUB_COPILOT_API_KEY` to `$DSH_HOME/.env` (default `~/.dsh/.env`), and install `dsh-copilot-api`. Other variables and comments are preserved; Restore backup restores this file. Restart Harness after setup. |
 
 Install the clients themselves separately. Claude plugin installation requires a working `claude` command and access to the GitHub marketplace; Harness plugin installation requires `dsh` and its package-manager dependencies. Configuration targets the current OS user, including `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME` when set; Windows and WSL are separate environments.

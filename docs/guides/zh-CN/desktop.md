@@ -42,13 +42,13 @@ Dashboard 顶部会汇总所选时间范围的请求数、总 Token、缓存命�
 
 配置好 Provider 后，打开 **客户端接入**。页面自动使用网关当前地址，并选择一个网关 API Key；未启用鉴权时使用 `dummy`。启动服务后可读取各客户端的模型列表，服务停止时仍可更新已有配置和安装插件。
 
-<img src="../../screenshots/desktop-client-integrations.png" alt="客户端接入页，包含 Claude Code、OpenCode v2、Codex 和 DeepSeek Harness" width="1100" />
+<img src="../../screenshots/desktop-client-integrations.png" alt="Codex 客户端接入页，包含模型、思考程度、沙箱与审批设置" width="1100" />
 
 | 客户端 | 一键操作 |
 | --- | --- |
 | Claude Code | 选择默认主模型和可选的 Haiku 小模型，主模型也用于 Opus、Sonnet、Fable 别名；合并写入用户 `settings.json`，可通过 Claude CLI 从 GitHub 上的 `copilot-api` marketplace 安装 `agent-inject`、`tool-search` 插件。原生 Tool Search 和 MCP bridge 分开选择。 |
 | OpenCode v2 | 将模型发现 Provider 和可选的 Agent Context 安装到全局插件目录，连接设置使用当前地址和密钥。此页面仅支持 v2。 |
-| Codex | 选择默认模型，配置 `copilot_api` Responses Provider 和远程模型目录；将网关密钥保存为用户环境变量 `GITHUB_COPILOT_API_KEY`，保留已有 Codex 登录。 |
+| Codex | 分组选择模型与思考程度、沙箱模式、审批审核者、网页搜索模式及 Features 开关。切换模型时默认选用该模型支持的最高思考程度。配置 `copilot_api` Responses Provider 和远程模型目录；将网关密钥保存为用户环境变量 `GITHUB_COPILOT_API_KEY`，保留已有 Codex 登录。 |
 | DeepSeek Harness | 选择 profile，将 `COPILOT_API_BASE_URL` 和 `GITHUB_COPILOT_API_KEY` 保存到 `$DSH_HOME/.env`（默认 `~/.dsh/.env`），并安装 `dsh-copilot-api`。保留其他变量和注释，支持恢复原始文件；配置后请重启 Harness。 |
 
 客户端本体需单独安装。Claude 插件安装需要可用的 `claude` 命令并能访问 GitHub marketplace；Harness 插件安装需要 `dsh` 及其包管理器依赖。配置对当前操作系统用户生效，并识别已设置的 `CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`XDG_CONFIG_HOME`；Windows 和 WSL 分别配置。

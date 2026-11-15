@@ -24,6 +24,10 @@ import {
 } from './client-environment'
 import {
   CLIENT_ERROR_CODES,
+  CODEX_APPROVAL_REVIEWERS,
+  CODEX_CLIENT_DEFAULTS,
+  CODEX_SANDBOX_MODES,
+  CODEX_WEB_SEARCH_MODES,
   type ClientId,
   type ClientIntegrationStatus,
   type ClientModelOption,
@@ -39,6 +43,7 @@ const modelSchema = z
   .string()
   .max(500)
   .regex(/^[^\r\n\0]*$/)
+const reasoningEffortSchema = modelSchema.trim().min(1)
 const setupSchema = z
   .object({
     client: clientSchema,
@@ -61,6 +66,18 @@ const setupSchema = z
     nativeToolSearch: z.boolean(),
     agentContext: z.boolean(),
     plugins: z.array(z.enum(['agent-inject', 'tool-search'])),
+    codex: z
+      .object({
+        sandboxMode: z.enum(CODEX_SANDBOX_MODES).optional(),
+        approvalsReviewer: z.enum(CODEX_APPROVAL_REVIEWERS).optional(),
+        webSearch: z.enum(CODEX_WEB_SEARCH_MODES).optional(),
+        reasoningEffort: reasoningEffortSchema.optional(),
+        daemonAutoStart: z.boolean().optional(),
+        defaultModeRequestUserInput: z.boolean().optional(),
+        preventIdleSleep: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
 const backupSchema = z.object({
@@ -109,14 +126,14 @@ const CLAUDE_ENV_DEFAULTS = {
 }
 type CodexDefault = string | number | boolean | string[]
 const CODEX_DEFAULTS: Array<[string[], CodexDefault]> = [
-  [['model_reasoning_effort'], 'max'],
+  [['model_reasoning_effort'], CODEX_CLIENT_DEFAULTS.reasoningEffort],
   [['model_reasoning_summary'], 'auto'],
   [['plan_mode_reasoning_effort'], 'max'],
   [['model_context_window'], 400000],
-  [['sandbox_mode'], 'danger-full-access'],
-  [['approvals_reviewer'], 'auto_review'],
+  [['sandbox_mode'], CODEX_CLIENT_DEFAULTS.sandboxMode],
+  [['approvals_reviewer'], CODEX_CLIENT_DEFAULTS.approvalsReviewer],
   [['suppress_unstable_features_warning'], true],
-  [['web_search'], 'live'],
+  [['web_search'], CODEX_CLIENT_DEFAULTS.webSearch],
   [['service_tier'], 'default'],
   [['model_providers', 'copilot_api', 'supports_standalone_web_search'], true],
   [['model_providers', 'copilot_api', 'request_max_retries'], 3],
@@ -124,10 +141,13 @@ const CODEX_DEFAULTS: Array<[string[], CodexDefault]> = [
   [['model_providers', 'copilot_api', 'stream_idle_timeout_ms'], 300000],
   [['features', 'remote_compaction_v2'], true],
   [['features', 'api_key_model_discovery'], true],
-  [['features', 'default_mode_request_user_input'], true],
+  [
+    ['features', 'default_mode_request_user_input'],
+    CODEX_CLIENT_DEFAULTS.defaultModeRequestUserInput,
+  ],
   [['features', 'standalone_web_search'], true],
-  [['features', 'daemon_auto_start'], false],
-  [['features', 'prevent_idle_sleep'], true],
+  [['features', 'daemon_auto_start'], CODEX_CLIENT_DEFAULTS.daemonAutoStart],
+  [['features', 'prevent_idle_sleep'], CODEX_CLIENT_DEFAULTS.preventIdleSleep],
   [['features', 'defer_mailbox_preemption'], true],
   [['features', 'instant_interrupt'], false],
   [
@@ -307,6 +327,36 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           && !!result.model
       } else if (client === 'codex') {
         result.model = string(config.model)
+        const option = (value: unknown, fallback: string) =>
+          string(value).trim() ? string(value) : fallback
+        const feature = (key: string, fallback: boolean) => {
+          const value = record(config.features)[key]
+          return typeof value === 'boolean' ? value : fallback
+        }
+        result.codex = {
+          sandboxMode: option(
+            config.sandbox_mode,
+            CODEX_CLIENT_DEFAULTS.sandboxMode,
+          ),
+          approvalsReviewer: option(
+            config.approvals_reviewer,
+            CODEX_CLIENT_DEFAULTS.approvalsReviewer,
+          ),
+          webSearch: option(config.web_search, CODEX_CLIENT_DEFAULTS.webSearch),
+          reasoningEffort: string(config.model_reasoning_effort).trim(),
+          daemonAutoStart: feature(
+            'daemon_auto_start',
+            CODEX_CLIENT_DEFAULTS.daemonAutoStart,
+          ),
+          defaultModeRequestUserInput: feature(
+            'default_mode_request_user_input',
+            CODEX_CLIENT_DEFAULTS.defaultModeRequestUserInput,
+          ),
+          preventIdleSleep: feature(
+            'prevent_idle_sleep',
+            CODEX_CLIENT_DEFAULTS.preventIdleSleep,
+          ),
+        }
         const provider = record(record(config.model_providers).copilot_api)
         configured =
           config.model_provider === 'copilot_api'
@@ -429,6 +479,18 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         || existing.experimental_bearer_token !== undefined
       )
         throw new Error('invalidConfig')
+      const codexChanges: Array<[string[], CodexDefault | undefined]> = [
+        [['sandbox_mode'], input.codex?.sandboxMode],
+        [['approvals_reviewer'], input.codex?.approvalsReviewer],
+        [['web_search'], input.codex?.webSearch],
+        [['model_reasoning_effort'], input.codex?.reasoningEffort],
+        [['features', 'daemon_auto_start'], input.codex?.daemonAutoStart],
+        [
+          ['features', 'default_mode_request_user_input'],
+          input.codex?.defaultModeRequestUserInput,
+        ],
+        [['features', 'prevent_idle_sleep'], input.codex?.preventIdleSleep],
+      ]
       changes.set(
         configPaths.codex,
         formatCodexConfig(
@@ -453,6 +515,10 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
                 || (Array.isArray(value) && value.length === 0)
               )
             }),
+            ...codexChanges.filter(
+              (entry): entry is [string[], CodexDefault] =>
+                entry[1] !== undefined,
+            ),
           ]),
         ),
       )
@@ -610,8 +676,35 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           models.flatMap((item: unknown) => {
             const model = record(item)
             const id = string(client === 'codex' ? model.slug : model.id)
+            const reasoningEfforts =
+              (
+                client === 'codex'
+                && Array.isArray(model.supported_reasoning_levels)
+              ) ?
+                [
+                  ...new Set(
+                    model.supported_reasoning_levels.flatMap(
+                      (level: unknown) => {
+                        const effort = reasoningEffortSchema.safeParse(
+                          record(level).effort,
+                        )
+                        return effort.success ? [effort.data] : []
+                      },
+                    ),
+                  ),
+                ]
+              : []
             return id ?
-                [[id, { id, name: string(model.display_name) || id }] as const]
+                [
+                  [
+                    id,
+                    {
+                      id,
+                      name: string(model.display_name) || id,
+                      ...(reasoningEfforts.length ? { reasoningEfforts } : {}),
+                    },
+                  ] as const,
+                ]
               : []
           }),
         ).values(),

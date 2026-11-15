@@ -15,7 +15,12 @@ import {
   createClientIntegrations,
   clientIntegrationReply,
 } from '../electron/client-integrations'
-import type { ClientId, ClientSetupInput } from '../shared/client-integrations'
+import {
+  CODEX_CLIENT_DEFAULTS,
+  type ClientId,
+  type ClientSetupInput,
+  type CodexClientOptions,
+} from '../shared/client-integrations'
 import { ClientCommandError } from '../electron/client-command'
 
 let directory: string
@@ -618,6 +623,131 @@ describe('client setup and restore', () => {
     await manager.setup(await input(manager, 'codex'))
     expect(read('.codex/config.toml')).toBe(updated)
   })
+  test('reports Codex option defaults without creating configuration files', async () => {
+    const manager = fixture()
+    expect((await manager.status('codex')).codex).toEqual({
+      ...CODEX_CLIENT_DEFAULTS,
+      reasoningEffort: '',
+    })
+    expect(fs.readdirSync(directory)).toEqual([])
+  })
+  test.each([
+    { ...CODEX_CLIENT_DEFAULTS },
+    {
+      sandboxMode: 'read-only',
+      approvalsReviewer: 'user',
+      webSearch: 'disabled',
+      reasoningEffort: 'none',
+      daemonAutoStart: true,
+      defaultModeRequestUserInput: false,
+      preventIdleSleep: false,
+    },
+    {
+      ...CODEX_CLIENT_DEFAULTS,
+      sandboxMode: 'workspace-write',
+      webSearch: 'cached',
+      reasoningEffort: 'high',
+    },
+    {
+      ...CODEX_CLIENT_DEFAULTS,
+      webSearch: 'indexed',
+      reasoningEffort: 'xhigh',
+    },
+  ] satisfies CodexClientOptions[])(
+    'saves selected Codex options and feature switches and restores their original values: $webSearch',
+    async (codex) => {
+      const source =
+        '# original options\r\nmodel_reasoning_effort = "low" # keep effort comment\r\nsandbox_mode = "read-only"\r\napprovals_reviewer = "user"\r\nweb_search = "cached"\r\n[features]\r\ndaemon_auto_start = true\r\ndefault_mode_request_user_input = false\r\nprevent_idle_sleep = false\r\nkeep = true\r\n'
+      persist('.codex/config.toml', source)
+      const manager = fixture()
+      expect((await manager.status('codex')).codex).toMatchObject({
+        sandboxMode: 'read-only',
+        approvalsReviewer: 'user',
+        webSearch: 'cached',
+        reasoningEffort: 'low',
+        daemonAutoStart: true,
+        defaultModeRequestUserInput: false,
+        preventIdleSleep: false,
+      })
+      const configured = await manager.setup(
+        await input(manager, 'codex', { codex }),
+      )
+      expect(configured.status.codex).toEqual(codex)
+      const rendered = read('.codex/config.toml')
+      expect(rendered).toContain('# keep effort comment')
+      expect(readTomlConfig(rendered)).toMatchObject({
+        sandbox_mode: codex.sandboxMode,
+        approvals_reviewer: codex.approvalsReviewer,
+        web_search: codex.webSearch,
+        model_reasoning_effort: codex.reasoningEffort,
+        features: {
+          daemon_auto_start: codex.daemonAutoStart,
+          default_mode_request_user_input: codex.defaultModeRequestUserInput,
+          prevent_idle_sleep: codex.preventIdleSleep,
+          keep: true,
+        },
+      })
+      await manager.setup(await input(manager, 'codex', { codex }))
+      expect(read('.codex/config.toml')).toBe(rendered)
+      const restored = await manager.restore(
+        'codex',
+        (await manager.status('codex')).revision,
+      )
+      expect(restored.codex?.reasoningEffort).toBe('low')
+      expect(read('.codex/config.toml')).toBe(source)
+    },
+  )
+  test('preserves unselected and future Codex values while changing one option', async () => {
+    persist(
+      '.codex/config.toml',
+      'sandbox_mode = "future-sandbox"\napprovals_reviewer = "guardian_subagent"\nweb_search = "future-search"\nmodel_reasoning_effort = "future-effort"\n[features]\ndaemon_auto_start = true\ndefault_mode_request_user_input = false\nprevent_idle_sleep = false\n',
+    )
+    const manager = fixture()
+    const configured = await manager.setup(
+      await input(manager, 'codex', {
+        codex: { webSearch: 'live', preventIdleSleep: true },
+      }),
+    )
+    expect(configured.status.codex).toEqual({
+      sandboxMode: 'future-sandbox',
+      approvalsReviewer: 'guardian_subagent',
+      webSearch: 'live',
+      reasoningEffort: 'future-effort',
+      daemonAutoStart: true,
+      defaultModeRequestUserInput: false,
+      preventIdleSleep: true,
+    })
+  })
+  test.each([
+    { sandboxMode: 'unrestricted' },
+    { approvalsReviewer: 'automatic' },
+    { webSearch: 'enabled' },
+    { daemonAutoStart: 'false' },
+    { defaultModeRequestUserInput: 1 },
+    { preventIdleSleep: null },
+    { reasoningEffort: '' },
+    { reasoningEffort: ' ' },
+    { reasoningEffort: 'high\nweb_search = "live"' },
+    { unsupportedOption: true },
+  ])(
+    'rejects invalid Codex selections before modifying files or credentials: %j',
+    async (codex) => {
+      const source = '# original\nmodel = "old"\n'
+      persist('.codex/config.toml', source)
+      const manager = fixture()
+      const request = await input(manager, 'codex')
+      const reply = await clientIntegrationReply(() =>
+        manager.setup({
+          ...request,
+          codex,
+        }),
+      )
+      expect(reply).toEqual({ error: 'invalidInput' })
+      expect(read('.codex/config.toml')).toBe(source)
+      expect(writeEnvironment).not.toHaveBeenCalled()
+      expect(fs.existsSync(path.join(directory, 'backups'))).toBe(false)
+    },
+  )
   test('preserves a custom Codex desktop reasoning effort list', async () => {
     persist(
       '.codex/config.toml',
@@ -1073,6 +1203,52 @@ describe('client setup and restore', () => {
       Promise.resolve(Response.json({ bad: [] })),
     )
     await expect(manager.getModels('codex')).rejects.toThrow('modelsFailed')
+  })
+  test('keeps model-specific Codex reasoning levels and filters malformed catalog values', async () => {
+    const manager = fixture({
+      fetch: Object.assign(
+        mock(() =>
+          Promise.resolve(
+            Response.json({
+              models: [
+                {
+                  slug: 'codex/limited',
+                  display_name: 'Limited',
+                  supported_reasoning_levels: [
+                    { effort: 'high' },
+                    { effort: 'low' },
+                    { effort: 'high' },
+                    { effort: 'future-effort' },
+                    { effort: '' },
+                    { effort: ' ' },
+                    { effort: 'high\nunsafe' },
+                    { effort: 2 },
+                    {},
+                    null,
+                  ],
+                },
+                {
+                  slug: 'codex/no-levels',
+                  supported_reasoning_levels: 'invalid',
+                },
+                { slug: 'codex/empty', supported_reasoning_levels: [] },
+                { supported_reasoning_levels: [{ effort: 'low' }] },
+              ],
+            }),
+          ),
+        ),
+        { preconnect: originalFetch.preconnect },
+      ),
+    })
+    expect(await manager.getModels('codex')).toEqual([
+      {
+        id: 'codex/limited',
+        name: 'Limited',
+        reasoningEfforts: ['high', 'low', 'future-effort'],
+      },
+      { id: 'codex/no-levels', name: 'codex/no-levels' },
+      { id: 'codex/empty', name: 'codex/empty' },
+    ])
   })
 })
 function recordHeaders(options?: RequestInit) {

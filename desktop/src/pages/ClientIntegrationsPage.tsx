@@ -5,6 +5,11 @@ import type { LocaleKey } from '../locales'
 import type { ClientIntegrationReply } from '../types/ipc'
 import {
   CLIENT_ERROR_CODES,
+  CODEX_APPROVAL_REVIEWERS,
+  CODEX_CLIENT_DEFAULTS,
+  CODEX_REASONING_EFFORTS,
+  CODEX_SANDBOX_MODES,
+  CODEX_WEB_SEARCH_MODES,
   type ClientAgent,
   type ClientCommandFailure,
   type ClientId,
@@ -21,6 +26,8 @@ const gatewayClass =
 const buttonClass =
   'rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-soft transition hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-40'
 const primaryClass = `px-3 py-2 ${primaryButtonClass}`
+const groupClass = 'space-y-4 rounded-lg border border-line-soft p-4'
+const legendClass = 'px-1 text-xs font-medium text-ink-soft'
 const agents: ClientAgent[] = ['codex', 'opencode', 'claude', 'harness']
 const agentNames: Record<ClientAgent, string> = {
   codex: 'Codex',
@@ -282,6 +289,49 @@ function ClientCard({
   const [sonnetModel, setSonnetModel] = useState(status.sonnetModel)
   const [smallModel, setSmallModel] = useState(status.smallModel)
   const [reviewModel, setReviewModel] = useState(status.reviewModel)
+  const [sandboxMode, setSandboxMode] = useState(
+    status.codex?.sandboxMode ?? CODEX_CLIENT_DEFAULTS.sandboxMode,
+  )
+  const [approvalsReviewer, setApprovalsReviewer] = useState(
+    status.codex?.approvalsReviewer ?? CODEX_CLIENT_DEFAULTS.approvalsReviewer,
+  )
+  const [webSearch, setWebSearch] = useState(
+    status.codex?.webSearch ?? CODEX_CLIENT_DEFAULTS.webSearch,
+  )
+  const [reasoningEffort, setReasoningEffort] = useState(
+    status.codex?.reasoningEffort ?? '',
+  )
+  const [daemonAutoStart, setDaemonAutoStart] = useState(
+    status.codex?.daemonAutoStart ?? CODEX_CLIENT_DEFAULTS.daemonAutoStart,
+  )
+  const [defaultModeRequestUserInput, setDefaultModeRequestUserInput] =
+    useState(
+      status.codex?.defaultModeRequestUserInput
+        ?? CODEX_CLIENT_DEFAULTS.defaultModeRequestUserInput,
+    )
+  const [preventIdleSleep, setPreventIdleSleep] = useState(
+    status.codex?.preventIdleSleep ?? CODEX_CLIENT_DEFAULTS.preventIdleSleep,
+  )
+  const advertisedEfforts =
+    models.find((item) => item.id === model)?.reasoningEfforts ?? []
+  const effortChoices: readonly string[] =
+    advertisedEfforts.length ? advertisedEfforts : CODEX_REASONING_EFFORTS
+  const maximumEffort =
+    [...CODEX_REASONING_EFFORTS].reverse().find(
+      // Ultra also enables client-side orchestration; prefer the highest
+      // ordinary reasoning level when the model advertises one.
+      (effort) => effort !== 'ultra' && advertisedEfforts.includes(effort),
+    )
+    ?? advertisedEfforts.at(-1)
+    ?? CODEX_CLIENT_DEFAULTS.reasoningEffort
+  const selectedEffort =
+    (
+      reasoningEffort
+      && (!advertisedEfforts.length
+        || advertisedEfforts.includes(reasoningEffort))
+    ) ?
+      reasoningEffort
+    : maximumEffort
   const [nativeToolSearch, setNativeToolSearch] = useState(
     status.nativeToolSearch,
   )
@@ -311,6 +361,25 @@ function ClientCard({
     setSonnetModel(status.sonnetModel)
     setSmallModel(status.smallModel)
     setReviewModel(status.reviewModel)
+    setSandboxMode(
+      status.codex?.sandboxMode ?? CODEX_CLIENT_DEFAULTS.sandboxMode,
+    )
+    setApprovalsReviewer(
+      status.codex?.approvalsReviewer
+        ?? CODEX_CLIENT_DEFAULTS.approvalsReviewer,
+    )
+    setWebSearch(status.codex?.webSearch ?? CODEX_CLIENT_DEFAULTS.webSearch)
+    setReasoningEffort(status.codex?.reasoningEffort ?? '')
+    setDaemonAutoStart(
+      status.codex?.daemonAutoStart ?? CODEX_CLIENT_DEFAULTS.daemonAutoStart,
+    )
+    setDefaultModeRequestUserInput(
+      status.codex?.defaultModeRequestUserInput
+        ?? CODEX_CLIENT_DEFAULTS.defaultModeRequestUserInput,
+    )
+    setPreventIdleSleep(
+      status.codex?.preventIdleSleep ?? CODEX_CLIENT_DEFAULTS.preventIdleSleep,
+    )
     setNativeToolSearch(status.nativeToolSearch)
     setAgentContext(status.state === 'unconfigured' || status.agentContext)
     setPlugins(status.plugins)
@@ -357,6 +426,25 @@ function ClientCard({
             nativeToolSearch,
             agentContext,
             plugins,
+            ...(status.client === 'codex' ?
+              {
+                codex: {
+                  sandboxMode: CODEX_SANDBOX_MODES.find(
+                    (value) => value === sandboxMode,
+                  ),
+                  approvalsReviewer: CODEX_APPROVAL_REVIEWERS.find(
+                    (value) => value === approvalsReviewer,
+                  ),
+                  webSearch: CODEX_WEB_SEARCH_MODES.find(
+                    (value) => value === webSearch,
+                  ),
+                  reasoningEffort: selectedEffort,
+                  daemonAutoStart,
+                  defaultModeRequestUserInput,
+                  preventIdleSleep,
+                },
+              }
+            : {}),
           }),
         )
         onUpdate(result.status)
@@ -377,11 +465,11 @@ function ClientCard({
       : current.filter((item) => item !== plugin),
     )
   }
-  const chooseModel = (
+  const chooseOption = (
     label: string,
     value: string,
     onChange: (value: string) => void,
-    placeholder = t('clients.chooseModel'),
+    placeholder: string | null = t('clients.chooseModel'),
     choices = models,
   ) => {
     const available = [...choices]
@@ -397,7 +485,7 @@ function ClientCard({
           onChange={(event) => onChange(event.target.value)}
           disabled={busy}
         >
-          <option value="">{placeholder}</option>
+          {placeholder !== null && <option value="">{placeholder}</option>}
           {available.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name === item.id ? item.id : `${item.name} · ${item.id}`}
@@ -431,37 +519,57 @@ function ClientCard({
       </p>
       <fieldset disabled={busy || !!checkState} className="mt-5 space-y-4">
         {(status.client === 'claude' || status.client === 'codex') && (
-          <>
-            {chooseModel(t('clients.model'), model, setModel)}
+          <fieldset className={groupClass}>
+            <legend className={legendClass}>
+              {t('clients.modelSettings')}
+            </legend>
+            <div
+              className={
+                status.client === 'codex' ? 'grid gap-4 sm:grid-cols-2' : ''
+              }
+            >
+              {chooseOption(t('clients.model'), model, (value) => {
+                setModel(value)
+                if (status.client === 'codex') setReasoningEffort('')
+              })}
+              {status.client === 'codex'
+                && chooseOption(
+                  t('clients.reasoningEffort'),
+                  selectedEffort,
+                  setReasoningEffort,
+                  null,
+                  effortChoices.map((id) => ({ id, name: id })),
+                )}
+            </div>
             {status.client === 'claude' && (
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {chooseModel(
+                  {chooseOption(
                     t('clients.fableModel'),
                     fableModel,
                     setFableModel,
                     t('clients.sameModel'),
                   )}
-                  {chooseModel(
+                  {chooseOption(
                     t('clients.opusModel'),
                     opusModel,
                     setOpusModel,
                     t('clients.sameModel'),
                   )}
-                  {chooseModel(
+                  {chooseOption(
                     t('clients.sonnetModel'),
                     sonnetModel,
                     setSonnetModel,
                     t('clients.sameModel'),
                   )}
-                  {chooseModel(
+                  {chooseOption(
                     t('clients.smallModel'),
                     smallModel,
                     setSmallModel,
                     t('clients.sameModel'),
                   )}
                 </div>
-                {chooseModel(
+                {chooseOption(
                   t('clients.reviewModel'),
                   reviewModel,
                   setReviewModel,
@@ -476,10 +584,97 @@ function ClientCard({
             <p className="text-[11px] leading-5 text-ink-faint">
               {t('clients.modelHint')}
             </p>
+            {status.client === 'codex' && (
+              <p className="text-[11px] leading-5 text-ink-faint">
+                {t('clients.reasoningEffortHint')}
+              </p>
+            )}
+          </fieldset>
+        )}
+        {status.client === 'codex' && (
+          <>
+            <fieldset className={groupClass}>
+              <legend className={legendClass}>
+                {t('clients.permissionsSettings')}
+              </legend>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {chooseOption(
+                  t('clients.sandboxMode'),
+                  sandboxMode,
+                  setSandboxMode,
+                  null,
+                  CODEX_SANDBOX_MODES.map((id) => ({
+                    id,
+                    name: t(`clients.sandboxModes.${id}`),
+                  })),
+                )}
+                {chooseOption(
+                  t('clients.approvalsReviewer'),
+                  approvalsReviewer,
+                  setApprovalsReviewer,
+                  null,
+                  CODEX_APPROVAL_REVIEWERS.map((id) => ({
+                    id,
+                    name: t(`clients.approvalReviewers.${id}`),
+                  })),
+                )}
+              </div>
+            </fieldset>
+            <fieldset className={groupClass}>
+              <legend className={legendClass}>
+                {t('clients.searchSettings')}
+              </legend>
+              {chooseOption(
+                t('clients.webSearch'),
+                webSearch,
+                setWebSearch,
+                null,
+                CODEX_WEB_SEARCH_MODES.map((id) => ({
+                  id,
+                  name: t(`clients.webSearchModes.${id}`),
+                })),
+              )}
+            </fieldset>
+            <fieldset className={groupClass}>
+              <legend className={legendClass}>
+                {t('clients.featuresSettings')}
+              </legend>
+              <label className="flex items-center gap-2 text-xs text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={daemonAutoStart}
+                  onChange={(event) => setDaemonAutoStart(event.target.checked)}
+                />
+                {t('clients.daemonAutoStart')}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={defaultModeRequestUserInput}
+                  onChange={(event) =>
+                    setDefaultModeRequestUserInput(event.target.checked)
+                  }
+                />
+                {t('clients.defaultModeRequestUserInput')}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={preventIdleSleep}
+                  onChange={(event) =>
+                    setPreventIdleSleep(event.target.checked)
+                  }
+                />
+                {t('clients.preventIdleSleep')}
+              </label>
+            </fieldset>
           </>
         )}
         {status.client === 'claude' && (
-          <>
+          <fieldset className={groupClass}>
+            <legend className={legendClass}>
+              {t('clients.toolsSettings')}
+            </legend>
             <label className="flex items-center gap-2 text-xs text-ink-soft">
               <input
                 type="checkbox"
@@ -515,20 +710,28 @@ function ClientCard({
                 </label>
               </div>
             </details>
-          </>
+          </fieldset>
         )}
         {status.client === 'opencode' && (
-          <label className="flex items-center gap-2 text-xs text-ink-soft">
-            <input
-              type="checkbox"
-              checked={agentContext}
-              onChange={(event) => setAgentContext(event.target.checked)}
-            />
-            {t('clients.agentContext')}
-          </label>
+          <fieldset className={groupClass}>
+            <legend className={legendClass}>
+              {t('clients.pluginsSettings')}
+            </legend>
+            <label className="flex items-center gap-2 text-xs text-ink-soft">
+              <input
+                type="checkbox"
+                checked={agentContext}
+                onChange={(event) => setAgentContext(event.target.checked)}
+              />
+              {t('clients.agentContext')}
+            </label>
+          </fieldset>
         )}
         {status.client === 'harness' && (
-          <>
+          <fieldset className={groupClass}>
+            <legend className={legendClass}>
+              {t('clients.connectionSettings')}
+            </legend>
             <label className="block text-xs text-ink-soft">
               {t('clients.profile')}
               <input
@@ -546,7 +749,7 @@ function ClientCard({
             <p className="text-xs leading-5 text-ink-faint">
               {t('clients.harnessHint')}
             </p>
-          </>
+          </fieldset>
         )}
       </fieldset>
       <div className="mt-5 flex flex-wrap gap-2">

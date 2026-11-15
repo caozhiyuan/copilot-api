@@ -10,6 +10,8 @@
 
 推荐使用 Codex `0.160.0` 或更高版本：这些客户端会从 `model_catalog_url` 加载模型目录，因此本地 `model_catalog_json` 文件是可选的。
 
+桌面端 **客户端接入 → Codex** 按 **模型**、**沙箱与审批**、**搜索** 和 **Features** 分组。选择模型后会联动更新可选思考程度，默认使用该模型支持的最高思考档位（支持时为 `max`）；`ultra` 作为独立执行模式保留为可选项。已有配置会从 `config.toml` 回显，保存前可自行修改。Features 开关在未配置时默认为 `daemon_auto_start = false`、`default_mode_request_user_input = true`、`prevent_idle_sleep = true`。
+
 ### Codex `config.toml` 参考配置
 
 在 `~/.codex/config.toml` 中加入：
@@ -24,10 +26,12 @@ plan_mode_reasoning_effort = "max"
 # ChatGPT 账号登录的 Codex，输入超过 272000 token 不加收长上下文费用。
 # API Key 调用则适用独立的 OpenAI API 定价。
 model_context_window = 400000
-# 沙箱策略。可改用 "workspace-write" 以启用限制。
+# 沙箱选项："read-only"、"workspace-write"、"danger-full-access"。
 sandbox_mode = "danger-full-access"
+# 审批审核者选项："user"、"auto_review"。
 approvals_reviewer = "auto_review"
 suppress_unstable_features_warning = true
+# 网页搜索选项："disabled"、"cached"、"indexed"、"live"。
 web_search = "live"
 service_tier = "default"
 # 可选：Codex 0.160.0+ 使用下方配置的远程目录。仅当需要使用由
@@ -63,6 +67,8 @@ enabled-reasoning-efforts = ["low", "medium", "high", "xhigh", "ultra", "max"]
 [analytics]
 enabled = false
 ```
+
+沙箱、审批审核者和搜索模式的含义见[官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。思考程度选项取决于所选模型。
 
 > [!NOTE]
 > `name` 一定要配置为 `"OpenAI"`。
