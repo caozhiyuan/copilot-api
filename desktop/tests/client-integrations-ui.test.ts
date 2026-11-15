@@ -25,9 +25,6 @@ let setup: ReturnType<
 >
 let restore: ReturnType<typeof mock<Window['electronAPI']['restoreClient']>>
 let getModels: ReturnType<typeof mock<Window['electronAPI']['getClientModels']>>
-let install: ReturnType<
-  typeof mock<Window['electronAPI']['installHarnessPlugin']>
->
 let open: ReturnType<typeof mock<Window['electronAPI']['openClientConfig']>>
 
 beforeEach(async () => {
@@ -36,22 +33,24 @@ beforeEach(async () => {
     baseUrl: 'http://localhost:5141',
     apiKeys: ['private-gateway-key'],
     harnessProfiles: ['desktop', 'web'],
-    clients: (['claude', 'opencode', 'codex'] as const).map((client) => ({
-      client,
-      configPath: `/home/test/${client}/settings`,
-      state: 'unconfigured',
-      revision: `${client}-revision`,
-      canRestore: false,
-      model: '',
-      fableModel: '',
-      opusModel: '',
-      sonnetModel: '',
-      smallModel: '',
-      reviewModel: '',
-      nativeToolSearch: false,
-      agentContext: false,
-      plugins: [],
-    })),
+    clients: (['claude', 'opencode', 'codex', 'harness'] as const).map(
+      (client) => ({
+        client,
+        configPath: `/home/test/${client}/settings`,
+        state: 'unconfigured',
+        revision: `${client}-revision`,
+        canRestore: false,
+        model: '',
+        fableModel: '',
+        opusModel: '',
+        sonnetModel: '',
+        smallModel: '',
+        reviewModel: '',
+        nativeToolSearch: false,
+        agentContext: false,
+        plugins: [],
+      }),
+    ),
   }
   readState = mock((agent) => {
     const value = structuredClone(state)
@@ -93,7 +92,6 @@ beforeEach(async () => {
         : [{ id: 'codex/gpt', name: 'GPT (codex)' }],
     }),
   )
-  install = mock(() => Promise.resolve({ data: undefined }))
   open = mock(() => Promise.resolve({ data: undefined }))
   Object.defineProperty(dom.win, 'electronAPI', {
     configurable: true,
@@ -102,7 +100,6 @@ beforeEach(async () => {
       getClientModels: getModels,
       setupClient: setup,
       restoreClient: restore,
-      installHarnessPlugin: install,
       openClientConfig: open,
     },
   })
@@ -195,7 +192,7 @@ describe('client integration page', () => {
     expect(button(card('codex'), 'Configure client').disabled).toBe(false)
     await selectAgent('harness')
     expect(card('harness').querySelector('input')!.value).toBe('desktop')
-    expect(button(card('harness'), 'Install plugin').disabled).toBe(false)
+    expect(button(card('harness'), 'Configure client').disabled).toBe(false)
     await profile('custom-profile')
     await click(dom.container, 'Refresh')
     expect(card('harness').querySelector('input')!.value).toBe('custom-profile')
@@ -448,20 +445,34 @@ describe('client integration page', () => {
     await click(card('codex'), 'Restore backup')
     expect(card('codex').textContent).toContain('Configuration changed on disk')
   })
-  test('installs the Harness plugin for a selected profile, validates names and reports command errors', async () => {
+  test('configures Harness with the selected key and profile and reports plugin errors', async () => {
     await render(true, undefined, 'harness')
     expect(getModels).not.toHaveBeenCalled()
+    expect(dom.container.textContent).toContain('http://localhost:5141')
+    expect(dom.container.textContent).toContain('Gateway key 1')
+    expect(dom.container.textContent).not.toContain('private-gateway-key')
     expect(card('harness').querySelector('input')!.value).toBe('web')
     await profile('desktop')
-    await click(card('harness'), 'Install plugin')
-    expect(install).toHaveBeenCalledWith('desktop')
-    expect(card('harness').textContent).toContain('Plugin installed')
+    await click(card('harness'), 'Configure client')
+    expect(setup.mock.calls[0][0]).toMatchObject({
+      client: 'harness',
+      profile: 'desktop',
+      apiKey: 'private-gateway-key',
+    })
+    expect(card('harness').textContent).toContain('Configuration saved')
     await profile('../../escape')
-    expect(button(card('harness'), 'Install plugin').disabled).toBe(true)
+    expect(button(card('harness'), 'Update configuration').disabled).toBe(true)
     await profile('web')
-    install.mockResolvedValueOnce({ error: 'commandFailed' })
-    await click(card('harness'), 'Install plugin')
+    setup.mockResolvedValueOnce({
+      data: {
+        status: { ...state.clients[3], state: 'configured', canRestore: true },
+        pluginError: 'commandFailed',
+      },
+    })
+    await click(card('harness'), 'Update configuration')
     expect(card('harness').textContent).toContain('The client command failed')
+    await click(card('harness'), 'Restore backup')
+    expect(restore).toHaveBeenCalledWith('harness', 'harness-revision')
   })
   test('shows recoverable read/model/setup errors without exposing arbitrary error text', async () => {
     readState.mockResolvedValueOnce({ error: 'private-error-content' })

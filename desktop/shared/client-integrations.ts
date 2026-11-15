@@ -1,5 +1,5 @@
-export type ClientId = 'claude' | 'opencode' | 'codex'
-export type ClientAgent = ClientId | 'harness'
+export type ClientId = 'claude' | 'opencode' | 'codex' | 'harness'
+export type ClientAgent = ClientId
 export type ClientPlugin = 'agent-inject' | 'tool-search'
 export const CLIENT_ERROR_CODES = [
   'invalidConfig',
@@ -20,6 +20,7 @@ export interface ClientSetupInput {
   client: ClientId
   revision: string
   apiKey: string
+  profile?: string
   model: string
   fableModel: string
   opusModel: string

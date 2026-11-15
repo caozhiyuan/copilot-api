@@ -49,7 +49,7 @@ Dashboard 顶部会汇总所选时间范围的请求数、总 Token、缓存命�
 | Claude Code | 选择默认主模型和可选的 Haiku 小模型，主模型也用于 Opus、Sonnet、Fable 别名；合并写入用户 `settings.json`，可通过 Claude CLI 安装随桌面包分发的 `agent-inject`、`tool-search` 插件。原生 Tool Search 和 MCP bridge 分开选择。 |
 | OpenCode v2 | 将模型发现 Provider 和可选的 Agent Context 安装到全局插件目录，连接设置使用当前地址和密钥。此页面仅支持 v2。 |
 | Codex | 选择默认模型，配置 `copilot_api` Responses Provider 和远程模型目录；将网关密钥保存为用户环境变量 `GITHUB_COPILOT_API_KEY`，保留已有 Codex 登录。 |
-| DeepSeek Harness | 选择已有 profile，执行 `dsh plugin --profile <profile> add dsh-copilot-api`。自定义地址和密钥可按需在 Harness 内设置。 |
+| DeepSeek Harness | 选择 profile，将 `COPILOT_API_BASE_URL` 和 `GITHUB_COPILOT_API_KEY` 保存到 `$DSH_HOME/.env`（默认 `~/.dsh/.env`），并安装 `dsh-copilot-api`。保留其他变量和注释，支持恢复原始文件；配置后请重启 Harness。 |
 
 客户端本体需单独安装。Claude 插件安装需要可用的 `claude` 命令；Harness 插件安装需要 `dsh` 及其包管理器依赖。配置对当前操作系统用户生效，并识别已设置的 `CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`XDG_CONFIG_HOME`；Windows 和 WSL 分别配置。
 

@@ -49,9 +49,9 @@ const en: Locale = {
     codexRestart:
       'The gateway key is saved to your user environment. Fully quit and reopen Codex and your terminal; on Linux, sign in again for desktop apps.',
     harnessDescription:
-      'Install dsh-copilot-api into an existing DeepSeek Harness profile.',
+      'Configure the gateway address and key, then install dsh-copilot-api into the selected Harness profile.',
     harnessHint:
-      'Requires dsh on this computer. Set the gateway address and API key in Harness when needed.',
+      'Requires dsh. Saves COPILOT_API_BASE_URL and GITHUB_COPILOT_API_KEY in the Harness home .env file (DSH_HOME or ~/.dsh). Restart Harness after setup.',
     profile: 'Harness profile',
     installPlugin: 'Install plugin',
     pluginInstalled: 'Plugin installed. Restart DeepSeek Harness.',

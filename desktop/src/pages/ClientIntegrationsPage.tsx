@@ -28,7 +28,7 @@ const agentNames: Record<ClientAgent, string> = {
 }
 const agentPreferenceKey = 'copilot-api-client-agent'
 const initialClientStatuses: ClientIntegrationStatus[] = (
-  ['codex', 'opencode', 'claude'] as const
+  ['codex', 'opencode', 'claude', 'harness'] as const
 ).map((client) => ({
   client,
   configPath: '',
@@ -179,9 +179,7 @@ export default function ClientIntegrationsPage({
         </p>
       )}
       <>
-        <div
-          className={`grid gap-4 rounded-xl border border-line bg-surface p-4 ${agent === 'harness' ? '' : 'sm:grid-cols-3'}`}
-        >
+        <div className="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-3">
           <label className="text-xs text-ink-soft">
             {t('clients.agent')}
             <select
@@ -199,41 +197,37 @@ export default function ClientIntegrationsPage({
               ))}
             </select>
           </label>
-          {agent !== 'harness' && (
-            <>
-              <div>
-                <p className="text-xs text-ink-faint">{t('clients.gateway')}</p>
-                <p className="mt-2 break-all font-mono text-sm text-ink">
-                  {displayState.baseUrl || '—'}
-                </p>
-              </div>
-              <label className="text-xs text-ink-soft">
-                {t('clients.apiKey')}
-                <select
-                  className={fieldClass}
-                  value={apiKey}
-                  disabled={!!checkState}
-                  onChange={(event) => setApiKey(event.target.value)}
-                >
-                  {!state ?
-                    <option value={apiKey}>
-                      {t(
-                        checkState === 'error' ? 'clients.error' : (
-                          'clients.loading'
-                        ),
-                      )}
-                    </option>
-                  : displayState.apiKeys.length ?
-                    displayState.apiKeys.map((key, index) => (
-                      <option key={key} value={key}>
-                        {t('clients.keyNumber', { n: index + 1 })}
-                      </option>
-                    ))
-                  : <option value="dummy">{t('clients.noAuth')}</option>}
-                </select>
-              </label>
-            </>
-          )}
+          <div>
+            <p className="text-xs text-ink-faint">{t('clients.gateway')}</p>
+            <p className="mt-2 break-all font-mono text-sm text-ink">
+              {displayState.baseUrl || '—'}
+            </p>
+          </div>
+          <label className="text-xs text-ink-soft">
+            {t('clients.apiKey')}
+            <select
+              className={fieldClass}
+              value={apiKey}
+              disabled={!!checkState}
+              onChange={(event) => setApiKey(event.target.value)}
+            >
+              {!state ?
+                <option value={apiKey}>
+                  {t(
+                    checkState === 'error' ? 'clients.error' : (
+                      'clients.loading'
+                    ),
+                  )}
+                </option>
+              : displayState.apiKeys.length ?
+                displayState.apiKeys.map((key, index) => (
+                  <option key={key} value={key}>
+                    {t('clients.keyNumber', { n: index + 1 })}
+                  </option>
+                ))
+              : <option value="dummy">{t('clients.noAuth')}</option>}
+            </select>
+          </label>
         </div>
         {!serverRunning && (agent === 'claude' || agent === 'codex') && (
           <p className="text-xs leading-5 text-ink-faint">
@@ -248,24 +242,18 @@ export default function ClientIntegrationsPage({
             {t('clients.errors.modelsFailed')}
           </p>
         )}
-        {agent === 'harness' ?
-          <HarnessCard
+        {selectedStatus && (
+          <ClientCard
+            key={agent}
+            status={selectedStatus}
+            checkState={checkState}
+            apiKey={apiKey}
+            models={models}
             profiles={displayState.harnessProfiles}
-            checking={!!checkState}
+            onUpdate={updateStatus}
             t={t}
           />
-        : selectedStatus && (
-            <ClientCard
-              key={agent}
-              status={selectedStatus}
-              checkState={checkState}
-              apiKey={apiKey}
-              models={models}
-              onUpdate={updateStatus}
-              t={t}
-            />
-          )
-        }
+        )}
       </>
     </div>
   )
@@ -276,6 +264,7 @@ function ClientCard({
   checkState,
   apiKey,
   models,
+  profiles,
   onUpdate,
   t,
 }: {
@@ -283,6 +272,7 @@ function ClientCard({
   checkState: ClientCheckState
   apiKey: string
   models: ClientModelOption[]
+  profiles: string[]
   onUpdate: (status: ClientIntegrationStatus) => void
   t: Translate
 }) {
@@ -304,6 +294,16 @@ function ClientCard({
   const [error, setError] = useState('')
   const [pluginError, setPluginError] = useState('')
   const [pluginFailure, setPluginFailure] = useState<ClientCommandFailure>()
+  const [profile, setProfile] = useState(
+    profiles.includes('web') ? 'web' : (profiles[0] ?? 'web'),
+  )
+  const profileInitialized = useRef(false)
+  useEffect(() => {
+    if (status.client !== 'harness' || checkState || profileInitialized.current)
+      return
+    profileInitialized.current = true
+    setProfile(profiles.includes('web') ? 'web' : (profiles[0] ?? 'web'))
+  }, [status.client, profiles, checkState])
   useEffect(() => {
     setModel(status.model)
     setFableModel(status.fableModel)
@@ -319,6 +319,7 @@ function ClientCard({
     claude: 'clients.claudeDescription',
     opencode: 'clients.opencodeDescription',
     codex: 'clients.codexDescription',
+    harness: 'clients.harnessDescription',
   } satisfies Record<ClientId, LocaleKey>
   const action = async (operation: 'setup' | 'restore' | 'open') => {
     setBusy(true)
@@ -345,6 +346,7 @@ function ClientCard({
             client: status.client,
             revision: status.revision,
             apiKey,
+            profile: status.client === 'harness' ? profile : undefined,
             model,
             fableModel,
             opusModel,
@@ -427,7 +429,7 @@ function ClientCard({
         {t(descriptions[status.client])}
       </p>
       <fieldset disabled={busy || !!checkState} className="mt-5 space-y-4">
-        {status.client !== 'opencode' && (
+        {(status.client === 'claude' || status.client === 'codex') && (
           <>
             {chooseModel(t('clients.model'), model, setModel)}
             {status.client === 'claude' && (
@@ -524,6 +526,27 @@ function ClientCard({
             {t('clients.agentContext')}
           </label>
         )}
+        {status.client === 'harness' && (
+          <>
+            <label className="block text-xs text-ink-soft">
+              {t('clients.profile')}
+              <input
+                className={fieldClass}
+                list="harness-profiles"
+                value={profile}
+                onChange={(event) => setProfile(event.target.value)}
+              />
+              <datalist id="harness-profiles">
+                {profiles.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            </label>
+            <p className="text-xs leading-5 text-ink-faint">
+              {t('clients.harnessHint')}
+            </p>
+          </>
+        )}
       </fieldset>
       <div className="mt-5 flex flex-wrap gap-2">
         <button
@@ -531,7 +554,9 @@ function ClientCard({
           disabled={
             busy
             || !!checkState
-            || (status.client !== 'opencode' && !model)
+            || ((status.client === 'claude' || status.client === 'codex')
+              && !model)
+            || (status.client === 'harness' && !/^[\w-]{1,80}$/.test(profile))
             || status.state === 'error'
           }
           onClick={() => void action('setup')}
@@ -597,96 +622,6 @@ function ClientCard({
           )}
         </p>
       )}
-    </section>
-  )
-}
-
-function HarnessCard({
-  profiles,
-  checking,
-  t,
-}: {
-  profiles: string[]
-  checking: boolean
-  t: Translate
-}) {
-  const [profile, setProfile] = useState(
-    profiles.includes('web') ? 'web' : (profiles[0] ?? 'web'),
-  )
-  const [busy, setBusy] = useState(false)
-  const [installed, setInstalled] = useState(false)
-  const [error, setError] = useState('')
-  const profileInitialized = useRef(false)
-  useEffect(() => {
-    if (checking || profileInitialized.current) return
-    profileInitialized.current = true
-    setProfile(profiles.includes('web') ? 'web' : (profiles[0] ?? 'web'))
-  }, [profiles, checking])
-  const install = async () => {
-    setBusy(true)
-    setError('')
-    setInstalled(false)
-    try {
-      unwrap(await window.electronAPI.installHarnessPlugin(profile))
-      setInstalled(true)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'operationFailed')
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <section
-      data-client="harness"
-      className="flex min-w-0 flex-col rounded-xl border border-line bg-surface p-5"
-    >
-      <h3 className="text-base font-semibold text-ink">DeepSeek Harness</h3>
-      <p className="mt-2 text-xs leading-5 text-ink-faint">
-        {t('clients.harnessDescription')}
-      </p>
-      <label className="mt-5 block text-xs text-ink-soft">
-        {t('clients.profile')}
-        <input
-          className={fieldClass}
-          list="harness-profiles"
-          value={profile}
-          onChange={(event) => {
-            setProfile(event.target.value)
-            setInstalled(false)
-          }}
-          disabled={busy || checking}
-        />
-        <datalist id="harness-profiles">
-          {profiles.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-      </label>
-      <p className="mt-3 text-[11px] leading-5 text-ink-faint">
-        {t('clients.harnessHint')}
-      </p>
-      <div className="mt-5 flex flex-col items-start">
-        <button
-          className={primaryClass}
-          disabled={busy || checking || !/^[\w-]{1,80}$/.test(profile)}
-          onClick={() => void install()}
-        >
-          {t(busy ? 'clients.working' : 'clients.installPlugin')}
-        </button>
-        {installed && (
-          <p
-            role="status"
-            className="mt-3 text-xs leading-5 text-green-600 dark:text-green-400"
-          >
-            {t('clients.pluginInstalled')}
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="mt-3 text-xs leading-5 text-red-500">
-            {errorText(t, error)}
-          </p>
-        )}
-      </div>
     </section>
   )
 }

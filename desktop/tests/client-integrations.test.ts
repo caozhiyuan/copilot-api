@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { parseEnv } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import {
   patchJsonConfig,
+  patchEnvConfig,
   patchTomlConfig,
   readJsonConfig,
   readTomlConfig,
@@ -98,6 +100,41 @@ afterEach(() => {
 })
 
 describe('comment-preserving client config edits', () => {
+  test('updates managed dotenv values without changing existing variables or comments', () => {
+    const source =
+      '# keep\r\nOTHER="first\r\nsecond"\r\nGITHUB_COPILOT_API_KEY=old\r\n'
+    const values = {
+      COPILOT_API_BASE_URL: 'http://localhost:5141',
+      GITHUB_COPILOT_API_KEY: `key'"$#\\n`,
+    }
+    const changed = patchEnvConfig(source, values)
+    expect(changed).toStartWith(source)
+    expect(parseEnv(changed)).toMatchObject(values)
+    expect(parseEnv(changed).OTHER).toBe(parseEnv(source).OTHER)
+    expect(patchEnvConfig(changed, values)).toBe(changed)
+    expect(
+      parseEnv(
+        patchEnvConfig(changed, { ...values, GITHUB_COPILOT_API_KEY: 'new' }),
+      ).GITHUB_COPILOT_API_KEY,
+    ).toBe('new')
+    expect(parseEnv(patchEnvConfig('', { KEY: 'plain' })).KEY).toBe('plain')
+    expect(parseEnv(patchEnvConfig('', { KEY: `all'"\`quotes` })).KEY).toBe(
+      `all'"\`quotes`,
+    )
+    expect(() => patchEnvConfig('', { 'invalid-key': 'value' })).toThrow(
+      'invalidInput',
+    )
+    expect(() => patchEnvConfig('', { KEY: `'"\`#` })).toThrow('invalidInput')
+    expect(() =>
+      patchEnvConfig('# >>> copilot-api Harness >>>', values),
+    ).toThrow('invalidConfig')
+    expect(() =>
+      patchEnvConfig('# <<< copilot-api Harness <<<', values),
+    ).toThrow('invalidConfig')
+    expect(() => patchEnvConfig('OTHER="unfinished\n', values)).toThrow(
+      'invalidConfig',
+    )
+  })
   test('merges JSONC without removing comments or unrelated settings', () => {
     const source =
       '{\n  // Keep this\n  "env": {"OTHER": "yes",},\n  "permissions": {"deny": ["Read(.env)"]},\n}\n'
@@ -192,7 +229,7 @@ describe('client setup and restore', () => {
       expect(state.harnessProfiles).toEqual([])
     }
     const harness = await manager.getState('harness')
-    expect(harness.clients).toEqual([])
+    expect(harness.clients.map((item) => item.client)).toEqual(['harness'])
     expect(harness.harnessProfiles).toEqual(['web'])
     expect(readEnvironment).not.toHaveBeenCalled()
     expect(
@@ -655,7 +692,7 @@ describe('client setup and restore', () => {
       false,
     )
   })
-  test('installs only the Harness plugin into the selected profile and sanitizes errors', async () => {
+  test('configures Harness env, installs its plugin and restores the first backup', async () => {
     persist('.dsh/profiles/web.yaml', '# profile')
     persist('.dsh/profiles/desktop/config.yaml', '# profile')
     const manager = fixture()
@@ -663,7 +700,18 @@ describe('client setup and restore', () => {
       'desktop',
       'web',
     ])
-    await manager.installHarness('desktop')
+    const source = '# keep\nOTHER=unchanged\nGITHUB_COPILOT_API_KEY=old\n'
+    persist('.dsh/.env', source)
+    const result = await manager.setup(
+      await input(manager, 'harness', { profile: 'desktop', model: '' }),
+    )
+    expect(parseEnv(read('.dsh/.env'))).toMatchObject({
+      COPILOT_API_BASE_URL: gateway.baseUrl,
+      GITHUB_COPILOT_API_KEY: gateway.apiKeys[0],
+      OTHER: 'unchanged',
+    })
+    expect(read('.dsh/.env')).toStartWith(source)
+    expect(result.status.state).toBe('configured')
     expect(run).toHaveBeenCalledWith('dsh', [
       'plugin',
       '--profile',
@@ -671,8 +719,18 @@ describe('client setup and restore', () => {
       'add',
       'dsh-copilot-api',
     ])
-    await expect(manager.installHarness('../../profile')).rejects.toThrow()
+    await expect(
+      manager.setup(
+        await input(manager, 'harness', { profile: '../../profile' }),
+      ),
+    ).rejects.toThrow('invalidInput')
     expect(read('.dsh/profiles/web.yaml')).toBe('# profile')
+    run.mockRejectedValueOnce(new Error('commandMissing'))
+    const retried = await manager.setup(await input(manager, 'harness'))
+    expect(retried.pluginError).toBe('commandMissing')
+    expect(retried.status.canRestore).toBe(true)
+    await manager.restore('harness', retried.status.revision)
+    expect(read('.dsh/.env')).toBe(source)
     expect(
       await clientIntegrationReply(() => {
         throw new Error('secret-key-in-command-output')
@@ -682,6 +740,30 @@ describe('client setup and restore', () => {
     await expect(
       manager.restore('opencode', (await manager.status('opencode')).revision),
     ).rejects.toThrow('noBackup')
+  })
+  test('uses DSH_HOME for Harness env and profile detection without changing profile YAML', async () => {
+    for (const configured of [
+      path.join(directory, 'harness-custom'),
+      '~/harness-tilde',
+      '~',
+    ]) {
+      const root =
+        configured === '~' ? directory
+        : configured.startsWith('~/') ?
+          path.join(directory, configured.slice(2))
+        : configured
+      const manager = fixture({ env: { DSH_HOME: configured } })
+      const result = await manager.setup(
+        await input(manager, 'harness', { model: '' }),
+      )
+      expect(result.status.configPath).toBe(path.join(root, '.env'))
+      expect(
+        parseEnv(fs.readFileSync(path.join(root, '.env'), 'utf8'))
+          .GITHUB_COPILOT_API_KEY,
+      ).toBe(gateway.apiKeys[0])
+      await manager.restore('harness', result.status.revision)
+      expect(fs.existsSync(path.join(root, '.env'))).toBe(false)
+    }
   })
   test('fetches each client catalog with the right user agent and gateway authentication', async () => {
     const fetchModels = mock((_url: unknown, options?: RequestInit) =>

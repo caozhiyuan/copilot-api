@@ -1379,7 +1379,13 @@ describe('desktop client integration IPC', () => {
     await preloadApi.setupClient(input)
     await preloadApi.restoreClient('claude', 'revision')
     await preloadApi.openClientConfig('claude')
-    await preloadApi.installHarnessPlugin('desktop')
+    const harnessInput = {
+      ...input,
+      client: 'harness' as const,
+      model: '',
+      profile: 'desktop',
+    }
+    await preloadApi.setupClient(harnessInput)
     expect(rendererInvoke).toHaveBeenCalledWith('clients:get-state', 'claude')
     expect(rendererInvoke).toHaveBeenCalledWith('clients:get-models', 'claude')
     expect(rendererInvoke).toHaveBeenCalledWith('clients:setup', input)
@@ -1389,10 +1395,7 @@ describe('desktop client integration IPC', () => {
       'revision',
     )
     expect(rendererInvoke).toHaveBeenCalledWith('clients:open-config', 'claude')
-    expect(rendererInvoke).toHaveBeenCalledWith(
-      'clients:install-harness',
-      'desktop',
-    )
+    expect(rendererInvoke).toHaveBeenCalledWith('clients:setup', harnessInput)
   })
   test('uses the actual running or saved gateway address and never supplies the admin key', async () => {
     const runningState = (await invoke('clients:get-state', 'opencode')) as {
@@ -1427,7 +1430,10 @@ describe('desktop client integration IPC', () => {
       'error',
     )
     expect(
-      await invoke('clients:install-harness', '../invalid-profile'),
+      await invoke('clients:setup', {
+        client: 'harness',
+        profile: '../invalid-profile',
+      }),
     ).toHaveProperty('error')
     expect(await invoke('clients:open-config', 'bad-client')).toHaveProperty(
       'error',

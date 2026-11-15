@@ -421,9 +421,6 @@ declare global {
       openClientConfig: (
         client: ClientId,
       ) => Promise<ClientIntegrationReply<void>>
-      installHarnessPlugin: (
-        profile: string,
-      ) => Promise<ClientIntegrationReply<void>>
       createImages: (
         id: string,
         input: ImageCreationInput,

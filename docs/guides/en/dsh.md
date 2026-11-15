@@ -19,6 +19,15 @@ Defaults:
 - `protocol`: `openai-responses`
 - credential reference: `GITHUB_COPILOT_API_KEY`
 
+The Desktop **Client integrations** page can configure the address and key and install the plugin in one action. It updates `$DSH_HOME/.env` (default `~/.dsh/.env`) while retaining other variables and the first backup:
+
+```dotenv
+COPILOT_API_BASE_URL=http://localhost:4141
+GITHUB_COPILOT_API_KEY=dummy
+```
+
+Use a gateway API key instead of `dummy` when authentication is enabled, and restart Harness. The plugin uses `COPILOT_API_BASE_URL` as its default address; an explicit profile address overrides it. Inherited environment variables and saved Harness credentials take precedence over `.env`.
+
 Save the gateway API key in the Models card with **Save API key**, in Harness credentials, or in the launch environment of that name. Configuration stores the reference name, not the key. Use `anthropic-messages` as `protocol` for Messages.
 
 Override the inserted entry only when a default is wrong. Keep the id `copilot-api-provider`, and restate every connection field you still need:

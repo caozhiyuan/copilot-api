@@ -45,9 +45,9 @@ const zh: Locale = {
     codexRestart:
       '网关密钥已写入用户环境变量。请完全退出并重新打开 Codex 和终端；Linux 桌面应用需重新登录系统。',
     harnessDescription:
-      '将 dsh-copilot-api 插件安装到已有的 DeepSeek Harness profile。',
+      '配置网关地址和密钥，再将 dsh-copilot-api 插件安装到所选 Harness profile。',
     harnessHint:
-      '需要本机已安装 dsh。网关地址和 API Key 可按需在 Harness 中设置。',
+      '需要本机已安装 dsh。将 COPILOT_API_BASE_URL 和 GITHUB_COPILOT_API_KEY 保存到 Harness 目录（DSH_HOME 或 ~/.dsh）的 .env 文件，配置后请重启 Harness。',
     profile: 'Harness profile',
     installPlugin: '安装插件',
     pluginInstalled: '插件已安装，请重启 DeepSeek Harness。',

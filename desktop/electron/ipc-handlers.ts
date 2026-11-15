@@ -328,9 +328,6 @@ export function registerIpcHandlers(
       if (error) throw new Error('operationFailed')
     }),
   )
-  ipcMain.handle('clients:install-harness', (_event, profile: unknown) =>
-    clientIntegrationReply(() => clients().installHarness(profile)),
-  )
   const mediaClient = createMediaStudioClient({
     getBaseUrl: () => {
       if (!isRunning())

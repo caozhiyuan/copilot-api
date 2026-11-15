@@ -112,8 +112,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('clients:restore', client, revision),
   openClientConfig: (client: string) =>
     ipcRenderer.invoke('clients:open-config', client),
-  installHarnessPlugin: (profile: string) =>
-    ipcRenderer.invoke('clients:install-harness', profile),
   createImages: (id: string, input: ImageCreationInput) =>
     ipcRenderer.invoke('media:create-images', id, input),
   createVideo: (id: string, input: VideoCreationInput) =>

@@ -1,4 +1,5 @@
 import { applyEdits, modify, parse, type ParseError } from 'jsonc-parser'
+import { parseEnv } from 'node:util'
 import {
   getStaticTOMLValue,
   parseForESLint,
@@ -16,6 +17,41 @@ export function readJsonConfig(content: string): Record<string, unknown> {
 
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function patchEnvConfig(
+  content: string,
+  updates: Record<string, string>,
+): string {
+  const start = '# >>> copilot-api Harness >>>'
+  const end = '# <<< copilot-api Harness <<<'
+  const eol = content.includes('\r\n') ? '\r\n' : '\n'
+  const lines = Object.entries(updates).map(([key, value]) => {
+    const candidates = ['"', "'", '`'].map(
+      (quote) => `${quote}${value}${quote}`,
+    )
+    candidates.push(value)
+    const quoted = candidates.find(
+      (candidate) => parseEnv(`${key}=${candidate}`)[key] === value,
+    )
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || quoted === undefined)
+      throw new Error('invalidInput')
+    return `${key}=${quoted}`
+  })
+  const block = [start, ...lines, end].join(eol)
+  const first = content.indexOf(start)
+  const last = content.indexOf(end)
+  let result: string
+  if (first < 0 && last < 0)
+    result =
+      content + (content && !content.endsWith('\n') ? eol : '') + block + eol
+  else if (first < 0 || last < first) throw new Error('invalidConfig')
+  else
+    result = content.slice(0, first) + block + content.slice(last + end.length)
+  const parsed = parseEnv(result)
+  if (Object.entries(updates).some(([key, value]) => parsed[key] !== value))
+    throw new Error('invalidConfig')
+  return result
 }
 
 export function patchJsonConfig(

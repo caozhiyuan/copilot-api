@@ -3,10 +3,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
+import { parseEnv } from 'node:util'
 import { writeFileAtomically } from '../../src/lib/atomic-file'
 import {
   isObject,
   patchJsonConfig,
+  patchEnvConfig,
   patchTomlConfig,
   readJsonConfig,
   readTomlConfig,
@@ -29,8 +31,8 @@ import {
   type ClientSetupResult,
 } from '../shared/client-integrations'
 
-const clientSchema = z.enum(['claude', 'opencode', 'codex'])
-const agentSchema = clientSchema.or(z.literal('harness')).optional()
+const clientSchema = z.enum(['claude', 'opencode', 'codex', 'harness'])
+const agentSchema = clientSchema.optional()
 const modelSchema = z
   .string()
   .max(500)
@@ -44,6 +46,10 @@ const setupSchema = z
       .min(1)
       .max(4096)
       .regex(/^[^\r\n\0]+$/),
+    profile: z
+      .string()
+      .regex(/^[\w-]{1,80}$/)
+      .default('web'),
     model: modelSchema,
     fableModel: modelSchema,
     opusModel: modelSchema,
@@ -136,6 +142,16 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
     path.join(home, '.claude'),
   )
   const codexDir = configHome(env.CODEX_HOME, path.join(home, '.codex'))
+  const configuredHarnessHome = env.DSH_HOME
+  const harnessHome =
+    !configuredHarnessHome?.trim() ? path.join(home, '.dsh')
+    : configuredHarnessHome === '~' ? home
+    : (
+      configuredHarnessHome.startsWith('~/')
+      || configuredHarnessHome.startsWith('~\\')
+    ) ?
+      path.join(home, configuredHarnessHome.slice(2))
+    : path.resolve(configuredHarnessHome)
   const opencodeDir = path.join(
     configHome(env.XDG_CONFIG_HOME, path.join(home, '.config')),
     'opencode',
@@ -144,6 +160,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
     claude: path.join(claudeDir, 'settings.json'),
     codex: path.join(codexDir, 'config.toml'),
     opencode: path.join(opencodeDir, 'copilot-api', 'settings.json'),
+    harness: path.join(harnessHome, '.env'),
   }
   const providerFile = path.join(
     opencodeDir,
@@ -168,6 +185,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
     claude: [configPaths.claude],
     opencode: [configPaths.opencode, providerFile, providerSource, agentFile],
     codex: [configPaths.codex, ...environmentFiles],
+    harness: [configPaths.harness],
   }
   const readEnvironment =
     options.readEnvironment ?? (() => readClientEnvironment(platform))
@@ -225,7 +243,9 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
       const { baseUrl, apiKeys } = await options.getGateway()
       const content = current.get(configPaths[client]) ?? ''
       const config =
-        client === 'codex' ? readTomlConfig(content) : readJsonConfig(content)
+        client === 'codex' ? readTomlConfig(content)
+        : client === 'harness' ? parseEnv(content)
+        : readJsonConfig(content)
       let configured = false
       if (client === 'claude') {
         const settings = record(config.env)
@@ -255,7 +275,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           && provider.env_key === CLIENT_KEY_ENV
           && isKeyValid(environment ?? '', apiKeys)
           && !!result.model
-      } else {
+      } else if (client === 'opencode') {
         result.agentContext = current.get(agentFile) !== null
         configured =
           config.baseURL === `${baseUrl}/v1`
@@ -269,6 +289,10 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
             !== asset('plugin/opencode/agent-context.js')
         )
           configured = false
+      } else {
+        configured =
+          config.COPILOT_API_BASE_URL === baseUrl
+          && isKeyValid(string(config[CLIENT_KEY_ENV]), apiKeys)
       }
       const changed = saved?.files.some(
         (file) => hash(current.get(file.path) ?? null) !== file.applied,
@@ -389,6 +413,14 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
             macEnvironmentAgent(input.apiKey)
           : patchShellEnvironment(current.get(file) ?? '', input.apiKey),
         )
+    } else if (input.client === 'harness') {
+      changes.set(
+        configPaths.harness,
+        patchEnvConfig(content, {
+          COPILOT_API_BASE_URL: baseUrl,
+          [CLIENT_KEY_ENV]: input.apiKey,
+        }),
+      )
     } else {
       changes.set(
         configPaths.opencode,
@@ -477,7 +509,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
       if (!agent || agent === 'harness') {
         try {
           harnessProfiles = fs
-            .readdirSync(path.join(home, '.dsh', 'profiles'))
+            .readdirSync(path.join(harnessHome, 'profiles'))
             .map((name) => name.replace(/\.ya?ml$/i, ''))
             .filter((name) => /^[\w-]+$/.test(name))
         } catch {
@@ -485,9 +517,7 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         }
       }
       const selectedClients: ClientId[] =
-        agent === 'harness' ? []
-        : agent ? [agent]
-        : ['claude', 'opencode', 'codex']
+        agent ? [agent] : ['claude', 'opencode', 'codex']
       return {
         ...gateway,
         clients: await Promise.all(selectedClients.map(status)),
@@ -528,7 +558,10 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         const parsed = setupSchema.safeParse(input)
         if (!parsed.success) throw new Error('invalidInput')
         const data = parsed.data
-        if (data.client !== 'opencode' && !data.model.trim())
+        if (
+          (data.client === 'claude' || data.client === 'codex')
+          && !data.model.trim()
+        )
           throw new Error('invalidInput')
         const beforeStatus = await status(data.client)
         if (beforeStatus.state === 'error') throw new Error(beforeStatus.error)
@@ -586,9 +619,18 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
         }
         let pluginError: string | undefined
         let pluginFailure: ClientSetupResult['pluginFailure']
-        if (data.client === 'claude') {
+        if (data.client === 'claude' || data.client === 'harness') {
           try {
-            await installClaudePlugins(data.plugins, next)
+            if (data.client === 'claude')
+              await installClaudePlugins(data.plugins, next)
+            else
+              await run('dsh', [
+                'plugin',
+                '--profile',
+                data.profile,
+                'add',
+                'dsh-copilot-api',
+              ])
           } catch (error) {
             pluginError = errorCode(error)
             if (error instanceof ClientCommandError)
@@ -659,21 +701,6 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
     openPath(clientInput: unknown) {
       const client = clientSchema.parse(clientInput)
       return configPaths[client]
-    },
-    installHarness(profileInput: unknown) {
-      return transaction(async () => {
-        const profile = z
-          .string()
-          .regex(/^[\w-]{1,80}$/)
-          .parse(profileInput)
-        await run('dsh', [
-          'plugin',
-          '--profile',
-          profile,
-          'add',
-          'dsh-copilot-api',
-        ])
-      })
     },
   }
 }
