@@ -473,7 +473,10 @@ function processOpenCommands(
       state.output.push(unavailableReference(command.ref_id))
       continue
     }
-    const cached = findSnapshotByUrl(state.session, source.result.url)
+    const cached =
+      parseHttpUrl(command.ref_id) ? null : (
+        findSnapshotByUrl(state.session, source.result.url)
+      )
     if (cached) {
       state.output.push(renderSnapshot(cached, command.lineno))
       includeResult(state, source)
