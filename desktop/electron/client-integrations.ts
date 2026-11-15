@@ -74,6 +74,20 @@ const hash = (value: string | null) =>
 const record = (value: unknown) => (isObject(value) ? value : {})
 const string = (value: unknown) => (typeof value === 'string' ? value : '')
 const PLUGINS: ClientPlugin[] = ['agent-inject', 'tool-search']
+const CLAUDE_ENV_DEFAULTS = {
+  CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400000',
+  CLAUDE_CODE_AUTO_MODE_SERVER: '0',
+  CLAUDE_CODE_AUTO_MODE_MODEL: 'codex-auto-review',
+  DISABLE_NON_ESSENTIAL_MODEL_CALLS: '1',
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+  CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+  CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false',
+  CLAUDE_CODE_DISABLE_TERMINAL_TITLE: 'true',
+  CLAUDE_CODE_ENABLE_AWAY_SUMMARY: '0',
+  CLAUDE_CODE_TOTAL_TOKENS_REMINDER: 'off',
+  CLAUDE_CODE_EFFORT_LEVEL: 'max',
+  MCP_CONNECT_TIMEOUT_MS: '20000',
+}
 const PROVIDER_WRAPPER = `import provider from '../copilot-api/provider.js'
 import { readFileSync } from 'node:fs'
 
@@ -283,6 +297,8 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
     if (input.client === 'claude') {
       const main = input.model.trim()
       const small = input.smallModel.trim() || main
+      const config = readJsonConfig(content)
+      const environment = record(config.env)
       changes.set(
         configPaths.claude,
         patchJsonConfig(content, [
@@ -301,10 +317,13 @@ export function createClientIntegrations(options: ClientIntegrationOptions) {
           [['env', 'ANTHROPIC_MODEL'], undefined],
           [['env', 'CLAUDE_CODE_USE_VERTEX'], '0'],
           [['env', 'CLAUDE_CODE_USE_BEDROCK'], '0'],
+          ...Object.entries(CLAUDE_ENV_DEFAULTS)
+            .filter(([key]) => environment[key] === undefined)
+            .map(([key, value]): [string[], unknown] => [['env', key], value]),
           ...PLUGINS.filter(
             (plugin) =>
               !input.plugins.includes(plugin)
-              && record(readJsonConfig(content).enabledPlugins)[
+              && record(config.enabledPlugins)[
                 `${plugin}@copilot-api-marketplace`
               ] !== undefined,
           ).map((plugin): [string[], unknown] => [

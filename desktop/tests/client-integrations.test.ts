@@ -204,7 +204,22 @@ describe('client setup and restore', () => {
       .env as Record<string, unknown>
     expect(envFields).not.toHaveProperty('ANTHROPIC_MODEL')
     expect(envFields).not.toHaveProperty('CLAUDE_CODE_USE_FOUNDRY')
-    expect(envFields.CLAUDE_CODE_USE_BEDROCK).toBe('0')
+    expect(envFields).toMatchObject({
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '400000',
+      CLAUDE_CODE_AUTO_MODE_SERVER: '0',
+      CLAUDE_CODE_AUTO_MODE_MODEL: 'codex-auto-review',
+      CLAUDE_CODE_USE_VERTEX: '0',
+      CLAUDE_CODE_USE_BEDROCK: '0',
+      DISABLE_NON_ESSENTIAL_MODEL_CALLS: '1',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
+      CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false',
+      CLAUDE_CODE_DISABLE_TERMINAL_TITLE: 'true',
+      CLAUDE_CODE_ENABLE_AWAY_SUMMARY: '0',
+      CLAUDE_CODE_TOTAL_TOKENS_REMINDER: 'off',
+      CLAUDE_CODE_EFFORT_LEVEL: 'max',
+      MCP_CONNECT_TIMEOUT_MS: '20000',
+    })
     expect(run).not.toHaveBeenCalled()
     expect(
       fs.statSync(path.join(directory, 'backups/claude.json')).mode & 0o777,
@@ -212,6 +227,30 @@ describe('client setup and restore', () => {
     await manager.restore('claude', result.status.revision)
     expect(read('.claude/settings.json')).toBe(source)
     expect((await manager.status('claude')).canRestore).toBe(false)
+  })
+  test('preserves custom Claude environment defaults, including empty values, across updates', async () => {
+    const custom = {
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '600000',
+      CLAUDE_CODE_AUTO_MODE_SERVER: '1',
+      CLAUDE_CODE_AUTO_MODE_MODEL: 'custom-review',
+      CLAUDE_CODE_EFFORT_LEVEL: 'high',
+      CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: '',
+      MCP_CONNECT_TIMEOUT_MS: '45000',
+    }
+    const source = JSON.stringify({ env: custom })
+    persist('.claude/settings.json', source)
+    const manager = fixture()
+    await manager.setup(await input(manager, 'claude'))
+    expect(readJsonConfig(read('.claude/settings.json')).env).toMatchObject({
+      ...custom,
+      CLAUDE_CODE_TOTAL_TOKENS_REMINDER: 'off',
+    })
+    const result = await manager.setup(await input(manager, 'claude'))
+    expect(readJsonConfig(read('.claude/settings.json')).env).toMatchObject(
+      custom,
+    )
+    await manager.restore('claude', result.status.revision)
+    expect(read('.claude/settings.json')).toBe(source)
   })
   test('keeps the first backup across repeated updates and uses dummy only without gateway auth', async () => {
     gateway.apiKeys = []
