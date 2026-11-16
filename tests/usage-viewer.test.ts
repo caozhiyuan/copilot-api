@@ -282,7 +282,9 @@ describe("usage viewer model cache hit rate", () => {
         "Total Tokens",
         "Total Cost",
       ])
-      expect(win.document.querySelector("th")?.className).toContain("w-[200px]")
+      expect(win.document.querySelector("table")?.className).toContain(
+        "breakdown-table",
+      )
       for (const label of ["Cache Hit Rate", "Output speed"]) {
         const header = [...win.document.querySelectorAll("th")].find(
           (node) => node.textContent?.trim() === label,
@@ -1230,7 +1232,7 @@ describe("usage viewer request/model timing", () => {
       const eventsHtml = viewer.renderTokenUsageEventsTable({
         items: [row, {}],
       })
-      expect(eventsHtml).toContain("min-w-[1140px]")
+      expect(eventsHtml).toContain("events-table")
       expect(eventsHtml).not.toContain("min-w-[1060px]")
       win.document.body.innerHTML = eventsHtml
       expect(win.document.querySelectorAll("th").length).toBe(12)
