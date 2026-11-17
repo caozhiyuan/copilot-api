@@ -8,7 +8,7 @@ import {
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import {
-  isModernCodexClient,
+  resolveCodexCatalogCompatibility,
   serializeCodexModelCatalog,
 } from "~/lib/codex-model-catalog"
 import {
@@ -301,9 +301,10 @@ function createCodexCatalogResponse(
       ),
     }
   }
+  const headers = c.req.raw.headers
   const body = serializeCodexModelCatalog(response, {
-    headers: c.req.raw.headers,
-    modern: isModernCodexClient(c.req.url, c.req.raw.headers),
+    headers,
+    ...resolveCodexCatalogCompatibility(c.req.url, headers),
     explicitSlugs,
     fallback,
   })

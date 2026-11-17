@@ -177,7 +177,7 @@
 
 ### 模型列表与服务管理
 
-**Codex 目录：** 普通 JSON 响应不超过 1 MiB，不限制模型数量。显式 provider 名单优先；候选超过 20 个时，未配置 `agentsModels` 的来源应用默认排除名单。完整本地导出绕过大小及默认排除限制，仍遵守启停状态、显式名单和仅输出图片模型的过滤规则。
+**Codex 目录响应** 对低于 `0.166.0` 或无法识别版本的客户端应用 1 MiB JSON 上限，此时优先保留显式选择的模型。候选超过 20 个时，未配置 `agentsModels` 的来源应用默认排除名单。使用 `x-full-model-catalog: true` 导出完整目录时，跳过大小和默认排除限制，并遵守启停状态、显式名单及仅输出图片模型的过滤规则。
 
 **Provider 管理：** 桌面端“高级配置”前的“Provider 管理”标签页可启停已配置的 provider、编辑“Coding Agent 展示模型”名单，服务停止时也可使用；授权页也保留管理入口。CLI 命令为 `copilot-api provider enable <name>` 和 `copilot-api provider disable <name>`，支持 `--api-home`。`enabled` 控制所有客户端的 Provider 路由，`agentsModels` 按上述图片模型规则筛选 Codex、Claude Code、DeepSeek 和 OpenCode 的发现列表。停用保留凭据和模型配置；Copilot 继续使用独立授权方式。
 

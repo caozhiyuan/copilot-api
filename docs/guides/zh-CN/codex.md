@@ -129,7 +129,7 @@ setx GITHUB_COPILOT_API_KEY dummy
 
 ### 一键生成 `model_catalog.json`
 
-需要完整模型列表、使用 Codex `0.160.0` 之前的版本，或需要避开远程响应的 1 MiB 限制时，使用本地目录文件。生成脚本携带 `x-full-model-catalog: true`，绕过大小和默认模型排除限制，仍遵守 provider 启停状态、`agentsModels` 名单和仅输出图片模型的过滤规则；该 header 不会转发给上游。Provider 名单设置详见[配置说明](configuration.md)。
+需要完整模型列表或使用 Codex `0.160.0` 之前的版本时，可以使用本地目录文件。生成脚本会发送 `x-full-model-catalog: true`，Codex `0.166.0` 及以上版本也可在目录请求中发送这个请求头。网关在本地处理该请求头，跳过大小和默认模型排除限制，并遵守 provider 启停状态、`agentsModels` 名单和仅输出图片模型的过滤规则。Provider 名单设置详见[配置说明](configuration.md)。
 
 启动网关，安装 `curl` 及 Bun 或 Node.js，然后在仓库根目录运行[生成脚本](../../generate-model-catalog.sh)：
 
@@ -145,7 +145,7 @@ sh docs/generate-model-catalog.sh
 
 ### Codex 模型目录与协议适配
 
-远程目录响应限制为 1 MiB JSON。合并后的目录超出该限制时，网关会优先保留通过 provider `agentsModels` 选中的模型，其余模型会被丢弃。请在 Provider 管理页选择需要的模型；如果需要完整列表，则生成本地目录文件。
+对于低于 `0.166.0` 的 Codex 版本和无法识别版本的请求，网关会将目录 JSON 限制在 1 MiB。应用上限时，网关优先保留 `agentsModels` 显式选中的模型，并跳过超出剩余空间的条目。
 
 Codex 客户端目录始终排除仅输出图片的模型，即使 `agentsModels` 显式选择也不会展示；支持图片输入的聊天模型仍可按筛选规则展示。OpenCode 可以通过同一份名单发现仅输出图片的模型；普通聚合目录也包含图片模型，不受 `agentsModels` 限制。
 

@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import {
   CODEX_MODEL_CATALOG_MAX_BYTES,
-  isModernCodexClient,
   normalizeCodexInstructions,
+  resolveCodexCatalogCompatibility,
   serializeCodexModelCatalog,
 } from "~/lib/codex-model-catalog"
 import {
@@ -38,6 +38,7 @@ function serialize(
   return serializeCodexModelCatalog(response, {
     headers: new Headers(),
     modern: true,
+    supportsLargeCatalog: false,
     explicitSlugs: new Set(),
     fallback,
     ...overrides,
@@ -50,43 +51,59 @@ function parse(body: string | null): CodexModelsResponse {
 
 describe("Codex model catalog", () => {
   test.each([
-    ["0.159.9", false],
-    ["0.160.0", true],
-    ["0.161.0", true],
-    ["1.0.0", true],
-    ["0.160.0-alpha.1", true],
-  ])("recognizes client_version %s", (version, modern) => {
-    expect(
-      isModernCodexClient(
-        `http://localhost/models?client_version=${version}`,
-        new Headers(),
-      ),
-    ).toBe(modern)
-  })
+    ["0.159.9", false, false],
+    ["0.160.0", true, false],
+    ["0.160.0-alpha.1", true, false],
+    ["0.165.9", true, false],
+    ["0.166.0-alpha.1", true, false],
+    ["0.166.0", true, true],
+    ["0.166.0+build.1", true, true],
+    ["0.166.1-rc.1", true, true],
+    ["0.167.0-alpha.1", true, true],
+    ["1.0.0", true, true],
+  ])(
+    "recognizes client_version %s",
+    (version, modern, supportsLargeCatalog) => {
+      expect(
+        resolveCodexCatalogCompatibility(
+          `http://localhost/models?client_version=${encodeURIComponent(version)}`,
+          new Headers(),
+        ),
+      ).toEqual({ modern, supportsLargeCatalog })
+    },
+  )
   test("uses valid versions in query, header, and UA priority order", () => {
     const headers = new Headers({
-      version: "0.160.0",
-      "user-agent": "codex-tui/0.161.0",
+      version: "0.165.0",
+      "user-agent": "codex-tui/0.169.0",
     })
     expect(
-      isModernCodexClient(
-        "http://localhost/models?client_version=0.159.0",
+      resolveCodexCatalogCompatibility(
+        "http://localhost/models?client_version=0.165.0&client_version=0.166.0",
         headers,
       ),
-    ).toBe(false)
+    ).toEqual({ modern: true, supportsLargeCatalog: true })
     expect(
-      isModernCodexClient(
+      resolveCodexCatalogCompatibility(
         "http://localhost/models?client_version=invalid",
         headers,
       ),
-    ).toBe(true)
-    headers.set("version", "0.159.0")
-    expect(isModernCodexClient("http://localhost/models", headers)).toBe(false)
+    ).toEqual({ modern: true, supportsLargeCatalog: false })
+
     headers.delete("version")
-    expect(isModernCodexClient("http://localhost/models", headers)).toBe(true)
-    expect(isModernCodexClient("http://localhost/models", new Headers())).toBe(
-      false,
-    )
+    expect(
+      resolveCodexCatalogCompatibility("http://localhost/models", headers),
+    ).toEqual({ modern: true, supportsLargeCatalog: true })
+    headers.set("user-agent", "codex-tui/0.166.0-alpha.1 (Linux)")
+    expect(
+      resolveCodexCatalogCompatibility("http://localhost/models", headers),
+    ).toEqual({ modern: true, supportsLargeCatalog: false })
+    expect(
+      resolveCodexCatalogCompatibility(
+        "http://localhost/models",
+        new Headers(),
+      ),
+    ).toEqual({ modern: false, supportsLargeCatalog: false })
   })
   test("preserves canonical templates and unknown fields without mutating inputs", () => {
     const original = { ...model("canonical"), custom: { retained: true } }
@@ -214,6 +231,9 @@ describe("Codex model catalog", () => {
     expect(ordinary.models.map((m) => m.slug)).toEqual(
       models.slice(oldModels.length).map((m) => m.slug),
     )
+    expect(
+      parse(serialize({ models }, { supportsLargeCatalog: true })),
+    ).toEqual(ordinary)
     const explicit = parse(
       serialize({ models }, { explicitSlugs: new Set(["codex/gpt-5.5"]) }),
     )
