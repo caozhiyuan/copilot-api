@@ -62,6 +62,8 @@ const COST_NANOS_PER_TOKEN_AT_ONE_PER_MILLION = 1_000
 const COPILOT_NANO_AIU_PER_USD = 100_000_000_000
 const COPILOT_NANO_AIU_TO_COST_NANOS =
   COST_NANOS_PER_UNIT / COPILOT_NANO_AIU_PER_USD
+// The GPT-6.2 Ultrafast promotion ends at midnight Pacific time on March 1.
+const CODEX_GPT_62_ULTRAFAST_PROMOTION_END = Date.UTC(2027, 2, 1, 8)
 const BUILTIN_PROVIDER_CURRENCIES: Record<string, string> = {
   codex: "USD",
   dashscope: "CNY",
@@ -121,10 +123,11 @@ export function resolveTokenUsageCost(
     return null
   }
 
+  const at = resolvePricingTime(input.at)
   const pricing = resolvePricingTier(
     resolvedPricing.pricing,
     getInputTokenTotal(input),
-    resolvePricingTime(input.at),
+    at,
   )
   const currency =
     resolvedPricing.currency
@@ -144,7 +147,7 @@ export function resolveTokenUsageCost(
     + costNanosForTokens(input.cache_read_input_tokens, cacheReadPrice)
     + costNanosForTokens(input.cache_creation_input_tokens, cacheCreationPrice)
   const totalCostNanos = Math.round(
-    baseCostNanos * resolveCodexServiceTierMultiplier(input, providerName),
+    baseCostNanos * resolveCodexServiceTierMultiplier(input, providerName, at),
   )
 
   if (totalCostNanos <= 0) {
@@ -161,19 +164,25 @@ export function resolveTokenUsageCost(
 function resolveCodexServiceTierMultiplier(
   input: TokenUsageCostInput,
   providerName: string,
+  at: Date,
 ): number {
   if (providerName.toLowerCase() !== "codex") {
     return 1
   }
 
   // Price-estimate multipliers, applied after selecting the context rates.
-  // https://developers.openai.com/api/docs/pricing
+  // https://help.openai.com/en/articles/20001415-chatgpt-rate-card-enterprise-token-based-pricing
   switch (input.serviceTier?.trim().toLowerCase()) {
     case "priority":
     case "fast":
       return 2
-    case "ultrafast":
-      return 6
+    case "ultrafast": {
+      const model = input.model.trim().toLowerCase()
+      const hasPromotionalRate =
+        (model === "gpt-6.2-sol" || model === "gpt-6.2-astra")
+        && at.getTime() < CODEX_GPT_62_ULTRAFAST_PROMOTION_END
+      return hasPromotionalRate ? 3 : 6
+    }
     default:
       return 1
   }
