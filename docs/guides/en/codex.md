@@ -127,7 +127,7 @@ Alternatively, set `"codex-auto-review": "codex/codex-auto-review"` to use the b
 
 ### Generate `model_catalog.json`
 
-Use a local catalog for the complete list, for Codex versions before `0.160.0`, or to avoid the 1 MiB remote response limit. The generator sends `x-full-model-catalog: true`, bypassing the size and default-exclusion limits while still respecting provider enable states, `agentsModels` selections, and the image-only model filter. This header never reaches upstream providers. See [configuration](configuration.md) for provider selections.
+Use a local catalog to get the complete model list or to use Codex versions before `0.160.0`. The generator sends `x-full-model-catalog: true`. Codex `0.166.0` and later can also send this header on catalog requests. It bypasses the gateway's size limit and default exclusions while respecting provider enable states, `agentsModels` selections, and the image-only model filter. The gateway consumes the header locally. See [configuration](configuration.md) for provider selections.
 
 Start the gateway, install `curl` and Bun or Node.js, then run [the generator](../../generate-model-catalog.sh) from the repository root:
 
@@ -143,7 +143,7 @@ Defaults: gateway `http://localhost:4141`, output `$HOME/.codex/model_catalog.js
 
 ### Codex Model Catalog and Protocol Adapters
 
-Remote catalog responses are limited to 1 MiB of JSON. When the merged catalog is larger, the gateway keeps models selected through provider `agentsModels` first and drops the rest. Select the models you need on the Providers page, or generate a local catalog for the complete list.
+The gateway applies a 1 MiB JSON budget to Codex versions older than `0.166.0` and requests without a recognized version. Under that budget, it gives models selected through `agentsModels` priority and skips entries that exceed the remaining space.
 
 Codex client catalogs always exclude image-only models, even when `agentsModels` explicitly selects them. Chat models that accept images remain eligible. OpenCode can discover image-only models through the same selection; the ordinary aggregated catalog also includes image models independently of `agentsModels`.
 

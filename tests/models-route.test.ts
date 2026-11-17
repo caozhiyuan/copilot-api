@@ -14,6 +14,7 @@ import path from "node:path"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
+import { CODEX_MODEL_CATALOG_MAX_BYTES } from "~/lib/codex-model-catalog"
 import { installModelsDevCatalog } from "~/lib/models-dev-cache"
 import { PATHS } from "~/lib/paths"
 import { defaultConfig, invalidateConfigCache } from "~/lib/config-store"
@@ -2697,6 +2698,39 @@ describe("model routes", () => {
     expect(response.status).toBe(502)
     expect((await response.text()).length).toBeLessThan(200)
   })
+  test.each(["/models", "/codex/v1/models"])(
+    "%s limits oversized catalogs according to the client version",
+    async (endpoint) => {
+      enableCodexCatalog()
+      const model = createDefaultCodexCatalogModels()[0]
+      codexCatalogModels = ["gpt-first", "gpt-last"].map((slug, priority) => ({
+        ...model,
+        slug,
+        priority,
+        base_instructions: "x".repeat(550_000),
+      }))
+
+      const app = createApp(false)
+      for (const { version, supportsLargeCatalog } of [
+        { version: "0.165.0", supportsLargeCatalog: false },
+        { version: "0.166.0", supportsLargeCatalog: true },
+      ]) {
+        const response = await app.request(
+          `${endpoint}?client_version=${version}`,
+          { headers: { "user-agent": "codex-tui" } },
+        )
+        expect(response.status).toBe(200)
+        const body = await response.text()
+        expect(Buffer.byteLength(body) > CODEX_MODEL_CATALOG_MAX_BYTES).toBe(
+          supportsLargeCatalog,
+        )
+        const { models } = JSON.parse(body) as CodexModelsResponse
+        const slugs = models.map((entry) => entry.slug)
+        expect(slugs).toContain("gpt-first")
+        expect(slugs.includes("gpt-last")).toBe(supportsLargeCatalog)
+      }
+    },
+  )
   test("applies the same policy to provider-scoped Codex catalogs", async () => {
     enableCodexCatalog()
     providerConfigs.codex!.agentsModels = ["gpt-native"]

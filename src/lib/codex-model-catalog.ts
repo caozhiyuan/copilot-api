@@ -25,18 +25,34 @@ const DEFAULT_EXCLUDED_MODELS = new Set([
   "mai-code-1.1-flash",
 ])
 
-export function isModernCodexClient(url: string, headers: Headers): boolean {
+export function resolveCodexCatalogCompatibility(
+  url: string,
+  headers: Headers,
+): { modern: boolean; supportsLargeCatalog: boolean } {
   const versions = [
-    new URL(url).searchParams.get("client_version"),
+    new URL(url).searchParams.getAll("client_version").at(-1),
     headers.get("version"),
-    headers.get("user-agent")?.match(/\bcodex[^/\s]*\/(\d+\.\d+\.\d+)/iu)?.[1],
+    headers.get("user-agent")?.match(/\bcodex[^/\s]*\/([^\s()]+)/iu)?.[1],
   ]
   for (const version of versions) {
-    const match = version?.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/u)
+    const match = version?.match(
+      /^(\d+)\.(\d+)\.(\d+)(-[\da-z.-]+)?(?:\+[\da-z.-]+)?$/iu,
+    )
     if (!match) continue
-    return Number(match[1]) > 0 || Number(match[2]) >= 160
+    const major = Number(match[1])
+    const minor = Number(match[2])
+    const patch = Number(match[3])
+    const prerelease = match[4] !== undefined
+    // https://github.com/openai/codex/pull/56525 shipped in Codex 0.166.0.
+    return {
+      modern: major > 0 || minor >= 160,
+      supportsLargeCatalog:
+        major > 0
+        || minor > 166
+        || (minor === 166 && (patch > 0 || !prerelease)),
+    }
   }
-  return false
+  return { modern: false, supportsLargeCatalog: false }
 }
 
 export function normalizeCodexInstructions(
@@ -62,6 +78,7 @@ export function serializeCodexModelCatalog(
   options: {
     headers: Headers
     modern: boolean
+    supportsLargeCatalog: boolean
     explicitSlugs: ReadonlySet<string>
     fallback: CodexModelMessages
   },
@@ -75,11 +92,6 @@ export function serializeCodexModelCatalog(
   ) {
     return JSON.stringify({ ...response, models })
   }
-  // Measure the exact JSON envelope, including unknown upstream metadata.
-  const envelope = JSON.stringify({ ...response, models: [] })
-  let bytes = Buffer.byteLength(envelope, "utf8")
-  if (bytes > CODEX_MODEL_CATALOG_MAX_BYTES) return null
-  const selected = new Set<CodexModel>()
   const eligibleModels =
     models.length > DEFAULT_EXCLUSION_THRESHOLD ?
       models.filter(
@@ -90,6 +102,14 @@ export function serializeCodexModelCatalog(
           ),
       )
     : models
+  if (options.supportsLargeCatalog) {
+    return JSON.stringify({ ...response, models: eligibleModels })
+  }
+  // Measure the exact JSON envelope, including unknown upstream metadata.
+  const envelope = JSON.stringify({ ...response, models: [] })
+  let bytes = Buffer.byteLength(envelope, "utf8")
+  if (bytes > CODEX_MODEL_CATALOG_MAX_BYTES) return null
+  const selected = new Set<CodexModel>()
   const ordered = [...eligibleModels].sort(
     (a, b) =>
       Number(options.explicitSlugs.has(b.slug))
