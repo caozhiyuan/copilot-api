@@ -3209,6 +3209,24 @@ describe("model routes", () => {
       )
       expect(body.data.map((model) => model.id)).toContain("codex/gpt-reserve")
       expect(body.data.map((model) => model.id)).toContain("codex/gpt-5.6-sol")
+      for (const name of ["Sol", "Astra"]) {
+        const id = `codex/gpt-6.2-${name.toLowerCase()}`
+        expect(body.data.find((model) => model.id === id)).toMatchObject({
+          capabilities: {
+            limits: {
+              max_context_window_tokens: 872_000,
+              max_output_tokens: 128_000,
+              max_prompt_tokens: 872_000,
+            },
+            supports: {
+              reasoning_effort: ["low", "medium", "high", "xhigh", "max"],
+              vision: true,
+            },
+          },
+          id,
+          name: `GPT-6.2 ${name}`,
+        })
+      }
       expect(
         body.data.find((model) => model.id === "codex/gpt-6.1-sol"),
       ).toMatchObject({
@@ -3595,6 +3613,20 @@ describe("model routes", () => {
       throw new Error("Bundled Codex catalog has no visible API model")
     }
     expect(body.models).toContainEqual(template)
+    const gpt62Models = body.models.slice(0, 2)
+    expect(gpt62Models.map((model) => model.slug)).toEqual([
+      "gpt-6.2-sol",
+      "gpt-6.2-astra",
+    ])
+    expect(gpt62Models.map((model) => model.context_window)).toEqual([
+      500_000, 272_000,
+    ])
+    for (const model of gpt62Models) {
+      expect(model.max_context_window).toBe(872_000)
+      expect(
+        model.supported_reasoning_levels.map((level) => level.effort),
+      ).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"])
+    }
     const gpt61Sol = body.models.find((model) => model.slug === "gpt-6.1-sol")
     expect(gpt61Sol).toMatchObject({
       context_window: 272_000,

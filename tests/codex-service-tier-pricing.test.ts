@@ -61,6 +61,40 @@ describe("Codex service tier price estimates", () => {
     })
   })
 
+  for (const { model, standardCost } of [
+    { model: "gpt-6.2-sol", standardCost: 544_206_000 },
+    { model: "gpt-6.2-astra", standardCost: 2_176_824_000 },
+  ]) {
+    test(`${model} uses flat Codex rates and the timed Ultrafast promotion`, () => {
+      const longContextUsage = {
+        ...usage,
+        at: new Date("2027-03-01T07:59:59.999Z"),
+        input_tokens: 272_001,
+        model,
+      }
+      for (const { serviceTier, multiplier } of [
+        { serviceTier: "default", multiplier: 1 },
+        { serviceTier: "priority", multiplier: 2 },
+        { serviceTier: "ultrafast", multiplier: 3 },
+      ]) {
+        expect(
+          resolveTokenUsageCost({ ...longContextUsage, serviceTier }),
+        ).toEqual({
+          currency: "USD",
+          source: "builtin",
+          total_cost_nanos: standardCost * multiplier,
+        })
+      }
+      expect(
+        resolveTokenUsageCost({
+          ...longContextUsage,
+          at: new Date("2027-03-01T08:00:00.000Z"),
+          serviceTier: "ultrafast",
+        })?.total_cost_nanos,
+      ).toBe(standardCost * 6)
+    })
+  }
+
   test("normalizes the provider, model, and tier names", () => {
     expect(
       resolveTokenUsageCost({
