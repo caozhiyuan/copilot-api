@@ -19,18 +19,24 @@ import {
   getTokenUsageEventsPage,
   getTokenUsageSessionsPage,
   getTokenUsageSummary,
+  pruneTokenUsageEvents,
   recordTokenUsageEvent,
 } from "~/lib/token-usage"
 import { xaiUsdTicksToCost } from "~/lib/token-usage/pricing"
 import { getApiKeyQuotaUsage } from "~/lib/token-usage/store"
 import { videoRouteDependencies, videoRoutes } from "~/routes/videos/route"
 import { createServer } from "~/server"
+import {
+  settlePendingVideoUsage,
+  videoUsageSettlementDependencies,
+} from "~/services/xai/video-usage-settlement"
 import { forwardXaiVideos, XaiVideosRequestError } from "~/services/xai/videos"
 
 const model = "xai/grok-imagine-video-1.5"
 const originalFetch = globalThis.fetch
 const originalConfigPath = PATHS.CONFIG_PATH
 const originalDependencies = { ...videoRouteDependencies }
+const originalSettlementDependencies = { ...videoUsageSettlementDependencies }
 const originalDbPath = process.env.COPILOT_API_SQLITE_DB_PATH
 const originalVerbose = state.verbose
 const fetchMock = mock(
@@ -103,6 +109,7 @@ beforeEach(async () => {
   resolveProviderMock.mockReset()
   resolveProviderMock.mockImplementation(() => Promise.resolve(providerConfig))
   videoRouteDependencies.resolveProviderConfig = resolveProviderMock
+  videoUsageSettlementDependencies.resolveProviderConfig = resolveProviderMock
   fetchMock.mockReset()
   fetchMock.mockImplementation(() =>
     Promise.resolve(Response.json({ request_id: "video-job" })),
@@ -118,6 +125,10 @@ afterEach(async () => {
   state.verbose = originalVerbose
   globalThis.fetch = originalFetch
   Object.assign(videoRouteDependencies, originalDependencies)
+  Object.assign(
+    videoUsageSettlementDependencies,
+    originalSettlementDependencies,
+  )
   PATHS.CONFIG_PATH = originalConfigPath
   invalidateConfigCache()
   if (!tempDir.startsWith(path.join(os.tmpdir(), "copilot-api-videos-"))) {
@@ -133,7 +144,7 @@ afterEach(async () => {
 })
 
 describe("video routes", () => {
-  test("binds a video job to its creating key and charges repeated result queries only once", async () => {
+  test("settles persisted video jobs after restart and charges results once after history pruning", async () => {
     process.env.COPILOT_API_SQLITE_DB_PATH = path.join(
       tempDir,
       "key-video.sqlite",
@@ -165,9 +176,31 @@ describe("video routes", () => {
       ).status,
     ).toBe(403)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    const pollTime = Date.now() + 10_000
+    const signal = new AbortController().signal
+    fetchMock.mockResolvedValueOnce(Response.json({ status: "pending" }))
+    await settlePendingVideoUsage(signal, pollTime)
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(0)
+    await closeUsageStore()
+
     fetchMock.mockImplementation(() =>
       Promise.resolve(Response.json(doneResult)),
     )
+    await settlePendingVideoUsage(signal, pollTime + 60_000)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(await getApiKeyQuotaUsage(key)).toMatchObject({
+      usedAmount: 1.13,
+      remainingAmount: 8.87,
+    })
+    expect((await events()).items).toMatchObject([
+      { api_key_id: "owner", trace_id: "video-key" },
+    ])
+    await pruneTokenUsageEvents({
+      nowMs: Date.now() + 2 * 86_400_000,
+      retentionDays: 1,
+    })
+    expect((await events()).items).toHaveLength(0)
+
     for (let i = 0; i < 3; i++)
       expect(
         (await run(key, () => createApp().request("/v1/videos/video-job")))
@@ -178,6 +211,39 @@ describe("video routes", () => {
       remainingAmount: 8.87,
     })
     await closeUsageStore()
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1.13)
+    expect((await events()).items).toHaveLength(0)
+  })
+
+  test("resumes settlement for jobs stored in legacy pending usage events", async () => {
+    process.env.COPILOT_API_SQLITE_DB_PATH = path.join(
+      tempDir,
+      "legacy-video.sqlite",
+    )
+    const key = { id: "legacy-owner", key: "test-key" }
+    requestContext.run(
+      {
+        apiKey: key,
+        traceId: "legacy-video",
+        startTime: Date.now(),
+        userAgent: "",
+        sessionAffinity: "legacy-video-session",
+        parentSessionId: undefined,
+      },
+      () =>
+        recordTokenUsageEvent({
+          source: "provider",
+          providerName: "xai",
+          endpoint: "videos_generations",
+          model: doneResult.model,
+          cost: 0,
+          upstreamRequestId: "pending:legacy-job",
+        }),
+    )
+    await closeUsageStore()
+    fetchMock.mockResolvedValueOnce(Response.json(doneResult))
+    await settlePendingVideoUsage(new AbortController().signal)
+    expect(getUpstreamUrl(0)).toBe("https://api.x.ai/v1/videos/legacy-job")
     expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1.13)
   })
 

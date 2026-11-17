@@ -336,7 +336,7 @@ function createFetcher() {
     ),
     extract(
       "        function resolveUsageUrl(endpoint) {",
-      "        async function fetchJson(url) {",
+      "        async function fetchJson(",
     ),
     extract(
       "        function getConnectionKey() {",
@@ -344,7 +344,7 @@ function createFetcher() {
     ),
     extract(
       "        function syncSubscriptionsConnection() {",
-      "        function handleModelsConnectionChange() {",
+      "        function handleConnectionChange() {",
     ),
     extract(
       "        async function refreshSubscriptionQuotas(provider) {",

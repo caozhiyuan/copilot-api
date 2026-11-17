@@ -230,7 +230,7 @@ export async function forwardProviderMessages(
     resolveOpencodeMessagesSession(),
   )
   const transportConfig = getUpstreamTransportConfig()
-  setPluginRequestActualModel(payload.model, providerConfig.name)
+  setPluginRequestActualModel(payload.model, providerConfig)
   return await fetchUpstreamWithLifecycle(
     resolveProviderEndpointUrl(providerConfig, "messages"),
     {
@@ -260,7 +260,7 @@ export async function forwardProviderChatCompletions(
     payload.prompt_cache_key?.trim() || undefined,
   )
   const transportConfig = getUpstreamTransportConfig()
-  setPluginRequestActualModel(payload.model, providerConfig.name)
+  setPluginRequestActualModel(payload.model, providerConfig)
   return await fetchUpstreamWithLifecycle(
     resolveProviderEndpointUrl(providerConfig, "chat/completions"),
     {
@@ -291,7 +291,7 @@ export async function forwardProviderResponses(
     payload.prompt_cache_key?.trim() || undefined,
   )
   await applyXaiGrokBuildHeaders(providerConfig, headers, payload)
-  setPluginRequestActualModel(payload.model, providerConfig.name)
+  setPluginRequestActualModel(payload.model, providerConfig)
   return await fetchUpstreamWithLifecycle(
     resolveProviderEndpointUrl(providerConfig, "responses"),
     {
@@ -405,7 +405,7 @@ export async function forwardProviderAlphaSearch(
     ) ?
       searchPayload.model
     : "alpha-search"
-  setPluginRequestActualModel(searchModel, providerConfig.name, "alpha_search")
+  setPluginRequestActualModel(searchModel, providerConfig, "alpha_search")
 
   const response = await fetchUpstreamWithLifecycle(
     resolveProviderRequestUrl(providerConfig, request.url, "/v1/alpha/search"),

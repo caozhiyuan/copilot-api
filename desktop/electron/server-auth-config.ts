@@ -1,4 +1,5 @@
 import {
+  isApiKeyActive,
   normalizeApiKeyRecord,
   normalizeApiKeyRecords,
 } from '../../src/lib/api-key-config'
@@ -6,6 +7,7 @@ import {
 import {
   readEditableConfigFromDisk,
   writeConfigToDisk,
+  type AppConfig,
 } from '../../src/lib/config'
 import { normalizeApiKeys } from '../../src/lib/request-auth'
 import type { ServerKeysConfig, ServerKeysConfigUpdate } from '../src/types/ipc'
@@ -15,15 +17,22 @@ export function normalizeAdminApiKey(adminApiKey: unknown): string {
   return adminApiKey.trim()
 }
 
-export function readServerKeysConfig(): Promise<ServerKeysConfig> {
-  const auth = readEditableConfigFromDisk().auth
-  return Promise.resolve({
-    apiKeys: normalizeApiKeyRecords(auth?.apiKeyConfigs).map((key) => key.key),
+function serverKeysFromConfig(auth: AppConfig['auth']): ServerKeysConfig {
+  return {
+    apiKeys: normalizeApiKeyRecords(auth?.apiKeyConfigs)
+      .filter((key) => isApiKeyActive(key))
+      .map((key) => key.key),
     adminApiKey: normalizeAdminApiKey(auth?.adminApiKey),
     ...(auth?.isolateApiKeyUsage === undefined ?
       {}
     : { isolateApiKeyUsage: auth.isolateApiKeyUsage === true }),
-  })
+  }
+}
+
+export function readServerKeysConfig(): Promise<ServerKeysConfig> {
+  return Promise.resolve(
+    serverKeysFromConfig(readEditableConfigFromDisk().auth),
+  )
 }
 
 // Merges only the provided auth fields into the latest config on disk, so a
@@ -59,13 +68,7 @@ export function writeServerKeysConfig(
   }
 
   writeConfigToDisk({ ...editableConfig, auth })
-  return {
-    apiKeys: normalizeApiKeyRecords(auth.apiKeyConfigs).map((key) => key.key),
-    adminApiKey: normalizeAdminApiKey(auth.adminApiKey),
-    ...(auth.isolateApiKeyUsage === undefined ?
-      {}
-    : { isolateApiKeyUsage: auth.isolateApiKeyUsage === true }),
-  }
+  return serverKeysFromConfig(auth)
 }
 
 export function readManagedApiKeys() {

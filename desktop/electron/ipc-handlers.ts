@@ -2,7 +2,6 @@ import {
   upsertConfiguredApiKey,
   removeConfiguredApiKey,
 } from '../../src/lib/config-store'
-import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import {
@@ -31,7 +30,6 @@ import type {
   VideoCreationInput,
 } from '../src/types/media'
 
-import { normalizeApiKeys } from '../../src/lib/request-auth'
 import { CodexOAuthError } from '../../src/lib/oauth/codex'
 import { XaiOAuthError, type XaiAuthInfo } from '../../src/lib/oauth/xai'
 import { createOAuthLoginFlow } from './oauth-login'
@@ -41,7 +39,6 @@ import {
   removeXaiAccount,
 } from '../../src/lib/xai-token'
 import { loadModelsDevProviderOptions } from '../../src/lib/models-dev-cache'
-import { PATHS } from '../../src/lib/paths'
 import { invalidateConfigCache } from '../../src/lib/config-store'
 import { loadProviderModelOptions } from './provider-model-options'
 import { saveProviderManagementConfig } from '../../src/lib/provider-management'
@@ -137,30 +134,12 @@ interface IpcHandlersOptions {
   onQuit?: () => void | Promise<void>
 }
 
-function normalizeApiKey(apiKey: unknown): string | null {
-  if (typeof apiKey !== 'string') {
-    return null
-  }
-
-  const normalizedApiKey = apiKey.trim()
-  return normalizedApiKey || null
-}
-
 async function getServerAuthInfo(
   scope: ServerAuthScope = 'default',
 ): Promise<ServerAuthInfo> {
   try {
-    const raw = await fs.readFile(PATHS.CONFIG_PATH, 'utf8')
-    const parsed =
-      raw.trim() ?
-        (JSON.parse(raw) as {
-          auth?: { apiKeys?: unknown; adminApiKey?: unknown }
-        })
-      : {}
-    const apiKey =
-      scope === 'admin' ?
-        normalizeApiKey(parsed.auth?.adminApiKey)
-      : (normalizeApiKeys(parsed.auth?.apiKeys)[0] ?? null)
+    const { adminApiKey, apiKeys } = await readServerKeysConfig()
+    const apiKey = scope === 'admin' ? adminApiKey : apiKeys[0]
 
     if (!apiKey) {
       return { enabled: false }
@@ -773,12 +752,15 @@ export function registerIpcHandlers(
       ) {
         throw new Error('Unsupported subscription provider')
       }
-      const headers = await getServerRequestHeaders()
-      const response = await fetch(`${getServerBaseUrl()}/usage/${provider}`, {
-        headers,
-        // Allow for a credential refresh before the bounded upstream query.
-        signal: AbortSignal.timeout(60_000),
-      })
+      const headers = await getServerRequestHeaders('admin')
+      const response = await fetch(
+        `${getServerBaseUrl()}/admin/usage/${provider}`,
+        {
+          headers,
+          // Allow for a credential refresh before the bounded upstream query.
+          signal: AbortSignal.timeout(60_000),
+        },
+      )
       if (response.status === 404) return null
       if (!response.ok) throw new Error('Failed to fetch subscription usage')
       return (await response.json()) as SubscriptionUsage
@@ -788,8 +770,8 @@ export function registerIpcHandlers(
   ipcMain.handle('server:fetch-usage', async () => {
     const baseUrl = getServerBaseUrl()
     try {
-      const headers = await getServerRequestHeaders()
-      const res = await fetch(`${baseUrl}/usage`, {
+      const headers = await getServerRequestHeaders('admin')
+      const res = await fetch(`${baseUrl}/admin/usage`, {
         headers,
         signal: AbortSignal.timeout(5000),
       })

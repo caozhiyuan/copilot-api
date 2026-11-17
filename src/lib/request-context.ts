@@ -1,7 +1,10 @@
 import type { GatewayApiKeyConfig } from "./api-key-config"
 import { isApiKeyModelAllowed } from "./api-key-config"
 import { HTTPError } from "./error"
-import { getRawProviderConfig } from "./provider-config"
+import {
+  getRawProviderConfig,
+  type ResolvedProviderConfig,
+} from "./provider-config"
 import { getTokenUsagePricingCurrency } from "./token-usage/pricing"
 import { resolveUsdRate } from "./token-usage/currency"
 import type { TokenUsageEndpoint } from "./token-usage/store"
@@ -57,11 +60,14 @@ export function formatPluginActualModel(
 
 export function setPluginRequestActualModel(
   model: string,
-  provider?: string,
+  provider?: string | ResolvedProviderConfig,
   endpoint?: TokenUsageEndpoint,
 ): void {
   const key = requestContext.getStore()?.apiKey
-  if (key && !isApiKeyModelAllowed(key, model, provider ?? "github-copilot")) {
+  const name =
+    (typeof provider === "string" ? provider : provider?.name)
+    ?? "github-copilot"
+  if (key && !isApiKeyModelAllowed(key, model, name)) {
     throw new HTTPError(
       "Model is not allowed for this API key",
       Response.json(
@@ -77,8 +83,8 @@ export function setPluginRequestActualModel(
     )
   }
   if (key?.quota) {
-    const name = provider ?? "github-copilot"
-    const config = getRawProviderConfig(name)
+    const config =
+      typeof provider === "object" ? provider : getRawProviderConfig(name)
     const currency = getTokenUsagePricingCurrency({
       model,
       endpoint,
@@ -108,7 +114,7 @@ export function setPluginRequestActualModel(
   }
   requestContext
     .getStore()
-    ?.pluginRequest?.setActualModel(formatPluginActualModel(model, provider))
+    ?.pluginRequest?.setActualModel(formatPluginActualModel(model, name))
 }
 
 export function generateTraceId(): string {

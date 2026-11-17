@@ -11,7 +11,11 @@ import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import { requestContext, type RequestTiming } from "~/lib/request-context"
+import {
+  requestContext,
+  type RequestContext,
+  type RequestTiming,
+} from "~/lib/request-context"
 import { requestEventsMiddleware } from "~/lib/request-events"
 import { traceIdMiddleware } from "~/lib/trace"
 import type { UsageTokens } from "~/lib/token-usage"
@@ -72,12 +76,14 @@ const fetchMock = mock((_url: string | URL | Request, _init?: RequestInit) =>
   ),
 )
 
-const createApp = () => {
+const createApp = (apiKey?: RequestContext["apiKey"]) => {
   const app = new Hono()
   app.use(traceIdMiddleware)
   app.use(requestEventsMiddleware(undefined, 4141))
   app.use(async (_c, next) => {
-    requestTiming = requestContext.getStore()?.requestTiming
+    const context = requestContext.getStore()
+    requestTiming = context?.requestTiming
+    if (context) context.apiKey = apiKey
     await next()
   })
   app.route("/v1/chat/completions", completionRoutes)
@@ -230,7 +236,7 @@ describe("provider/model aliases on top-level chat completions route", () => {
     expect(requestTiming?.outcome).toBe("error")
   })
 
-  test("forwards a selected models.dev model to its own API URL", async () => {
+  test("admits a capped key for a selected models.dev model with catalog pricing", async () => {
     installModelsDevCatalog({
       ...modelsDevCatalogFixture,
       example: {
@@ -239,6 +245,7 @@ describe("provider/model aliases on top-level chat completions route", () => {
         models: {
           "qwen-plus": {
             id: "qwen-plus",
+            cost: { input: 1, output: 2 },
             provider: {
               api: "https://model.example.com/api/v4",
               npm: "@ai-sdk/openai-compatible",
@@ -253,7 +260,12 @@ describe("provider/model aliases on top-level chat completions route", () => {
       modelsDevProviderId: "example",
     }
 
-    const response = await createApp().request("/v1/chat/completions", {
+    const app = createApp({
+      id: "catalog-client",
+      key: "test-key",
+      quota: { period: "month", amount: 10 },
+    })
+    const response = await app.request("/v1/chat/completions", {
       body: JSON.stringify({
         messages: [{ content: "hello", role: "user" }],
         model: "dash/qwen-plus",

@@ -1,8 +1,13 @@
 import type { ResolvedProviderConfig } from "~/lib/config"
 import { requestContext } from "~/lib/request-context"
 
-import { recordTokenUsageEvent } from "./index"
+import { recordTokenUsageEvent, resolveTokenUsageSessionId } from "./index"
 import { xaiUsdTicksToCost } from "./pricing"
+import {
+  saveVideoUsageJob,
+  stopPollingVideoUsageJob,
+  type VideoUsageJob,
+} from "./store"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -16,7 +21,8 @@ export async function recordVideoResultUsage(
     requestId: string
     defaultModel: string
     operation?: "generations" | "result"
-    onBody: (body: string) => void
+    job?: VideoUsageJob
+    onBody?: (body: string) => void
   },
 ): Promise<void> {
   let body: string
@@ -26,7 +32,7 @@ export async function recordVideoResultUsage(
     // Preserve upstream body errors instead of replacing the proxy response.
     return
   }
-  if (options.operation !== "generations") options.onBody(body)
+  if (options.operation !== "generations") options.onBody?.(body)
   if (!response.ok) return
 
   let result: unknown
@@ -35,35 +41,41 @@ export async function recordVideoResultUsage(
   } catch {
     return
   }
+  if (!isRecord(result)) return
   if (options.operation === "generations") {
+    const context = requestContext.getStore()
     if (
-      isRecord(result)
-      && typeof result.request_id === "string"
-      && result.request_id
-      && requestContext.getStore()?.apiKey
+      typeof result.request_id === "string"
+      && result.request_id.trim()
+      && context?.apiKey
     ) {
-      recordTokenUsageEvent({
-        source: "provider",
-        providerName: options.providerConfig.name,
-        endpoint: "videos_generations",
+      await saveVideoUsageJob({
+        provider_name: options.providerConfig.name,
+        request_id: result.request_id,
+        api_key_id: context.apiKey.id,
+        api_key_name: context.apiKey.name ?? null,
         model: options.defaultModel,
-        cost: 0,
-        upstreamRequestId: "pending:" + result.request_id,
+        trace_id: context.traceId,
+        session_id: resolveTokenUsageSessionId(undefined),
       })
     }
     return
   }
-  if (
-    !isRecord(result)
-    || result.status !== "done"
-    || !isRecord(result.usage)
-  ) {
+  const job = options.job
+  if (job?.settled) return
+  if (job && (result.status === "failed" || result.status === "expired")) {
+    await stopPollingVideoUsageJob(job)
     return
   }
+  if (result.status !== "done" || !isRecord(result.usage)) return
   const cost = xaiUsdTicksToCost(result.usage.cost_in_usd_ticks)
   if (cost === undefined) return
 
   recordTokenUsageEvent({
+    apiKey:
+      job ?
+        { id: job.api_key_id, name: job.api_key_name ?? undefined }
+      : undefined,
     source: "provider",
     providerName: options.providerConfig.name,
     endpoint: "videos_generations",
@@ -73,5 +85,7 @@ export async function recordVideoResultUsage(
       : options.defaultModel,
     cost,
     upstreamRequestId: options.requestId,
+    traceId: job?.trace_id,
+    sessionId: job?.session_id,
   })
 }

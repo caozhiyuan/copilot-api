@@ -6,7 +6,7 @@
 
 ## API 认证
 
-- **受保护的普通路由：** 当配置了 `auth.apiKeys` 且非空时，除 `/`、`/usage-viewer` 和 `/usage-viewer/` 以外的普通路由都需要认证。非回环监听要求启动时存在非空的 `auth.apiKeys`，即使运行期间 Key 被清空也会继续以拒绝请求的方式安全失败。
+- **受保护的普通路由：** 当 `auth.apiKeyConfigs` 非空时，除 `/`、`/usage-viewer` 和 `/usage-viewer/` 以外的普通路由都需要认证。非回环监听要求启动时有非空的 Key 配置，运行期间清空 Key 后仍会拒绝请求。
 - **Admin 路由：** 所有 `/admin/*` 路由都要求 `auth.adminApiKey`。如果缺失，服务会在启动时自动生成并在开始提供服务前写回 `config.json`。
 - **允许的认证头：**
   - `x-api-key: <your_key>`
@@ -114,7 +114,7 @@ curl http://localhost:4141/v1/videos/YOUR_REQUEST_ID \
   -H 'Authorization: Bearer your_gateway_key'
 ```
 
-网关不等待生成完成、不重试提交，也不保存任务。查询期间需保持同一 xAI 账号和上游地址。客户端处理 `pending`、`done`、`failed` 等原生状态，并直接访问返回的 `video.url`。xAI 默认视频 URL 为临时地址，详见 [xAI 视频文档](https://docs.x.ai/developers/model-capabilities/video/generation)。
+xAI 接受任务后，提交接口立即返回。通过网关 API Key 提交的任务会保存任务 ID，网关在后台结算上游返回的费用，重启后继续查询待结算任务。结算期间需保持同一 xAI 账号和上游地址。客户端处理 `pending`、`done`、`failed` 等原生状态，并直接访问返回的临时 `video.url`。详见 [xAI 视频文档](https://docs.x.ai/developers/model-capabilities/video/generation)。
 
 ### Anthropic 兼容端点
 
@@ -138,6 +138,8 @@ Token 计数回退到本地估算时，不会把图片的 URL 或 Base64 当作�
 | `GET /usage/codex` | `GET` | 获取当前 Codex 订阅的额度窗口、Credits 和 Business 成员额度上限。 |
 | `GET /usage/xai` | `GET` | 获取当前 xAI 订阅的 Grok Build 额度和预付余额。 |
 | `GET /usage/opencode-go` | `GET` | 获取 OpenCode Go 滚动 5 小时、每周及每月的用量百分比与重置时间。 |
+
+Desktop 使用 Admin Key 请求对应的 `/admin/usage` 接口。开启普通 Key 用量隔离后，桌面仍可查看订阅额度。
 
 OpenCode Go 使用已配置的 provider API key 和 base URL 查询 `GET /v1/usage`；旧地址 `https://opencode.ai/zen/go` 沿用现有规范化逻辑，转为 `https://opencode.ai/inference/go`。不会根据百分比推算金额上限或套餐等级。工作区没有 Go 额度时，与其他不可用订阅一致返回 404。
 

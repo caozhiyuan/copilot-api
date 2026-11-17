@@ -5,9 +5,11 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { PATHS } from '../../src/lib/paths'
 import {
+  readManagedApiKeys,
   readServerKeysConfig,
   writeServerKeysConfig,
 } from '../electron/server-auth-config'
+import type { GatewayApiKeyConfig } from '../src/types/ipc'
 
 const moduleUrl = pathToFileURL(
   path.join(import.meta.dir, '../electron/server-auth-config.ts'),
@@ -16,7 +18,7 @@ const moduleUrl = pathToFileURL(
 interface ConfigFileShape {
   auth?: {
     apiKeys?: string[]
-    apiKeyConfigs?: Array<{ id: string; key: string }>
+    apiKeyConfigs?: GatewayApiKeyConfig[]
     adminApiKey?: string
     isolateApiKeyUsage?: boolean
   }
@@ -56,6 +58,38 @@ async function writeConfig(
 }
 
 describe('desktop server-auth-config', () => {
+  test('uses active managed keys for Desktop requests and keeps inactive keys editable', async () => {
+    const homeDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'copilot-api-server-auth-'),
+    )
+    const originalPath = PATHS.CONFIG_PATH
+    try {
+      PATHS.CONFIG_PATH = await writeConfig(homeDir, {
+        auth: {
+          apiKeys: ['retired-key'],
+          apiKeyConfigs: [
+            { id: 'disabled', key: 'key-off', enabled: false },
+            {
+              id: 'expired',
+              key: 'key-expired',
+              expiresAt: '2000-01-01T00:00:00Z',
+            },
+            { id: 'active', key: 'rotated-key' },
+          ],
+        },
+      })
+      expect((await readServerKeysConfig()).apiKeys).toEqual(['rotated-key'])
+      expect(readManagedApiKeys().map((key) => key.id)).toEqual([
+        'disabled',
+        'expired',
+        'active',
+      ])
+    } finally {
+      PATHS.CONFIG_PATH = originalPath
+      await fs.rm(homeDir, { force: true, recursive: true })
+    }
+  })
+
   test('reads and normalizes stored API keys and admin key', async () => {
     const homeDir = await fs.mkdtemp(
       path.join(os.tmpdir(), 'copilot-api-server-auth-'),

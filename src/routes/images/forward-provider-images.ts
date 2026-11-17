@@ -60,7 +60,7 @@ export async function forwardProviderImagesWithLogging(
     )
     setPluginRequestActualModel(
       actualModel,
-      providerConfig.name,
+      providerConfig,
       operation === "edits" ? "images_edits" : "images_generations",
     )
     const upstreamResponse =

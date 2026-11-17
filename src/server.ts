@@ -99,6 +99,7 @@ export function createServer(options: CreateServerOptions = {}): Hono {
   server.route("/models", modelRoutes)
   server.route("/embeddings", embeddingRoutes)
   server.route("/usage", usageRoute)
+  server.route("/admin/usage", usageRoute)
   server.route("/token-usage", tokenUsageRoute)
   server.route("/admin/token-usage", tokenUsageRoute)
   server.route("/admin/api-keys/usage", apiKeyUsageRoutes)

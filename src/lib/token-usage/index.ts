@@ -2,6 +2,7 @@ import { requestContext, generateTraceId } from "~/lib/request-context"
 import { state } from "~/lib/state"
 
 import { EventBus } from "../event-bus"
+import type { GatewayApiKeyConfig } from "../api-key-config"
 import { toUsdCostNanos } from "./currency"
 import {
   resolveTokenUsageCost,
@@ -51,6 +52,7 @@ export type {
 } from "./store"
 
 export interface TokenUsageEventInput extends UsageTokens {
+  apiKey?: Pick<GatewayApiKeyConfig, "id" | "name">
   upstreamRequestId?: string | null
   serviceTier?: string | null
   endpoint: TokenUsageEndpoint
@@ -131,9 +133,10 @@ function toPersistedEvent(
   }
 
   const timing = requestContext.getStore()?.requestTiming
+  const apiKey = input.apiKey ?? requestContext.getStore()?.apiKey
   return {
-    api_key_id: requestContext.getStore()?.apiKey?.id ?? null,
-    api_key_name: requestContext.getStore()?.apiKey?.name ?? null,
+    api_key_id: apiKey?.id ?? null,
+    api_key_name: apiKey?.name ?? null,
     api_key_cost_nanos:
       cost ? toUsdCostNanos(cost.currency, cost.total_cost_nanos) : null,
     request_id: timing?.id ?? null,

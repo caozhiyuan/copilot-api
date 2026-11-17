@@ -10,7 +10,7 @@ import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { recordVideoResultUsage } from "~/lib/token-usage/videos"
-import { getVideoJobApiKeyId } from "~/lib/token-usage/store"
+import { getVideoUsageJob } from "~/lib/token-usage/store"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 import {
   forwardXaiVideos,
@@ -94,12 +94,12 @@ async function handleVideos(
     }
 
     const key = requestContext.getStore()?.apiKey
+    const job =
+      videoRequest.operation === "result" ?
+        await getVideoUsageJob(providerConfig.name, videoRequest.requestId)
+      : undefined
     if (key && videoRequest.operation === "result") {
-      const owner = await getVideoJobApiKeyId(
-        providerConfig.name,
-        videoRequest.requestId,
-      )
-      if ((owner && owner !== key.id) || (!owner && key.quota))
+      if (job ? job.api_key_id !== key.id : key.quota)
         return c.json(
           {
             error: {
@@ -112,7 +112,7 @@ async function handleVideos(
     }
     setPluginRequestActualModel(
       SUPPORTED_VIDEO_MODEL,
-      providerConfig.name,
+      providerConfig,
       "videos_generations",
     )
     const upstreamResponse = await forwardXaiVideos(
@@ -125,6 +125,7 @@ async function handleVideos(
     })
     await recordVideoResultUsage(upstreamResponse, {
       providerConfig,
+      job,
       operation: videoRequest.operation,
       requestId:
         videoRequest.operation === "result" ? videoRequest.requestId : "",

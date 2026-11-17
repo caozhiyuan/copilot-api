@@ -172,8 +172,14 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     plugins,
   })
 
-  const { startTokenUsageRetention } = await import("./lib/token-usage/store")
+  const { startTokenUsageRetention, startVideoUsageSettlement } = await import(
+    "./lib/token-usage/store"
+  )
+  const { settlePendingVideoUsage } = await import(
+    "./services/xai/video-usage-settlement"
+  )
   await startTokenUsageRetention()
+  startVideoUsageSettlement(settlePendingVideoUsage)
 
   serve({
     fetch: server.fetch as ServerHandler,

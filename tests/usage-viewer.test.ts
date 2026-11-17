@@ -52,7 +52,7 @@ describe("usage viewer image model discovery", () => {
           "function deriveEndpointUrl(usageEndpoint, targetPath)",
           "function buildTokenUsageSummaryUrl(usageEndpoint, period)",
         ],
-        ["async function fetchJson(url)", "function syncUrlState()"],
+        ["async function fetchJson(", "function syncUrlState()"],
         ["async function fetchModels()", "function activateTab(tab)"],
       ]
         .map(([start, end]) => extractInlineFunctionRange(html, start, end))
@@ -127,13 +127,13 @@ describe("usage viewer period contract", () => {
     expect(html).toContain('data-trend-day="${escapeHtml(day.date)}"')
     expect(html).not.toContain('data-trend-day="${day.date}"')
     expect(html).toContain(
-      "fetchJson(buildTokenUsageSummaryUrl(usageUrl, period))",
+      "fetchJson(buildTokenUsageSummaryUrl(usageUrl, period),",
     )
     expect(html).toContain(
-      "fetchJson(buildTokenUsageDailyUrl(usageUrl, period))",
+      "fetchJson(buildTokenUsageDailyUrl(usageUrl, period),",
     )
     expect(html).toContain(
-      "fetchJson(buildTokenUsageEventsUrl(usageUrl, period, page))",
+      "fetchJson(buildTokenUsageEventsUrl(usageUrl, period, page),",
     )
     expect(html).toContain(
       "buildTokenUsageEventsUrl(usageUrl, getSelectedPeriod(), page)",
@@ -168,7 +168,7 @@ describe("usage viewer key usage isolation", () => {
     const source = [
       extractInlineFunctionRange(
         html,
-        "        async function fetchJson(url) {",
+        "        async function fetchJson(",
         "        function syncUrlState() {",
       ),
       extractInlineFunctionRange(
@@ -205,6 +205,7 @@ describe("usage viewer key usage isolation", () => {
       render: () => {},
       syncUrlState: () => {},
       syncEndpointCredential: () => {},
+      syncTokenUsageConnection: () => {},
       syncModelsConnection: () => {},
       syncSubscriptionsConnection: () => {},
       invalidateSessionsRequest: () => {},
@@ -707,14 +708,14 @@ describe("usage viewer session fetching", () => {
       extractInlineFunctionRange(
         html,
         "        function resolveUsageUrl(endpoint) {",
-        "        async function fetchJson(url) {",
+        "        async function fetchJson(",
       ),
       extractInlineFunctionRange(
         html,
         "        async function fetchData(page = 1) {",
         "        // --- Event Handlers & Initialization ---",
       ),
-      "({ fetchData, fetchTokenUsageSummaryAndEvents, fetchTokenUsageSessionsPage, invalidateSessionsRequest })",
+      "({ fetchData, fetchTokenUsageSummaryAndEvents, fetchTokenUsageEventsPage, fetchTokenUsageSessionsPage, invalidateSessionsRequest, syncTokenUsageConnection })",
     ].join("\n")
     const pending: Array<{
       url: string
@@ -724,6 +725,12 @@ describe("usage viewer session fetching", () => {
     const state = {
       isLoading: false,
       isTokenUsageLoading: false,
+      tokenUsageConnectionKey: null,
+      tokenUsageRequestId: 0,
+      eventsRequestId: 0,
+      tokenUsageSummary: null as unknown,
+      tokenUsageDailySummary: null as unknown,
+      tokenUsageEventsPage: null as unknown,
       tokenUsageSummaryError: null as string | null,
       isSessionsLoading: false,
       sessionsRequestId: 0,
@@ -731,10 +738,16 @@ describe("usage viewer session fetching", () => {
       tokenUsageSessionsPage: null as unknown,
     }
     const endpointUrlInput = { value: "http://server-a/usage" }
+    const apiKeyInput = { value: "first-key" }
     const rendering = { onRender: () => {} }
     const viewer = runInNewContext(source, {
       state,
       endpointUrlInput,
+      getConnectionKey: () =>
+        JSON.stringify([
+          endpointUrlInput.value.trim(),
+          apiKeyInput.value.trim(),
+        ]),
       window: { location: { href: "http://localhost/usage-viewer" } },
       URL,
       SESSION_PAGE_SIZE: 10,
@@ -755,11 +768,41 @@ describe("usage viewer session fetching", () => {
     }) as {
       fetchData: () => Promise<void>
       fetchTokenUsageSummaryAndEvents: () => Promise<void>
+      fetchTokenUsageEventsPage: (page: number) => Promise<void>
       fetchTokenUsageSessionsPage: (page: number) => Promise<void>
       invalidateSessionsRequest: () => void
+      syncTokenUsageConnection: () => string
     }
-    return { endpointUrlInput, pending, rendering, state, viewer }
+    return { apiKeyInput, endpointUrlInput, pending, rendering, state, viewer }
   }
+
+  test("discards late summary, daily, and event responses after switching keys", async () => {
+    const { apiKeyInput, pending, state, viewer } =
+      await createSessionsFetcher()
+    const stale = viewer.fetchData()
+    state.tokenUsageSummary = { label: "previous usage" }
+    const staleEvents = viewer.fetchTokenUsageEventsPage(2)
+
+    apiKeyInput.value = "second-key"
+    viewer.syncTokenUsageConnection()
+    expect(state.tokenUsageSummary).toBeNull()
+    const current = viewer.fetchData()
+    const summary = { totals: { total_tokens: 10 } }
+    const daily = { days: [] }
+    const events = { page: 1, items: [] }
+    pending[4].resolve(summary)
+    pending[5].resolve(daily)
+    pending[6].resolve(events)
+    await current
+
+    for (const request of pending.slice(0, 4)) request.resolve({ stale: true })
+    await Promise.all([stale, staleEvents])
+    pending[7].resolve({ page: 1, items: [] })
+    expect(state.tokenUsageSummary).toEqual(summary)
+    expect(state.tokenUsageDailySummary).toEqual(daily)
+    expect(state.tokenUsageEventsPage).toEqual(events)
+    expect(state.isLoading).toBe(false)
+  })
 
   test("ignores a response that arrives after the context changed", async () => {
     const { pending, state, viewer } = await createSessionsFetcher()
