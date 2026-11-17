@@ -1,4 +1,5 @@
 import type { ResolvedProviderConfig } from "~/lib/config"
+import { requestContext } from "~/lib/request-context"
 
 import { recordTokenUsageEvent } from "./index"
 import { xaiUsdTicksToCost } from "./pricing"
@@ -14,6 +15,7 @@ export async function recordVideoResultUsage(
     providerConfig: ResolvedProviderConfig
     requestId: string
     defaultModel: string
+    operation?: "generations" | "result"
     onBody: (body: string) => void
   },
 ): Promise<void> {
@@ -24,13 +26,31 @@ export async function recordVideoResultUsage(
     // Preserve upstream body errors instead of replacing the proxy response.
     return
   }
-  options.onBody(body)
+  if (options.operation !== "generations") options.onBody(body)
   if (!response.ok) return
 
   let result: unknown
   try {
     result = JSON.parse(body) as unknown
   } catch {
+    return
+  }
+  if (options.operation === "generations") {
+    if (
+      isRecord(result)
+      && typeof result.request_id === "string"
+      && result.request_id
+      && requestContext.getStore()?.apiKey
+    ) {
+      recordTokenUsageEvent({
+        source: "provider",
+        providerName: options.providerConfig.name,
+        endpoint: "videos_generations",
+        model: options.defaultModel,
+        cost: 0,
+        upstreamRequestId: "pending:" + result.request_id,
+      })
+    }
     return
   }
   if (

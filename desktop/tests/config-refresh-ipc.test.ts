@@ -1205,7 +1205,7 @@ describe('desktop token usage sessions', () => {
       (input: Parameters<typeof fetch>[0]) => {
         if (
           fetchInputUrl(input)
-          === 'http://127.0.0.1:4141/token-usage/sessions?page=1&page_size=5&period=this_week'
+          === 'http://127.0.0.1:4141/admin/token-usage/sessions?page=1&page_size=5&period=this_week'
         ) {
           return Promise.resolve(Response.json(payload))
         }
@@ -1223,7 +1223,7 @@ describe('desktop token usage sessions', () => {
     const fetchSessions = Object.assign(
       (input: Parameters<typeof fetch>[0]) => {
         expect(fetchInputUrl(input)).toBe(
-          'http://127.0.0.1:4141/token-usage/sessions?page=2&page_size=5&period=today',
+          'http://127.0.0.1:4141/admin/token-usage/sessions?page=2&page_size=5&period=today',
         )
         return Promise.resolve(new Response(null, { status: 500 }))
       },

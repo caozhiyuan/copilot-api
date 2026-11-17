@@ -1,3 +1,10 @@
+import type { GatewayApiKeyConfig } from "../api-key-config"
+import { ApiKeyQuotaLedger, apiKeyQuotaWindow } from "../api-key-quota"
+import {
+  initializeApiKeyQuotaTables,
+  readApiKeyQuotaLedger,
+  persistApiKeyQuotaLedger,
+} from "../api-key-quota-store"
 import consola from "consola"
 import path from "node:path"
 
@@ -70,6 +77,9 @@ export interface TokenUsageTiming {
 }
 
 export interface PersistedTokenUsageEvent extends TokenUsageTiming {
+  api_key_cost_nanos?: number | null
+  api_key_id?: string | null
+  api_key_name?: string | null
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
   cost_currency: string | null
@@ -114,6 +124,8 @@ export interface TokenUsageSessionSummary extends TokenUsageTotals {
 }
 
 export interface TokenUsageEventRecord extends TokenUsageTiming {
+  api_key_id?: string | null
+  api_key_name?: string | null
   output_tokens_per_second: number | null
   cache_creation_input_tokens: number
   cache_read_input_tokens: number
@@ -242,6 +254,13 @@ function initializeTokenUsageDb(db: SqliteDatabase): void {
       cost_source TEXT
     )
   `)
+  ensureColumn(db, "api_key_id", "TEXT")
+  ensureColumn(db, "api_key_name", "TEXT")
+  ensureColumn(db, "api_key_cost_nanos", "INTEGER")
+  initializeApiKeyQuotaTables(db)
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_token_usage_events_api_key ON token_usage_events(api_key_id, created_at_ms)",
+  )
   ensureColumn(db, "user_id", "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, "user_agent", "TEXT NOT NULL DEFAULT ''")
   ensureColumn(db, "total_tokens", "INTEGER NOT NULL DEFAULT 0")
@@ -341,8 +360,9 @@ async function writeTokenUsageEvent(
   event: PersistedTokenUsageEvent,
 ): Promise<void> {
   const db = await getDb()
-  db.prepare(
-    `
+  const result = db
+    .prepare(
+      `
       INSERT INTO token_usage_events (
         created_at_ms,
         created_at_utc,
@@ -367,36 +387,56 @@ async function writeTokenUsageEvent(
         first_token_ms,
         duration_ms,
         request_outcome,
-        user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        user_agent,
+        api_key_id,
+        api_key_name,
+        api_key_cost_nanos
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(source, provider_name, endpoint, upstream_request_id) DO NOTHING
     `,
-  ).run(
-    event.created_at_ms,
-    event.created_at_utc,
-    event.trace_id,
-    event.session_id,
-    event.user_id,
-    event.source,
-    event.endpoint,
-    event.provider_name,
-    event.model,
-    event.input_tokens,
-    event.output_tokens,
-    event.cache_read_input_tokens,
-    event.cache_creation_input_tokens,
-    event.total_tokens,
-    event.total_nano_aiu,
-    event.cost_currency,
-    event.total_cost_nanos,
-    event.cost_source,
-    event.request_id,
-    event.upstream_request_id ?? null,
-    event.first_token_ms,
-    event.duration_ms,
-    event.request_outcome,
-    event.user_agent,
+    )
+    .run(
+      event.created_at_ms,
+      event.created_at_utc,
+      event.trace_id,
+      event.session_id,
+      event.user_id,
+      event.source,
+      event.endpoint,
+      event.provider_name,
+      event.model,
+      event.input_tokens,
+      event.output_tokens,
+      event.cache_read_input_tokens,
+      event.cache_creation_input_tokens,
+      event.total_tokens,
+      event.total_nano_aiu,
+      event.cost_currency,
+      event.total_cost_nanos,
+      event.cost_source,
+      event.request_id,
+      event.upstream_request_id ?? null,
+      event.first_token_ms,
+      event.duration_ms,
+      event.request_outcome,
+      event.user_agent,
+      event.api_key_id ?? null,
+      event.api_key_name ?? null,
+      event.api_key_cost_nanos ?? null,
+    ) as { changes?: number }
+  // Charge only accepted events. Video polling and retried response IDs can
+  // arrive in different requests; SQLite's unique constraint is authoritative.
+  if (
+    result.changes
+    && event.api_key_id
+    && event.api_key_cost_nanos !== null
+    && event.api_key_cost_nanos !== undefined
   )
+    quotaLedger?.add(
+      event.api_key_id,
+      event.api_key_cost_nanos,
+      event.created_at_ms,
+    )
 }
 
 export function enqueueTokenUsageWrite(event: PersistedTokenUsageEvent): void {
@@ -407,6 +447,7 @@ export function enqueueTokenUsageWrite(event: PersistedTokenUsageEvent): void {
   writeQueue = writeQueue
     .then(() => writeTokenUsageEvent(event))
     .catch((error: unknown) => {
+      if (event.api_key_id) quotaWriteError = error
       consola.warn("Failed to record token usage", error)
     })
 }
@@ -491,9 +532,10 @@ function getPeriodRangeFromDb(
   db: SqliteDatabase,
   period: TokenUsagePeriod,
   now = new Date(),
+  apiKeyId?: string | null,
 ) {
   if (period !== "lifetime") {
-    return getPeriodRange(period, now)
+    return { ...getPeriodRange(period, now), apiKeyId }
   }
 
   const nowMs = now.getTime()
@@ -501,7 +543,7 @@ function getPeriodRangeFromDb(
     .prepare(
       `
     SELECT MIN(created_at_ms) AS start_ms
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(apiKeyId)}
     WHERE created_at_ms <= ?
   `,
     )
@@ -514,6 +556,7 @@ function getPeriodRangeFromDb(
   return {
     endMs: nowMs + 1,
     startMs,
+    apiKeyId,
   }
 }
 
@@ -524,11 +567,16 @@ function formatLocalDate(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function createDailyIntervals(range: { endMs: number; startMs: number }) {
+function createDailyIntervals(range: {
+  endMs: number
+  startMs: number
+  apiKeyId?: string | null
+}) {
   const intervals: Array<{
     date: string
     endMs: number
     startMs: number
+    apiKeyId?: string | null
   }> = []
   const cursor = new Date(range.startMs)
   cursor.setHours(0, 0, 0, 0)
@@ -540,6 +588,7 @@ function createDailyIntervals(range: { endMs: number; startMs: number }) {
     const endMs = Math.min(next.getTime(), range.endMs)
     if (startMs < endMs) {
       intervals.push({
+        apiKeyId: range.apiKeyId,
         date: formatLocalDate(cursor),
         endMs,
         startMs,
@@ -670,7 +719,11 @@ function createEmptyEventsPage(input: {
   }
 }
 
-function rangePayload(range: { endMs: number; startMs: number }) {
+function rangePayload(range: {
+  endMs: number
+  startMs: number
+  apiKeyId?: string | null
+}) {
   return {
     end_ms: range.endMs,
     end_utc: new Date(range.endMs).toISOString(),
@@ -834,13 +887,15 @@ function usageEventFromRow(
     total_tokens: numberFromRow(row, "total_tokens"),
     trace_id: stringFromRow(row, "trace_id"),
     user_id: stringFromRow(row, "user_id"),
+    api_key_id: stringFromRow(row, "api_key_id") || null,
+    api_key_name: stringFromRow(row, "api_key_name") || null,
     user_agent: stringFromRow(row, "user_agent"),
   }
 }
 
 function getTotalsRow(
   db: SqliteDatabase,
-  range: { endMs: number; startMs: number },
+  range: { endMs: number; startMs: number; apiKeyId?: string | null },
 ): Record<string, unknown> | undefined {
   return db
     .prepare(
@@ -853,7 +908,7 @@ function getTotalsRow(
       COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
       SUM(total_nano_aiu) AS total_nano_aiu,
       COALESCE(SUM(total_tokens), 0) AS total_tokens
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)}
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
@@ -862,7 +917,7 @@ function getTotalsRow(
 
 function getModelRows(
   db: SqliteDatabase,
-  range: { endMs: number; startMs: number },
+  range: { endMs: number; startMs: number; apiKeyId?: string | null },
 ): Array<Record<string, unknown>> {
   return db
     .prepare(
@@ -876,7 +931,7 @@ function getModelRows(
       COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
       SUM(total_nano_aiu) AS total_nano_aiu,
       COALESCE(SUM(total_tokens), 0) AS total_tokens
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)}
     WHERE created_at_ms >= ? AND created_at_ms < ?
     GROUP BY model
     ORDER BY
@@ -889,7 +944,7 @@ function getModelRows(
 
 function getCostRows(
   db: SqliteDatabase,
-  range: { endMs: number; startMs: number },
+  range: { endMs: number; startMs: number; apiKeyId?: string | null },
 ): Array<TokenUsageCost> {
   const rows = db
     .prepare(
@@ -897,7 +952,7 @@ function getCostRows(
     SELECT
       cost_currency,
       COALESCE(SUM(total_cost_nanos), 0) AS total_cost_nanos
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)}
     WHERE
       created_at_ms >= ?
       AND created_at_ms < ?
@@ -917,7 +972,7 @@ function getCostRows(
 
 function getModelCostMap(
   db: SqliteDatabase,
-  range: { endMs: number; startMs: number },
+  range: { endMs: number; startMs: number; apiKeyId?: string | null },
 ): Map<string, Array<TokenUsageCost>> {
   const rows = db
     .prepare(
@@ -926,7 +981,7 @@ function getModelCostMap(
       model,
       cost_currency,
       COALESCE(SUM(total_cost_nanos), 0) AS total_cost_nanos
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)}
     WHERE
       created_at_ms >= ?
       AND created_at_ms < ?
@@ -953,7 +1008,7 @@ function getModelCostMap(
 
 function getSessionSummaries(
   db: SqliteDatabase,
-  range: { endMs: number; startMs: number },
+  range: { endMs: number; startMs: number; apiKeyId?: string | null },
   limit: number,
   offset: number,
 ): Array<TokenUsageSessionSummary> {
@@ -969,7 +1024,7 @@ function getSessionSummaries(
       COALESCE(SUM(cache_creation_input_tokens), 0) AS cache_creation_input_tokens,
       SUM(total_nano_aiu) AS total_nano_aiu,
       COALESCE(SUM(total_tokens), 0) AS total_tokens
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)}
     WHERE created_at_ms >= ? AND created_at_ms < ?
     GROUP BY session_id
     ORDER BY total_tokens DESC, session_id ASC
@@ -987,7 +1042,7 @@ function getSessionSummaries(
       session_id,
       cost_currency,
       COALESCE(SUM(total_cost_nanos), 0) AS total_cost_nanos
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)}
     WHERE
       created_at_ms >= ?
       AND created_at_ms < ?
@@ -1024,14 +1079,19 @@ function getSessionSummaries(
 // and requests crossing a bucket boundary have no unambiguous per-model timing.
 function getModelTimingRows(
   db: SqliteDatabase,
-  intervals: Array<{ date: string; endMs: number; startMs: number }>,
+  intervals: Array<{
+    date: string
+    endMs: number
+    startMs: number
+    apiKeyId?: string | null
+  }>,
 ): Array<Record<string, unknown>> {
   if (intervals.length === 0) return []
   return db
     .prepare(
       `
     WITH selected_requests AS (
-      SELECT DISTINCT request_id FROM token_usage_events
+      SELECT DISTINCT request_id FROM ${apiKeyUsageTable(intervals[0]?.apiKeyId)}
       WHERE created_at_ms >= ? AND created_at_ms < ? AND request_id IS NOT NULL
     -- The bucket join would otherwise re-run request grouping for every day.
     ), requests AS MATERIALIZED (
@@ -1041,7 +1101,7 @@ function getModelTimingRows(
         SUM(e.output_tokens) AS output_tokens,
         MAX(e.first_token_ms) AS first_token_ms,
         MAX(e.duration_ms) AS duration_ms
-      FROM selected_requests r JOIN token_usage_events e USING (request_id)
+      FROM selected_requests r JOIN ${apiKeyUsageTable(intervals[0]?.apiKeyId)} e USING (request_id)
       GROUP BY e.request_id
       HAVING COUNT(DISTINCT e.model) = 1
         AND COUNT(e.first_token_ms) = COUNT(*)
@@ -1075,7 +1135,7 @@ function getModelTimingRows(
 
 function getModelSummaries(
   db: SqliteDatabase,
-  range: { endMs: number; startMs: number },
+  range: { endMs: number; startMs: number; apiKeyId?: string | null },
 ): Array<TokenUsageModelSummary> {
   const costMap = getModelCostMap(db, range)
   const timings = new Map(
@@ -1095,7 +1155,12 @@ function getModelSummaries(
 
 function getDailyModelSummaries(
   db: SqliteDatabase,
-  intervals: Array<{ date: string; endMs: number; startMs: number }>,
+  intervals: Array<{
+    date: string
+    endMs: number
+    startMs: number
+    apiKeyId?: string | null
+  }>,
 ): Map<string, Array<TokenUsageModelSummary>> {
   if (intervals.length === 0) {
     return new Map()
@@ -1128,7 +1193,7 @@ function getDailyModelSummaries(
       SUM(total_nano_aiu) AS total_nano_aiu,
       COALESCE(SUM(total_tokens), 0) AS total_tokens
     FROM usage_days
-    JOIN token_usage_events
+    JOIN ${apiKeyUsageTable(intervals[0]?.apiKeyId)}
       ON created_at_ms >= usage_days.day_start_ms
       AND created_at_ms < usage_days.day_end_ms
     GROUP BY usage_days.usage_date, model
@@ -1146,7 +1211,7 @@ function getDailyModelSummaries(
       cost_currency,
       COALESCE(SUM(total_cost_nanos), 0) AS total_cost_nanos
     FROM usage_days
-    JOIN token_usage_events
+    JOIN ${apiKeyUsageTable(intervals[0]?.apiKeyId)}
       ON created_at_ms >= usage_days.day_start_ms
       AND created_at_ms < usage_days.day_end_ms
     WHERE cost_currency IS NOT NULL
@@ -1219,6 +1284,7 @@ function createDailyBucket(
 
 export async function getTokenUsageSummary(
   period: TokenUsagePeriod,
+  apiKeyId?: string | null,
 ): Promise<TokenUsageSummary> {
   if (!isTokenUsageStorageEnabled()) {
     return createEmptySummary(period)
@@ -1226,7 +1292,7 @@ export async function getTokenUsageSummary(
 
   await flushTokenUsageEvents()
   const db = await getDb()
-  const range = getPeriodRangeFromDb(db, period)
+  const range = getPeriodRangeFromDb(db, period, new Date(), apiKeyId)
   const totalsRow = getTotalsRow(db, range)
 
   return {
@@ -1239,6 +1305,7 @@ export async function getTokenUsageSummary(
 
 export async function getTokenUsageDailySummary(
   period: TokenUsagePeriod,
+  apiKeyId?: string | null,
 ): Promise<TokenUsageDailySummary> {
   if (!isTokenUsageStorageEnabled()) {
     return createEmptyDailySummary(period)
@@ -1246,7 +1313,7 @@ export async function getTokenUsageDailySummary(
 
   await flushTokenUsageEvents()
   const db = await getDb()
-  const range = getPeriodRangeFromDb(db, period)
+  const range = getPeriodRangeFromDb(db, period, new Date(), apiKeyId)
   const intervals = createDailyIntervals(range)
   const dailySummaries = getDailyModelSummaries(db, intervals)
 
@@ -1265,6 +1332,7 @@ export async function getTokenUsageEventsPage(input: {
   page: number
   pageSize: number
   period: TokenUsagePeriod
+  apiKeyId?: string | null
 }): Promise<TokenUsageEventsPage> {
   if (!isTokenUsageStorageEnabled()) {
     return createEmptyEventsPage(input)
@@ -1275,13 +1343,18 @@ export async function getTokenUsageEventsPage(input: {
   const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize)))
   const offset = (page - 1) * pageSize
   const db = await getDb()
-  const range = getPeriodRangeFromDb(db, input.period)
+  const range = getPeriodRangeFromDb(
+    db,
+    input.period,
+    new Date(),
+    input.apiKeyId,
+  )
 
   const totalRow = db
     .prepare(
       `
     SELECT COUNT(*) AS total
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)} AS token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
@@ -1297,6 +1370,8 @@ export async function getTokenUsageEventsPage(input: {
       trace_id,
       session_id,
       user_id,
+      api_key_id,
+      api_key_name,
       source,
       endpoint,
       provider_name,
@@ -1315,9 +1390,9 @@ export async function getTokenUsageEventsPage(input: {
       duration_ms,
       request_outcome,
       user_agent,
-      (SELECT COUNT(*) FROM token_usage_events sibling
+      (SELECT COUNT(*) FROM ${apiKeyUsageTable(range.apiKeyId)} sibling
         WHERE sibling.request_id = token_usage_events.request_id) AS usage_event_count
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)} AS token_usage_events
     WHERE created_at_ms >= ? AND created_at_ms < ?
     ORDER BY created_at_ms DESC, id DESC
     LIMIT ? OFFSET ?
@@ -1349,6 +1424,7 @@ export async function getTokenUsageSessionsPage(input: {
   page: number
   pageSize: number
   period: TokenUsagePeriod
+  apiKeyId?: string | null
 }): Promise<TokenUsageSessionsPage> {
   const page = Math.max(1, Math.floor(input.page))
   const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize)))
@@ -1358,12 +1434,17 @@ export async function getTokenUsageSessionsPage(input: {
 
   await flushTokenUsageEvents()
   const db = await getDb()
-  const range = getPeriodRangeFromDb(db, input.period)
+  const range = getPeriodRangeFromDb(
+    db,
+    input.period,
+    new Date(),
+    input.apiKeyId,
+  )
   const totalRow = db
     .prepare(
       `
     SELECT COUNT(DISTINCT session_id) AS total
-    FROM token_usage_events
+    FROM ${apiKeyUsageTable(range.apiKeyId)}
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
@@ -1400,6 +1481,7 @@ export async function pruneTokenUsageEvents(options?: {
   let deleted = 0
   const task = writeQueue.then(async () => {
     const db = await getDb()
+    persistApiKeyQuotaLedger(db)
     const result = db
       .prepare("DELETE FROM token_usage_events WHERE created_at_ms < ?")
       .run(cutoffMs) as { changes?: number }
@@ -1438,9 +1520,12 @@ function stopTokenUsageRetention(): void {
 
 export async function closeUsageStore(): Promise<void> {
   stopTokenUsageRetention()
+  if (quotaTimer) clearInterval(quotaTimer)
+  quotaTimer = undefined
   await flushTokenUsageEvents()
   await tokenUsageDbStore.close({
     beforeClose: (db) => {
+      persistApiKeyQuotaLedger(db)
       try {
         db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
       } catch {
@@ -1449,6 +1534,92 @@ export async function closeUsageStore(): Promise<void> {
     },
   })
   writeQueue = Promise.resolve()
+  quotaLedger = null
+  quotaLoad = null
+  quotaWriteError = null
 }
 
 registerProcessCleanup(closeUsageStore)
+
+function apiKeyUsageTable(apiKeyId?: string | null): string {
+  if (apiKeyId === undefined) return "token_usage_events"
+  const filter =
+    apiKeyId === null ? "IS NULL" : "= '" + apiKeyId.replaceAll("'", "''") + "'"
+  return "(SELECT * FROM token_usage_events WHERE api_key_id " + filter + ")"
+}
+
+let quotaLedger: ApiKeyQuotaLedger | null = null
+let quotaLoad: Promise<void> | null = null
+let quotaTimer: ReturnType<typeof setInterval> | undefined
+let quotaWriteError: unknown = null
+
+async function loadApiKeyQuotas(): Promise<void> {
+  if (!isTokenUsageStorageEnabled())
+    throw new Error("API key quotas require SQLite support")
+  quotaLoad ??= (async () => {
+    await flushTokenUsageEvents()
+    const db = await getDb()
+    quotaLedger = readApiKeyQuotaLedger(db)
+    quotaTimer ??= setInterval(() => {
+      void flushApiKeyQuotas().catch((error: unknown) =>
+        consola.warn("Failed to persist API key quotas", error),
+      )
+    }, 5000)
+    quotaTimer.unref?.()
+  })().catch((error: unknown) => {
+    quotaLoad = null
+    throw error
+  })
+  await quotaLoad
+}
+
+export function flushApiKeyQuotas(): Promise<void> {
+  if (!isTokenUsageStorageEnabled()) return Promise.resolve()
+  const task = writeQueue.then(async () =>
+    persistApiKeyQuotaLedger(await getDb()),
+  )
+  writeQueue = task.catch((error: unknown) =>
+    consola.warn("Failed to persist API key quotas", error),
+  )
+  return task
+}
+
+export async function getApiKeyQuotaUsage(key: GatewayApiKeyConfig): Promise<{
+  usedAmount: number
+  remainingAmount: number | null
+  resetsAt: number | null
+}> {
+  await loadApiKeyQuotas()
+  await flushTokenUsageEvents()
+  if (quotaWriteError) throw new Error("API key usage could not be persisted")
+  const period = key.quota?.period ?? "lifetime"
+  const usedCostNanos = quotaLedger?.used(key.id, period) ?? 0
+  return {
+    usedAmount: usedCostNanos / 1_000_000_000,
+    remainingAmount:
+      key.quota ?
+        Math.max(
+          0,
+          Math.round(key.quota.amount * 1_000_000_000) - usedCostNanos,
+        ) / 1_000_000_000
+      : null,
+    resetsAt: apiKeyQuotaWindow(period).endMs,
+  }
+}
+
+export async function getVideoJobApiKeyId(
+  provider: string,
+  requestId: string,
+): Promise<string | undefined> {
+  if (!isTokenUsageStorageEnabled()) return undefined
+  await flushTokenUsageEvents()
+  const db = await getDb()
+  const row = db
+    .prepare(
+      "SELECT api_key_id FROM token_usage_events WHERE source = 'provider' AND provider_name = ? AND endpoint = 'videos_generations' AND upstream_request_id = ?",
+    )
+    .get(provider, "pending:" + requestId) as
+    | { api_key_id: string | null }
+    | undefined
+  return row?.api_key_id ?? undefined
+}

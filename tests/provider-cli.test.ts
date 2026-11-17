@@ -22,7 +22,7 @@ async function runProvider(
   tempDirs.push(dir)
   const configPath = path.join(dir, "config.json")
   const initial: AppConfig = {
-    auth: { apiKeys: ["keep-secret"] },
+    auth: { apiKeyConfigs: [{ id: "keep-key", key: "keep-secret" }] },
     providers: {
       dashscope: {
         enabled: initialEnabled,

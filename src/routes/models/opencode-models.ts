@@ -22,12 +22,10 @@ import {
   type ClientModel,
 } from "~/routes/models/model-discovery"
 import { getModelMetadata } from "~/routes/models/model-metadata"
+import { resolveUsdRate } from "~/lib/token-usage/currency"
 
 const RESPONSES_PACKAGE = "@opencode/ai/providers/openai/responses"
 const IMAGES_PACKAGE = "@opencode/ai/providers/openai/images"
-// OpenCode's cost schema is USD per million tokens. Configured CNY prices
-// are converted with this fixed rate; other currencies are not returned as USD.
-const CNY_PER_USD = 6.7
 const COST_DECIMALS = 6
 
 // OpenCode's v2 branch: packages/schema/src/model.ts (Model.Info).
@@ -55,15 +53,6 @@ type OpencodeModelCost = Pick<Cost, "input" | "output"> & {
 
 export function isOpencodeUserAgent(userAgent: string | undefined): boolean {
   return /opencode/iu.test(userAgent ?? "")
-}
-
-// OpenCode only understands USD; convert the provider's currency into a
-// multiplier applied to every mapped price. Unsupported currencies return
-// undefined so the USD catalog can be used instead.
-function resolveUsdRate(currency: string | null): number | undefined {
-  if (currency === "USD") return 1
-  if (currency === "CNY") return 1 / CNY_PER_USD
-  return undefined
 }
 
 // Converted prices are rounded to six decimals.
@@ -186,7 +175,7 @@ function toOpencodeModel(
   if (supportPdf && !input.includes("pdf")) input.push("pdf")
   const efforts = normalizeEffortValues(metadata.reasoningEfforts)
   // OpenCode's cost schema is USD-only; CNY prices are converted at the fixed
-  // CNY_PER_USD rate, while unsupported currencies fall through to the USD
+  // shared currency rate, while unsupported currencies fall through to the USD
   // models.dev catalog.
   const configuredRate = resolveUsdRate(
     resolveProviderCurrency(provider, config?.pricingCurrency),

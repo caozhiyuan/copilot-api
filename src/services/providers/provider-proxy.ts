@@ -395,6 +395,17 @@ export async function forwardProviderAlphaSearch(
   )
   const body = await request.arrayBuffer()
   const transportConfig = getUpstreamTransportConfig()
+  const searchPayload: unknown = JSON.parse(new TextDecoder().decode(body))
+  const searchModel =
+    (
+      typeof searchPayload === "object"
+      && searchPayload !== null
+      && "model" in searchPayload
+      && typeof searchPayload.model === "string"
+    ) ?
+      searchPayload.model
+    : "alpha-search"
+  setPluginRequestActualModel(searchModel, providerConfig.name, "alpha_search")
 
   const response = await fetchUpstreamWithLifecycle(
     resolveProviderRequestUrl(providerConfig, request.url, "/v1/alpha/search"),

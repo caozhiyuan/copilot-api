@@ -541,7 +541,7 @@ describe("image usage and pricing", () => {
     expect((await events()).items).toHaveLength(0)
   })
 
-  test("does not admit unsupported provider costs or empty events", async () => {
+  test("retains provider-reported image costs without token usage", async () => {
     recordTokenUsageEvent({
       endpoint: "images_generations",
       model: "unknown",
@@ -549,7 +549,11 @@ describe("image usage and pricing", () => {
       source: "provider",
       cost: 2,
     })
-    expect((await events()).items).toHaveLength(0)
+    expect((await events()).items[0]?.cost).toMatchObject({
+      currency: "USD",
+      total_cost_nanos: 2_000_000_000,
+      source: "upstream",
+    })
   })
 })
 

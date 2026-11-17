@@ -35,9 +35,16 @@ export function normalizeImagesUsage(
   const outputDetails = tokenDetails(usage.output_tokens_details)
   return {
     cost:
-      provider.toLowerCase() === "xai" ?
+      (provider.toLowerCase() === "xai" ?
         xaiUsdTicksToCost(usage.cost_in_usd_ticks)
-      : undefined,
+      : undefined)
+      ?? ((
+        typeof usage.cost === "number"
+        && Number.isFinite(usage.cost)
+        && usage.cost >= 0
+      ) ?
+        usage.cost
+      : undefined),
     input_tokens:
       token(usage.input_tokens)
       ?? (inputDetails?.image_tokens ?? 0) + (inputDetails?.text_tokens ?? 0),

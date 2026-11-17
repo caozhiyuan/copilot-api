@@ -853,6 +853,7 @@
           modelsRequestId: 0,
           modelsSearch: "",
           isLoading: false,
+          isolateApiKeyUsage: false,
           isTokenUsageLoading: false,
           isEventsLoading: false,
           subscriptionUsage: {},
@@ -1146,9 +1147,14 @@
         }
 
         async function fetchJson(url) {
+          const connectionKey = getConnectionKey();
           const response = await fetch(url, {
             headers: buildRequestHeaders(),
           });
+          const isolation = response.headers.get("x-api-key-usage-isolated");
+          if (connectionKey === getConnectionKey() && (response.ok || isolation !== null)) {
+            applyUsageIsolation(isolation === "true");
+          }
 
           if (!response.ok) {
             let message = response.statusText || "Request failed";
@@ -1182,6 +1188,24 @@
           }
 
           return response.json();
+        }
+
+        function applyUsageIsolation(isolated) {
+          if ((state.isolateApiKeyUsage === true) === isolated) return;
+          state.isolateApiKeyUsage = isolated;
+          state.tokenUsageSummary = null;
+          state.tokenUsageDailySummary = null;
+          state.tokenUsageEventsPage = null;
+          invalidateSessionsRequest();
+          state.subscriptionUsage = {};
+          state.subscriptionsLoaded = false;
+          if (isolated && state.activeTab === "subscriptions") {
+            state.activeTab = "usage";
+            syncUrlState();
+            void fetchData();
+          }
+          if (state.activeTab === "models") void fetchData();
+          render();
         }
 
         function syncUrlState() {
@@ -1224,6 +1248,9 @@
           contentArea.setAttribute("aria-labelledby", `${state.activeTab}-tab`);
           contentArea.setAttribute("aria-busy", String(isLoading));
           for (const button of tabButtons) {
+            const hidden = button.dataset.tab === "subscriptions" && state.isolateApiKeyUsage;
+            button.hidden = hidden;
+            button.style.display = hidden ? "none" : "";
             const selected = button.dataset.tab === state.activeTab;
             button.setAttribute("aria-selected", String(selected));
             button.tabIndex = selected ? 0 : -1;
@@ -1689,6 +1716,7 @@
           if (!["usage", "subscriptions", "models"].includes(tab)) {
             return;
           }
+          if (tab === "subscriptions" && state.isolateApiKeyUsage) return;
           syncEndpointCredential();
           syncModelsConnection();
           syncSubscriptionsConnection();
@@ -1709,12 +1737,13 @@
             return;
           }
           event.preventDefault();
-          const index = tabButtons.findIndex((button) => button.dataset.tab === state.activeTab);
+          const visibleTabs = tabButtons.filter((button) => !button.hidden);
+          const index = visibleTabs.findIndex((button) => button.dataset.tab === state.activeTab);
           const nextIndex = event.key === "Home" ? 0
-            : event.key === "End" ? tabButtons.length - 1
-            : (index + (event.key === "ArrowRight" ? 1 : -1) + tabButtons.length) % tabButtons.length;
-          activateTab(tabButtons[nextIndex].dataset.tab);
-          tabButtons[nextIndex].focus();
+            : event.key === "End" ? visibleTabs.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + visibleTabs.length) % visibleTabs.length;
+          activateTab(visibleTabs[nextIndex].dataset.tab);
+          visibleTabs[nextIndex].focus();
         }
 
         function handleModelsSearch(event) {

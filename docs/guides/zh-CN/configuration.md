@@ -13,7 +13,7 @@
   ```json
   {
     "auth": {
-      "apiKeys": []
+      "apiKeyConfigs": []
     },
     "providers": {},
     "modelMappings": {
@@ -54,9 +54,10 @@
 
 ### 访问密钥
 
-- **auth.apiKeys：** 客户端连接网关时使用的密钥，不是模型服务的 API Key。可配置多个，任意一个都能通过认证。请求可通过 `x-api-key: <key>` 或 `Authorization: Bearer <key>` 进行认证。若为空或省略，仅回环监听会禁用普通路由认证；非回环监听会拒绝启动。
+- **auth.apiKeyConfigs：** 客户端网关 Key 的配置数组。每个对象包含固定的 `id` 和 `key`，可选 `name`、`enabled`、`expiresAt`、`allowedModels`、`quota`。默认启用、无过期时间、允许全部模型、无额度限制；`allowedModels: []` 表示不允许任何模型。支持 `codex/*` 等模型规则，按映射后的实际 provider/model 检查。请求仍使用 `x-api-key` 或 `Authorization: Bearer`。
+- **auth.isolateApiKeyUsage：** 默认 `false`，普通 Key 可查看全部用量和历史数据。在 Desktop 的 API Keys 页开启后，每个 Key 只能查看自己的用量，网页端隐藏订阅额度页，订阅额度接口对普通 Key 返回 403。修改后刷新网页即可更新显示。Admin 用量查询和各 Key 的金额记账不受影响。
 
-- **auth.adminApiKey：** 管理接口专用的密钥，只能用于 `/admin/*`。若未配置，服务会在启动时自动生成一个随机 key，并回写到 `config.json`。它同样使用 `x-api-key` 或 `Authorization: Bearer` 这两种头，但普通 `auth.apiKeys` 不能访问 `/admin/*`。
+- **auth.adminApiKey：** 管理接口专用的密钥，只能用于 `/admin/*`。若未配置，服务会在启动时自动生成一个随机 key，并回写到 `config.json`。它同样使用 `x-api-key` 或 `Authorization: Bearer` 这两种头，但普通 `auth.apiKeyConfigs` 不能访问 `/admin/*`。
 
 ### 模型服务配置
 
@@ -85,7 +86,7 @@
     - `supportPdf`：可选，覆盖 OpenCode 模型发现和 Messages 到 Chat Completions 转换时的 PDF/document 支持能力。未配置时，识别匹配的 models.dev 模型 `modalities.input` 中的 `pdf`（遵循 `modelsDevProviderId`）、Copilot 实时模型的 `application/pdf` 媒体类型，以及 `codex` provider 的默认支持；其余情况为 `false`。设为 `true` 时发送 file part，设为 `false` 时即使目录支持 PDF 也会转成提示文本。
     - `toolContentSupportType`：可选，配置该模型的 tool result content 支持能力，值为 `array`、`image`、`pdf` 的数组。provider 侧未配置时默认只发送 string tool content。PDF 支持已启用但这里不包含 `pdf` 时，tool result 里的 file part 会被转成 user role 消息。Copilot 主链路同样默认只发送 string tool content，因为部分 Copilot 模型也不支持数组或图片形式的 tool content。
     - `type`：可选，按模型覆盖 provider 的协议类型。支持 `anthropic`、`openai-compatible`、`openai-responses` 和 `google`。设置后，provider 的 `/v1/messages` 路由会使用该模型的 type 替代 provider 级别的 type 进行请求路由、认证头解析和上游端点选择。适用于 OpenCode Go 等上游对不同模型同时支持 OpenAI 兼容和 Anthropic Messages API 的 provider。覆盖 type 时，认证头按覆盖后 type 的默认值解析（Anthropic 默认 `x-api-key`；OpenAI 兼容/Responses 默认 `authorization`）。配置了 `azure-entra` 的 provider 在覆盖 type 时会保留 Entra bearer 凭证，而不会回退到覆盖后 type 的默认值。
-    - `contextWindow`：可选，模型合并到 Codex UA 模型列表时声明的上下文窗口 token 上限；例如 `1000000` 表示 1M token 上下文。用户未配置时依次使用发现元数据、models.dev 目录和 `256000`。
+    - `contextWindow`：可选，模型合并到 Codex UA 模型列表时声明的上下文窗口 金额上限；例如 `1000000` 表示 1M token 上下文。用户未配置时依次使用发现元数据、models.dev 目录和 `256000`。
     - `maxOutputTokens`：可选，Codex UA 模型列表中声明的最大输出 token 数。用户未配置时依次使用发现元数据、models.dev 的 `limit.output` 和 `32000`。经 Messages 适配的 Responses 请求未传 `max_output_tokens` 或传 null 时，使用此配置、目录上限或 `32000`；Copilot 请求使用模型声明的输出上限。目录匹配优先使用 `modelsDevProviderId`，否则按 provider 名称和官方地址选择。客户端显式传入的值优先。
     - `inputModalities`：可选，Codex 支持的输入类型；模型同时支持文本和图片时配置为 `["text", "image"]`。用户未配置时使用发现元数据或 models.dev 目录。GPT 模型继续使用原生 Codex catalog 或发现元数据。
     - `reasoningEfforts`：可选，Codex 支持的推理档位。配置和发现元数据均未提供时，使用 models.dev 目录，再回退到 `["high", "xhigh", "max", "ultra"]`。已知模型能力时，Provider Responses 请求中的不支持档位会被归一化为支持的档位。
@@ -123,7 +124,7 @@
 
 ### 上下文与 Token 计数
 
-- **opencodeModelContextWindow：** OpenCode 模型目录（携带 OpenCode User-Agent 的 `GET /v1/models`）中 `limit.context` 和已有 `limit.input` 的 token 上限，默认 `400000`。两个字段分别在超过上限时截断，较小值保持不变，未提供的 input 上限不会补填。不修改 `limit.output`、上游实际限制或其他客户端的模型目录。正数会向下取整；缺失、无效、零或负数回退到默认值。归一化仅在读取时生效，不回写此配置值。
+- **opencodeModelContextWindow：** OpenCode 模型目录（携带 OpenCode User-Agent 的 `GET /v1/models`）中 `limit.context` 和已有 `limit.input` 的 金额上限，默认 `400000`。两个字段分别在超过上限时截断，较小值保持不变，未提供的 input 上限不会补填。不修改 `limit.output`、上游实际限制或其他客户端的模型目录。正数会向下取整；缺失、无效、零或负数回退到默认值。归一化仅在读取时生效，不回写此配置值。
 
 - **contextManagement：** 控制网关是否主动要求上游压缩上下文，对应 Responses API 的 `context_management` 参数。`messages` 作用于被翻译成 Responses API 的 Anthropic 风格 `/v1/messages` 请求，包括 `openai-responses` provider 的 Messages 路由，默认值为 `true`。`responses` 作用于 native `/v1/responses` 流量，包括 `provider/model` 别名和内置 `codex` provider，默认值为 `false`。只有在确认客户端支持 context management compaction 后，才建议在 Responses API 下启用 `responses`。启用后，请求体会带上 `context_management`，并在后续轮次中仅保留最新的压缩承载内容。代理仅为 `gpt-*` 模型添加 context management 并压缩历史；这两个配置开关对 Grok 等非 GPT 模型不生效。
 
@@ -207,7 +208,7 @@ Codex CLI 显式 feature 配置可能优先于已记录的会话版本和模型�
 - 保存时校验已知字段、保留扩展字段，并检查文件是否被外部修改。没有未保存更改时，返回此页面会读取最新文件。发生冲突后可选择**加载最新并保留草稿**，独立修改会合并，同一字段被双方修改时需要明确选择草稿值或磁盘值后再保存；也可选择**重新加载并放弃更改**。
 - 服务本身能归一化处理、且本次未修改的旧值（如空 API Key 条目、无效上下文上限）只显示提示，不阻止修改其他字段；新输入的无效值仍会拦截。保存会将整个 JSON 文件统一为两个空格缩进，并在末尾补一个换行。
 - 服务运行时，**保存并应用**会刷新配置；刷新失败与保存成功分别显示，可通过**重试应用**再次刷新。服务停止时仍可保存，下次启动生效。
-- 供应商和 API Key 保留现有管理入口；运行环境、代理、外观等桌面设置继续保存在 `desktop-config.json`。
+- 服务商在 Providers 页管理，客户端密钥在旁边独立的 API Keys 页管理；运行环境、代理、外观等桌面设置继续保存在 `desktop-config.json`。
 
 ![桌面端配置编辑器](../../screenshots/desktop-config-editor.png)
 
@@ -238,3 +239,30 @@ Google 思考签名保存在 Anthropic thinking block 的不透明 `signature` �
 Anthropic 预算换算是网关策略：不超过 2,048 token 的预算映射到 `LOW`，不超过 8,192 映射到 `MEDIUM`，更高预算映射到 `HIGH`；`-1` 保留上游动态默认行为。这些等级不保证实际 token 数。参见 [Google 思考控制文档](https://ai.google.dev/gemini-api/docs/generate-content/thinking)。
 
 多模态工具结果使用稳定、唯一的 `inlineData.displayName`，以及 function response 中与之匹配的 `$ref`。参见 [Google 多模态函数响应](https://ai.google.dev/gemini-api/docs/generate-content/function-calling#multimodal)。
+
+
+### 网关 Key 权限与额度
+
+```json
+{
+  "auth": {
+    "apiKeyConfigs": [
+      {
+        "id": "key_claude_code",
+        "key": "sk-example",
+        "name": "Claude Code",
+        "enabled": true,
+        "allowedModels": ["codex/*"],
+        "quota": { "period": "month", "amount": 10 }
+      }
+    ]
+  }
+}
+```
+
+- 旧 `auth.apiKeys` 仅在新字段不存在时迁移一次，原字段留在 JSON 中；新字段存在后旧值完全不参与鉴权、CLI 或 Desktop 管理。清空新字段不会再次导入旧 Key。
+- `id` 用于关联历史用量与额度，改名和轮换 `key` 时保持不变。CLI 和 Desktop 自动创建 ID。过期时间使用 ISO 日期字符串。
+- 额度周期支持 `day`、`month` 和 `lifetime`；日/月周期按网关本地时区计算，界面显示下次重置时间。金额统一为美元，包含文本、原生 Alpha Search、图片和视频完成结果。人民币费用沿用 OpenCode 模型目录的固定汇率 6.7 CNY/USD。优先采用上游实际费用，其次采用配置或目录估价；Copilot AIU 和 xAI USD ticks 复用现有用量管线换算。金额受限的 Key 不能调用既无价格、也无已支持费用回报方式的模型。视频结果需使用创建任务的 Key 查询，重复查询不重复扣款。
+- 请求结束后按实际用量立即累计，后续请求读取内存中的最新额度；额度耗尽返回 `429`。已放行的并发或长请求仍会结算，因此属于软额度。
+- 用量明细沿用 SQLite，额度累计每 5 秒保存，正常退出时再保存一次。重启补算已落库但尚未汇总的明细；清理历史明细不恢复额度。
+- 普通 Key 的 `/token-usage` 默认返回全部用量，包含未归属历史。开启 `auth.isolateApiKeyUsage: true` 后仅返回自己的记录，且不能查询订阅额度。Admin Key 可通过 `/admin/token-usage` 查询全部，或用 `api_key_id` 筛选；`__unattributed__` 对应旧历史和未认证请求。旧历史不会被强行分摊给某个 Key。

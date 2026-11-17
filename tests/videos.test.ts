@@ -22,6 +22,7 @@ import {
   recordTokenUsageEvent,
 } from "~/lib/token-usage"
 import { xaiUsdTicksToCost } from "~/lib/token-usage/pricing"
+import { getApiKeyQuotaUsage } from "~/lib/token-usage/store"
 import { videoRouteDependencies, videoRoutes } from "~/routes/videos/route"
 import { createServer } from "~/server"
 import { forwardXaiVideos, XaiVideosRequestError } from "~/services/xai/videos"
@@ -132,6 +133,54 @@ afterEach(async () => {
 })
 
 describe("video routes", () => {
+  test("binds a video job to its creating key and charges repeated result queries only once", async () => {
+    process.env.COPILOT_API_SQLITE_DB_PATH = path.join(
+      tempDir,
+      "key-video.sqlite",
+    )
+    const key = {
+      id: "owner",
+      key: "secret",
+      quota: { period: "lifetime" as const, amount: 10 },
+    }
+    const run = <T>(apiKey: typeof key, callback: () => T): T =>
+      requestContext.run(
+        {
+          apiKey,
+          traceId: "video-key",
+          startTime: Date.now(),
+          userAgent: "video-client",
+          sessionAffinity: undefined,
+          parentSessionId: undefined,
+        },
+        callback,
+      )
+    await getApiKeyQuotaUsage(key)
+    expect((await run(key, () => generate())).status).toBe(200)
+    expect(
+      (
+        await run({ ...key, id: "other" }, () =>
+          createApp().request("/v1/videos/video-job"),
+        )
+      ).status,
+    ).toBe(403)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(Response.json(doneResult)),
+    )
+    for (let i = 0; i < 3; i++)
+      expect(
+        (await run(key, () => createApp().request("/v1/videos/video-job")))
+          .status,
+      ).toBe(200)
+    expect(await getApiKeyQuotaUsage(key)).toMatchObject({
+      usedAmount: 1.13,
+      remainingAmount: 8.87,
+    })
+    await closeUsageStore()
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1.13)
+  })
+
   test("persists native video costs in SQLite and usage summaries without tokens", async () => {
     const dbPath = path.join(tempDir, "usage.sqlite")
     process.env.COPILOT_API_SQLITE_DB_PATH = dbPath

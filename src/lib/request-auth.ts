@@ -3,6 +3,8 @@ import type { Context, MiddlewareHandler } from "hono"
 import consola from "consola"
 
 import { getConfig } from "./config"
+import { normalizeApiKeyRecords, isApiKeyActive } from "./api-key-config"
+import { requestContext } from "./request-context"
 
 interface AuthMiddlewareOptions {
   getApiKeys?: () => Array<string>
@@ -36,7 +38,9 @@ export function normalizeApiKeys(apiKeys: unknown): Array<string> {
 
 export function getConfiguredApiKeys(): Array<string> {
   const config = getConfig()
-  return normalizeApiKeys(config.auth?.apiKeys)
+  return normalizeApiKeyRecords(config.auth?.apiKeyConfigs).map(
+    (entry) => entry.key,
+  )
 }
 
 export function getMissingApiKeysMessage(): string | null {
@@ -64,6 +68,13 @@ export function getConfiguredAdminApiKeys(): Array<string> {
   const config = getConfig()
   const adminApiKey = normalizeApiKey(config.auth?.adminApiKey)
   return adminApiKey ? [adminApiKey] : []
+}
+
+export function isApiKeyUsageIsolated(): boolean {
+  return (
+    !!requestContext.getStore()?.apiKey
+    && getConfig().auth?.isolateApiKeyUsage === true
+  )
 }
 
 export function extractRequestApiKey(c: Context): string | null {
@@ -131,6 +142,18 @@ export function createAuthMiddleware(
       return createUnauthorizedResponse(c)
     }
 
+    if (getApiKeys === getConfiguredApiKeys) {
+      const key = normalizeApiKeyRecords(getConfig().auth?.apiKeyConfigs).find(
+        (entry) => entry.key === requestApiKey,
+      )
+      if (!key || !isApiKeyActive(key)) return createUnauthorizedResponse(c)
+      const context = requestContext.getStore()
+      if (context) context.apiKey = key
+      c.header(
+        "X-API-Key-Usage-Isolated",
+        String(getConfig().auth?.isolateApiKeyUsage === true),
+      )
+    }
     return next()
   }
 }

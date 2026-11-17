@@ -11,7 +11,7 @@ Most settings can keep their defaults. Change only the fields you need. A provid
   ```json
   {
     "auth": {
-      "apiKeys": []
+      "apiKeyConfigs": []
     },
     "providers": {},
     "modelMappings": {
@@ -52,9 +52,10 @@ Most settings can keep their defaults. Change only the fields you need. A provid
 
 ### Access keys
 
-- **auth.apiKeys:** API keys used for request authentication on non-admin routes. Supports multiple keys for rotation. Requests can authenticate with either `x-api-key: <key>` or `Authorization: Bearer <key>`. If empty or omitted, authentication for non-admin routes is disabled only on loopback listeners; non-loopback listeners refuse to start.
+- **auth.apiKeyConfigs:** Client gateway key configurations. Each object has a stable `id` and `key`, with optional `name`, `enabled`, `expiresAt`, `allowedModels`, and `quota`. Defaults are enabled, no expiration, all models, and unlimited quota. An explicit `allowedModels: []` denies all models. Patterns such as `codex/*` are checked against the actual provider/model after mapping. Authentication still uses `x-api-key` or `Authorization: Bearer`.
+- **auth.isolateApiKeyUsage:** Defaults to `false`: regular keys can view all usage and history. Enable the switch in Desktop's API Keys tab to limit each key to its own usage and hide the web Subscriptions tab. Subscription usage endpoints then return 403 for regular keys. Refresh the web page after changing this setting. Admin usage queries and per-key spending accounting are unaffected.
 
-- **auth.adminApiKey:** Single admin key used only for `/admin/*` routes. If missing, the server generates a random key at startup and writes it back to `config.json`. Requests use the same `x-api-key` or `Authorization: Bearer` headers, but regular `auth.apiKeys` never grant access to `/admin/*`.
+- **auth.adminApiKey:** Single admin key used only for `/admin/*` routes. If missing, the server generates a random key at startup and writes it back to `config.json`. Requests use the same `x-api-key` or `Authorization: Bearer` headers, but regular `auth.apiKeyConfigs` never grant access to `/admin/*`.
 
 ### Provider configuration
 
@@ -178,7 +179,7 @@ Open **Advanced config** to edit `config.json` through grouped visual fields or 
 - Saves validate known fields, preserve extension fields, and reject changes if the file was edited externally. With no unsaved edits, returning to this tab reads the latest file. After a conflict, **Reload and keep changes** merges independent edits; overlapping fields require choosing draft or file values before saving. **Reload and discard changes** discards the draft explicitly.
 - Unchanged legacy values that the service already normalizes, such as empty API key entries or an invalid context limit, show a warning without blocking unrelated edits. New invalid values remain blocked. Saving rewrites the entire JSON file with two-space indentation and a trailing newline.
 - While running, **Save and apply** refreshes the service. A refresh failure is reported separately from the successful save and can be retried with **Retry apply**. While stopped, saving takes effect on the next start.
-- Provider management and API key settings keep their existing entry points. Desktop runtime, proxy, and appearance preferences remain in `desktop-config.json`.
+- Manage providers in the Providers tab and client keys in the adjacent API Keys tab. Desktop runtime, proxy, and appearance preferences remain in `desktop-config.json`.
 
 ![Desktop configuration editor](../../screenshots/desktop-config-editor.png)
 
@@ -209,3 +210,29 @@ Thinking controls apply even when a Responses client sends only `reasoning.effor
 Anthropic budget conversion is gateway policy: budgets up to 2,048 map to `LOW`, up to 8,192 to `MEDIUM`, and larger budgets to `HIGH`; `-1` leaves the upstream dynamic default. These levels do not guarantee a particular token count. See [Google thinking controls](https://ai.google.dev/gemini-api/docs/generate-content/thinking).
 
 Multimodal tool results use stable, unique `inlineData.displayName` values and matching `$ref` entries in the function response. See [Google multimodal function responses](https://ai.google.dev/gemini-api/docs/generate-content/function-calling#multimodal).
+
+### Gateway key policies and quotas
+
+```json
+{
+  "auth": {
+    "apiKeyConfigs": [
+      {
+        "id": "key_claude_code",
+        "key": "sk-example",
+        "name": "Claude Code",
+        "enabled": true,
+        "allowedModels": ["codex/*"],
+        "quota": { "period": "month", "amount": 10 }
+      }
+    ]
+  }
+}
+```
+
+- Legacy `auth.apiKeys` is imported only when the new field is absent and remains in JSON for reference. Once the new field exists, old values never participate in authentication or CLI/Desktop management. An empty new list never reimports old keys.
+- Keep `id` stable when renaming or rotating `key`; it owns usage history and quota counters. CLI and Desktop generate IDs. Expiration uses an ISO date string.
+- Quota periods are `day`, `month`, and `lifetime`. Calendar periods use the gateway's local timezone; Desktop displays the next reset. Limits are in USD and include text, native Alpha Search, images, and completed video results. CNY costs use the existing fixed 6.7 CNY/USD conversion shared with the OpenCode model catalog. Reported upstream costs take priority over configured/catalog estimates; Copilot AIU and xAI USD ticks are converted by the existing usage pipeline. Capped keys cannot call models without supported pricing or a known reported-cost source. Video results must be queried with the creating key; repeated queries do not charge twice.
+- Completed requests update in-memory consumption immediately. Exhausted keys receive `429` on subsequent requests. Already admitted concurrent or long-running requests still settle, so these are soft limits.
+- Usage events remain in SQLite. Quota snapshots flush every five seconds and on orderly shutdown. Startup replays persisted events after the checkpoint; pruning usage history never restores quota.
+- Regular keys see all `/token-usage` data by default, including unattributed history. With `auth.isolateApiKeyUsage: true`, each key sees only its own records and cannot access subscription usage. Admin Key can read all data at `/admin/token-usage` or filter by `api_key_id`; `__unattributed__` selects historical and unauthenticated events. Old history is not assigned to a key without evidence.

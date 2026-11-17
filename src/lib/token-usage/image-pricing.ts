@@ -36,14 +36,19 @@ function splitTokens(
     : { image: 0, text: tokens }
 }
 
+export function hasBuiltinImagePricing(model: string): boolean {
+  return IMAGE_MODELS.has(
+    model
+      .trim()
+      .toLowerCase()
+      .replace(/-\d{4}-\d{2}-\d{2}$/u, ""),
+  )
+}
+
 export function resolveBuiltinImageCost(
   input: TokenUsageCostInput,
 ): CalculatedTokenUsageCost | null {
-  const model = input.model
-    .trim()
-    .toLowerCase()
-    .replace(/-\d{4}-\d{2}-\d{2}$/u, "")
-  if (!IMAGE_MODELS.has(model)) return null
+  if (!hasBuiltinImagePricing(input.model)) return null
 
   const prompt = splitTokens(
     input.input_tokens,

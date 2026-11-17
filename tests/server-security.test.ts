@@ -117,5 +117,8 @@ describe("network-exposed server policy", () => {
     })
 
     expect(response.headers.get("access-control-allow-origin")).toBe("*")
+    expect(response.headers.get("access-control-expose-headers")).toBe(
+      "X-API-Key-Usage-Isolated",
+    )
   })
 })

@@ -2,7 +2,12 @@ import { requestContext, generateTraceId } from "~/lib/request-context"
 import { state } from "~/lib/state"
 
 import { EventBus } from "../event-bus"
-import { resolveTokenUsageCost, type TokenUsagePricingConfig } from "./pricing"
+import { toUsdCostNanos } from "./currency"
+import {
+  resolveTokenUsageCost,
+  xaiUsdTicksToCost,
+  type TokenUsagePricingConfig,
+} from "./pricing"
 import {
   enqueueTokenUsageWrite,
   hasAnyToken,
@@ -127,6 +132,10 @@ function toPersistedEvent(
 
   const timing = requestContext.getStore()?.requestTiming
   return {
+    api_key_id: requestContext.getStore()?.apiKey?.id ?? null,
+    api_key_name: requestContext.getStore()?.apiKey?.name ?? null,
+    api_key_cost_nanos:
+      cost ? toUsdCostNanos(cost.currency, cost.total_cost_nanos) : null,
     request_id: timing?.id ?? null,
     first_token_ms: timing?.firstTokenMs ?? null,
     duration_ms: timing?.durationMs ?? null,
@@ -173,6 +182,18 @@ export function recordTokenUsageEvent(input: TokenUsageEventInput): void {
     return
   }
 
+  const context = requestContext.getStore()
+  if (context?.apiKey && event.upstream_request_id) {
+    const usageId = JSON.stringify([
+      event.source,
+      event.provider_name,
+      event.endpoint,
+      event.upstream_request_id,
+    ])
+    context.apiKeyUsageIds ??= new Set()
+    if (context.apiKeyUsageIds.has(usageId)) return
+    context.apiKeyUsageIds.add(usageId)
+  }
   const observer = requestContext.getStore()?.pluginRequest
   const timing = requestContext.getStore()?.requestTiming
   if (timing) timing.hasUsage = true
@@ -219,6 +240,8 @@ export function normalizeOpenAIUsage(
   usage:
     | {
         completion_tokens?: number
+        cost?: number
+        cost_in_usd_ticks?: number
         prompt_tokens?: number
         total_tokens?: number
         prompt_cache_hit_tokens?: number
@@ -231,12 +254,16 @@ export function normalizeOpenAIUsage(
     | null
     | undefined,
 ): UsageTokens {
+  const cost =
+    xaiUsdTicksToCost(usage?.cost_in_usd_ticks)
+    ?? normalizeOptionalCost(usage?.cost)
   if (
     usage
     && (Object.hasOwn(usage, "prompt_cache_hit_tokens")
       || Object.hasOwn(usage, "prompt_cache_miss_tokens"))
   ) {
     return {
+      ...(cost !== undefined && { cost }),
       cache_read_input_tokens: normalizeToken(usage.prompt_cache_hit_tokens),
       input_tokens: normalizeToken(usage.prompt_cache_miss_tokens),
       output_tokens: normalizeToken(usage.completion_tokens),
@@ -258,6 +285,7 @@ export function normalizeOpenAIUsage(
   )
   const promptTokens = normalizeToken(usage?.prompt_tokens)
   return {
+    ...(cost !== undefined && { cost }),
     ...(hasCacheCreationTokens && {
       cache_creation_input_tokens: cacheCreationTokens,
     }),
@@ -277,6 +305,7 @@ export function normalizeResponsesUsage(
   usage:
     | {
         cost?: number
+        cost_in_usd_ticks?: number
         input_tokens?: number
         input_tokens_details?: {
           cached_tokens?: number
@@ -300,7 +329,9 @@ export function normalizeResponsesUsage(
       cache_creation_input_tokens: cacheWriteTokens,
     }),
     cache_read_input_tokens: cachedTokens,
-    cost: normalizeOptionalCost(usage?.cost),
+    cost:
+      xaiUsdTicksToCost(usage?.cost_in_usd_ticks)
+      ?? normalizeOptionalCost(usage?.cost),
     input_tokens: Math.max(0, inputTokens - cachedTokens - cacheWriteTokens),
     output_tokens: normalizeToken(usage?.output_tokens),
     total_tokens: normalizeOptionalToken(usage?.total_tokens),

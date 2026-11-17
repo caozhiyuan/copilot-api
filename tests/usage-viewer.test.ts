@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import { runInNewContext } from "node:vm"
-import { Window } from "happy-dom"
+import { Window, type HTMLButtonElement } from "happy-dom"
 import type { TokenUsageSummary } from "../desktop/src/types/ipc"
 
 const pagePath = new URL("../pages/index.html", import.meta.url)
@@ -142,6 +142,184 @@ describe("usage viewer period contract", () => {
     for (const builder of ["Summary", "Daily", "Events"]) {
       expect(html).toContain(`function buildTokenUsage${builder}Url`)
       expect(html).toContain('url.searchParams.set("period", period)')
+    }
+  })
+})
+
+describe("usage viewer key usage isolation", () => {
+  async function createViewer(isolated = false, activeTab = "usage") {
+    const html = await readUsageViewerPage()
+    const win = new Window({ url: "http://gateway/usage-viewer" })
+    win.document.body.innerHTML =
+      '<form></form><div id="content"></div><select></select><button data-tab="usage"></button><button data-tab="subscriptions"></button><button data-tab="models"></button>'
+    const tabButtons = [
+      ...win.document.querySelectorAll<HTMLButtonElement>("[data-tab]"),
+    ]
+    const state = {
+      isolateApiKeyUsage: isolated,
+      activeTab,
+      models: [],
+      subscriptionsLoaded: true,
+      tokenUsageSummary: { totals: { total_tokens: 999 } } as object | null,
+    }
+    const apiKeyInput = { value: "client-key" }
+    const responses: Array<{ resolve: (response: Response) => void }> = []
+    let usageFetches = 0
+    const source = [
+      extractInlineFunctionRange(
+        html,
+        "        async function fetchJson(url) {",
+        "        function syncUrlState() {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function updateControls() {",
+        "        function formatNumber(value) {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function getConnectionKey() {",
+        "        function syncModelsConnection() {",
+      ),
+      extractInlineFunctionRange(
+        html,
+        "        function activateTab(tab) {",
+        "        function handleModelsSearch(event) {",
+      ),
+      "({fetchJson, updateControls, activateTab, handleTabsKeydown})",
+    ].join("\n")
+    const viewer = runInNewContext(source, {
+      state,
+      apiKeyInput,
+      tabButtons,
+      endpointUrlInput: { value: "http://gateway/usage" },
+      fetchButton: {},
+      fetchButtonLabel: {},
+      periodField: {},
+      tokenUsagePeriodSelect: {},
+      endpointForm: win.document.querySelector("form"),
+      contentArea: win.document.getElementById("content"),
+      buildRequestHeaders: () => ({}),
+      fetch: () =>
+        new Promise<Response>((resolve) => responses.push({ resolve })),
+      render: () => {},
+      syncUrlState: () => {},
+      syncEndpointCredential: () => {},
+      syncModelsConnection: () => {},
+      syncSubscriptionsConnection: () => {},
+      invalidateSessionsRequest: () => {},
+      fetchData: () => {
+        usageFetches += 1
+      },
+      fetchModels: () => {},
+      refreshSubscriptionQuotas: () => {},
+    }) as {
+      fetchJson: (url: string) => Promise<unknown>
+      updateControls: () => void
+      activateTab: (tab: string) => void
+      handleTabsKeydown: (event: {
+        key: string
+        preventDefault: () => void
+      }) => void
+    }
+    return {
+      win,
+      viewer,
+      state,
+      apiKeyInput,
+      tabButtons,
+      responses,
+      usageFetches: () => usageFetches,
+    }
+  }
+
+  test("hides subscriptions for an isolated key, redirects a subscription view and skips the hidden tab", async () => {
+    const v = await createViewer(false, "subscriptions")
+    try {
+      const result = v.viewer.fetchJson("http://gateway/usage/codex")
+      v.responses[0].resolve(
+        Response.json(
+          { error: { message: "restricted" } },
+          { status: 403, headers: { "X-API-Key-Usage-Isolated": "true" } },
+        ),
+      )
+      expect(await result.catch((error: unknown) => error)).toMatchObject({
+        status: 403,
+      })
+      v.viewer.updateControls()
+      expect(v.state.activeTab).toBe("usage")
+      expect(v.usageFetches()).toBe(1)
+      expect(v.tabButtons[1].hidden).toBe(true)
+      expect(v.tabButtons[1].style.display).toBe("none")
+      v.viewer.activateTab("subscriptions")
+      expect(v.state.activeTab).toBe("usage")
+      v.viewer.handleTabsKeydown({
+        key: "ArrowRight",
+        preventDefault: () => {},
+      })
+      expect(v.state.activeTab).toBe("models")
+    } finally {
+      await v.win.happyDOM.close()
+    }
+  })
+
+  test.each([false, null])(
+    "shows subscriptions after isolation is disabled or an older server is used (%s)",
+    async (header) => {
+      const v = await createViewer(true)
+      try {
+        const result = v.viewer.fetchJson("http://gateway/token-usage")
+        v.responses[0].resolve(
+          Response.json(
+            {},
+            {
+              headers:
+                header === null ?
+                  {}
+                : { "X-API-Key-Usage-Isolated": String(header) },
+            },
+          ),
+        )
+        await result
+        v.viewer.updateControls()
+        expect(v.state.isolateApiKeyUsage).toBe(false)
+        expect(v.tabButtons[1].hidden).toBe(false)
+        v.viewer.activateTab("subscriptions")
+        expect(v.state.activeTab).toBe("subscriptions")
+      } finally {
+        await v.win.happyDOM.close()
+      }
+    },
+  )
+
+  test("ignores visibility from a previous credential", async () => {
+    const v = await createViewer()
+    try {
+      const result = v.viewer.fetchJson("http://gateway/token-usage")
+      v.apiKeyInput.value = "another-key"
+      v.responses[0].resolve(
+        Response.json({}, { headers: { "X-API-Key-Usage-Isolated": "true" } }),
+      )
+      await result
+      expect(v.state.isolateApiKeyUsage).toBe(false)
+    } finally {
+      await v.win.happyDOM.close()
+    }
+  })
+
+  test("clears cached global usage and reloads it when isolation changes on the models tab", async () => {
+    const v = await createViewer(false, "models")
+    try {
+      const result = v.viewer.fetchJson("http://gateway/models")
+      v.responses[0].resolve(
+        Response.json({}, { headers: { "X-API-Key-Usage-Isolated": "true" } }),
+      )
+      await result
+      expect(v.state.tokenUsageSummary).toBeNull()
+      expect(v.usageFetches()).toBe(1)
+      expect(v.state.activeTab).toBe("models")
+    } finally {
+      await v.win.happyDOM.close()
     }
   })
 })

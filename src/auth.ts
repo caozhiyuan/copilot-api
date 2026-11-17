@@ -876,7 +876,7 @@ const authLogin = defineCommand({
 const authKeys = defineCommand({
   meta: {
     name: "keys",
-    description: "Manage gateway API keys (auth.apiKeys) in the config",
+    description: "Manage gateway API keys (auth.apiKeyConfigs) in the config",
   },
   args: authKeysArgs,
   run({ args }) {
