@@ -209,7 +209,6 @@ describe("Codex model catalog", () => {
     const old = [
       "gpt-5.6-sol",
       "gpt-5.6-terra",
-      "gpt-5.6-luna",
       "gpt-5.5",
       "claude-sonnet-5",
       "gemini-3.5-flash",
@@ -225,6 +224,8 @@ describe("Codex model catalog", () => {
     const oldModels = old.flatMap((id) => [model(id), model(`codex/${id}`)])
     const models = [
       ...oldModels,
+      model("gpt-5.6-luna"),
+      model("codex/gpt-5.6-luna"),
       ...Array.from({ length: 20 }, (_, i) => model(`new-${i}`)),
     ]
     const ordinary = parse(serialize({ models }))
