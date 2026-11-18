@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test"
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  mock,
+  setSystemTime,
+  spyOn,
+  test,
+} from "bun:test"
 import { Hono } from "hono"
 import fs from "node:fs"
 import os from "node:os"
@@ -206,6 +214,40 @@ function recordCharge(key: GatewayApiKeyConfig, upstreamRequestId: string) {
     cost: 1,
   })
 }
+
+test("restores active quotas and reloads a past period if the clock moves back", async () => {
+  const key: GatewayApiKeyConfig = {
+    id: "one",
+    key: "key",
+    quota: { period: "day", amount: 2 },
+  }
+  const monthKey: GatewayApiKeyConfig = {
+    ...key,
+    quota: { period: "month", amount: 2 },
+  }
+  const january = new Date(2026, 0, 31, 12)
+  const february = new Date(2026, 1, 1, 12)
+  try {
+    setSystemTime(january)
+    recordCharge(key, "january")
+    setSystemTime(february)
+    recordCharge(key, "february")
+    await closeUsageStore()
+
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1)
+    expect((await getApiKeyQuotaUsage(monthKey)).usedAmount).toBe(1)
+    expect(
+      (await getApiKeyQuotaUsage({ id: key.id, key: key.key })).usedAmount,
+    ).toBe(2)
+    setSystemTime(january)
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1)
+    expect((await getApiKeyQuotaUsage(monthKey)).usedAmount).toBe(1)
+    setSystemTime(february)
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1)
+  } finally {
+    setSystemTime()
+  }
+})
 
 test("admits requests with available balance while a SQLite write is blocked", async () => {
   const roomy: GatewayApiKeyConfig = {

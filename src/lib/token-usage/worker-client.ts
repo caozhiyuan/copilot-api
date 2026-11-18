@@ -29,6 +29,7 @@ interface PendingOperation {
 export class UsageWorker {
   private readonly worker: Worker
   private readonly pending = new Map<number, PendingOperation>()
+  private idle: PromiseWithResolvers<void> | undefined
   private nextId = 0
   private failure: Error | undefined
 
@@ -41,9 +42,9 @@ export class UsageWorker {
     this.worker.on("message", (response: UsageWorkerResponse) => {
       const pending = this.pending.get(response.id)
       this.pending.delete(response.id)
-      if (this.pending.size === 0) this.worker.unref()
       if (response.ok) pending?.resolve(response.value)
       else pending?.reject(new Error(response.error))
+      this.unrefWhenIdle()
     })
     this.worker.on("error", (error) => this.fail(error))
     this.worker.on("exit", (code) =>
@@ -73,8 +74,8 @@ export class UsageWorker {
         } satisfies UsageWorkerRequest)
       } catch (error) {
         this.pending.delete(id)
-        if (this.pending.size === 0) this.worker.unref()
         reject(error instanceof Error ? error : new Error(String(error)))
+        this.unrefWhenIdle()
       }
     })
   }
@@ -83,8 +84,26 @@ export class UsageWorker {
     return this.failure !== undefined
   }
 
+  async waitForIdle(): Promise<void> {
+    while (this.pending.size > 0) {
+      this.idle ??= Promise.withResolvers<void>()
+      await this.idle.promise
+    }
+  }
+
   async terminate(): Promise<void> {
     await this.worker.terminate()
+  }
+
+  private unrefWhenIdle(): void {
+    if (this.pending.size > 0) return
+    this.worker.unref()
+    this.notifyIdle()
+  }
+
+  private notifyIdle(): void {
+    this.idle?.resolve()
+    this.idle = undefined
   }
 
   private fail(error: Error): void {
@@ -92,5 +111,6 @@ export class UsageWorker {
     this.failure = error
     for (const operation of this.pending.values()) operation.reject(error)
     this.pending.clear()
+    this.notifyIdle()
   }
 }

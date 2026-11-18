@@ -23,7 +23,12 @@ import {
   recordTokenUsageEvent,
 } from "~/lib/token-usage"
 import { xaiUsdTicksToCost } from "~/lib/token-usage/pricing"
-import { getApiKeyQuotaUsage } from "~/lib/token-usage/store"
+import {
+  getApiKeyQuotaUsage,
+  saveVideoUsageJob,
+  startVideoUsageSettlement,
+} from "~/lib/token-usage/store"
+import { recordVideoResultUsage } from "~/lib/token-usage/videos"
 import { videoRouteDependencies, videoRoutes } from "~/routes/videos/route"
 import { createServer } from "~/server"
 import {
@@ -144,6 +149,65 @@ afterEach(async () => {
 })
 
 describe("video routes", () => {
+  test("persists usage while shutdown drains the video poll and SQLite writes", async () => {
+    const dbPath = path.join(tempDir, "shutdown-usage.sqlite")
+    process.env.COPILOT_API_SQLITE_DB_PATH = dbPath
+    const apiKey = { id: "owner", key: "fixture-key" }
+    const job = {
+      provider_name: "xai",
+      request_id: "video-job",
+      api_key_id: apiKey.id,
+      api_key_name: null,
+      model: doneResult.model,
+      trace_id: "video-trace",
+      session_id: "video-session",
+      settled: 0,
+      next_poll_at_ms: null,
+    }
+    await saveVideoUsageJob(job)
+
+    const locker = await openSqliteDatabase(dbPath)
+    locker.exec("BEGIN IMMEDIATE")
+    const finishPoll = Promise.withResolvers<void>()
+    const usageRecorded = Promise.withResolvers<void>()
+    startVideoUsageSettlement(async () => {
+      await finishPoll.promise
+      try {
+        await recordVideoResultUsage(Response.json(doneResult), {
+          providerConfig,
+          requestId: job.request_id,
+          defaultModel: job.model,
+          job,
+        })
+      } finally {
+        usageRecorded.resolve()
+      }
+    })
+
+    const closing = closeUsageStore()
+    try {
+      finishPoll.resolve()
+      await usageRecorded.promise
+      // The video write stays queued while the store drains its worker.
+      await Bun.sleep(20)
+      recordTokenUsageEvent({
+        source: "provider",
+        endpoint: "responses",
+        providerName: "xai",
+        model: "grok-4",
+        apiKey,
+        cost: 0.25,
+      })
+    } finally {
+      locker.exec("COMMIT")
+      locker.close?.()
+      await closing
+    }
+
+    expect((await events()).total).toBe(2)
+    expect((await getApiKeyQuotaUsage(apiKey)).usedAmount).toBe(1.38)
+  })
+
   test("settles persisted video jobs after restart and charges results once after history pruning", async () => {
     process.env.COPILOT_API_SQLITE_DB_PATH = path.join(
       tempDir,

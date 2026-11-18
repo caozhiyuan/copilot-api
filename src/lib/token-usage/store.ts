@@ -217,6 +217,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 let worker: UsageWorker | undefined
 let closing: Promise<void> | undefined
+let closingWorker = false
 let retentionTimer: ReturnType<typeof setInterval> | undefined
 let retentionStarted = false
 let stopVideoUsageSettlement: (() => Promise<void>) | undefined
@@ -228,7 +229,7 @@ function getDbPath(): string {
 }
 
 function getWorker(): UsageWorker {
-  if (closing) throw new Error("SQLite usage store is closing")
+  if (closingWorker) throw new Error("SQLite usage store is closing")
   if (!worker) {
     worker = new UsageWorker(getDbPath())
     registerProcessCleanup(closeUsageStore)
@@ -1602,6 +1603,9 @@ export function closeUsageStore(): Promise<void> {
     stopVideoUsageSettlement = undefined
 
     const current = worker
+    // Settlements can still enqueue writes while the poll and worker drain.
+    if (current) await current.waitForIdle()
+    closingWorker = true
     try {
       await current?.execute("closeUsageDatabase")
     } finally {
@@ -1611,6 +1615,7 @@ export function closeUsageStore(): Promise<void> {
       await current?.terminate()
     }
   })().finally(() => {
+    closingWorker = false
     closing = undefined
   })
   return closing
@@ -1642,8 +1647,16 @@ async function persistApiKeyQuotas(): Promise<void> {
   persistApiKeyQuotaLedger(await getDb())
 }
 
-async function readQuotaBuckets() {
-  return readApiKeyQuotaLedger(await getDb()).snapshot()
+async function readQuotaBuckets(dayStartMs: number, monthStartMs: number) {
+  const ledger = readApiKeyQuotaLedger(await getDb())
+  return ledger
+    .snapshot()
+    .filter(
+      (bucket) =>
+        bucket.period === "lifetime"
+        || bucket.period_start_ms
+          >= (bucket.period === "day" ? dayStartMs : monthStartMs),
+    )
 }
 
 function apiKeyUsageTable(apiKeyId?: string | null): string {
@@ -1663,6 +1676,7 @@ interface PendingCharge {
 }
 
 interface QuotaState {
+  dayStartMs: number
   ledger: ApiKeyQuotaLedger
   pending: Map<string, Set<PendingCharge>>
   ready: Promise<void>
@@ -1673,11 +1687,16 @@ let quotaState: QuotaState | undefined
 function loadQuotaState(): QuotaState {
   if (!isTokenUsageStorageEnabled())
     throw new Error("API key quotas require SQLite support")
+  if (closing) throw new Error("SQLite usage store is closing")
 
-  if (!quotaState) {
+  const now = Date.now()
+  if (!quotaState || now < quotaState.dayStartMs) {
+    // Older periods stay on disk and are restored if the clock moves back.
+    const dayStartMs = apiKeyQuotaWindow("day", now).startMs
+    const monthStartMs = apiKeyQuotaWindow("month", now).startMs
     const ledger = new ApiKeyQuotaLedger()
     const ready = getWorker()
-      .execute("readQuotaBuckets")
+      .execute("readQuotaBuckets", dayStartMs, monthStartMs)
       .then((buckets) => {
         ledger.restore(buckets)
         if (closing || quotaTimer) return
@@ -1689,10 +1708,10 @@ function loadQuotaState(): QuotaState {
         quotaTimer.unref?.()
       })
       .catch((error: unknown) => {
-        quotaState = undefined
+        if (quotaState?.ready === ready) quotaState = undefined
         throw error
       })
-    quotaState = { ledger, pending: new Map(), ready }
+    quotaState = { dayStartMs, ledger, pending: new Map(), ready }
   }
   return quotaState
 }
@@ -1726,7 +1745,9 @@ function readQuotaUsage(
   }
 }
 
-export async function getApiKeyQuotaUsage(key: GatewayApiKeyConfig) {
+export async function getApiKeyQuotaUsage(
+  key: GatewayApiKeyConfig,
+): Promise<ReturnType<typeof readQuotaUsage>> {
   const state = loadQuotaState()
   await state.ready
   let pending = state.pending.get(key.id)
@@ -1734,13 +1755,20 @@ export async function getApiKeyQuotaUsage(key: GatewayApiKeyConfig) {
     await Promise.all(Array.from(pending, (charge) => charge.completion))
     pending = state.pending.get(key.id)
   }
-  return readQuotaUsage(state, key, Date.now())
+  const now = Date.now()
+  if (state !== quotaState || now < state.dayStartMs)
+    return getApiKeyQuotaUsage(key)
+  return readQuotaUsage(state, key, now)
 }
 
-export async function getApiKeyQuotaAdmission(key: GatewayApiKeyConfig) {
+export async function getApiKeyQuotaAdmission(
+  key: GatewayApiKeyConfig,
+): Promise<ReturnType<typeof readQuotaUsage>> {
   const state = loadQuotaState()
   await state.ready
   const now = Date.now()
+  if (state !== quotaState || now < state.dayStartMs)
+    return getApiKeyQuotaAdmission(key)
   const usage = readQuotaUsage(state, key, now)
   const pending = state.pending.get(key.id)
   if (!pending || !key.quota || !usage.remainingAmount) return usage
