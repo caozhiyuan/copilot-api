@@ -414,6 +414,28 @@ test("Responses websocket omits include when only disabled output token replay i
   expect(payload.include).toEqual(["output.encrypted_content"])
 })
 
+test("Responses websocket raises low positive integer output limits to the Copilot minimum", async () => {
+  const payload: ResponsesPayload = {
+    input: "hello",
+    model: "gpt-6-astra",
+    max_output_tokens: 1,
+    stream: true,
+  }
+
+  const response = await createResponses(payload, {
+    initiator: "user",
+    requestId: "request-output-limit",
+    transport: "websocket",
+    vision: false,
+  })
+  await collectStreamChunks(response as AsyncIterable<unknown>)
+
+  const sent = JSON.parse(
+    MockWebSocket.instances[0]?.sent[0] ?? "",
+  ) as ResponsesPayload
+  expect(sent.max_output_tokens).toBe(16)
+})
+
 test("Responses websocket pool reuses the same connection for matching pool keys", async () => {
   await collectResponsesStream("request-1")
   await collectResponsesStream("request-1")
