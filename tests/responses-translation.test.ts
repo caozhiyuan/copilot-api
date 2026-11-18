@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { getExtraPromptForModel } from "~/lib/config"
 import { requestContext } from "~/lib/request-context"
 import { createMcpToolSearchSentinel } from "~/lib/tool-search"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
@@ -521,40 +522,54 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result.prompt_cache_key).toBe("opencode-session")
   })
 
-  it("translates the top-level system prompt to a leading developer message", () => {
-    const payload = {
-      model: "gpt-5.4",
-      max_tokens: 1024,
-      system: [
-        {
-          type: "text",
-          text: "ordinary system prompt",
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "hello gpt54" }],
-        },
-      ],
-    } as unknown as AnthropicMessagesPayload
+  const systemPrompt = "ordinary system prompt"
+  const systemPromptPayload: Omit<AnthropicMessagesPayload, "model"> = {
+    max_tokens: 1024,
+    system: [{ type: "text", text: systemPrompt }],
+    messages: [{ role: "user", content: "hello" }],
+  }
+  const translatedUserMessage = {
+    type: "message",
+    role: "user",
+    content: "hello",
+  }
 
-    const result = translateAnthropicMessagesToResponsesPayload(payload)
+  it.each([
+    ["gpt-6.2-sol", "developer"],
+    ["gpt-6.2-astra", "developer"],
+    ["openai/gpt-6.2-sol", "developer"],
+    ["grok-4", "system"],
+  ])("sends the top-level system prompt in input for %s", (model, role) => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      ...systemPromptPayload,
+      model,
+    })
 
     expect(result).not.toHaveProperty("instructions")
     expect(result.input).toEqual([
       {
         type: "message",
-        role: "developer",
-        content: "ordinary system prompt",
+        role,
+        content: `${systemPrompt}\n\n${getExtraPromptForModel(model)}\n\n`,
       },
-      {
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text: "hello gpt54" }],
-      },
+      translatedUserMessage,
     ])
   })
+
+  it.each(["gpt-5.4", "gpt-5.5", "gpt-6-sol", "gpt-6.1-sol"])(
+    "keeps the top-level system prompt in instructions for %s",
+    (model) => {
+      const result = translateAnthropicMessagesToResponsesPayload({
+        ...systemPromptPayload,
+        model,
+      })
+
+      expect(result.instructions).toBe(
+        `${systemPrompt}\n\n${getExtraPromptForModel(model)}\n\n`,
+      )
+      expect(result.input).toEqual([translatedUserMessage])
+    },
+  )
 
   it("translates inline system messages to developer items", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
