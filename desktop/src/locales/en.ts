@@ -1,6 +1,58 @@
 import type { Locale } from './index'
 
 const en: Locale = {
+  apiKeys: {
+    title: 'API Keys',
+    add: 'Add key',
+    edit: 'Edit',
+    remove: 'Delete',
+    rotate: 'Rotate key',
+    copy: 'Copy',
+    name: 'Name',
+    secret: 'Key',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    expired: 'Expired',
+    expires: 'Expires at',
+    expiryDate: 'Expiration date',
+    expiryDatePlaceholder: 'YYYY-MM-DD',
+    expiryTime: 'Expiration time (local)',
+    pickExpiryDate: 'Choose expiration date',
+    clearExpiry: 'Clear expiry',
+    previousMonth: 'Previous month',
+    nextMonth: 'Next month',
+    invalidExpiry: 'Enter a valid date and time using YYYY-MM-DD and HH:mm.',
+    models: 'Allowed models',
+    restrictModels: 'Restrict models',
+    modelsHint:
+      'One model or pattern per line, for example codex/*. An empty restricted list denies every model.',
+    quota: 'Spending limit (USD)',
+    unlimited: 'Unlimited',
+    day: 'Daily',
+    month: 'Monthly',
+    lifetime: 'Lifetime',
+    limit: 'Amount (USD)',
+    usage: 'Used / limit',
+    remaining: 'Remaining',
+    resets: 'Next reset',
+    unavailable: 'Start the service to load usage.',
+    save: 'Save key',
+    cancel: 'Cancel',
+    empty: 'No API keys configured.',
+    unnamed: 'Unnamed key',
+    removeConfirm: 'Delete this API key? Usage history will be preserved.',
+    saveError: 'Could not save the API key',
+    loadError: 'Could not load API keys',
+    immediate:
+      'Manage client access to this gateway. Key changes apply when saved.',
+    isolateUsage: 'Restrict keys to their own usage',
+    isolateUsageHint:
+      'Off by default: keys can view all usage and history. When enabled, each key sees only its own usage and the web Subscriptions tab is hidden. Applies when saved; refresh the web page to update.',
+    allKeys: 'All keys',
+    unattributed: 'Unattributed history',
+    keyFilter: 'API key',
+    required: 'Enter a key and a non-negative USD amount.',
+  },
   clients: {
     title: 'Client integrations',
     description:
@@ -487,7 +539,7 @@ const en: Locale = {
     showCreateDesc: 'Show the Create tab for image and video generation',
     sectionSecurity: 'Security',
     serverKeysNote:
-      'API Keys and Admin Key are stored in config.json. Saving automatically refreshes the running service.',
+      'Manage client keys in the API Keys tab. Admin Key is stored in config.json; saving refreshes the running service.',
     serverKeysSaveFailed: 'Server key saving or refresh failed',
     desktopSettingsSaveFailed:
       'Desktop settings saving or service refresh failed',

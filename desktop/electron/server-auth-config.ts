@@ -1,10 +1,14 @@
-import fs from 'node:fs/promises'
+import {
+  isApiKeyActive,
+  normalizeApiKeyRecord,
+  normalizeApiKeyRecords,
+} from '../../src/lib/api-key-config'
 
 import {
   readEditableConfigFromDisk,
   writeConfigToDisk,
+  type AppConfig,
 } from '../../src/lib/config'
-import { PATHS } from '../../src/lib/paths'
 import { normalizeApiKeys } from '../../src/lib/request-auth'
 import type { ServerKeysConfig, ServerKeysConfigUpdate } from '../src/types/ipc'
 
@@ -13,22 +17,22 @@ export function normalizeAdminApiKey(adminApiKey: unknown): string {
   return adminApiKey.trim()
 }
 
-export async function readServerKeysConfig(): Promise<ServerKeysConfig> {
-  try {
-    const raw = await fs.readFile(PATHS.CONFIG_PATH, 'utf8')
-    const parsed =
-      raw.trim() ?
-        (JSON.parse(raw) as {
-          auth?: { apiKeys?: unknown; adminApiKey?: unknown }
-        })
-      : {}
-    return {
-      apiKeys: normalizeApiKeys(parsed.auth?.apiKeys),
-      adminApiKey: normalizeAdminApiKey(parsed.auth?.adminApiKey),
-    }
-  } catch {
-    return { apiKeys: [], adminApiKey: '' }
+function serverKeysFromConfig(auth: AppConfig['auth']): ServerKeysConfig {
+  return {
+    apiKeys: normalizeApiKeyRecords(auth?.apiKeyConfigs)
+      .filter((key) => isApiKeyActive(key))
+      .map((key) => key.key),
+    adminApiKey: normalizeAdminApiKey(auth?.adminApiKey),
+    ...(auth?.isolateApiKeyUsage === undefined ?
+      {}
+    : { isolateApiKeyUsage: auth.isolateApiKeyUsage === true }),
   }
+}
+
+export function readServerKeysConfig(): Promise<ServerKeysConfig> {
+  return Promise.resolve(
+    serverKeysFromConfig(readEditableConfigFromDisk().auth),
+  )
 }
 
 // Merges only the provided auth fields into the latest config on disk, so a
@@ -40,8 +44,19 @@ export function writeServerKeysConfig(
   const editableConfig = readEditableConfigFromDisk()
   const auth = { ...editableConfig.auth }
 
+  if (keys.isolateApiKeyUsage !== undefined) {
+    if (typeof keys.isolateApiKeyUsage !== 'boolean')
+      throw new Error('Usage isolation must be a boolean')
+    auth.isolateApiKeyUsage = keys.isolateApiKeyUsage
+  }
+
   if (keys.apiKeys !== undefined) {
-    auth.apiKeys = normalizeApiKeys(keys.apiKeys)
+    auth.apiKeyConfigs = normalizeApiKeys(keys.apiKeys).map(
+      (key) =>
+        normalizeApiKeyRecords(auth.apiKeyConfigs).find(
+          (entry) => entry.key === key,
+        ) ?? normalizeApiKeyRecord(key),
+    )
   }
   if (keys.adminApiKey !== undefined) {
     const adminApiKey = normalizeAdminApiKey(keys.adminApiKey)
@@ -53,8 +68,11 @@ export function writeServerKeysConfig(
   }
 
   writeConfigToDisk({ ...editableConfig, auth })
-  return {
-    apiKeys: normalizeApiKeys(auth.apiKeys),
-    adminApiKey: normalizeAdminApiKey(auth.adminApiKey),
-  }
+  return serverKeysFromConfig(auth)
+}
+
+export function readManagedApiKeys() {
+  return normalizeApiKeyRecords(
+    readEditableConfigFromDisk().auth?.apiKeyConfigs,
+  )
 }

@@ -96,7 +96,9 @@ OpenCode Go 的模型列表（`/opencode-go/v1/models` 及 `/v1/models` 中的�
 
 #### 管理网关 API Key
 
-网关 API Key 存放在 `config.json` 的 `auth.apiKeys` 中，可通过 `copilot-api auth keys` 管理（每次只执行一种操作）：`--add <key>` 添加、`--remove <key>` 删除、`--list` 列出全部、`--clear` 清空。客户端通过 `x-api-key` 或 `Authorization: Bearer` 使用任意已配置的 Key 认证。未配置任何 Key 时，回环监听会以“不校验认证”的方式启动并输出一条 info 级别提示；非回环监听则拒绝启动。
+网关 API Key 存放在 `config.json` 的 `auth.apiKeyConfigs` 中，可通过 `copilot-api auth keys` 管理（每次只执行一种操作）：`--add <key>` 添加、`--remove <key>` 删除、`--list` 列出全部、`--clear` 清空。客户端通过 `x-api-key` 或 `Authorization: Bearer` 使用任意已配置的 Key 认证。未配置任何 Key 时，回环监听会以“不校验认证”的方式启动并输出一条 info 级别提示；非回环监听则拒绝启动。
+
+旧 `auth.apiKeys` 在首次读取配置时自动迁移到新字段，旧字段保留在 JSON 中供参考。新字段存在后（包括空数组），鉴权和 CLI 只使用新字段，旧字段不会再次导入。CLI 增删 Key 会保留其他 Key 的名称、权限和额度配置。详细设置可在 Desktop 的 Providers 旁边的 API Keys 标签页管理。
 
 ### Provider 命令
 

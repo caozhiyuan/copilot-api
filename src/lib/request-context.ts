@@ -1,3 +1,13 @@
+import type { GatewayApiKeyConfig } from "./api-key-config"
+import { isApiKeyModelAllowed } from "./api-key-config"
+import { HTTPError } from "./error"
+import {
+  getRawProviderConfig,
+  type ResolvedProviderConfig,
+} from "./provider-config"
+import { getTokenUsagePricingCurrency } from "./token-usage/pricing"
+import { resolveUsdRate } from "./token-usage/currency"
+import type { TokenUsageEndpoint } from "./token-usage/store"
 import { AsyncLocalStorage } from "node:async_hooks"
 import type { RequestEventObserver } from "./types/gateway-plugins"
 import type { SubagentMarker } from "./subagent"
@@ -13,6 +23,8 @@ export interface RequestTiming {
 }
 
 export interface RequestContext {
+  apiKey?: GatewayApiKeyConfig
+  apiKeyUsageIds?: Set<string>
   traceId: string
   startTime: number
   userAgent: string
@@ -48,11 +60,61 @@ export function formatPluginActualModel(
 
 export function setPluginRequestActualModel(
   model: string,
-  provider?: string,
+  provider?: string | ResolvedProviderConfig,
+  endpoint?: TokenUsageEndpoint,
 ): void {
+  const key = requestContext.getStore()?.apiKey
+  const name =
+    (typeof provider === "string" ? provider : provider?.name)
+    ?? "github-copilot"
+  if (key && !isApiKeyModelAllowed(key, model, name)) {
+    throw new HTTPError(
+      "Model is not allowed for this API key",
+      Response.json(
+        {
+          error: {
+            message: "Model is not allowed for this API key",
+            type: "permission_error",
+            code: "model_not_allowed",
+          },
+        },
+        { status: 403 },
+      ),
+    )
+  }
+  if (key?.quota) {
+    const config =
+      typeof provider === "object" ? provider : getRawProviderConfig(name)
+    const currency = getTokenUsagePricingCurrency({
+      model,
+      endpoint,
+      providerName: name,
+      source: name === "github-copilot" ? "copilot" : "provider",
+      pricing: config?.models?.[model]?.pricing,
+      pricingCurrency: config?.pricingCurrency,
+      baseUrl: config?.baseUrl,
+    })
+    if (resolveUsdRate(currency) === undefined)
+      throw new HTTPError(
+        "Model pricing unavailable for this spending limit",
+        Response.json(
+          {
+            error: {
+              message:
+                currency ?
+                  `Model currency ${currency} cannot be converted to USD`
+                : "Model has no supported pricing or reported-cost source",
+              type: "permission_error",
+              code: "model_pricing_unavailable",
+            },
+          },
+          { status: 403 },
+        ),
+      )
+  }
   requestContext
     .getStore()
-    ?.pluginRequest?.setActualModel(formatPluginActualModel(model, provider))
+    ?.pluginRequest?.setActualModel(formatPluginActualModel(model, name))
 }
 
 export function generateTraceId(): string {

@@ -1,3 +1,7 @@
+import {
+  requestContext,
+  setPluginRequestActualModel,
+} from "~/lib/request-context"
 import { Hono, type Context } from "hono"
 
 import { resolveMappedModel } from "~/lib/config"
@@ -6,6 +10,7 @@ import { createHandlerLogger, debugJson } from "~/lib/logger"
 import { parseProviderModelAlias } from "~/lib/provider-model"
 import { resolveProviderConfig } from "~/lib/provider-resolver"
 import { recordVideoResultUsage } from "~/lib/token-usage/videos"
+import { getVideoUsageJob } from "~/lib/token-usage/store"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 import {
   forwardXaiVideos,
@@ -88,6 +93,28 @@ async function handleVideos(
       )
     }
 
+    const key = requestContext.getStore()?.apiKey
+    const job =
+      videoRequest.operation === "result" ?
+        await getVideoUsageJob(providerConfig.name, videoRequest.requestId)
+      : undefined
+    if (key && videoRequest.operation === "result") {
+      if (job ? job.api_key_id !== key.id : key.quota)
+        return c.json(
+          {
+            error: {
+              message: "Video job does not belong to this API key",
+              type: "permission_error",
+            },
+          },
+          403,
+        )
+    }
+    setPluginRequestActualModel(
+      SUPPORTED_VIDEO_MODEL,
+      providerConfig,
+      "videos_generations",
+    )
     const upstreamResponse = await forwardXaiVideos(
       providerConfig,
       c.req.raw,
@@ -96,19 +123,20 @@ async function handleVideos(
     debugJson(logger, `videos.${operation}.response`, {
       statusCode: upstreamResponse.status,
     })
-    if (videoRequest.operation === "result") {
-      await recordVideoResultUsage(upstreamResponse, {
-        providerConfig,
-        requestId: videoRequest.requestId,
-        defaultModel: SUPPORTED_VIDEO_MODEL,
-        onBody: (body) =>
-          videoRouteDependencies.debugJson(
-            logger,
-            "videos.result.response.body",
-            { body },
-          ),
-      })
-    }
+    await recordVideoResultUsage(upstreamResponse, {
+      providerConfig,
+      job,
+      operation: videoRequest.operation,
+      requestId:
+        videoRequest.operation === "result" ? videoRequest.requestId : "",
+      defaultModel: SUPPORTED_VIDEO_MODEL,
+      onBody: (body) =>
+        videoRouteDependencies.debugJson(
+          logger,
+          "videos.result.response.body",
+          { body },
+        ),
+    })
     return createProviderProxyResponse(upstreamResponse)
   } catch (error) {
     if (error instanceof XaiVideosRequestError && !c.req.raw.signal.aborted) {

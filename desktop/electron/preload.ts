@@ -120,25 +120,51 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('media:get-video', id, requestId),
   cancelMediaRequest: (id: string) => ipcRenderer.invoke('media:cancel', id),
   saveMedia: (input: SaveMediaInput) => ipcRenderer.invoke('media:save', input),
-  fetchTokenUsage: (period: string) =>
-    ipcRenderer.invoke('server:fetch-token-usage', period),
-  fetchTokenUsageDaily: (period: string) =>
-    ipcRenderer.invoke('server:fetch-token-usage-daily', period),
-  fetchTokenUsageEvents: (period: string, page: number, pageSize: number) =>
+  fetchTokenUsage: (period: string, apiKeyId?: string) =>
+    ipcRenderer.invoke(
+      'server:fetch-token-usage',
+      period,
+      ...(apiKeyId === undefined ? [] : [apiKeyId]),
+    ),
+  fetchTokenUsageDaily: (period: string, apiKeyId?: string) =>
+    ipcRenderer.invoke(
+      'server:fetch-token-usage-daily',
+      period,
+      ...(apiKeyId === undefined ? [] : [apiKeyId]),
+    ),
+  fetchTokenUsageEvents: (
+    period: string,
+    page: number,
+    pageSize: number,
+    apiKeyId?: string,
+  ) =>
     ipcRenderer.invoke(
       'server:fetch-token-usage-events',
       period,
       page,
       pageSize,
+      ...(apiKeyId === undefined ? [] : [apiKeyId]),
     ),
-  fetchTokenUsageSessions: (period: string, page: number, pageSize: number) =>
+  fetchTokenUsageSessions: (
+    period: string,
+    page: number,
+    pageSize: number,
+    apiKeyId?: string,
+  ) =>
     ipcRenderer.invoke(
       'server:fetch-token-usage-sessions',
       period,
       page,
       pageSize,
+      ...(apiKeyId === undefined ? [] : [apiKeyId]),
     ),
   getServerAuthInfo: () => ipcRenderer.invoke('server:get-auth-info'),
+  getManagedApiKeys: () => ipcRenderer.invoke('auth:get-managed-api-keys'),
+  saveManagedApiKey: (key: unknown) =>
+    ipcRenderer.invoke('auth:save-managed-api-key', key),
+  removeManagedApiKey: (id: string) =>
+    ipcRenderer.invoke('auth:remove-managed-api-key', id),
+  getApiKeyQuotaUsage: () => ipcRenderer.invoke('auth:get-api-key-quota-usage'),
   getServerKeys: () => ipcRenderer.invoke('auth:get-server-keys'),
   saveServerKeys: (keys: unknown) =>
     ipcRenderer.invoke('auth:save-server-keys', keys),

@@ -27,7 +27,10 @@ afterEach(() => {
 })
 function fixture(): AppConfig {
   return {
-    auth: { apiKeys: ["secret"], adminApiKey: "admin-secret" },
+    auth: {
+      apiKeyConfigs: [{ id: "test-key", key: "secret" }],
+      adminApiKey: "admin-secret",
+    },
     modelMappings: { a: "b" },
     providers: {
       dashscope: {

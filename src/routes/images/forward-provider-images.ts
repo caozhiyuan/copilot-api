@@ -1,3 +1,4 @@
+import { setPluginRequestActualModel } from "~/lib/request-context"
 import type { ConsolaInstance } from "consola"
 
 import { getRawProviderConfig, type ResolvedProviderConfig } from "~/lib/config"
@@ -56,6 +57,11 @@ export async function forwardProviderImagesWithLogging(
       extra,
       imageForwardDependencies.debugJsonAsync,
       multipartForm,
+    )
+    setPluginRequestActualModel(
+      actualModel,
+      providerConfig,
+      operation === "edits" ? "images_edits" : "images_generations",
     )
     const upstreamResponse =
       isCodex ? await forwardCodexImages(request, operation)

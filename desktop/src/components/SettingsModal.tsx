@@ -22,19 +22,6 @@ interface SettingsModalProps {
 
 type Section = 'general' | 'security' | 'network' | 'startup' | 'updates'
 
-// Matches the normalization applied by the main process before persisting,
-// so cosmetic edits (e.g. a trailing newline) do not count as changes.
-function normalizeServerKeysText(text: string): Array<string> {
-  return [
-    ...new Set(
-      text
-        .split('\n')
-        .map((key) => key.trim())
-        .filter((key) => key.length > 0),
-    ),
-  ]
-}
-
 function requiresAppRestart(
   previous: DesktopSettings,
   next: DesktopSettings,
@@ -251,7 +238,6 @@ export default function SettingsModal({
     useState<DesktopSettings | null>(null)
   const [saving, setSaving] = useState(false)
   const [bunRuntime, setBunRuntime] = useState<BunRuntimeStatus | null>(null)
-  const [apiKeysText, setApiKeysText] = useState('')
   const [adminApiKey, setAdminApiKey] = useState('')
   const [loadedServerKeys, setLoadedServerKeys] =
     useState<ServerKeysConfig | null>(null)
@@ -274,7 +260,6 @@ export default function SettingsModal({
         if (!active) return
         setSettings(loadedSettings)
         setInitialSettings(loadedSettings)
-        setApiKeysText(serverKeys.apiKeys.join('\n'))
         setAdminApiKey(serverKeys.adminApiKey)
         setLoadedServerKeys(serverKeys)
       })
@@ -295,16 +280,9 @@ export default function SettingsModal({
       // (server startup regenerating a cleared admin key, CLI auth keys), so
       // the main process merges only the provided fields into the latest
       // config on disk.
-      const nextApiKeys = normalizeServerKeysText(apiKeysText)
       const nextAdminApiKey = adminApiKey.trim()
       const serverKeysUpdate: ServerKeysConfigUpdate = {}
       const saveErrors: string[] = []
-      if (
-        loadedServerKeys !== null
-        && nextApiKeys.join('\n') !== loadedServerKeys.apiKeys.join('\n')
-      ) {
-        serverKeysUpdate.apiKeys = apiKeysText.split('\n')
-      }
       if (
         loadedServerKeys !== null
         && nextAdminApiKey !== loadedServerKeys.adminApiKey
@@ -319,7 +297,6 @@ export default function SettingsModal({
         try {
           const savedKeys =
             await window.electronAPI.saveServerKeys(serverKeysUpdate)
-          setApiKeysText(savedKeys.apiKeys.join('\n'))
           setAdminApiKey(savedKeys.adminApiKey)
           setLoadedServerKeys(savedKeys)
         } catch (error) {
@@ -365,7 +342,6 @@ export default function SettingsModal({
         setThemePref(savedSettings.theme)
       }
       if (savedServerKeys) {
-        setApiKeysText(savedServerKeys.apiKeys.join('\n'))
         setAdminApiKey(savedServerKeys.adminApiKey)
         setLoadedServerKeys(savedServerKeys)
       }
@@ -603,21 +579,6 @@ export default function SettingsModal({
               <div>
                 <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] leading-relaxed text-blue-800 dark:border-blue-400/15 dark:bg-blue-500/10 dark:text-blue-100/80">
                   {t('settings.serverKeysNote')}
-                </div>
-                <div className="mb-4">
-                  <div className="text-[13px] font-medium text-ink mb-1.5">
-                    {t('settings.apiKeysLabel')}
-                  </div>
-                  <textarea
-                    rows={5}
-                    value={apiKeysText}
-                    onChange={(e) => setApiKeysText(e.target.value)}
-                    className={inputClass}
-                    placeholder="sk-…"
-                  />
-                  <p className="text-[12px] text-ink-faint mt-1.5 leading-relaxed">
-                    {t('settings.apiKeysDesc')}
-                  </p>
                 </div>
                 <div className="mb-4">
                   <div className="text-[13px] font-medium text-ink mb-1.5">

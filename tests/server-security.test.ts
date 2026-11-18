@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
+
+import * as config from "~/lib/config"
 
 import {
   DEFAULT_SERVER_HOST,
@@ -10,6 +12,7 @@ import {
   resolveServerBinding,
 } from "~/lib/server-host"
 import { createServer } from "~/server"
+import * as subscriptions from "~/services/subscription-usage"
 
 describe("server host security", () => {
   test("recognizes explicit loopback hosts", () => {
@@ -81,6 +84,40 @@ describe("server host security", () => {
 })
 
 describe("network-exposed server policy", () => {
+  test("keeps subscription usage available to the admin when regular keys are isolated", async () => {
+    const usage = {
+      provider: "codex" as const,
+      planType: "business",
+      windows: [],
+      limitReached: false,
+    }
+    const configSpy = spyOn(config, "getConfig").mockReturnValue({
+      auth: {
+        adminApiKey: "admin",
+        apiKeyConfigs: [{ id: "regular", key: "regular" }],
+        isolateApiKeyUsage: true,
+      },
+    })
+    const usageSpy = spyOn(
+      subscriptions,
+      "getSubscriptionUsage",
+    ).mockResolvedValue(usage)
+    try {
+      const app = createServer()
+      const request = (path: string, key: string) =>
+        app.request(path, { headers: { "x-api-key": key } })
+      expect((await request("/usage/codex", "regular")).status).toBe(403)
+      expect((await request("/admin/usage/codex", "regular")).status).toBe(401)
+      const response = await request("/admin/usage/codex", "admin")
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual(usage)
+      expect(usageSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      usageSpy.mockRestore()
+      configSpy.mockRestore()
+    }
+  })
+
   test("requires authentication for protected routes when no keys exist", async () => {
     const app = createServer({
       networkExposed: true,
@@ -117,5 +154,8 @@ describe("network-exposed server policy", () => {
     })
 
     expect(response.headers.get("access-control-allow-origin")).toBe("*")
+    expect(response.headers.get("access-control-expose-headers")).toBe(
+      "X-API-Key-Usage-Isolated",
+    )
   })
 })

@@ -853,6 +853,7 @@
           modelsRequestId: 0,
           modelsSearch: "",
           isLoading: false,
+          isolateApiKeyUsage: false,
           isTokenUsageLoading: false,
           isEventsLoading: false,
           subscriptionUsage: {},
@@ -864,6 +865,9 @@
           subscriptionsLoaded: false,
           subscriptionsConnectionKey: null,
           subscriptionPageError: null,
+          tokenUsageConnectionKey: null,
+          tokenUsageRequestId: 0,
+          eventsRequestId: 0,
           tokenUsageDailySummary: null,
           tokenUsageSummary: null,
           tokenUsageSessionsPage: null,
@@ -1145,10 +1149,18 @@
           return url.toString();
         }
 
-        async function fetchJson(url) {
+        async function fetchJson(url, isCurrentRequest = () => true) {
+          const connectionKey = getConnectionKey();
           const response = await fetch(url, {
             headers: buildRequestHeaders(),
           });
+          const isolation = response.headers.get("x-api-key-usage-isolated");
+          if (
+            isCurrentRequest() && connectionKey === getConnectionKey()
+            && (response.ok || isolation !== null)
+          ) {
+            applyUsageIsolation(isolation === "true");
+          }
 
           if (!response.ok) {
             let message = response.statusText || "Request failed";
@@ -1182,6 +1194,24 @@
           }
 
           return response.json();
+        }
+
+        function applyUsageIsolation(isolated) {
+          if ((state.isolateApiKeyUsage === true) === isolated) return;
+          state.isolateApiKeyUsage = isolated;
+          state.tokenUsageSummary = null;
+          state.tokenUsageDailySummary = null;
+          state.tokenUsageEventsPage = null;
+          invalidateSessionsRequest();
+          state.subscriptionUsage = {};
+          state.subscriptionsLoaded = false;
+          if (isolated && state.activeTab === "subscriptions") {
+            state.activeTab = "usage";
+            syncUrlState();
+            void fetchData();
+          }
+          if (state.activeTab === "models") void fetchData();
+          render();
         }
 
         function syncUrlState() {
@@ -1224,6 +1254,9 @@
           contentArea.setAttribute("aria-labelledby", `${state.activeTab}-tab`);
           contentArea.setAttribute("aria-busy", String(isLoading));
           for (const button of tabButtons) {
+            const hidden = button.dataset.tab === "subscriptions" && state.isolateApiKeyUsage;
+            button.hidden = hidden;
+            button.style.display = hidden ? "none" : "";
             const selected = button.dataset.tab === state.activeTab;
             button.setAttribute("aria-selected", String(selected));
             button.tabIndex = selected ? 0 : -1;
@@ -1641,12 +1674,11 @@
           }
         }
 
-        function handleModelsConnectionChange() {
+        function handleConnectionChange() {
+          syncTokenUsageConnection();
           syncModelsConnection();
           syncSubscriptionsConnection();
-          if (state.activeTab === "models" || state.activeTab === "subscriptions") {
-            render();
-          }
+          render();
         }
 
         async function fetchModels() {
@@ -1666,7 +1698,9 @@
             if (!endpoint) {
               throw new Error("Endpoint URL cannot be empty.");
             }
-            const payload = await fetchJson(deriveEndpointUrl(endpoint, "models"));
+            const payload = await fetchJson(
+              deriveEndpointUrl(endpoint, "models"), isCurrentRequest
+            );
             if (!Array.isArray(payload?.data)) {
               throw new Error("Model response must contain a data array.");
             }
@@ -1689,7 +1723,9 @@
           if (!["usage", "subscriptions", "models"].includes(tab)) {
             return;
           }
+          if (tab === "subscriptions" && state.isolateApiKeyUsage) return;
           syncEndpointCredential();
+          syncTokenUsageConnection();
           syncModelsConnection();
           syncSubscriptionsConnection();
           state.activeTab = tab;
@@ -1709,12 +1745,13 @@
             return;
           }
           event.preventDefault();
-          const index = tabButtons.findIndex((button) => button.dataset.tab === state.activeTab);
+          const visibleTabs = tabButtons.filter((button) => !button.hidden);
+          const index = visibleTabs.findIndex((button) => button.dataset.tab === state.activeTab);
           const nextIndex = event.key === "Home" ? 0
-            : event.key === "End" ? tabButtons.length - 1
-            : (index + (event.key === "ArrowRight" ? 1 : -1) + tabButtons.length) % tabButtons.length;
-          activateTab(tabButtons[nextIndex].dataset.tab);
-          tabButtons[nextIndex].focus();
+            : event.key === "End" ? visibleTabs.length - 1
+            : (index + (event.key === "ArrowRight" ? 1 : -1) + visibleTabs.length) % visibleTabs.length;
+          activateTab(visibleTabs[nextIndex].dataset.tab);
+          visibleTabs[nextIndex].focus();
         }
 
         function handleModelsSearch(event) {
@@ -2755,7 +2792,9 @@
             const isCurrent = () => requestId === state.subscriptionRequestId
               && connectionKey === getConnectionKey() && revision === state.subscriptionRequests[provider];
             try {
-              const usage = await fetchJson(deriveEndpointUrl(usageUrl, `usage/${provider}`));
+              const usage = await fetchJson(
+                deriveEndpointUrl(usageUrl, `usage/${provider}`), isCurrent
+              );
               if (!isCurrent()) return;
               if (usage?.provider !== provider || !Array.isArray(usage.windows)) throw new Error("Invalid subscription quota response");
               state.subscriptionUsage[provider] = usage;
@@ -2777,19 +2816,23 @@
          * Fetches usage data and token usage data from the specified API endpoint.
          */
         async function fetchData(page = 1) {
-          state.isLoading = true;
-          try {
-            await fetchTokenUsageSummaryAndEvents(page);
-          } finally {
-            state.isLoading = false;
-            render("usage");
-          }
+          await fetchTokenUsageSummaryAndEvents(page, true);
         }
 
-        async function fetchTokenUsageSummaryAndEvents(page = 1) {
+        async function fetchTokenUsageSummaryAndEvents(page = 1, showSpinner = false) {
+          const connectionKey = syncTokenUsageConnection();
+          const requestId = ++state.tokenUsageRequestId;
+          const eventsRequestId = ++state.eventsRequestId;
+          const isCurrentRequest = () =>
+            requestId === state.tokenUsageRequestId && connectionKey === getConnectionKey();
+          const isCurrentEventsRequest = () =>
+            eventsRequestId === state.eventsRequestId && isCurrentRequest();
           invalidateSessionsRequest();
+          state.isEventsLoading = false;
           const endpoint = endpointUrlInput.value.trim();
           if (!endpoint) {
+            state.isLoading = false;
+            state.isTokenUsageLoading = false;
             state.tokenUsageDailySummary = null;
             state.tokenUsageSummary = null;
             state.tokenUsageEventsPage = null;
@@ -2803,6 +2846,7 @@
           }
 
           const period = getSelectedPeriod();
+          state.isLoading = showSpinner;
           state.isTokenUsageLoading = true;
           state.tokenUsageDailySummary = null;
           state.tokenUsageSummary = null;
@@ -2816,10 +2860,11 @@
             const usageUrl = resolveUsageUrl(endpoint);
             const [summaryResult, dailyResult, eventsResult] =
               await Promise.allSettled([
-                fetchJson(buildTokenUsageSummaryUrl(usageUrl, period)),
-                fetchJson(buildTokenUsageDailyUrl(usageUrl, period)),
-                fetchJson(buildTokenUsageEventsUrl(usageUrl, period, page)),
+                fetchJson(buildTokenUsageSummaryUrl(usageUrl, period), isCurrentRequest),
+                fetchJson(buildTokenUsageDailyUrl(usageUrl, period), isCurrentRequest),
+                fetchJson(buildTokenUsageEventsUrl(usageUrl, period, page), isCurrentEventsRequest),
               ]);
+            if (!isCurrentRequest()) return;
 
             if (summaryResult.status === "fulfilled") {
               state.tokenUsageSummary = summaryResult.value;
@@ -2850,6 +2895,7 @@
               );
             }
 
+            if (!isCurrentEventsRequest()) return;
             if (eventsResult.status === "fulfilled") {
               state.tokenUsageEventsPage = eventsResult.value;
             } else if (
@@ -2864,22 +2910,33 @@
               );
             }
           } catch (error) {
+            if (!isCurrentRequest()) return;
             console.error("Token usage fetch error:", error);
             state.tokenUsageDailySummary = null;
             state.tokenUsageSummary = null;
-            state.tokenUsageEventsPage = null;
             state.tokenUsageDailyError = getErrorMessage(error);
             state.tokenUsageSummaryError = getErrorMessage(error);
-            state.tokenUsageEventsError = getErrorMessage(error);
+            if (isCurrentEventsRequest()) {
+              state.tokenUsageEventsPage = null;
+              state.tokenUsageEventsError = getErrorMessage(error);
+            }
           } finally {
-            state.isTokenUsageLoading = false;
-            render("usage");
+            if (isCurrentRequest()) {
+              state.isLoading = false;
+              state.isTokenUsageLoading = false;
+              render("usage");
+            }
           }
         }
 
         async function fetchTokenUsageEventsPage(page) {
+          const connectionKey = syncTokenUsageConnection();
+          const requestId = ++state.eventsRequestId;
+          const isCurrentRequest = () =>
+            requestId === state.eventsRequestId && connectionKey === getConnectionKey();
           const endpoint = endpointUrlInput.value.trim();
           if (!endpoint) {
+            state.isEventsLoading = false;
             state.tokenUsageEventsError =
               "Token usage requires a valid endpoint URL.";
             render();
@@ -2892,10 +2949,13 @@
 
           try {
             const usageUrl = resolveUsageUrl(endpoint);
-            state.tokenUsageEventsPage = await fetchJson(
-              buildTokenUsageEventsUrl(usageUrl, getSelectedPeriod(), page)
+            const result = await fetchJson(
+              buildTokenUsageEventsUrl(usageUrl, getSelectedPeriod(), page),
+              isCurrentRequest
             );
+            if (isCurrentRequest()) state.tokenUsageEventsPage = result;
           } catch (error) {
+            if (!isCurrentRequest()) return;
             if (isMissingTokenUsageEndpointError(error)) {
               state.tokenUsageEventsPage = null;
               state.tokenUsageEventsError = null;
@@ -2904,18 +2964,23 @@
               state.tokenUsageEventsError = getErrorMessage(error);
             }
           } finally {
-            state.isEventsLoading = false;
-            render("usage");
+            if (isCurrentRequest()) {
+              state.isEventsLoading = false;
+              render("usage");
+            }
           }
         }
 
         async function fetchTokenUsageSessionsPage(page) {
+          const connectionKey = syncTokenUsageConnection();
           const endpoint = endpointUrlInput.value.trim();
           if (!endpoint) {
             return;
           }
 
           const requestId = ++state.sessionsRequestId;
+          const isCurrentRequest = () =>
+            requestId === state.sessionsRequestId && connectionKey === getConnectionKey();
           state.isSessionsLoading = true;
           state.tokenUsageSessionsError = null;
           render();
@@ -2927,14 +2992,15 @@
                 getSelectedPeriod(),
                 page,
                 "sessions"
-              )
+              ),
+              isCurrentRequest
             );
-            if (requestId !== state.sessionsRequestId) {
+            if (!isCurrentRequest()) {
               return;
             }
             state.tokenUsageSessionsPage = result;
           } catch (error) {
-            if (requestId !== state.sessionsRequestId) {
+            if (!isCurrentRequest()) {
               return;
             }
             // Older servers have no sessions endpoint; show the empty state.
@@ -2957,6 +3023,26 @@
           state.isSessionsLoading = false;
           state.tokenUsageSessionsPage = null;
           state.tokenUsageSessionsError = null;
+        }
+
+        function syncTokenUsageConnection() {
+          const key = getConnectionKey();
+          if (state.tokenUsageConnectionKey !== key) {
+            state.tokenUsageConnectionKey = key;
+            state.tokenUsageRequestId += 1;
+            state.eventsRequestId += 1;
+            state.isLoading = false;
+            state.isTokenUsageLoading = false;
+            state.isEventsLoading = false;
+            state.tokenUsageSummary = null;
+            state.tokenUsageDailySummary = null;
+            state.tokenUsageEventsPage = null;
+            state.tokenUsageSummaryError = null;
+            state.tokenUsageDailyError = null;
+            state.tokenUsageEventsError = null;
+            invalidateSessionsRequest();
+          }
+          return key;
         }
 
         // --- Event Handlers & Initialization ---
@@ -3110,12 +3196,12 @@
               apiKeyInput.value,
               endpointUrlInput.value.trim()
             );
-            handleModelsConnectionChange();
+            handleConnectionChange();
           });
-          endpointUrlInput.addEventListener("input", handleModelsConnectionChange);
+          endpointUrlInput.addEventListener("input", handleConnectionChange);
           endpointUrlInput.addEventListener("change", () => {
             syncEndpointCredential();
-            handleModelsConnectionChange();
+            handleConnectionChange();
           });
           contentArea.addEventListener("click", handleContentAreaClick);
           contentArea.addEventListener("change", handleContentAreaChange);

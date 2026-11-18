@@ -53,13 +53,13 @@ function parseDebugBody<T>(body: string): T | string {
 
 async function forwardCodexAlphaSearchRequest(
   request: Request,
-  model?: string,
+  model: string,
 ): Promise<Response> {
   await debugJsonAsync(logger, "alpha_search.codex.request", async () => ({
     body: parseDebugBody<AlphaSearchRequest>(await request.clone().text()),
   }))
 
-  if (model) setPluginRequestActualModel(model, "codex")
+  setPluginRequestActualModel(model, "codex", "alpha_search")
   const upstreamResponse =
     await alphaSearchRouteDependencies.forwardCodexAlphaSearch(request)
   await debugJsonAsync(logger, "alpha_search.codex.response", async () => ({
@@ -90,8 +90,8 @@ function createAlphaSearchRequest(
 async function handleCodexRequest(
   c: Context,
   request: Request,
+  model: string,
   resolvedProviderConfig?: ResolvedProviderConfig,
-  model?: string,
 ): Promise<Response> {
   const codexProviderConfig =
     resolvedProviderConfig
@@ -153,12 +153,16 @@ export async function handleAlphaSearchRequest(
   c: Context,
   resolvedProviderConfig?: ResolvedProviderConfig,
 ): Promise<Response> {
-  if (resolvedProviderConfig) {
-    return await handleCodexRequest(c, c.req.raw, resolvedProviderConfig)
-  }
-
   const payload = await parseAlphaSearchBody(c)
   if (payload instanceof Response) return payload
+  if (resolvedProviderConfig) {
+    return await handleCodexRequest(
+      c,
+      c.req.raw,
+      payload.model,
+      resolvedProviderConfig,
+    )
+  }
 
   const requestedModel = payload.model
 
@@ -178,7 +182,6 @@ export async function handleAlphaSearchRequest(
       return await handleCodexRequest(
         c,
         createAlphaSearchRequest(c.req.raw, payload),
-        undefined,
         payload.model,
       )
     }
@@ -228,7 +231,6 @@ export async function handleAlphaSearchRequest(
         return await handleCodexRequest(
           c,
           createAlphaSearchRequest(c.req.raw, payload),
-          undefined,
           payload.model,
         )
       }
@@ -244,7 +246,11 @@ export async function handleAlphaSearchRequest(
       )
     if (providerConfig) {
       if (supportsNativeDeepSeekAlphaSearch(providerConfig)) {
-        setPluginRequestActualModel(payload.model, providerConfig.name)
+        setPluginRequestActualModel(
+          payload.model,
+          providerConfig,
+          "alpha_search",
+        )
         debugJson(logger, "alpha_search.provider.request", {
           body: payload,
           provider: providerConfig.name,

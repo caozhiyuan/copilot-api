@@ -428,6 +428,7 @@ export interface ResponseUsage {
     reasoning_tokens: number
   }
   cost?: number
+  cost_in_usd_ticks?: number
 }
 
 export type ResponseStreamEvent =

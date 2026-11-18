@@ -92,7 +92,9 @@ Use `copilot-api auth login --provider custom` to add or update another third-pa
 
 #### Manage gateway API keys
 
-Gateway API keys live under `auth.apiKeys` in `config.json`. Manage them with `copilot-api auth keys` (one operation per invocation): add a key with `--add <key>`, remove one with `--remove <key>`, list all with `--list`, or clear them all with `--clear`. Clients authenticate with any configured key via `x-api-key` or `Authorization: Bearer`. Without keys, loopback listeners start with authentication bypassed and print an info message; non-loopback listeners refuse to start.
+Gateway API keys live under `auth.apiKeyConfigs` in `config.json`. Manage them with `copilot-api auth keys` (one operation per invocation): add a key with `--add <key>`, remove one with `--remove <key>`, list all with `--list`, or clear them all with `--clear`. Clients authenticate with any configured key via `x-api-key` or `Authorization: Bearer`. Without keys, loopback listeners start with authentication bypassed and print an info message; non-loopback listeners refuse to start.
+
+Legacy `auth.apiKeys` is migrated automatically on the first configuration read and retained in JSON for reference. Once the new field exists, including an empty array, authentication and CLI commands use only the new field and never reimport old keys. CLI updates preserve other keys' policies. Manage names, expiration, model permissions, and quotas in the Desktop API Keys tab next to Providers.
 
 ### Provider Command
 

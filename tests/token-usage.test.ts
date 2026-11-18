@@ -435,7 +435,7 @@ describe("token usage storage", () => {
     })
   })
 
-  test("does not use provider-reported cost for non-OpenRouter providers", () => {
+  test("prefers reported USD cost for other providers as well", () => {
     expect(
       resolveTokenUsageCost({
         cost: 0.0002928408,
@@ -452,8 +452,8 @@ describe("token usage storage", () => {
       }),
     ).toEqual({
       currency: "USD",
-      source: "config",
-      total_cost_nanos: 20_000,
+      source: "upstream",
+      total_cost_nanos: 292_841,
     })
   })
 

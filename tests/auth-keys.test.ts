@@ -7,6 +7,13 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 interface ConfigFileShape {
   auth?: {
     apiKeys?: Array<string>
+    apiKeyConfigs?: Array<{
+      id: string
+      key: string
+      name?: string
+      enabled?: boolean
+      quota?: { period: "lifetime"; amount: number }
+    }>
     adminApiKey?: string
   }
   providers?: Record<string, unknown>
@@ -108,7 +115,7 @@ describe("auth keys CLI", () => {
 
     expect(result.exitCode).toBe(0)
     const config = readConfigFile(tempDir)
-    expect(config.auth?.apiKeys).toEqual(["key-1"])
+    expect(config.auth?.apiKeyConfigs?.map((key) => key.key)).toEqual(["key-1"])
     expect(config.auth?.adminApiKey).toBe("existing-admin-key")
     expect(config.providers).toEqual({ example: { apiKey: "provider-key" } })
     expect(config.modelMappings).toEqual({
@@ -126,7 +133,9 @@ describe("auth keys CLI", () => {
 
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain("already configured")
-    expect(readConfigFile(tempDir).auth?.apiKeys).toEqual(["key-1"])
+    expect(
+      readConfigFile(tempDir).auth?.apiKeyConfigs?.map((key) => key.key),
+    ).toEqual(["key-1"])
   })
 
   test("removes an API key", () => {
@@ -136,7 +145,9 @@ describe("auth keys CLI", () => {
     const result = runAuthKeys(tempDir, "--remove", "key-1")
 
     expect(result.exitCode).toBe(0)
-    expect(readConfigFile(tempDir).auth?.apiKeys).toEqual(["key-2"])
+    expect(
+      readConfigFile(tempDir).auth?.apiKeyConfigs?.map((key) => key.key),
+    ).toEqual(["key-2"])
   })
 
   test("lists configured API keys", () => {
@@ -167,7 +178,9 @@ describe("auth keys CLI", () => {
     const result = runAuthKeys(tempDir, "--clear")
 
     expect(result.exitCode).toBe(0)
-    expect(readConfigFile(tempDir).auth?.apiKeys).toEqual([])
+    expect(
+      readConfigFile(tempDir).auth?.apiKeyConfigs?.map((key) => key.key),
+    ).toEqual([])
   })
 
   test("rejects combining multiple operations", () => {
@@ -202,5 +215,34 @@ describe("missing API keys startup warning", () => {
     const tempDir = createTempConfigDir()
     writeConfigFile(tempDir, { auth: { apiKeys: ["key-1"] } })
     expect(runWarningCheck(tempDir)).toBe(false)
+  })
+})
+
+describe("API key migration and legacy CLI", () => {
+  test("keeps policies when adding and removing keys and leaves old JSON untouched", () => {
+    const tempDir = createTempConfigDir()
+    const policy = {
+      id: "existing",
+      key: "managed",
+      name: "Named",
+      enabled: false,
+      quota: { period: "lifetime" as const, amount: 100 },
+    }
+    writeConfigFile(tempDir, {
+      auth: { apiKeys: ["ignored-old"], apiKeyConfigs: [policy] },
+    })
+    expect(runAuthKeys(tempDir, "--add", "new").exitCode).toBe(0)
+    const added = readConfigFile(tempDir)
+    expect(added.auth?.apiKeys).toEqual(["ignored-old"])
+    expect(
+      added.auth?.apiKeyConfigs?.find((key) => key.id === "existing"),
+    ).toEqual(policy)
+    expect(runAuthKeys(tempDir, "--list").stdout).not.toContain("ignored-old")
+    expect(runAuthKeys(tempDir, "--remove", "new").exitCode).toBe(0)
+    expect(readConfigFile(tempDir).auth?.apiKeyConfigs).toEqual([policy])
+    expect(runAuthKeys(tempDir, "--clear").exitCode).toBe(0)
+    expect(readConfigFile(tempDir).auth?.apiKeyConfigs).toEqual([])
+    expect(readConfigFile(tempDir).auth?.apiKeys).toEqual(["ignored-old"])
+    expect(runAuthKeys(tempDir, "--list").stdout).not.toContain("ignored-old")
   })
 })

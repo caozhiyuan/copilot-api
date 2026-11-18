@@ -1073,8 +1073,18 @@ describe('provider management UI', () => {
     expect(container.textContent).not.toContain('copilot_pro')
   })
 
-  test('allows provider management and advanced configuration while stopped', async () => {
+  test('allows provider, API key and advanced configuration management while stopped', async () => {
     Object.assign(window.electronAPI, {
+      getServerKeys: () =>
+        Promise.resolve({
+          apiKeys: ['fixture-key'],
+          adminApiKey: 'fixture-admin',
+        }),
+      getManagedApiKeys: () =>
+        Promise.resolve([
+          { id: 'desktop-key', key: 'fixture-key', name: 'Desktop key' },
+        ]),
+      getApiKeyQuotaUsage: () => Promise.resolve(null),
       getSettings: () =>
         Promise.resolve({ showCreate: true, host: '127.0.0.1' }),
     })
@@ -1094,6 +1104,9 @@ describe('provider management UI', () => {
       ...container.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
     ]
     const providersTab = tabs.find((tab) => tab.textContent === 'Providers')!
+    const keysTab = tabs.find((tab) => tab.textContent === 'API Keys')!
+    expect(tabs.indexOf(keysTab)).toBe(tabs.indexOf(providersTab) + 1)
+    expect(keysTab.disabled).toBe(false)
     const configTab = tabs.find((tab) =>
       tab.textContent?.toLowerCase().includes('advanced config'),
     )!
@@ -1135,6 +1148,19 @@ describe('provider management UI', () => {
         (node) => node.textContent === 'Providers',
       ),
     ).toHaveLength(1)
+    await act(async () => keysTab.click())
+    expect(selectedTabLabel()).toBe('API Keys')
+    expect(
+      container.querySelector('[aria-label="API Keys"]')?.textContent,
+    ).toContain('Desktop key')
+    expect(
+      container.querySelector('[aria-label="API Keys"]')?.textContent,
+    ).toContain('Start the service')
+    expect(
+      [...container.querySelectorAll('button')].some(
+        (node) => node.textContent === 'Start server',
+      ),
+    ).toBe(false)
     await act(async () => studioTab.click())
     expect(selectedTabLabel()).toBe('Create')
     expect(container.querySelector('textarea')?.value).toBe('Keep this draft')

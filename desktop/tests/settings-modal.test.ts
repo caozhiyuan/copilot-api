@@ -434,15 +434,17 @@ describe('settings modal partial saves', () => {
     expect(alert).not.toHaveBeenCalled()
   })
 
-  test('leaves the admin key out of an API-key-only update', async () => {
+  test('keeps client keys outside security settings and preserves them when saving the admin key', async () => {
     await render()
     await click('Security')
-    const textarea = container.querySelector('textarea')
-    if (!textarea) throw new Error('Missing API key input')
-    await changeText(textarea, 'new-api')
+    expect(container.querySelector('[aria-label="API Keys"]')).toBeNull()
+    expect(container.querySelector('input[aria-label="Key"]')).toBeNull()
+    expect(container.textContent).toContain('API Keys tab')
+    await changeAdminKey()
     await click('Save')
-    expect(saveServerKeys).toHaveBeenCalledWith({ apiKeys: ['new-api'] })
-    expect(keys.adminApiKey).toBe('old-admin')
+    expect(saveServerKeys).toHaveBeenCalledWith({ adminApiKey: 'new-admin' })
+    expect(keys.apiKeys).toEqual(['old-api'])
+    expect(keys.adminApiKey).toBe('new-admin')
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 

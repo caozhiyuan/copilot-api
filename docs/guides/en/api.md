@@ -4,7 +4,7 @@
 
 ## API Authentication
 
-- **Protected non-admin routes:** All routes except `/`, `/usage-viewer`, and `/usage-viewer/` require authentication when `auth.apiKeys` is configured and non-empty. Non-loopback listeners require a non-empty `auth.apiKeys` configuration at startup and continue failing closed if the keys are later cleared.
+- **Protected non-admin routes:** All routes except `/`, `/usage-viewer`, and `/usage-viewer/` require authentication when `auth.apiKeyConfigs` is non-empty. Non-loopback listeners require a non-empty key configuration at startup and continue failing closed if the keys are later cleared.
 - **Admin routes:** All `/admin/*` routes require `auth.adminApiKey`. If it is missing, the server generates one at startup and persists it to `config.json` before serving requests.
 - **Allowed auth headers:**
   - `x-api-key: <your_key>`
@@ -110,7 +110,7 @@ curl http://localhost:4141/v1/videos/YOUR_REQUEST_ID \
   -H 'Authorization: Bearer your_gateway_key'
 ```
 
-The gateway does not wait for generation, retry submissions, or store jobs. Keep the same xAI account and base URL while querying. Clients handle native statuses such as `pending`, `done`, and `failed`, and access the returned `video.url` directly. Default xAI video URLs are temporary. See the [xAI video documentation](https://docs.x.ai/developers/model-capabilities/video/generation).
+The submit endpoint returns as soon as xAI accepts the job. For jobs submitted with a gateway API key, the gateway saves the job ID and settles reported costs in the background, resuming pending checks after restart. Keep the same xAI account and base URL available during settlement. Clients handle native statuses such as `pending`, `done`, and `failed`, and access the temporary `video.url` directly. See the [xAI video documentation](https://docs.x.ai/developers/model-capabilities/video/generation).
 
 ### Anthropic Compatible Endpoints
 
@@ -134,6 +134,8 @@ Endpoints for monitoring subscription usage and quotas.
 | `GET /usage/codex` | `GET` | Get the selected Codex subscription's windows, credits, and Business member credit limit. |
 | `GET /usage/xai` | `GET` | Get the selected xAI subscription's Grok Build allowance and prepaid balance. |
 | `GET /usage/opencode-go` | `GET` | Get OpenCode Go rolling 5-hour, weekly, and monthly usage percentages and reset times. |
+
+Desktop uses the corresponding `/admin/usage` endpoints with the Admin Key. This keeps subscription cards available when regular key usage is isolated.
 
 OpenCode Go uses the configured provider API key and base URL to query `GET /v1/usage`; legacy `https://opencode.ai/zen/go` URLs use the existing normalization to `https://opencode.ai/inference/go`. Monetary caps and plan tiers are not inferred from percentages. A workspace without a Go allowance returns 404, matching other unavailable subscriptions.
 

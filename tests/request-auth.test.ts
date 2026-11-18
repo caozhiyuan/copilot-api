@@ -1,7 +1,10 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 
-import { createAuthMiddleware } from "~/lib/request-auth"
+import { createAuthMiddleware, isApiKeyUsageIsolated } from "~/lib/request-auth"
+import { apiKeyPolicyMiddleware } from "~/lib/api-key-policy"
+import { traceIdMiddleware } from "~/lib/trace"
+import * as config from "~/lib/config"
 
 let regularApiKeys: Array<string>
 let adminApiKeys: Array<string>
@@ -40,6 +43,36 @@ beforeEach(() => {
 })
 
 describe("request auth middleware", () => {
+  test.each([undefined, false, true])(
+    "reports usage isolation and enforces subscription visibility (%s)",
+    async (isolated) => {
+      const setting = spyOn(config, "getConfig").mockReturnValue({
+        auth: {
+          apiKeyConfigs: [{ id: "client", key: "regular-key" }],
+          isolateApiKeyUsage: isolated,
+        },
+      })
+      try {
+        const app = new Hono()
+        app.use("*", traceIdMiddleware)
+        app.use("*", createAuthMiddleware())
+        app.use("*", apiKeyPolicyMiddleware)
+        app.get("/models", (c) => c.json({ isolated: isApiKeyUsageIsolated() }))
+        app.get("/usage/codex", (c) => c.json({ available: true }))
+        const headers = { "x-api-key": "regular-key" }
+        const status = await app.request("/models", { headers })
+        expect(await status.json()).toEqual({ isolated: isolated === true })
+        expect(status.headers.get("X-API-Key-Usage-Isolated")).toBe(
+          String(isolated === true),
+        )
+        expect((await app.request("/usage/codex", { headers })).status).toBe(
+          isolated ? 403 : 200,
+        )
+      } finally {
+        setting.mockRestore()
+      }
+    },
+  )
   test("accepts regular api keys for protected non-admin routes", async () => {
     const app = createApp()
     const response = await app.request("/models", {

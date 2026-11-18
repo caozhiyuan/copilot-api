@@ -14,6 +14,7 @@ import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 import { supportsNativeDeepSeekAlphaSearch } from "~/services/providers/provider-proxy"
 import { traceIdMiddleware } from "~/lib/trace"
 import { requestEventsMiddleware } from "~/lib/request-events"
+import { requestContext } from "~/lib/request-context"
 
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
@@ -454,13 +455,25 @@ describe("Codex alpha search forwarding", () => {
     expect(url).toBe("https://chatgpt.com/backend-api/codex/alpha/search?q=bun")
   })
 
-  test("supports the provider-scoped alpha search route", async () => {
-    const response = await createApp().request(
-      "/codex/v1/alpha/search?q=provider",
+  test("checks the actual model on the provider-scoped alpha search route", async () => {
+    const response = await requestContext.run(
       {
-        method: "POST",
-        body: JSON.stringify(alphaSearchPayload),
+        apiKey: {
+          id: "search-client",
+          key: "test-key",
+          allowedModels: [`codex/${alphaSearchPayload.model}`],
+        },
+        traceId: "scoped-alpha-search",
+        startTime: Date.now(),
+        userAgent: "",
+        sessionAffinity: undefined,
+        parentSessionId: undefined,
       },
+      () =>
+        createApp().request("/codex/v1/alpha/search?q=provider", {
+          method: "POST",
+          body: JSON.stringify(alphaSearchPayload),
+        }),
     )
 
     expect(response.status).toBe(200)

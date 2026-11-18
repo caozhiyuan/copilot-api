@@ -3,6 +3,13 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { PATHS } from '../../src/lib/paths'
+import {
+  readManagedApiKeys,
+  readServerKeysConfig,
+  writeServerKeysConfig,
+} from '../electron/server-auth-config'
+import type { GatewayApiKeyConfig } from '../src/types/ipc'
 
 const moduleUrl = pathToFileURL(
   path.join(import.meta.dir, '../electron/server-auth-config.ts'),
@@ -11,7 +18,9 @@ const moduleUrl = pathToFileURL(
 interface ConfigFileShape {
   auth?: {
     apiKeys?: string[]
+    apiKeyConfigs?: GatewayApiKeyConfig[]
     adminApiKey?: string
+    isolateApiKeyUsage?: boolean
   }
   providers?: Record<string, unknown>
   modelMappings?: Record<string, string>
@@ -49,6 +58,38 @@ async function writeConfig(
 }
 
 describe('desktop server-auth-config', () => {
+  test('uses active managed keys for Desktop requests and keeps inactive keys editable', async () => {
+    const homeDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'copilot-api-server-auth-'),
+    )
+    const originalPath = PATHS.CONFIG_PATH
+    try {
+      PATHS.CONFIG_PATH = await writeConfig(homeDir, {
+        auth: {
+          apiKeys: ['retired-key'],
+          apiKeyConfigs: [
+            { id: 'disabled', key: 'key-off', enabled: false },
+            {
+              id: 'expired',
+              key: 'key-expired',
+              expiresAt: '2000-01-01T00:00:00Z',
+            },
+            { id: 'active', key: 'rotated-key' },
+          ],
+        },
+      })
+      expect((await readServerKeysConfig()).apiKeys).toEqual(['rotated-key'])
+      expect(readManagedApiKeys().map((key) => key.id)).toEqual([
+        'disabled',
+        'expired',
+        'active',
+      ])
+    } finally {
+      PATHS.CONFIG_PATH = originalPath
+      await fs.rm(homeDir, { force: true, recursive: true })
+    }
+  })
+
   test('reads and normalizes stored API keys and admin key', async () => {
     const homeDir = await fs.mkdtemp(
       path.join(os.tmpdir(), 'copilot-api-server-auth-'),
@@ -103,7 +144,10 @@ process.stdout.write(JSON.stringify({ saved, raw }))`
         apiKeys: ['key-1', 'key-2'],
         adminApiKey: 'admin-key',
       })
-      expect(parsed.raw.auth?.apiKeys).toEqual(['key-1', 'key-2'])
+      expect(parsed.raw.auth?.apiKeyConfigs?.map((key) => key.key)).toEqual([
+        'key-1',
+        'key-2',
+      ])
       expect(parsed.raw.auth?.adminApiKey).toBe('admin-key')
       expect(parsed.raw.providers).toEqual({
         example: { apiKey: 'provider-key' },
@@ -115,6 +159,24 @@ process.stdout.write(JSON.stringify({ saved, raw }))`
   })
 
   test.each([
+    [
+      'partial usage isolation update',
+      { isolateApiKeyUsage: true },
+      {
+        apiKeys: ['key-1'],
+        adminApiKey: 'old-admin',
+        isolateApiKeyUsage: true,
+      },
+    ],
+    [
+      'partial usage isolation disable',
+      { isolateApiKeyUsage: false },
+      {
+        apiKeys: ['key-1'],
+        adminApiKey: 'old-admin',
+        isolateApiKeyUsage: false,
+      },
+    ],
     [
       'partial API keys update',
       { apiKeys: [' new-key '] },
@@ -139,7 +201,7 @@ process.stdout.write(JSON.stringify({ saved, raw }))`
     [
       string,
       ConfigFileShape['auth'],
-      { apiKeys: string[]; adminApiKey: string },
+      { apiKeys: string[]; adminApiKey: string; isolateApiKeyUsage?: boolean },
     ]
   >)(
     '%s preserves unrelated auth fields on disk',
@@ -164,8 +226,17 @@ process.stdout.write(JSON.stringify({ saved, raw }))`
           raw: ConfigFileShape
         }
         expect(parsed.saved).toEqual(expected)
-        expect(parsed.raw.auth).toEqual(
-          expected.adminApiKey ? expected : { apiKeys: expected.apiKeys },
+        expect(parsed.raw.auth?.apiKeyConfigs?.map((key) => key.key)).toEqual(
+          expected.apiKeys,
+        )
+        expect(parsed.raw.auth?.adminApiKey).toBe(
+          expected.adminApiKey || undefined,
+        )
+        expect(parsed.raw.auth?.apiKeys).toEqual(['key-1'])
+        expect(parsed.raw.auth?.isolateApiKeyUsage).toBe(
+          'isolateApiKeyUsage' in expected ?
+            expected.isolateApiKeyUsage
+          : undefined,
         )
       } finally {
         await fs.rm(homeDir, { force: true, recursive: true })
@@ -195,8 +266,43 @@ process.stdout.write(JSON.stringify({ before, saved, raw }))`
       }
       expect(parsed.before).toEqual({ apiKeys: [], adminApiKey: '' })
       expect(parsed.saved).toEqual({ apiKeys: ['key-1'], adminApiKey: '' })
-      expect(parsed.raw.auth?.apiKeys).toEqual(['key-1'])
+      expect(parsed.raw.auth?.apiKeyConfigs?.map((key) => key.key)).toEqual([
+        'key-1',
+      ])
     } finally {
+      await fs.rm(homeDir, { force: true, recursive: true })
+    }
+  })
+
+  test('reads isolation, preserves it during other auth changes and rejects invalid switches', async () => {
+    const homeDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), 'copilot-api-server-auth-'),
+    )
+    const originalPath = PATHS.CONFIG_PATH
+    try {
+      PATHS.CONFIG_PATH = await writeConfig(homeDir, {
+        auth: {
+          apiKeys: ['key-1'],
+          adminApiKey: 'admin',
+          isolateApiKeyUsage: true,
+        },
+      })
+      expect((await readServerKeysConfig()).isolateApiKeyUsage).toBe(true)
+      writeServerKeysConfig({ adminApiKey: 'rotated' })
+      expect(await readServerKeysConfig()).toEqual({
+        apiKeys: ['key-1'],
+        adminApiKey: 'rotated',
+        isolateApiKeyUsage: true,
+      })
+      writeServerKeysConfig({ isolateApiKeyUsage: false })
+      expect((await readServerKeysConfig()).isolateApiKeyUsage).toBe(false)
+      expect(() => {
+        Reflect.apply(writeServerKeysConfig, undefined, [
+          { isolateApiKeyUsage: 'true' },
+        ])
+      }).toThrow('Usage isolation must be a boolean')
+    } finally {
+      PATHS.CONFIG_PATH = originalPath
       await fs.rm(homeDir, { force: true, recursive: true })
     }
   })

@@ -7,6 +7,55 @@ import type {
 } from '../../shared/client-integrations'
 
 export interface Locale {
+  apiKeys: {
+    title: string
+    add: string
+    edit: string
+    remove: string
+    rotate: string
+    copy: string
+    name: string
+    secret: string
+    enabled: string
+    disabled: string
+    expired: string
+    expires: string
+    expiryDate: string
+    expiryDatePlaceholder: string
+    expiryTime: string
+    pickExpiryDate: string
+    clearExpiry: string
+    previousMonth: string
+    nextMonth: string
+    invalidExpiry: string
+    models: string
+    restrictModels: string
+    modelsHint: string
+    quota: string
+    unlimited: string
+    day: string
+    month: string
+    lifetime: string
+    limit: string
+    usage: string
+    remaining: string
+    resets: string
+    unavailable: string
+    save: string
+    cancel: string
+    empty: string
+    unnamed: string
+    removeConfirm: string
+    saveError: string
+    loadError: string
+    immediate: string
+    isolateUsage: string
+    isolateUsageHint: string
+    allKeys: string
+    unattributed: string
+    keyFilter: string
+    required: string
+  }
   clients: {
     title: string
     description: string

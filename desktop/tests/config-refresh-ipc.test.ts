@@ -273,9 +273,7 @@ describe('desktop provider management IPC', () => {
 
 describe('desktop model discovery IPC', () => {
   test('requests image models for the Dashboard with gateway auth and preserves the catalog', async () => {
-    spyOn(fs.promises, 'readFile').mockResolvedValue(
-      JSON.stringify({ auth: { apiKeys: ['models-key'] } }),
-    )
+    keys.apiKeys = ['models-key']
     const catalog = {
       object: 'list',
       data: [
@@ -294,14 +292,19 @@ describe('desktop model discovery IPC', () => {
       }),
     )
     expect(fetcher.mock.calls.at(-1)?.[1]?.signal).toBeInstanceOf(AbortSignal)
+
+    keys.apiKeys = ['rotated-key']
+    fetcher.mockResolvedValueOnce(Response.json(catalog))
+    expect(await invoke('server:fetch-models')).toEqual(catalog)
+    expect(fetcher.mock.calls.at(-1)?.[1]?.headers).toEqual({
+      'x-api-key': 'rotated-key',
+    })
   })
 })
 
 describe('desktop subscription quota IPC', () => {
-  test('requests CLI server quotas with gateway auth', async () => {
-    spyOn(fs.promises, 'readFile').mockResolvedValue(
-      JSON.stringify({ auth: { apiKeys: ['quota-key'] } }),
-    )
+  test('requests server quotas with admin auth', async () => {
+    keys.adminApiKey = 'quota-admin-key'
     const usage = {
       provider: 'codex',
       planType: 'business',
@@ -317,9 +320,9 @@ describe('desktop subscription quota IPC', () => {
       usage,
     )
     expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:4141/usage/codex',
+      'http://127.0.0.1:4141/admin/usage/codex',
       expect.objectContaining({
-        headers: { 'x-api-key': 'quota-key' },
+        headers: { 'x-api-key': 'quota-admin-key' },
       }),
     )
     expect(fetcher.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
@@ -327,15 +330,15 @@ describe('desktop subscription quota IPC', () => {
       usage,
     )
     expect(fetch).toHaveBeenLastCalledWith(
-      'http://127.0.0.1:4141/usage/xai',
+      'http://127.0.0.1:4141/admin/usage/xai',
       expect.anything(),
     )
     expect(
       await invoke('server:fetch-subscription-usage', 'opencode-go'),
     ).toEqual(usage)
     expect(fetch).toHaveBeenLastCalledWith(
-      'http://127.0.0.1:4141/usage/opencode-go',
-      expect.objectContaining({ headers: { 'x-api-key': 'quota-key' } }),
+      'http://127.0.0.1:4141/admin/usage/opencode-go',
+      expect.objectContaining({ headers: { 'x-api-key': 'quota-admin-key' } }),
     )
   })
 
@@ -1205,7 +1208,7 @@ describe('desktop token usage sessions', () => {
       (input: Parameters<typeof fetch>[0]) => {
         if (
           fetchInputUrl(input)
-          === 'http://127.0.0.1:4141/token-usage/sessions?page=1&page_size=5&period=this_week'
+          === 'http://127.0.0.1:4141/admin/token-usage/sessions?page=1&page_size=5&period=this_week'
         ) {
           return Promise.resolve(Response.json(payload))
         }
@@ -1223,7 +1226,7 @@ describe('desktop token usage sessions', () => {
     const fetchSessions = Object.assign(
       (input: Parameters<typeof fetch>[0]) => {
         expect(fetchInputUrl(input)).toBe(
-          'http://127.0.0.1:4141/token-usage/sessions?page=2&page_size=5&period=today',
+          'http://127.0.0.1:4141/admin/token-usage/sessions?page=2&page_size=5&period=today',
         )
         return Promise.resolve(new Response(null, { status: 500 }))
       },

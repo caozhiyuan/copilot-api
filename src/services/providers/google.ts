@@ -33,7 +33,7 @@ export async function forwardGoogleGenerateContent(
   applyOpencodeSessionHeader(provider, headers, options.sessionId)
   headers.accept = options.stream ? "text/event-stream" : "application/json"
   const transport = getUpstreamTransportConfig()
-  setPluginRequestActualModel(upstreamModel, provider.name)
+  setPluginRequestActualModel(upstreamModel, provider)
   return await fetchUpstreamWithLifecycle(
     url,
     {

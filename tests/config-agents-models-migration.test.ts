@@ -28,7 +28,10 @@ function seedConfig(provider: LegacyProviderConfig): AppConfig {
   PATHS.CONFIG_PATH = path.join(tempDir, "config.json")
   const config = {
     ...defaultConfig,
-    auth: { apiKeys: ["gateway-test-key"], adminApiKey: "existing-admin-key" },
+    auth: {
+      apiKeyConfigs: [{ id: "test-key", key: "gateway-test-key" }],
+      adminApiKey: "existing-admin-key",
+    },
     modelMappings: { ...defaultConfig.modelMappings, friendly: "custom/model" },
     providers: {
       custom: {

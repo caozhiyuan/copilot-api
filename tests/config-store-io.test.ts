@@ -26,7 +26,8 @@ import { state } from "~/lib/state"
 
 interface StoredConfig {
   auth: {
-    apiKeys: Array<string>
+    apiKeys?: Array<string>
+    apiKeyConfigs: Array<{ id: string; key: string }>
     adminApiKey: string
   }
   providers: Record<string, { apiKey: string; baseUrl: string }>
@@ -84,6 +85,9 @@ test("writeConfigToDisk atomically replaces the editable config", () => {
   expect(JSON.parse(fs.readFileSync(configPath, "utf8"))).toEqual({
     auth: {
       apiKeys: ["new"],
+      apiKeyConfigs: [
+        { id: "key_a949fa412bb7b318a927b99ea4e5ae7e", key: "new" },
+      ],
     },
     providers: {
       example: {
@@ -100,7 +104,7 @@ test("reloadConfig creates a default config when it is missing", () => {
 
   const config = reloadConfig()
 
-  expect(config.auth?.apiKeys).toEqual([])
+  expect(config.auth?.apiKeyConfigs).toEqual([])
   expect(config.smallModels).toEqual({
     codex: "gpt-6-luna",
     copilot: "gpt-6-luna",
@@ -564,7 +568,10 @@ test("setConfiguredApiKeys normalizes keys and preserves other config fields", (
 
   expect(storedKeys).toEqual(["key-1", "key-2"])
   const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as StoredConfig
-  expect(config.auth.apiKeys).toEqual(["key-1", "key-2"])
+  expect(config.auth.apiKeyConfigs.map((key) => key.key)).toEqual([
+    "key-1",
+    "key-2",
+  ])
   expect(config.auth.adminApiKey).toBe("existing-admin-key")
   expect(config.providers).toEqual({
     example: {
@@ -590,7 +597,8 @@ test("setConfiguredApiKeys can clear all keys", () => {
   const storedKeys = setConfiguredApiKeys([])
   expect(storedKeys).toEqual([])
   const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as StoredConfig
-  expect(config.auth.apiKeys).toEqual([])
+  expect(config.auth.apiKeyConfigs).toEqual([])
+  expect(config.auth.apiKeys).toEqual(["key-1"])
   expect(config.auth.adminApiKey).toBe("admin-key")
 })
 
