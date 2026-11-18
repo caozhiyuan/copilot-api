@@ -1,5 +1,11 @@
-import type { GatewayApiKeyConfig } from '../../../src/lib/types/api-key'
-export type { GatewayApiKeyConfig } from '../../../src/lib/types/api-key'
+import type {
+  ApiKeyQuotaUsage,
+  GatewayApiKeyConfig,
+} from '../../../src/lib/types/api-key'
+export type {
+  ApiKeyQuotaUsage,
+  GatewayApiKeyConfig,
+} from '../../../src/lib/types/api-key'
 import type { LangPreference } from '../locales'
 import type {
   ClientAgent,
@@ -123,13 +129,6 @@ export interface ServerAuthInfo {
   enabled: boolean
   headerName?: string
   headerValue?: string
-}
-
-export interface ApiKeyQuotaUsage {
-  id: string
-  usedAmount: number
-  remainingAmount: number | null
-  resetsAt: number | null
 }
 
 export interface ServerKeysConfig {

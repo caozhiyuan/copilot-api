@@ -15,8 +15,11 @@ export function initializeApiKeyQuotaTables(db: SqliteDatabase): void {
 
 function readCheckpoint(db: SqliteDatabase): number {
   const row = db
-    .prepare("SELECT event_id FROM api_key_quota_checkpoint WHERE id = 1")
-    .get() as { event_id: number }
+    .prepare<{
+      event_id: number
+    }>("SELECT event_id FROM api_key_quota_checkpoint WHERE id = 1")
+    .get()
+  if (!row) throw new Error("API key quota checkpoint is missing")
   return row.event_id
 }
 
@@ -26,14 +29,14 @@ function addPendingCharges(
   checkpoint: number,
 ): void {
   const events = db
-    .prepare(
+    .prepare<{
+      api_key_id: string
+      api_key_cost_nanos: number
+      created_at_ms: number
+    }>(
       "SELECT api_key_id, api_key_cost_nanos, created_at_ms FROM token_usage_events WHERE id > ? AND api_key_id <> '' AND api_key_cost_nanos IS NOT NULL ORDER BY id",
     )
-    .all(checkpoint) as Array<{
-    api_key_id: string
-    api_key_cost_nanos: number
-    created_at_ms: number
-  }>
+    .all(checkpoint)
   for (const event of events) {
     ledger.add(event.api_key_id, event.api_key_cost_nanos, event.created_at_ms)
   }
@@ -42,9 +45,7 @@ function addPendingCharges(
 export function readApiKeyQuotaLedger(db: SqliteDatabase): ApiKeyQuotaLedger {
   const ledger = new ApiKeyQuotaLedger()
   ledger.restore(
-    db
-      .prepare("SELECT * FROM api_key_quota_usage")
-      .all() as Array<ApiKeyQuotaBucket>,
+    db.prepare<ApiKeyQuotaBucket>("SELECT * FROM api_key_quota_usage").all(),
   )
   addPendingCharges(db, ledger, readCheckpoint(db))
   return ledger
@@ -52,16 +53,18 @@ export function readApiKeyQuotaLedger(db: SqliteDatabase): ApiKeyQuotaLedger {
 
 // Advance the checkpoint in the same transaction as the changed buckets.
 export function persistApiKeyQuotaLedger(db: SqliteDatabase): void {
-  const lastEvent = () =>
-    db.prepare("SELECT MAX(id) AS id FROM token_usage_events").get() as {
-      id: number | null
-    }
-  if ((lastEvent().id ?? 0) <= readCheckpoint(db)) return
+  const readLastEventId = () =>
+    db
+      .prepare<{
+        id: number | null
+      }>("SELECT MAX(id) AS id FROM token_usage_events")
+      .get()?.id ?? 0
+  if (readLastEventId() <= readCheckpoint(db)) return
 
   db.exec("BEGIN IMMEDIATE")
   try {
     const checkpoint = readCheckpoint(db)
-    const eventId = lastEvent().id ?? 0
+    const eventId = readLastEventId()
     if (eventId > checkpoint) {
       const delta = new ApiKeyQuotaLedger()
       addPendingCharges(db, delta, checkpoint)

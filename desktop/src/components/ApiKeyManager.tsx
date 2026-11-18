@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isValidCostAmount } from '../../../src/lib/token-usage/currency'
 import { primaryButtonClass } from '../lib/button-styles'
 import { formatCostAmount } from '../lib/token-usage-format'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -102,10 +103,7 @@ export default function ApiKeyManager() {
     const amount = Number(limit)
     if (
       !draft.key.trim()
-      || (period !== 'none'
-        && (!limit.trim()
-          || !Number.isSafeInteger(Math.round(amount * 1_000_000_000))
-          || amount < 0))
+      || (period !== 'none' && (!limit.trim() || !isValidCostAmount(amount)))
     ) {
       setError(t('apiKeys.required'))
       return

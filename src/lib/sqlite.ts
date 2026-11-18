@@ -2,19 +2,21 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 type SqliteValue = string | number | null
+type SqliteColumn = SqliteValue | bigint | Uint8Array
+export type SqliteRow = Record<string, SqliteColumn>
 
 export const MINIMUM_NODE_SQLITE_VERSION = "22.13.0"
 
-export interface SqliteStatement {
-  all: (...values: Array<SqliteValue>) => Array<unknown>
-  get: (...values: Array<SqliteValue>) => unknown
-  run: (...values: Array<SqliteValue>) => unknown
+export interface SqliteStatement<Row = SqliteRow> {
+  all: (...values: Array<SqliteValue>) => Array<Row>
+  get: (...values: Array<SqliteValue>) => Row | null | undefined
+  run: (...values: Array<SqliteValue>) => { changes: number | bigint }
 }
 
 export interface SqliteDatabase {
   close?: () => void
-  exec: (sql: string) => unknown
-  prepare: (sql: string) => SqliteStatement
+  exec: (sql: string) => void
+  prepare: <Row = SqliteRow>(sql: string) => SqliteStatement<Row>
 }
 
 interface SqliteDbStoreOptions {

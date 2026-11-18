@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isValidCostAmount } from '../../../src/lib/token-usage/currency'
 import { ConfigEditorError } from './config-editor-errors'
 
 export type ConfigObject = Record<string, unknown>
@@ -105,8 +106,10 @@ export const appConfigSchema = z.looseObject({
                 period: z.enum(['day', 'month', 'lifetime']),
                 amount: z
                   .number()
-                  .min(0)
-                  .max(Number.MAX_SAFE_INTEGER / 1_000_000_000),
+                  .refine(
+                    isValidCostAmount,
+                    'Amount must be non-negative and fit in cost nanos',
+                  ),
               })
               .optional(),
           }),

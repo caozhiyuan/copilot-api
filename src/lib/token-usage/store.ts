@@ -1,5 +1,6 @@
 import type { GatewayApiKeyConfig } from "../api-key-config"
 import { ApiKeyQuotaLedger, apiKeyQuotaWindow } from "../api-key-quota"
+import type { ApiKeyQuotaUsage } from "../types/api-key"
 import {
   initializeApiKeyQuotaTables,
   readApiKeyQuotaLedger,
@@ -20,9 +21,11 @@ import {
   isSqliteRuntimeSupported,
   SqliteDbStore,
   type SqliteDatabase,
+  type SqliteRow,
 } from "~/lib/sqlite"
 
 import { UsageWorker } from "./worker-client"
+import { COST_NANOS_PER_UNIT, toCostNanos } from "./currency"
 
 export type TokenUsageSource = "copilot" | "provider"
 
@@ -210,7 +213,6 @@ interface TokenUsagePageInput {
 
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 const DEFAULT_DB_FILENAME = "copilot-api.sqlite"
-const COST_NANOS_PER_UNIT = 1_000_000_000
 const TOKEN_USAGE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
 const VIDEO_USAGE_POLL_INTERVAL_MS = 5000
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -336,9 +338,7 @@ function ensureColumn(
   name: string,
   definition: string,
 ): void {
-  const rows = db
-    .prepare("PRAGMA table_info(token_usage_events)")
-    .all() as Array<Record<string, unknown>>
+  const rows = db.prepare("PRAGMA table_info(token_usage_events)").all()
   const hasColumn = rows.some((row) => row.name === name)
   if (!hasColumn) {
     db.exec(`ALTER TABLE token_usage_events ADD COLUMN ${name} ${definition}`)
@@ -451,7 +451,7 @@ function insertTokenUsageEvent(
       event.api_key_id ?? null,
       event.api_key_name ?? null,
       event.api_key_cost_nanos ?? null,
-    ) as { changes?: number }
+    )
   return Boolean(result.changes)
 }
 
@@ -624,7 +624,7 @@ function getPeriodRangeFromDb(
     WHERE created_at_ms <= ?
   `,
     )
-    .get(nowMs) as Record<string, unknown> | undefined
+    .get(nowMs)
   const earliestEventMs = row?.start_ms
   const hasEarliestEvent =
     typeof earliestEventMs === "number" && Number.isFinite(earliestEventMs)
@@ -809,16 +809,13 @@ function rangePayload(range: {
   }
 }
 
-function numberFromRow(
-  row: Record<string, unknown> | undefined,
-  key: string,
-): number {
+function numberFromRow(row: SqliteRow | null | undefined, key: string): number {
   const value = row?.[key]
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
 function nullableNumberFromRow(
-  row: Record<string, unknown> | undefined,
+  row: SqliteRow | null | undefined,
   key: string,
 ): number | null {
   const value = row?.[key]
@@ -833,7 +830,7 @@ function createCost(currency: string, totalCostNanos: number): TokenUsageCost {
   }
 }
 
-function costFromRow(row: Record<string, unknown>): TokenUsageCost | null {
+function costFromRow(row: SqliteRow): TokenUsageCost | null {
   const currency = row.cost_currency
   const totalCostNanos = row.total_cost_nanos
   if (
@@ -848,9 +845,7 @@ function costFromRow(row: Record<string, unknown>): TokenUsageCost | null {
   return createCost(currency, totalCostNanos)
 }
 
-function eventCostFromRow(
-  row: Record<string, unknown>,
-): TokenUsageEventCost | null {
+function eventCostFromRow(row: SqliteRow): TokenUsageEventCost | null {
   const cost = costFromRow(row)
   const source = row.cost_source
   if (!cost || typeof source !== "string" || !source) {
@@ -864,7 +859,7 @@ function eventCostFromRow(
 }
 
 function totalsFromRow(
-  row: Record<string, unknown> | undefined,
+  row: SqliteRow | null | undefined,
   costs: Array<TokenUsageCost> = [],
 ): TokenUsageTotals {
   return {
@@ -883,7 +878,7 @@ function totalsFromRow(
 }
 
 function modelSummaryFromRow(
-  row: Record<string, unknown>,
+  row: SqliteRow,
   costs: Array<TokenUsageCost> = [],
 ): TokenUsageModelSummary {
   return {
@@ -900,20 +895,17 @@ function modelSummaryFromRow(
   }
 }
 
-function stringFromRow(row: Record<string, unknown>, key: string): string {
+function stringFromRow(row: SqliteRow, key: string): string {
   const value = row[key]
   return typeof value === "string" ? value : ""
 }
 
-function nullableStringFromRow(
-  row: Record<string, unknown>,
-  key: string,
-): string | null {
+function nullableStringFromRow(row: SqliteRow, key: string): string | null {
   const value = row[key]
   return typeof value === "string" ? value : null
 }
 
-function outputTokensPerSecond(row: Record<string, unknown>): number | null {
+function outputTokensPerSecond(row: SqliteRow): number | null {
   const first = nullableNumberFromRow(row, "first_token_ms")
   const duration = nullableNumberFromRow(row, "duration_ms")
   const output = numberFromRow(row, "output_tokens")
@@ -932,9 +924,7 @@ function outputTokensPerSecond(row: Record<string, unknown>): number | null {
   return Number.isFinite(rate) ? rate : null
 }
 
-function usageEventFromRow(
-  row: Record<string, unknown>,
-): TokenUsageEventRecord {
+function usageEventFromRow(row: SqliteRow): TokenUsageEventRecord {
   return {
     request_id: nullableStringFromRow(row, "request_id"),
     first_token_ms: nullableNumberFromRow(row, "first_token_ms"),
@@ -973,7 +963,7 @@ function usageEventFromRow(
 function getTotalsRow(
   db: SqliteDatabase,
   range: { endMs: number; startMs: number; apiKeyId?: string | null },
-): Record<string, unknown> | undefined {
+): SqliteRow | null | undefined {
   return db
     .prepare(
       `
@@ -989,13 +979,13 @@ function getTotalsRow(
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
-    .get(range.startMs, range.endMs) as Record<string, unknown> | undefined
+    .get(range.startMs, range.endMs)
 }
 
 function getModelRows(
   db: SqliteDatabase,
   range: { endMs: number; startMs: number; apiKeyId?: string | null },
-): Array<Record<string, unknown>> {
+): Array<SqliteRow> {
   return db
     .prepare(
       `
@@ -1016,7 +1006,7 @@ function getModelRows(
       model ASC
   `,
     )
-    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+    .all(range.startMs, range.endMs)
 }
 
 function getCostRows(
@@ -1039,7 +1029,7 @@ function getCostRows(
     ORDER BY cost_currency ASC
   `,
     )
-    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+    .all(range.startMs, range.endMs)
 
   return rows.flatMap((row) => {
     const cost = costFromRow(row)
@@ -1068,7 +1058,7 @@ function getModelCostMap(
     ORDER BY model ASC, cost_currency ASC
   `,
     )
-    .all(range.startMs, range.endMs) as Array<Record<string, unknown>>
+    .all(range.startMs, range.endMs)
 
   const costMap = new Map<string, Array<TokenUsageCost>>()
   for (const row of rows) {
@@ -1108,9 +1098,7 @@ function getSessionSummaries(
     LIMIT ? OFFSET ?
   `,
     )
-    .all(range.startMs, range.endMs, limit, offset) as Array<
-    Record<string, unknown>
-  >
+    .all(range.startMs, range.endMs, limit, offset)
   const sessionIds = rows.map((row) => stringFromRow(row, "session_id"))
   const costRows = db
     .prepare(
@@ -1130,9 +1118,7 @@ function getSessionSummaries(
     ORDER BY session_id ASC, cost_currency ASC
   `,
     )
-    .all(range.startMs, range.endMs, ...sessionIds) as Array<
-    Record<string, unknown>
-  >
+    .all(range.startMs, range.endMs, ...sessionIds)
   const costMap = new Map<string, Array<TokenUsageCost>>()
   for (const row of costRows) {
     const cost = costFromRow(row)
@@ -1162,7 +1148,7 @@ function getModelTimingRows(
     startMs: number
     apiKeyId?: string | null
   }>,
-): Array<Record<string, unknown>> {
+): Array<SqliteRow> {
   if (intervals.length === 0) return []
   return db
     .prepare(
@@ -1207,7 +1193,7 @@ function getModelTimingRows(
         startMs,
         endMs,
       ]),
-    ) as Array<Record<string, unknown>>
+    )
 }
 
 function getModelSummaries(
@@ -1277,7 +1263,7 @@ function getDailyModelSummaries(
     ORDER BY usage_days.usage_date ASC, total_tokens DESC, model ASC
   `,
     )
-    .all(...dayParams) as Array<Record<string, unknown>>
+    .all(...dayParams)
   const costRows = db
     .prepare(
       `
@@ -1297,7 +1283,7 @@ function getDailyModelSummaries(
     ORDER BY usage_days.usage_date ASC, model ASC, cost_currency ASC
   `,
     )
-    .all(...dayParams) as Array<Record<string, unknown>>
+    .all(...dayParams)
   const costsByDateAndModel = new Map<string, Array<TokenUsageCost>>()
   for (const row of costRows) {
     const date = stringFromRow(row, "usage_date")
@@ -1420,7 +1406,7 @@ async function queryTokenUsageEventsPage(
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
-    .get(range.startMs, range.endMs) as Record<string, unknown> | undefined
+    .get(range.startMs, range.endMs)
 
   const rows = db
     .prepare(
@@ -1460,9 +1446,7 @@ async function queryTokenUsageEventsPage(
     LIMIT ? OFFSET ?
   `,
     )
-    .all(range.startMs, range.endMs, pageSize, offset) as Array<
-    Record<string, unknown>
-  >
+    .all(range.startMs, range.endMs, pageSize, offset)
 
   const total = numberFromRow(totalRow, "total")
 
@@ -1503,7 +1487,7 @@ async function queryTokenUsageSessionsPage(
     WHERE created_at_ms >= ? AND created_at_ms < ?
   `,
     )
-    .get(range.startMs, range.endMs) as Record<string, unknown> | undefined
+    .get(range.startMs, range.endMs)
   const total = numberFromRow(totalRow, "total")
 
   return {
@@ -1626,8 +1610,8 @@ async function deleteExpiredUsageEvents(cutoffMs: number): Promise<number> {
   persistApiKeyQuotaLedger(db)
   const result = db
     .prepare("DELETE FROM token_usage_events WHERE created_at_ms < ?")
-    .run(cutoffMs) as { changes?: number }
-  return result.changes ?? 0
+    .run(cutoffMs)
+  return Number(result.changes)
 }
 
 async function closeUsageDatabase(): Promise<void> {
@@ -1725,29 +1709,28 @@ export async function flushApiKeyQuotas(): Promise<void> {
   await getWorker().execute("flushApiKeyQuotas")
 }
 
-function readQuotaUsage(
+function readQuotaBalance(
   state: QuotaState,
   key: GatewayApiKeyConfig,
   now: number,
 ) {
   if (closing || quotaWriteFailed || worker?.failed)
     throw new Error("API key usage could not be persisted")
-  const period = key.quota?.period ?? "lifetime"
-  const used = state.ledger.used(key.id, period, now)
+  const quota = key.quota
+  const period = quota?.period ?? "lifetime"
+  const window = apiKeyQuotaWindow(period, now)
+  const usedCostNanos = state.ledger.used(key.id, period, window)
   return {
-    usedAmount: used / COST_NANOS_PER_UNIT,
-    remainingAmount:
-      key.quota ?
-        Math.max(0, Math.round(key.quota.amount * COST_NANOS_PER_UNIT) - used)
-        / COST_NANOS_PER_UNIT
-      : null,
-    resetsAt: apiKeyQuotaWindow(period, now).endMs,
+    ...window,
+    usedCostNanos,
+    remainingCostNanos:
+      quota ? Math.max(0, toCostNanos(quota.amount) - usedCostNanos) : null,
   }
 }
 
-export async function getApiKeyQuotaUsage(
+async function readSettledQuotaBalance(
   key: GatewayApiKeyConfig,
-): Promise<ReturnType<typeof readQuotaUsage>> {
+): Promise<ReturnType<typeof readQuotaBalance>> {
   const state = loadQuotaState()
   await state.ready
   let pending = state.pending.get(key.id)
@@ -1757,27 +1740,38 @@ export async function getApiKeyQuotaUsage(
   }
   const now = Date.now()
   if (state !== quotaState || now < state.dayStartMs)
-    return getApiKeyQuotaUsage(key)
-  return readQuotaUsage(state, key, now)
+    return readSettledQuotaBalance(key)
+  return readQuotaBalance(state, key, now)
+}
+
+export async function getApiKeyQuotaUsage(
+  key: GatewayApiKeyConfig,
+): Promise<Omit<ApiKeyQuotaUsage, "id">> {
+  const { usedCostNanos, remainingCostNanos, endMs } =
+    await readSettledQuotaBalance(key)
+  return {
+    usedAmount: usedCostNanos / COST_NANOS_PER_UNIT,
+    remainingAmount:
+      remainingCostNanos === null ? null : (
+        remainingCostNanos / COST_NANOS_PER_UNIT
+      ),
+    resetsAt: endMs,
+  }
 }
 
 export async function getApiKeyQuotaAdmission(
   key: GatewayApiKeyConfig,
-): Promise<ReturnType<typeof readQuotaUsage>> {
+): Promise<ReturnType<typeof readQuotaBalance>> {
   const state = loadQuotaState()
   await state.ready
   const now = Date.now()
   if (state !== quotaState || now < state.dayStartMs)
     return getApiKeyQuotaAdmission(key)
-  const usage = readQuotaUsage(state, key, now)
+  const balance = readQuotaBalance(state, key, now)
+  const { startMs, endMs, remainingCostNanos } = balance
   const pending = state.pending.get(key.id)
-  if (!pending || !key.quota || !usage.remainingAmount) return usage
+  if (!pending || !remainingCostNanos) return balance
 
-  const { period, amount } = key.quota
-  const { startMs, endMs } = apiKeyQuotaWindow(period, now)
-  const remainingCostNanos =
-    Math.round(amount * COST_NANOS_PER_UNIT)
-    - state.ledger.used(key.id, period, now)
   let pendingCost = 0
   for (const charge of pending) {
     if (charge.at >= startMs && (endMs === null || charge.at < endMs))
@@ -1785,7 +1779,9 @@ export async function getApiKeyQuotaAdmission(
   }
   // Only a charge that could exhaust this key must be confirmed before
   // admitting it. A duplicate may settle without consuming any balance.
-  return pendingCost >= remainingCostNanos ? getApiKeyQuotaUsage(key) : usage
+  return pendingCost >= remainingCostNanos ?
+      readSettledQuotaBalance(key)
+    : balance
 }
 
 export interface VideoUsageJob {
@@ -1852,12 +1848,11 @@ function readVideoUsageJob(
   requestId: string,
 ): VideoUsageJob | undefined {
   return (
-    (db
-      .prepare(
+    db
+      .prepare<VideoUsageJob>(
         "SELECT * FROM api_key_video_jobs WHERE provider_name = ? AND request_id = ?",
       )
-      .get(provider, requestId) as VideoUsageJob | null | undefined)
-    ?? undefined
+      .get(provider, requestId) ?? undefined
   )
 }
 
@@ -1899,7 +1894,7 @@ async function queryDueVideoUsageJobs(
 ): Promise<Array<VideoUsageJob>> {
   const db = await getDb()
   return db
-    .prepare(
+    .prepare<VideoUsageJob>(
       `
     SELECT * FROM api_key_video_jobs
     WHERE provider_name = ? AND next_poll_at_ms <= ?
@@ -1907,7 +1902,7 @@ async function queryDueVideoUsageJobs(
     LIMIT ?
   `,
     )
-    .all(provider, now, limit) as Array<VideoUsageJob>
+    .all(provider, now, limit)
 }
 
 async function updateVideoUsageJobPoll(
@@ -1922,14 +1917,7 @@ async function updateVideoUsageJobPoll(
     WHERE provider_name = ? AND request_id = ? AND next_poll_at_ms = ?
   `,
     )
-    .run(
-      nextPollAt,
-      job.provider_name,
-      job.request_id,
-      job.next_poll_at_ms,
-    ) as {
-    changes?: number
-  }
+    .run(nextPollAt, job.provider_name, job.request_id, job.next_poll_at_ms)
   return Boolean(result.changes)
 }
 

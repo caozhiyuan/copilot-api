@@ -66,6 +66,25 @@ function fixture(running = true) {
 }
 
 describe('desktop configuration document', () => {
+  test('validates API key quota amounts at the supported boundaries', () => {
+    const maxAmount = Number.MAX_SAFE_INTEGER / 1_000_000_000
+    const withQuota = (amount: number) =>
+      JSON.stringify({
+        auth: {
+          apiKeyConfigs: [
+            { id: 'key', key: 'test-key', quota: { period: 'day', amount } },
+          ],
+        },
+      })
+
+    expect(() => validateConfigContent(withQuota(0))).not.toThrow()
+    expect(() => validateConfigContent(withQuota(maxAmount))).not.toThrow()
+    expect(() => validateConfigContent(withQuota(-1))).toThrow('quota.amount')
+    expect(() => validateConfigContent(withQuota(maxAmount + 1))).toThrow(
+      'quota.amount',
+    )
+  })
+
   test('accepts empty or positive token usage retention and rejects other numbers', () => {
     expect(validateConfigContent('{}')).not.toHaveProperty(
       'tokenUsageRetentionDays',

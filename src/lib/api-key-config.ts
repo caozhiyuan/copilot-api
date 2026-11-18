@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 
+import { isValidCostAmount } from "./token-usage/currency"
 import type { GatewayApiKeyConfig } from "./types/api-key"
 export type { GatewayApiKeyConfig, ApiKeyQuotaPeriod } from "./types/api-key"
 
@@ -78,11 +79,7 @@ export function normalizeApiKeyRecord(value: unknown): GatewayApiKeyConfig {
     ) {
       throw new Error("API key quota period must be day, month, or lifetime")
     }
-    if (
-      typeof quota.amount !== "number"
-      || !Number.isSafeInteger(Math.round(quota.amount * 1_000_000_000))
-      || quota.amount < 0
-    ) {
+    if (!isValidCostAmount(quota.amount)) {
       throw new Error(
         "API key amount must be non-negative and fit in cost nanos",
       )
