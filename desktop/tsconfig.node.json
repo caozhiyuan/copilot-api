@@ -40,6 +40,7 @@
     "../src/lib/token-usage/peak-windows.ts",
     "../src/lib/token-usage/pricing.ts",
     "../src/lib/token-usage/store.ts",
+    "../src/lib/token-usage/worker-client.ts",
     "../src/lib/token.ts",
     "../src/lib/types/gateway-plugins.ts",
     "../src/lib/types/models.ts",

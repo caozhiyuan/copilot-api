@@ -7,7 +7,7 @@ import { isApiKeyModelAllowed } from "./api-key-config"
 import { forwardError } from "./error"
 import { requestContext } from "./request-context"
 import { isApiKeyUsageIsolated } from "./request-auth"
-import { getApiKeyQuotaUsage } from "./token-usage/store"
+import { getApiKeyQuotaAdmission } from "./token-usage/store"
 
 export const apiKeyPolicyDependencies = {
   getRawProviderConfig,
@@ -29,7 +29,7 @@ export const apiKeyPolicyMiddleware: MiddlewareHandler = async (c, next) => {
   }
   if (key?.quota && c.req.method === "POST") {
     try {
-      const usage = await getApiKeyQuotaUsage(key)
+      const usage = await getApiKeyQuotaAdmission(key)
       if (usage.remainingAmount !== null && usage.remainingAmount <= 0) {
         if (usage.resetsAt)
           c.header(

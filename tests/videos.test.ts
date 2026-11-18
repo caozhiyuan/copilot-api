@@ -384,14 +384,14 @@ describe("video routes", () => {
   })
 
   test.each([
-    undefined,
-    null,
-    [],
-    "text",
-    {},
-    { cost_in_usd_ticks: -1 },
-    { cost_in_usd_ticks: "11300000000" },
-  ])("ignores missing or invalid video usage %#", async (usage) => {
+    { usage: undefined },
+    { usage: null },
+    { usage: [] },
+    { usage: "text" },
+    { usage: {} },
+    { usage: { cost_in_usd_ticks: -1 } },
+    { usage: { cost_in_usd_ticks: "11300000000" } },
+  ])("ignores missing or invalid video usage %#", async ({ usage }) => {
     fetchMock.mockImplementation(() =>
       Promise.resolve(Response.json({ ...doneResult, usage })),
     )
