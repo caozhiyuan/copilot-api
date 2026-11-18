@@ -58,6 +58,7 @@
     "shared/**/*",
     "src/App.tsx",
     "src/components/AppUpdatePanel.tsx",
+    "src/components/ApiKeyExpiryPicker.tsx",
     "src/components/ApiKeyManager.tsx",
     "src/components/ConfigFieldEditor.tsx",
     "src/components/Header.tsx",

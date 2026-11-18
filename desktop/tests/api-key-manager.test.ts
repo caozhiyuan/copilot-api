@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import { act, createElement } from 'react'
+import { act, createElement, useEffect } from 'react'
 import { createTestDom } from './helpers/dom'
 import ApiKeyManager from '../src/components/ApiKeyManager'
-import { LanguageProvider } from '../src/contexts/LanguageContext'
+import { LanguageProvider, useLanguage } from '../src/contexts/LanguageContext'
+import type { LangPreference } from '../src/locales'
 import type {
   GatewayApiKeyConfig,
   ServerKeysConfig,
@@ -73,11 +74,16 @@ afterEach(async () => {
   await act(async () => dom.root.unmount())
   await dom.cleanup()
 })
-async function render() {
+function LocalizedApiKeys({ language }: { language: LangPreference }) {
+  const { setLangPref } = useLanguage()
+  useEffect(() => setLangPref(language), [language, setLangPref])
+  return createElement(ApiKeyManager)
+}
+async function render(language: LangPreference = 'auto') {
   await act(async () => {
     dom.root.render(
       createElement(LanguageProvider, {
-        children: createElement(ApiKeyManager),
+        children: createElement(LocalizedApiKeys, { language }),
       }),
     )
   })
@@ -87,6 +93,13 @@ async function click(text: string) {
     (button) => button.textContent === text,
   )
   if (!button) throw new Error('Missing button: ' + text)
+  await act(async () => button.click())
+}
+async function clickLabel(label: string) {
+  const button = dom.container.querySelector<HTMLButtonElement>(
+    'button[aria-label="' + label + '"]',
+  )
+  if (!button) throw new Error('Missing button: ' + label)
   await act(async () => button.click())
 }
 async function type(label: string, text: string) {
@@ -171,11 +184,13 @@ test('edits model restrictions, expiration, enablement and quota fields', async 
   await render()
   await click('Edit')
   expect(
-    dom.container.querySelector<HTMLInputElement>('[aria-label="Expires at"]')
-      ?.value,
-  ).toHaveLength(16)
+    dom.container.querySelector<HTMLInputElement>(
+      '[aria-label="Expiration date"]',
+    )?.value,
+  ).toHaveLength(10)
   await type('Allowed models', 'custom/model\ncustom/model')
-  await type('Expires at', '2031-01-02T12:30')
+  await type('Expiration date', '2031-01-02')
+  await type('Expiration time (local)', '12:30')
   const checkbox = dom.container.querySelector<HTMLInputElement>(
     'input[type="checkbox"]:not([role="switch"])',
   )
@@ -200,6 +215,57 @@ test('edits model restrictions, expiration, enablement and quota fields', async 
   expect(save.mock.calls[0]?.[0].expiresAt).toBe(
     new Date('2031-01-02T12:30').toISOString(),
   )
+})
+test('switches expiration calendar language with the app on a Chinese system', async () => {
+  Object.defineProperty(dom.win.navigator, 'language', {
+    configurable: true,
+    value: 'zh-CN',
+  })
+  keys[0].expiresAt = new Date('2030-01-20T12:30').toISOString()
+  await render('zh')
+  await click('编辑')
+  await clickLabel('选择过期日期')
+  const calendar = () => dom.container.querySelector('[role="dialog"]')
+  expect(calendar()?.textContent).toContain('2030年1月')
+  await render('en')
+  expect(calendar()?.textContent).toContain('January 2030')
+  expect(calendar()?.textContent).toContain('Sun')
+  expect(calendar()?.textContent).not.toContain('周')
+  await clickLabel('Previous month')
+  expect(calendar()?.textContent).toContain('December 2029')
+  await clickLabel('Next month')
+  await act(async () => {
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    )
+  })
+  expect(document.activeElement?.getAttribute('aria-label')).toBe(
+    'January 2, 2030',
+  )
+  await clickLabel('January 2, 2030')
+  expect(calendar()).toBeNull()
+  await click('Save key')
+  expect(save.mock.calls[0]?.[0].expiresAt).toBe(
+    new Date('2030-01-02T12:30').toISOString(),
+  )
+})
+test('preserves an untouched expiration and rejects invalid dates before saving', async () => {
+  const expiresAt = new Date('2030-01-20T12:30:42').toISOString()
+  keys[0].expiresAt = expiresAt
+  await render()
+  await click('Edit')
+  await click('Save key')
+  expect(save.mock.calls[0]?.[0].expiresAt).toBe(expiresAt)
+  await click('Edit')
+  await type('Expiration date', '2030-02-30')
+  await click('Save key')
+  expect(save).toHaveBeenCalledTimes(1)
+  expect(dom.container.querySelector('[role="alert"]')?.textContent).toContain(
+    'Enter a valid date and time',
+  )
+  await click('Clear expiry')
+  await click('Save key')
+  expect(save.mock.calls[1]?.[0].expiresAt).toBeUndefined()
 })
 test('handles copy failure, cancelled deletion and deletion failure', async () => {
   Object.defineProperty(dom.win.navigator, 'clipboard', {

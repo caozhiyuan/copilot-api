@@ -20,6 +20,14 @@ export interface Locale {
     disabled: string
     expired: string
     expires: string
+    expiryDate: string
+    expiryDatePlaceholder: string
+    expiryTime: string
+    pickExpiryDate: string
+    clearExpiry: string
+    previousMonth: string
+    nextMonth: string
+    invalidExpiry: string
     models: string
     restrictModels: string
     modelsHint: string

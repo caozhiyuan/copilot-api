@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { primaryButtonClass } from '../lib/button-styles'
 import { formatCostAmount } from '../lib/token-usage-format'
 import { useLanguage } from '../contexts/LanguageContext'
+import { resolveLanguage } from '../locales'
 import type { ApiKeyQuotaUsage, GatewayApiKeyConfig } from '../types/ipc'
+import ApiKeyExpiryPicker from './ApiKeyExpiryPicker'
 
 function generateSecret(): string {
   return (
@@ -21,7 +23,13 @@ function localExpiry(value?: string): string {
 }
 
 export default function ApiKeyManager() {
-  const { t } = useLanguage()
+  const { langPref, t } = useLanguage()
+  const locale = resolveLanguage(langPref, navigator.language)
+  const displayDateTime = new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    hourCycle: 'h23',
+  })
   const [keys, setKeys] = useState<GatewayApiKeyConfig[]>([])
   const [usage, setUsage] = useState<ApiKeyQuotaUsage[] | null>(null)
   const [draft, setDraft] = useState<GatewayApiKeyConfig | null>(null)
@@ -102,6 +110,17 @@ export default function ApiKeyManager() {
       setError(t('apiKeys.required'))
       return
     }
+    let expiresAt = expiry ? draft.expiresAt : undefined
+    if (expiry && expiry !== localExpiry(expiresAt)) {
+      const date = new Date(expiry)
+      const iso =
+        Number.isFinite(date.getTime()) ? date.toISOString() : undefined
+      if (!iso || localExpiry(iso) !== expiry) {
+        setError(t('apiKeys.invalidExpiry'))
+        return
+      }
+      expiresAt = iso
+    }
     setBusy(true)
     setError('')
     try {
@@ -110,7 +129,7 @@ export default function ApiKeyManager() {
         key: draft.key.trim(),
         enabled: draft.enabled !== false,
         ...(draft.name?.trim() ? { name: draft.name.trim() } : {}),
-        ...(expiry ? { expiresAt: new Date(expiry).toISOString() } : {}),
+        ...(expiresAt ? { expiresAt } : {}),
         ...(restricted ?
           {
             allowedModels: [
@@ -269,13 +288,13 @@ export default function ApiKeyManager() {
               {current?.resetsAt && (
                 <div className="mt-1 text-ink-faint">
                   {t('apiKeys.resets')}:{' '}
-                  {new Date(current.resetsAt).toLocaleString()}
+                  {displayDateTime.format(current.resetsAt)}
                 </div>
               )}
               {key.expiresAt && (
                 <div className="mt-1 text-ink-faint">
                   {t('apiKeys.expires')}:{' '}
-                  {new Date(key.expiresAt).toLocaleString()}
+                  {displayDateTime.format(new Date(key.expiresAt))}
                 </div>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
@@ -368,16 +387,11 @@ export default function ApiKeyManager() {
             />
             {t('apiKeys.enabled')}
           </label>
-          <label className="block text-xs text-ink-soft">
-            {t('apiKeys.expires')}
-            <input
-              aria-label={t('apiKeys.expires')}
-              type="datetime-local"
-              className={`mt-1.5 ${field}`}
-              value={expiry}
-              onChange={(event) => setExpiry(event.target.value)}
-            />
-          </label>
+          <ApiKeyExpiryPicker
+            locale={locale}
+            value={expiry}
+            onChange={setExpiry}
+          />
           <label className="flex items-center gap-2 text-xs text-ink-soft sm:col-span-2">
             <input
               type="checkbox"
