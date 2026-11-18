@@ -7,6 +7,7 @@ import {
 } from "../api-key-quota-store"
 import consola from "consola"
 import path from "node:path"
+import { workerData } from "node:worker_threads"
 
 import type { RequestTiming } from "~/lib/request-context"
 import {
@@ -20,6 +21,8 @@ import {
   SqliteDbStore,
   type SqliteDatabase,
 } from "~/lib/sqlite"
+
+import { UsageWorker } from "./worker-client"
 
 export type TokenUsageSource = "copilot" | "provider"
 
@@ -198,6 +201,13 @@ interface TokenUsagePage<T> {
 export type TokenUsageEventsPage = TokenUsagePage<TokenUsageEventRecord>
 export type TokenUsageSessionsPage = TokenUsagePage<TokenUsageSessionSummary>
 
+interface TokenUsagePageInput {
+  page: number
+  pageSize: number
+  period: TokenUsagePeriod
+  apiKeyId?: string | null
+}
+
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 const DEFAULT_DB_FILENAME = "copilot-api.sqlite"
 const COST_NANOS_PER_UNIT = 1_000_000_000
@@ -205,7 +215,9 @@ const TOKEN_USAGE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000
 const VIDEO_USAGE_POLL_INTERVAL_MS = 5000
 const DAY_MS = 24 * 60 * 60 * 1000
 
-let writeQueue: Promise<void> = Promise.resolve()
+let worker: UsageWorker | undefined
+let closing: Promise<void> | undefined
+let closingWorker = false
 let retentionTimer: ReturnType<typeof setInterval> | undefined
 let retentionStarted = false
 let stopVideoUsageSettlement: (() => Promise<void>) | undefined
@@ -216,8 +228,21 @@ function getDbPath(): string {
   )
 }
 
+function getWorker(): UsageWorker {
+  if (closingWorker) throw new Error("SQLite usage store is closing")
+  if (!worker) {
+    worker = new UsageWorker(getDbPath())
+    registerProcessCleanup(closeUsageStore)
+  }
+  return worker
+}
+
 const tokenUsageDbStore = new SqliteDbStore({
-  getPath: getDbPath,
+  getPath: () => {
+    if (typeof workerData !== "string")
+      throw new Error("SQLite usage database requires a worker")
+    return workerData
+  },
   initialize: initializeTokenUsageDb,
 })
 
@@ -456,14 +481,13 @@ function insertVideoUsageEvent(
 
 async function writeTokenUsageEvent(
   event: PersistedTokenUsageEvent,
-): Promise<void> {
+): Promise<boolean> {
   const db = await getDb()
-  const inserted =
-    (
+  return (
       event.source === "provider"
-      && event.endpoint === "videos_generations"
-      && event.provider_name
-      && event.upstream_request_id
+        && event.endpoint === "videos_generations"
+        && event.provider_name
+        && event.upstream_request_id
     ) ?
       insertVideoUsageEvent(
         db,
@@ -472,62 +496,69 @@ async function writeTokenUsageEvent(
         event.upstream_request_id,
       )
     : insertTokenUsageEvent(db, event)
-  if (
-    inserted
-    && event.api_key_id
-    && event.api_key_cost_nanos !== null
-    && event.api_key_cost_nanos !== undefined
-  )
-    quotaLedger?.add(
-      event.api_key_id,
-      event.api_key_cost_nanos,
-      event.created_at_ms,
-    )
+}
+
+async function writeTokenUsageTiming(
+  timing: Pick<RequestTiming, "id" | "firstTokenMs" | "durationMs" | "outcome">,
+): Promise<void> {
+  const db = await getDb()
+  db.prepare(
+    `
+    UPDATE token_usage_events
+    SET first_token_ms = ?, duration_ms = ?, request_outcome = ?
+    WHERE request_id = ?
+    `,
+  ).run(timing.firstTokenMs, timing.durationMs, timing.outcome, timing.id)
 }
 
 export function enqueueTokenUsageWrite(event: PersistedTokenUsageEvent): void {
-  if (!isTokenUsageStorageEnabled()) {
-    return
-  }
+  if (!isTokenUsageStorageEnabled()) return
 
-  writeQueue = writeQueue
-    .then(() => writeTokenUsageEvent(event))
-    .catch((error: unknown) => {
-      if (event.api_key_id) quotaWriteError = error
+  const state = quotaState
+  const id = event.api_key_id
+  const costNanos = event.api_key_cost_nanos
+  const at = event.created_at_ms
+
+  const completion = (async () => {
+    try {
+      const inserted = await getWorker().execute("writeTokenUsageEvent", event)
+      if (inserted && id && costNanos != null) {
+        state?.ledger.add(id, costNanos, at)
+      }
+    } catch (error) {
+      if (id) quotaWriteFailed = true
       consola.warn("Failed to record token usage", error)
-    })
+    }
+  })()
+
+  // Writes already submitted when the ledger loads are included in its replay.
+  // Track subsequent charges until SQLite confirms whether the row was new.
+  if (!state || !id || costNanos == null || costNanos <= 0) return
+  const pending = state.pending.get(id) ?? new Set<PendingCharge>()
+  const charge = { at, costNanos, completion }
+  pending.add(charge)
+  state.pending.set(id, pending)
+  void completion.then(() => {
+    pending.delete(charge)
+    if (pending.size === 0) state.pending.delete(id)
+  })
 }
 
-// Share the insert queue: early usage is preserved, then completed with timing.
-// Late usage carries the final snapshot directly, without a pending-request map.
 export function enqueueTokenUsageTiming(timing: RequestTiming): void {
   if (!isTokenUsageStorageEnabled()) return
   const { id, firstTokenMs, durationMs, outcome } = timing
-  writeQueue = writeQueue
-    .then(async () => {
-      const db = await getDb()
-      db.prepare(
-        `
-      UPDATE token_usage_events
-      SET first_token_ms = ?, duration_ms = ?, request_outcome = ?
-      WHERE request_id = ?
-    `,
-      ).run(firstTokenMs, durationMs, outcome, id)
-    })
-    .catch((error: unknown) => {
+  void (async () => {
+    try {
+      await getWorker().execute("writeTokenUsageTiming", {
+        id,
+        firstTokenMs,
+        durationMs,
+        outcome,
+      })
+    } catch (error) {
       consola.warn("Failed to record token usage timing", error)
-    })
-}
-
-async function flushTokenUsageEvents(): Promise<void> {
-  let currentQueue = writeQueue
-  while (true) {
-    await currentQueue
-    if (currentQueue === writeQueue) {
-      return
     }
-    currentQueue = writeQueue
-  }
+  })()
 }
 
 function getPeriodRange(period: TokenUsagePeriod, now = new Date()) {
@@ -1328,17 +1359,13 @@ function createDailyBucket(
   }
 }
 
-export async function getTokenUsageSummary(
+async function queryTokenUsageSummary(
   period: TokenUsagePeriod,
+  nowMs: number,
   apiKeyId?: string | null,
 ): Promise<TokenUsageSummary> {
-  if (!isTokenUsageStorageEnabled()) {
-    return createEmptySummary(period)
-  }
-
-  await flushTokenUsageEvents()
   const db = await getDb()
-  const range = getPeriodRangeFromDb(db, period, new Date(), apiKeyId)
+  const range = getPeriodRangeFromDb(db, period, new Date(nowMs), apiKeyId)
   const totalsRow = getTotalsRow(db, range)
 
   return {
@@ -1349,17 +1376,13 @@ export async function getTokenUsageSummary(
   }
 }
 
-export async function getTokenUsageDailySummary(
+async function queryTokenUsageDailySummary(
   period: TokenUsagePeriod,
+  nowMs: number,
   apiKeyId?: string | null,
 ): Promise<TokenUsageDailySummary> {
-  if (!isTokenUsageStorageEnabled()) {
-    return createEmptyDailySummary(period)
-  }
-
-  await flushTokenUsageEvents()
   const db = await getDb()
-  const range = getPeriodRangeFromDb(db, period, new Date(), apiKeyId)
+  const range = getPeriodRangeFromDb(db, period, new Date(nowMs), apiKeyId)
   const intervals = createDailyIntervals(range)
   const dailySummaries = getDailyModelSummaries(db, intervals)
 
@@ -1374,17 +1397,10 @@ export async function getTokenUsageDailySummary(
   }
 }
 
-export async function getTokenUsageEventsPage(input: {
-  page: number
-  pageSize: number
-  period: TokenUsagePeriod
-  apiKeyId?: string | null
-}): Promise<TokenUsageEventsPage> {
-  if (!isTokenUsageStorageEnabled()) {
-    return createEmptyEventsPage(input)
-  }
-
-  await flushTokenUsageEvents()
+async function queryTokenUsageEventsPage(
+  input: TokenUsagePageInput,
+  nowMs: number,
+): Promise<TokenUsageEventsPage> {
   const page = Math.max(1, Math.floor(input.page))
   const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize)))
   const offset = (page - 1) * pageSize
@@ -1392,7 +1408,7 @@ export async function getTokenUsageEventsPage(input: {
   const range = getPeriodRangeFromDb(
     db,
     input.period,
-    new Date(),
+    new Date(nowMs),
     input.apiKeyId,
   )
 
@@ -1466,24 +1482,17 @@ export async function getTokenUsageEventsPage(input: {
   }
 }
 
-export async function getTokenUsageSessionsPage(input: {
-  page: number
-  pageSize: number
-  period: TokenUsagePeriod
-  apiKeyId?: string | null
-}): Promise<TokenUsageSessionsPage> {
+async function queryTokenUsageSessionsPage(
+  input: TokenUsagePageInput,
+  nowMs: number,
+): Promise<TokenUsageSessionsPage> {
   const page = Math.max(1, Math.floor(input.page))
   const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize)))
-  if (!isTokenUsageStorageEnabled()) {
-    return { ...createEmptyEventsPage(input), items: [] }
-  }
-
-  await flushTokenUsageEvents()
   const db = await getDb()
   const range = getPeriodRangeFromDb(
     db,
     input.period,
-    new Date(),
+    new Date(nowMs),
     input.apiKeyId,
   )
   const totalRow = db
@@ -1508,6 +1517,44 @@ export async function getTokenUsageSessionsPage(input: {
   }
 }
 
+export async function getTokenUsageSummary(
+  period: TokenUsagePeriod,
+  apiKeyId?: string | null,
+) {
+  if (!isTokenUsageStorageEnabled()) return createEmptySummary(period)
+  return getWorker().execute(
+    "getTokenUsageSummary",
+    period,
+    Date.now(),
+    apiKeyId,
+  )
+}
+
+export async function getTokenUsageDailySummary(
+  period: TokenUsagePeriod,
+  apiKeyId?: string | null,
+) {
+  if (!isTokenUsageStorageEnabled()) return createEmptyDailySummary(period)
+  return getWorker().execute(
+    "getTokenUsageDailySummary",
+    period,
+    Date.now(),
+    apiKeyId,
+  )
+}
+
+export async function getTokenUsageEventsPage(input: TokenUsagePageInput) {
+  if (!isTokenUsageStorageEnabled()) return createEmptyEventsPage(input)
+  return getWorker().execute("getTokenUsageEventsPage", input, Date.now())
+}
+
+export async function getTokenUsageSessionsPage(input: TokenUsagePageInput) {
+  if (!isTokenUsageStorageEnabled()) {
+    return { ...createEmptyEventsPage(input), items: [] }
+  }
+  return getWorker().execute("getTokenUsageSessionsPage", input, Date.now())
+}
+
 export async function pruneTokenUsageEvents(options?: {
   nowMs?: number
   retentionDays?: number | null
@@ -1517,27 +1564,10 @@ export async function pruneTokenUsageEvents(options?: {
       options.retentionDays
     : getTokenUsageRetentionDays(),
   )
-  if (retentionDays === null || !isTokenUsageStorageEnabled()) {
-    return 0
-  }
+  if (retentionDays === null || !isTokenUsageStorageEnabled()) return 0
 
-  await flushTokenUsageEvents()
-  const nowMs = options?.nowMs ?? Date.now()
-  const cutoffMs = nowMs - retentionDays * DAY_MS
-  let deleted = 0
-  const task = writeQueue.then(async () => {
-    const db = await getDb()
-    persistApiKeyQuotaLedger(db)
-    const result = db
-      .prepare("DELETE FROM token_usage_events WHERE created_at_ms < ?")
-      .run(cutoffMs) as { changes?: number }
-    deleted = typeof result.changes === "number" ? result.changes : 0
-  })
-  writeQueue = task.catch((error: unknown) => {
-    consola.warn("Failed to prune token usage", error)
-  })
-  await task
-  return deleted
+  const cutoffMs = (options?.nowMs ?? Date.now()) - retentionDays * DAY_MS
+  return getWorker().execute("pruneTokenUsageEvents", cutoffMs)
 }
 
 export async function startTokenUsageRetention(): Promise<void> {
@@ -1564,30 +1594,70 @@ function stopTokenUsageRetention(): void {
   retentionStarted = false
 }
 
-export async function closeUsageStore(): Promise<void> {
-  stopTokenUsageRetention()
-  await stopVideoUsageSettlement?.()
-  stopVideoUsageSettlement = undefined
-  if (quotaTimer) clearInterval(quotaTimer)
-  quotaTimer = undefined
-  await flushTokenUsageEvents()
+export function closeUsageStore(): Promise<void> {
+  closing ??= (async () => {
+    stopTokenUsageRetention()
+    if (quotaTimer) clearInterval(quotaTimer)
+    quotaTimer = undefined
+    await stopVideoUsageSettlement?.()
+    stopVideoUsageSettlement = undefined
+
+    const current = worker
+    // Settlements can still enqueue writes while the poll and worker drain.
+    if (current) await current.waitForIdle()
+    closingWorker = true
+    try {
+      await current?.execute("closeUsageDatabase")
+    } finally {
+      worker = undefined
+      quotaState = undefined
+      quotaWriteFailed = false
+      await current?.terminate()
+    }
+  })().finally(() => {
+    closingWorker = false
+    closing = undefined
+  })
+  return closing
+}
+
+async function deleteExpiredUsageEvents(cutoffMs: number): Promise<number> {
+  const db = await getDb()
+  persistApiKeyQuotaLedger(db)
+  const result = db
+    .prepare("DELETE FROM token_usage_events WHERE created_at_ms < ?")
+    .run(cutoffMs) as { changes?: number }
+  return result.changes ?? 0
+}
+
+async function closeUsageDatabase(): Promise<void> {
   await tokenUsageDbStore.close({
     beforeClose: (db) => {
       persistApiKeyQuotaLedger(db)
       try {
         db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
       } catch {
-        // Ignore cleanup errors in tests.
+        // Ignore WAL cleanup errors during shutdown.
       }
     },
   })
-  writeQueue = Promise.resolve()
-  quotaLedger = null
-  quotaLoad = null
-  quotaWriteError = null
 }
 
-registerProcessCleanup(closeUsageStore)
+async function persistApiKeyQuotas(): Promise<void> {
+  persistApiKeyQuotaLedger(await getDb())
+}
+
+async function readQuotaBuckets(dayStartMs: number, monthStartMs: number) {
+  const ledger = readApiKeyQuotaLedger(await getDb())
+  return ledger
+    .snapshot()
+    .filter(
+      (bucket) =>
+        bucket.period === "lifetime"
+        || bucket.period_start_ms
+          >= (bucket.period === "day" ? dayStartMs : monthStartMs),
+    )
+}
 
 function apiKeyUsageTable(apiKeyId?: string | null): string {
   if (apiKeyId === undefined) return "token_usage_events"
@@ -1596,63 +1666,126 @@ function apiKeyUsageTable(apiKeyId?: string | null): string {
   return "(SELECT * FROM token_usage_events WHERE api_key_id " + filter + ")"
 }
 
-let quotaLedger: ApiKeyQuotaLedger | null = null
-let quotaLoad: Promise<void> | null = null
 let quotaTimer: ReturnType<typeof setInterval> | undefined
-let quotaWriteError: unknown = null
+let quotaWriteFailed = false
 
-async function loadApiKeyQuotas(): Promise<void> {
+interface PendingCharge {
+  at: number
+  costNanos: number
+  completion: Promise<void>
+}
+
+interface QuotaState {
+  dayStartMs: number
+  ledger: ApiKeyQuotaLedger
+  pending: Map<string, Set<PendingCharge>>
+  ready: Promise<void>
+}
+
+let quotaState: QuotaState | undefined
+
+function loadQuotaState(): QuotaState {
   if (!isTokenUsageStorageEnabled())
     throw new Error("API key quotas require SQLite support")
-  quotaLoad ??= (async () => {
-    await flushTokenUsageEvents()
-    const db = await getDb()
-    quotaLedger = readApiKeyQuotaLedger(db)
-    quotaTimer ??= setInterval(() => {
-      void flushApiKeyQuotas().catch((error: unknown) =>
-        consola.warn("Failed to persist API key quotas", error),
-      )
-    }, 5000)
-    quotaTimer.unref?.()
-  })().catch((error: unknown) => {
-    quotaLoad = null
-    throw error
-  })
-  await quotaLoad
+  if (closing) throw new Error("SQLite usage store is closing")
+
+  const now = Date.now()
+  if (!quotaState || now < quotaState.dayStartMs) {
+    // Older periods stay on disk and are restored if the clock moves back.
+    const dayStartMs = apiKeyQuotaWindow("day", now).startMs
+    const monthStartMs = apiKeyQuotaWindow("month", now).startMs
+    const ledger = new ApiKeyQuotaLedger()
+    const ready = getWorker()
+      .execute("readQuotaBuckets", dayStartMs, monthStartMs)
+      .then((buckets) => {
+        ledger.restore(buckets)
+        if (closing || quotaTimer) return
+        quotaTimer = setInterval(() => {
+          void flushApiKeyQuotas().catch((error: unknown) =>
+            consola.warn("Failed to persist API key quotas", error),
+          )
+        }, 5000)
+        quotaTimer.unref?.()
+      })
+      .catch((error: unknown) => {
+        if (quotaState?.ready === ready) quotaState = undefined
+        throw error
+      })
+    quotaState = { dayStartMs, ledger, pending: new Map(), ready }
+  }
+  return quotaState
 }
 
-export function flushApiKeyQuotas(): Promise<void> {
-  if (!isTokenUsageStorageEnabled()) return Promise.resolve()
-  const task = writeQueue.then(async () =>
-    persistApiKeyQuotaLedger(await getDb()),
-  )
-  writeQueue = task.catch((error: unknown) =>
-    consola.warn("Failed to persist API key quotas", error),
-  )
-  return task
+export async function initializeApiKeyQuotas(): Promise<void> {
+  await loadQuotaState().ready
 }
 
-export async function getApiKeyQuotaUsage(key: GatewayApiKeyConfig): Promise<{
-  usedAmount: number
-  remainingAmount: number | null
-  resetsAt: number | null
-}> {
-  await loadApiKeyQuotas()
-  await flushTokenUsageEvents()
-  if (quotaWriteError) throw new Error("API key usage could not be persisted")
+export async function flushApiKeyQuotas(): Promise<void> {
+  if (!isTokenUsageStorageEnabled()) return
+  await getWorker().execute("flushApiKeyQuotas")
+}
+
+function readQuotaUsage(
+  state: QuotaState,
+  key: GatewayApiKeyConfig,
+  now: number,
+) {
+  if (closing || quotaWriteFailed || worker?.failed)
+    throw new Error("API key usage could not be persisted")
   const period = key.quota?.period ?? "lifetime"
-  const usedCostNanos = quotaLedger?.used(key.id, period) ?? 0
+  const used = state.ledger.used(key.id, period, now)
   return {
-    usedAmount: usedCostNanos / 1_000_000_000,
+    usedAmount: used / COST_NANOS_PER_UNIT,
     remainingAmount:
       key.quota ?
-        Math.max(
-          0,
-          Math.round(key.quota.amount * 1_000_000_000) - usedCostNanos,
-        ) / 1_000_000_000
+        Math.max(0, Math.round(key.quota.amount * COST_NANOS_PER_UNIT) - used)
+        / COST_NANOS_PER_UNIT
       : null,
-    resetsAt: apiKeyQuotaWindow(period).endMs,
+    resetsAt: apiKeyQuotaWindow(period, now).endMs,
   }
+}
+
+export async function getApiKeyQuotaUsage(
+  key: GatewayApiKeyConfig,
+): Promise<ReturnType<typeof readQuotaUsage>> {
+  const state = loadQuotaState()
+  await state.ready
+  let pending = state.pending.get(key.id)
+  while (pending?.size) {
+    await Promise.all(Array.from(pending, (charge) => charge.completion))
+    pending = state.pending.get(key.id)
+  }
+  const now = Date.now()
+  if (state !== quotaState || now < state.dayStartMs)
+    return getApiKeyQuotaUsage(key)
+  return readQuotaUsage(state, key, now)
+}
+
+export async function getApiKeyQuotaAdmission(
+  key: GatewayApiKeyConfig,
+): Promise<ReturnType<typeof readQuotaUsage>> {
+  const state = loadQuotaState()
+  await state.ready
+  const now = Date.now()
+  if (state !== quotaState || now < state.dayStartMs)
+    return getApiKeyQuotaAdmission(key)
+  const usage = readQuotaUsage(state, key, now)
+  const pending = state.pending.get(key.id)
+  if (!pending || !key.quota || !usage.remainingAmount) return usage
+
+  const { period, amount } = key.quota
+  const { startMs, endMs } = apiKeyQuotaWindow(period, now)
+  const remainingCostNanos =
+    Math.round(amount * COST_NANOS_PER_UNIT)
+    - state.ledger.used(key.id, period, now)
+  let pendingCost = 0
+  for (const charge of pending) {
+    if (charge.at >= startMs && (endMs === null || charge.at < endMs))
+      pendingCost += charge.costNanos
+  }
+  // Only a charge that could exhaust this key must be confirmed before
+  // admitting it. A duplicate may settle without consuming any balance.
+  return pendingCost >= remainingCostNanos ? getApiKeyQuotaUsage(key) : usage
 }
 
 export interface VideoUsageJob {
@@ -1728,18 +1861,16 @@ function readVideoUsageJob(
   )
 }
 
-export async function getVideoUsageJob(
+async function lookupVideoUsageJob(
   provider: string,
   requestId: string,
 ): Promise<VideoUsageJob | undefined> {
-  if (!isTokenUsageStorageEnabled()) return undefined
   return readVideoUsageJob(await getDb(), provider, requestId)
 }
 
-export async function saveVideoUsageJob(
+async function writeVideoUsageJob(
   job: Omit<VideoUsageJob, "settled" | "next_poll_at_ms">,
 ): Promise<void> {
-  if (!isTokenUsageStorageEnabled()) return
   const db = await getDb()
   db.prepare(
     `
@@ -1761,7 +1892,7 @@ export async function saveVideoUsageJob(
   )
 }
 
-export async function getDueVideoUsageJobs(
+async function queryDueVideoUsageJobs(
   provider: string,
   now: number,
   limit: number,
@@ -1779,7 +1910,7 @@ export async function getDueVideoUsageJobs(
     .all(provider, now, limit) as Array<VideoUsageJob>
 }
 
-export async function deferVideoUsageJob(
+async function updateVideoUsageJobPoll(
   job: VideoUsageJob,
   nextPollAt: number,
 ): Promise<boolean> {
@@ -1802,9 +1933,7 @@ export async function deferVideoUsageJob(
   return Boolean(result.changes)
 }
 
-export async function stopPollingVideoUsageJob(
-  job: VideoUsageJob,
-): Promise<void> {
+async function clearVideoUsageJobPoll(job: VideoUsageJob): Promise<void> {
   const db = await getDb()
   db.prepare(
     `
@@ -1812,6 +1941,39 @@ export async function stopPollingVideoUsageJob(
     WHERE provider_name = ? AND request_id = ?
   `,
   ).run(job.provider_name, job.request_id)
+}
+
+export async function getVideoUsageJob(provider: string, requestId: string) {
+  if (!isTokenUsageStorageEnabled()) return undefined
+  return getWorker().execute("getVideoUsageJob", provider, requestId)
+}
+
+export async function saveVideoUsageJob(
+  job: Omit<VideoUsageJob, "settled" | "next_poll_at_ms">,
+): Promise<void> {
+  if (!isTokenUsageStorageEnabled()) return
+  await getWorker().execute("saveVideoUsageJob", job)
+}
+
+export async function getDueVideoUsageJobs(
+  provider: string,
+  now: number,
+  limit: number,
+) {
+  return getWorker().execute("getDueVideoUsageJobs", provider, now, limit)
+}
+
+export async function deferVideoUsageJob(
+  job: VideoUsageJob,
+  nextPollAtMs: number,
+) {
+  return getWorker().execute("deferVideoUsageJob", job, nextPollAtMs)
+}
+
+export async function stopPollingVideoUsageJob(
+  job: VideoUsageJob,
+): Promise<void> {
+  await getWorker().execute("stopPollingVideoUsageJob", job)
 }
 
 export function startVideoUsageSettlement(
@@ -1839,4 +2001,23 @@ export function startVideoUsageSettlement(
     await activePoll
   }
   pollIfIdle()
+}
+
+// The worker serializes these database operations. Callers use the exports above.
+export const usageDatabaseOperations = {
+  writeTokenUsageEvent,
+  writeTokenUsageTiming,
+  getTokenUsageSummary: queryTokenUsageSummary,
+  getTokenUsageDailySummary: queryTokenUsageDailySummary,
+  getTokenUsageEventsPage: queryTokenUsageEventsPage,
+  getTokenUsageSessionsPage: queryTokenUsageSessionsPage,
+  pruneTokenUsageEvents: deleteExpiredUsageEvents,
+  closeUsageDatabase,
+  flushApiKeyQuotas: persistApiKeyQuotas,
+  readQuotaBuckets,
+  getVideoUsageJob: lookupVideoUsageJob,
+  saveVideoUsageJob: writeVideoUsageJob,
+  getDueVideoUsageJobs: queryDueVideoUsageJobs,
+  deferVideoUsageJob: updateVideoUsageJobPoll,
+  stopPollingVideoUsageJob: clearVideoUsageJobPoll,
 }

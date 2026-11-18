@@ -77,6 +77,32 @@ describe("API key spending limit", () => {
     insert.run("one", 3, at)
     expect(readApiKeyQuotaLedger(db).used("one", "lifetime")).toBe(18)
   })
+  test("checkpoints charges without updating untouched quota buckets", async () => {
+    const db = await database()
+    const insert = db.prepare(
+      "INSERT INTO token_usage_events (api_key_id, api_key_cost_nanos, created_at_ms) VALUES (?, ?, ?)",
+    )
+    const at = Date.now()
+    insert.run("unchanged", 10, at)
+    insert.run("active", 10, at)
+    persistApiKeyQuotaLedger(db)
+    db.exec(`
+      CREATE TRIGGER prevent_unchanged_bucket_update
+      BEFORE UPDATE ON api_key_quota_usage
+      WHEN OLD.api_key_id = 'unchanged'
+      BEGIN
+        SELECT RAISE(ABORT, 'rewrote untouched quota bucket');
+      END
+    `)
+    persistApiKeyQuotaLedger(db)
+    insert.run("active", 5, at)
+    persistApiKeyQuotaLedger(db)
+
+    const ledger = readApiKeyQuotaLedger(db)
+    expect(ledger.used("unchanged", "lifetime")).toBe(10)
+    expect(ledger.used("active", "lifetime")).toBe(15)
+  })
+
   test("rolls back both counters and checkpoint when a flush fails", async () => {
     const db = await database()
     db.prepare(

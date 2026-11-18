@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test"
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  mock,
+  setSystemTime,
+  spyOn,
+  test,
+} from "bun:test"
 import { Hono } from "hono"
 import fs from "node:fs"
 import os from "node:os"
@@ -12,9 +20,14 @@ import { invalidateConfigCache } from "~/lib/config-store"
 import { forwardError } from "~/lib/error"
 import { PATHS } from "~/lib/paths"
 import { requestContext } from "~/lib/request-context"
+import { openSqliteDatabase } from "~/lib/sqlite"
 import { traceIdMiddleware } from "~/lib/trace"
 import { recordTokenUsageEvent } from "~/lib/token-usage"
-import { closeUsageStore } from "~/lib/token-usage/store"
+import {
+  closeUsageStore,
+  getApiKeyQuotaUsage,
+  initializeApiKeyQuotas,
+} from "~/lib/token-usage/store"
 
 let home: string
 let originalPath: string
@@ -189,6 +202,117 @@ test("settles actual tokens before admitting a later request", async () => {
   expect(exhausted.headers.get("Retry-After")).toBeNull()
   expect((await gateway.request("/models")).status).toBe(200)
 })
+function recordCharge(key: GatewayApiKeyConfig, upstreamRequestId: string) {
+  recordTokenUsageEvent({
+    source: "provider",
+    providerName: "custom",
+    endpoint: "responses",
+    model: "permitted",
+    apiKey: key,
+    upstreamRequestId,
+    input_tokens: 1,
+    cost: 1,
+  })
+}
+
+test("restores active quotas and reloads a past period if the clock moves back", async () => {
+  const key: GatewayApiKeyConfig = {
+    id: "one",
+    key: "key",
+    quota: { period: "day", amount: 2 },
+  }
+  const monthKey: GatewayApiKeyConfig = {
+    ...key,
+    quota: { period: "month", amount: 2 },
+  }
+  const january = new Date(2026, 0, 31, 12)
+  const february = new Date(2026, 1, 1, 12)
+  try {
+    setSystemTime(january)
+    recordCharge(key, "january")
+    setSystemTime(february)
+    recordCharge(key, "february")
+    await closeUsageStore()
+
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1)
+    expect((await getApiKeyQuotaUsage(monthKey)).usedAmount).toBe(1)
+    expect(
+      (await getApiKeyQuotaUsage({ id: key.id, key: key.key })).usedAmount,
+    ).toBe(2)
+    setSystemTime(january)
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1)
+    expect((await getApiKeyQuotaUsage(monthKey)).usedAmount).toBe(1)
+    setSystemTime(february)
+    expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1)
+  } finally {
+    setSystemTime()
+  }
+})
+
+test("admits requests with available balance while a SQLite write is blocked", async () => {
+  const roomy: GatewayApiKeyConfig = {
+    id: "roomy",
+    key: "roomy",
+    quota: { period: "lifetime", amount: 5 },
+  }
+  const tight: GatewayApiKeyConfig = {
+    id: "tight",
+    key: "tight",
+    quota: { period: "lifetime", amount: 1 },
+  }
+  await initializeApiKeyQuotas()
+  const locker = await openSqliteDatabase(path.join(home, "usage.sqlite"))
+  locker.exec("BEGIN IMMEDIATE")
+  let locked = true
+  const unlock = () => {
+    if (!locked) return
+    locker.exec("COMMIT")
+    locked = false
+  }
+
+  recordCharge(roomy, "first")
+  recordCharge(tight, "second")
+  let tightSettled = false
+  const tightResponse = Promise.resolve(
+    app(tight).request("/responses", { method: "POST" }),
+  ).then((response) => {
+    tightSettled = true
+    return response
+  })
+  const fallback = setTimeout(unlock, 1000)
+  try {
+    await Bun.sleep(30)
+    const response = await app(roomy).request("/responses", { method: "POST" })
+    expect(response.status).toBe(200)
+    expect(locked).toBe(true)
+    expect(tightSettled).toBe(false)
+  } finally {
+    clearTimeout(fallback)
+    unlock()
+    locker.close?.()
+  }
+  expect((await tightResponse).status).toBe(429)
+  expect((await getApiKeyQuotaUsage(roomy)).usedAmount).toBe(2)
+})
+
+test("checks the durable charge when a pending duplicate could exhaust a key", async () => {
+  const key: GatewayApiKeyConfig = {
+    id: "one",
+    key: "key",
+    quota: { period: "lifetime", amount: 2 },
+  }
+  recordCharge(key, "same-request")
+  expect((await getApiKeyQuotaUsage(key)).usedAmount).toBe(1)
+  recordCharge(key, "same-request")
+  const gateway = app(key)
+  expect((await gateway.request("/responses", { method: "POST" })).status).toBe(
+    200,
+  )
+  expect((await gateway.request("/responses", { method: "POST" })).status).toBe(
+    429,
+  )
+})
+
 test("returns a reset delay for exhausted calendar quotas", async () => {
   const response = await app({
     id: "one",
