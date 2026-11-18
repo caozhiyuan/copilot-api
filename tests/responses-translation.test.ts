@@ -521,7 +521,7 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result.prompt_cache_key).toBe("opencode-session")
   })
 
-  it("keeps unrelated system prompt text unchanged", () => {
+  it("translates the top-level system prompt to a leading developer message", () => {
     const payload = {
       model: "gpt-5.4",
       max_tokens: 1024,
@@ -541,8 +541,19 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
 
     const result = translateAnthropicMessagesToResponsesPayload(payload)
 
-    expect(result.instructions).toContain("ordinary system prompt")
-    expect(result.instructions).not.toContain("cch=<stable>;")
+    expect(result).not.toHaveProperty("instructions")
+    expect(result.input).toEqual([
+      {
+        type: "message",
+        role: "developer",
+        content: "ordinary system prompt",
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hello gpt54" }],
+      },
+    ])
   })
 
   it("translates inline system messages to developer items", () => {
