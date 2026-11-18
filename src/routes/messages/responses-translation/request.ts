@@ -108,11 +108,16 @@ export const translateAnthropicMessagesToResponsesPayload = (
   )
 
   const promptCacheKey = getPromptCacheKey()
+  const systemPrompt = translateSystemPrompt(payload.system, payload.model)
+
+  // GPT-6.2 does not cache top-level `instructions`; keep the system prompt in the input prefix.
+  if (systemPrompt && !payload.model.includes("grok")) {
+    input.unshift(createMessage("developer", systemPrompt))
+  }
 
   const responsesPayload: ResponsesPayload = {
     model: payload.model,
     input,
-    instructions: translateSystemPrompt(payload.system, payload.model),
     temperature: 1, // reasoning high temperature fixed to 1
     top_p: payload.top_p ?? null,
     max_output_tokens: payload.max_tokens,
@@ -146,10 +151,9 @@ export const translateAnthropicMessagesToResponsesPayload = (
     delete responsesPayload.top_p
     // Match Grok Build: omit the output limit and use upstream defaults.
     delete responsesPayload.max_output_tokens
-    if (responsesPayload.instructions) {
-      input.unshift(createMessage("system", responsesPayload.instructions))
+    if (systemPrompt) {
+      input.unshift(createMessage("system", systemPrompt))
     }
-    delete responsesPayload.instructions
   }
 
   return responsesPayload
