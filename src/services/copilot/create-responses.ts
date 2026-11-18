@@ -47,6 +47,7 @@ import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 // Copilot closes the Responses WebSocket with code 1009 (message too big) and
 // no terminal event for a message above 32 MiB.
 export const COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+const COPILOT_RESPONSES_MIN_OUTPUT_TOKENS = 16
 
 interface ResponsesRequestOptions {
   vision: boolean
@@ -85,7 +86,19 @@ export const createResponses = async (
 
   // service_tier is not supported by github copilot
   payload.service_tier = undefined
-  const upstreamPayload = omitUnsupportedCopilotInclude(payload)
+  let upstreamPayload = omitUnsupportedCopilotInclude(payload)
+  const maxOutputTokens = upstreamPayload.max_output_tokens
+  if (
+    typeof maxOutputTokens === "number"
+    && Number.isInteger(maxOutputTokens)
+    && maxOutputTokens > 0
+    && maxOutputTokens < COPILOT_RESPONSES_MIN_OUTPUT_TOKENS
+  ) {
+    upstreamPayload = {
+      ...upstreamPayload,
+      max_output_tokens: COPILOT_RESPONSES_MIN_OUTPUT_TOKENS,
+    }
+  }
 
   consola.log(`<-- model: ${payload.model}`)
 
