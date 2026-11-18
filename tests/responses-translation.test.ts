@@ -535,9 +535,14 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
   }
 
   it.each([
+    ["gpt-6", "developer"],
+    ["gpt-6-sol", "developer"],
+    ["gpt-6.1-sol", "developer"],
     ["gpt-6.2-sol", "developer"],
     ["gpt-6.2-astra", "developer"],
     ["openai/gpt-6.2-sol", "developer"],
+    ["gpt-6.3-sol", "developer"],
+    ["gpt-7-sol", "developer"],
     ["grok-4", "system"],
   ])("sends the top-level system prompt in input for %s", (model, role) => {
     const result = translateAnthropicMessagesToResponsesPayload({
@@ -556,7 +561,7 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     ])
   })
 
-  it.each(["gpt-5.4", "gpt-5.5", "gpt-6-sol", "gpt-6.1-sol"])(
+  it.each(["gpt-5.4", "gpt-5.5", "gpt-5.6-sol"])(
     "keeps the top-level system prompt in instructions for %s",
     (model) => {
       const result = translateAnthropicMessagesToResponsesPayload({

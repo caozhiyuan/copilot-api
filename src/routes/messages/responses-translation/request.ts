@@ -110,9 +110,11 @@ export const translateAnthropicMessagesToResponsesPayload = (
   const promptCacheKey = getPromptCacheKey()
   const systemPrompt = translateSystemPrompt(payload.system, payload.model)
   const isGrok = payload.model.includes("grok")
-  // GPT-6.2 caches the system prompt when it is part of the input prefix.
-  const sendSystemPromptInInput =
-    isGrok || /(?:^|\/)gpt-6\.2(?:-[^/]+)?$/u.test(payload.model)
+  const gptMajorVersion = /(?:^|\/)gpt-(\d+)(?:\.\d+)*(?:-[^/]+)?$/u.exec(
+    payload.model,
+  )?.[1]
+  // Keep the system prompt in the cacheable prefix for GPT-6 and later.
+  const sendSystemPromptInInput = isGrok || Number(gptMajorVersion ?? 0) >= 6
 
   if (systemPrompt && sendSystemPromptInInput) {
     input.unshift(createMessage(isGrok ? "system" : "developer", systemPrompt))
