@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-test("enforces key policies, isolates usage, restores quotas and ignores retained old keys", () => {
+test.each(["default", "explicit"])("managed key policies (%s)", (source) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "copilot-key-management-"))
   try {
     const config = {
@@ -41,10 +41,12 @@ test("enforces key policies, isolates usage, restores quotas and ignores retaine
       modelMappings: { alias: "codex/gpt-good" },
     }
     fs.writeFileSync(path.join(home, "config.json"), JSON.stringify(config))
+    const managedKeyOptions =
+      source === "explicit" ? "getApiKeys: getConfiguredApiKeys, " : ""
     const script = [
       'import { Hono } from "hono"',
       'import { traceIdMiddleware } from "./src/lib/trace.ts"',
-      'import { createAuthMiddleware, getConfiguredAdminApiKeys } from "./src/lib/request-auth.ts"',
+      'import { createAuthMiddleware, getConfiguredAdminApiKeys, getConfiguredApiKeys } from "./src/lib/request-auth.ts"',
       'import { apiKeyPolicyMiddleware } from "./src/lib/api-key-policy.ts"',
       'import { requestContext, setPluginRequestActualModel } from "./src/lib/request-context.ts"',
       'import { forwardError } from "./src/lib/error.ts"',
@@ -55,7 +57,7 @@ test("enforces key policies, isolates usage, restores quotas and ignores retaine
       "const app = new Hono()",
       "app.onError((error, c) => forwardError(c, error))",
       'app.use("*", traceIdMiddleware)',
-      'app.use("*", createAuthMiddleware({ allowUnauthenticatedPaths: [], shouldSkipPath: (path) => path.startsWith("/admin/") }))',
+      `app.use("*", createAuthMiddleware({ ${managedKeyOptions}allowUnauthenticatedPaths: [], shouldSkipPath: (path) => path.startsWith("/admin/") }))`,
       'app.use("/admin/*", createAuthMiddleware({ getApiKeys: getConfiguredAdminApiKeys, allowWhenNoApiKeys: false, allowUnauthenticatedPaths: [] }))',
       'app.use("*", apiKeyPolicyMiddleware)',
       'app.get("/models", (c) => c.json({ data: [{ id: "alias" }, { id: "forbidden" }], object: "list" }))',

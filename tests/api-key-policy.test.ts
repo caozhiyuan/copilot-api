@@ -103,8 +103,15 @@ function app(key?: GatewayApiKeyConfig) {
       if (shape === "other") return c.json({ metadata: true })
       if (shape === "models")
         return c.json({
+          data: null,
           models: [{ slug: "custom/permitted" }, { slug: "custom/denied" }],
         })
+      if (shape === "both") {
+        return c.json({
+          data: [{ id: "alias", slug: 1 }, { id: "denied" }],
+          models: [{ slug: "custom/permitted" }],
+        })
+      }
       const id =
         endpoint === "/custom/models" ? "permitted"
         : c.req.header("user-agent")?.includes("claude") ? "my-claude-alias[1m]"
@@ -159,6 +166,11 @@ test("filters mapped model ids, Claude discovery ids, provider catalogs and Code
     object: "list",
   })
   expect(await request("/v1/models?shape=models")).toEqual({
+    data: null,
+    models: [{ slug: "custom/permitted" }],
+  })
+  expect(await request("/models?shape=both")).toEqual({
+    data: [{ id: "alias", slug: 1 }],
     models: [{ slug: "custom/permitted" }],
   })
   expect(
