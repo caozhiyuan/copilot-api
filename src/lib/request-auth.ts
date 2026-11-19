@@ -113,7 +113,9 @@ function createUnauthorizedResponse(c: Context): Response {
 export function createAuthMiddleware(
   options: AuthMiddlewareOptions = {},
 ): MiddlewareHandler {
-  const { getApiKeys } = options
+  // The configured-key reader uses managed policies even when passed explicitly.
+  const getApiKeys =
+    options.getApiKeys === getConfiguredApiKeys ? undefined : options.getApiKeys
   const allowUnauthenticatedPaths = options.allowUnauthenticatedPaths ?? ["/"]
   const allowOptionsBypass = options.allowOptionsBypass ?? true
   const allowWhenNoApiKeys = options.allowWhenNoApiKeys ?? true
