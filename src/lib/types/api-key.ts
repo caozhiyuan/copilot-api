@@ -12,3 +12,10 @@ export interface GatewayApiKeyConfig {
     amount: number
   }
 }
+
+export interface ApiKeyQuotaUsage {
+  id: string
+  usedAmount: number
+  remainingAmount: number | null
+  resetsAt: number | null
+}

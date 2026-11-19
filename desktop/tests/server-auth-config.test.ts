@@ -5,6 +5,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { PATHS } from '../../src/lib/paths'
 import {
+  parseApiKeyQuotaUsage,
   readManagedApiKeys,
   readServerKeysConfig,
   writeServerKeysConfig,
@@ -58,6 +59,20 @@ async function writeConfig(
 }
 
 describe('desktop server-auth-config', () => {
+  test('validates quota usage returned by the gateway', () => {
+    const usage = [
+      { id: 'daily', usedAmount: 1.5, remainingAmount: 0, resetsAt: 12345 },
+      { id: 'unlimited', usedAmount: 0, remainingAmount: null, resetsAt: null },
+    ]
+    expect(parseApiKeyQuotaUsage(usage)).toEqual(usage)
+    expect(() => parseApiKeyQuotaUsage({ usage })).toThrow(
+      'Failed to load API key quotas',
+    )
+    expect(() =>
+      parseApiKeyQuotaUsage([{ ...usage[0], remainingAmount: '0' }]),
+    ).toThrow('Failed to load API key quotas')
+  })
+
   test('uses active managed keys for Desktop requests and keeps inactive keys editable', async () => {
     const homeDir = await fs.mkdtemp(
       path.join(os.tmpdir(), 'copilot-api-server-auth-'),

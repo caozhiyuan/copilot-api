@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import {
   isApiKeyActive,
   normalizeApiKeyRecord,
@@ -10,7 +11,26 @@ import {
   type AppConfig,
 } from '../../src/lib/config'
 import { normalizeApiKeys } from '../../src/lib/request-auth'
-import type { ServerKeysConfig, ServerKeysConfigUpdate } from '../src/types/ipc'
+import type {
+  ApiKeyQuotaUsage,
+  ServerKeysConfig,
+  ServerKeysConfigUpdate,
+} from '../src/types/ipc'
+
+const apiKeyQuotaUsageSchema = z.array(
+  z.looseObject({
+    id: z.string(),
+    usedAmount: z.number(),
+    remainingAmount: z.number().nullable(),
+    resetsAt: z.number().nullable(),
+  }),
+)
+
+export function parseApiKeyQuotaUsage(value: unknown): ApiKeyQuotaUsage[] {
+  const usage = apiKeyQuotaUsageSchema.safeParse(value)
+  if (!usage.success) throw new Error('Failed to load API key quotas')
+  return usage.data
+}
 
 export function normalizeAdminApiKey(adminApiKey: unknown): string {
   if (typeof adminApiKey !== 'string') return ''

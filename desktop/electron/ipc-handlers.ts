@@ -91,6 +91,7 @@ import { configEditorReply, createAppConfigEditor } from './config-editor'
 import { shouldRestartServerForSettings } from './settings-runtime'
 import { detectBunRuntime } from './bun-runtime'
 import {
+  parseApiKeyQuotaUsage,
   readServerKeysConfig,
   readManagedApiKeys,
   writeServerKeysConfig,
@@ -724,7 +725,7 @@ export function registerIpcHandlers(
       signal: AbortSignal.timeout(5000),
     })
     if (!response.ok) throw new Error('Failed to load API key quotas')
-    return (await response.json()) as unknown
+    return parseApiKeyQuotaUsage(await response.json())
   })
   ipcMain.handle('auth:get-server-keys', () => readServerKeysConfig())
   ipcMain.handle(

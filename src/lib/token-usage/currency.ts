@@ -1,3 +1,17 @@
+export const COST_NANOS_PER_UNIT = 1_000_000_000
+
+export function toCostNanos(amount: number): number {
+  return Math.round(amount * COST_NANOS_PER_UNIT)
+}
+
+export function isValidCostAmount(amount: unknown): amount is number {
+  return (
+    typeof amount === "number"
+    && amount >= 0
+    && Number.isSafeInteger(toCostNanos(amount))
+  )
+}
+
 // Shared with the OpenCode model catalog: 6.7 CNY per USD.
 const CNY_PER_USD = 6.7
 

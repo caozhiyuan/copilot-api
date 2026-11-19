@@ -2,27 +2,35 @@ import { Worker } from "node:worker_threads"
 
 import type { usageDatabaseOperations } from "./store"
 
-type Operation = keyof typeof usageDatabaseOperations
-type OperationArgs<Name extends Operation> = Parameters<
-  (typeof usageDatabaseOperations)[Name]
->
-type OperationResult<Name extends Operation> = Awaited<
-  ReturnType<(typeof usageDatabaseOperations)[Name]>
->
-
-export type UsageWorkerRequest = {
-  id: number
-  operation: Operation
-  args: Array<unknown>
+type Operations = typeof usageDatabaseOperations
+export type UsageOperation = keyof Operations
+type OperationArgs = {
+  [Name in UsageOperation]: Parameters<Operations[Name]>
+}
+type OperationResult = {
+  [Name in UsageOperation]: Awaited<ReturnType<Operations[Name]>>
 }
 
-export type UsageWorkerResponse = { id: number } & (
-  | { ok: true; value: unknown }
-  | { ok: false; error: string }
-)
+export type UsageDatabaseHandlers = {
+  [Name in UsageOperation]: (
+    ...args: OperationArgs[Name]
+  ) => Promise<OperationResult[Name]>
+}
+
+export type UsageWorkerRequest<Name extends UsageOperation = UsageOperation> = {
+  [Key in Name]: { id: number; operation: Key; args: OperationArgs[Key] }
+}[Name]
+
+export type UsageWorkerResponse<Name extends UsageOperation = UsageOperation> =
+  {
+    id: number
+  } & (
+    | { ok: true; value: OperationResult[Name] }
+    | { ok: false; error: string }
+  )
 
 interface PendingOperation {
-  resolve: (value: unknown) => void
+  resolve: (value: OperationResult[UsageOperation]) => void
   reject: (reason: Error) => void
 }
 
@@ -53,16 +61,16 @@ export class UsageWorker {
     this.worker.unref()
   }
 
-  execute<Name extends Operation>(
+  execute<Name extends UsageOperation>(
     operation: Name,
-    ...args: OperationArgs<Name>
-  ): Promise<OperationResult<Name>> {
+    ...args: OperationArgs[Name]
+  ): Promise<OperationResult[Name]> {
     if (this.failure) return Promise.reject(this.failure)
 
     return new Promise((resolve, reject) => {
       const id = this.nextId++
       this.pending.set(id, {
-        resolve: (value) => resolve(value as OperationResult<Name>),
+        resolve: (value) => resolve(value as OperationResult[Name]),
         reject,
       })
       this.worker.ref()
@@ -71,7 +79,7 @@ export class UsageWorker {
           id,
           operation,
           args,
-        } satisfies UsageWorkerRequest)
+        } satisfies UsageWorkerRequest<Name>)
       } catch (error) {
         this.pending.delete(id)
         reject(error instanceof Error ? error : new Error(String(error)))

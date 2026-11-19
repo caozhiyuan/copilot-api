@@ -30,11 +30,16 @@ describe("API key spending limit", () => {
     ledger.add("two", 99, after)
     ledger.add("one", -1, after)
     ledger.add("one", NaN, after)
-    expect(ledger.used("one", "day", before)).toBe(10)
-    expect(ledger.used("one", "month", before)).toBe(10)
-    expect(ledger.used("one", "day", after)).toBe(5)
-    expect(ledger.used("one", "month", after)).toBe(5)
-    expect(ledger.used("one", "lifetime", after)).toBe(15)
+    const beforeDay = apiKeyQuotaWindow("day", before)
+    expect(ledger.used("one", "day", beforeDay)).toBe(10)
+    expect(
+      ledger.used("one", "month", apiKeyQuotaWindow("month", before)),
+    ).toBe(10)
+    expect(ledger.used("one", "day", apiKeyQuotaWindow("day", after))).toBe(5)
+    expect(ledger.used("one", "month", apiKeyQuotaWindow("month", after))).toBe(
+      5,
+    )
+    expect(ledger.used("one", "lifetime")).toBe(15)
     expect(ledger.used("missing", "lifetime")).toBe(0)
     expect(apiKeyQuotaWindow("lifetime", before)).toEqual({
       startMs: 0,
@@ -51,7 +56,7 @@ describe("API key spending limit", () => {
     expect(restored.used("one", "lifetime")).toBe(15)
     const snapshot = ledger.snapshot()
     snapshot[0].used_cost_nanos = 1234
-    expect(ledger.used("one", "day", before)).toBe(10)
+    expect(ledger.used("one", "day", beforeDay)).toBe(10)
     expect(ledger.used("one", "lifetime")).toBe(15)
   })
   test("replays uncheckpointed events once and preserves quotas after history cleanup", async () => {
@@ -110,8 +115,8 @@ describe("API key spending limit", () => {
     ).run("one", 10, Date.now())
     const failing: SqliteDatabase = {
       exec: (sql) => db.exec(sql),
-      prepare: (sql) => {
-        const statement = db.prepare(sql)
+      prepare: <Row>(sql: string) => {
+        const statement = db.prepare<Row>(sql)
         if (!sql.startsWith("UPDATE api_key_quota_checkpoint")) return statement
         return {
           all: (...values) => statement.all(...values),

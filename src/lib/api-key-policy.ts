@@ -1,9 +1,12 @@
 import { fromClaudeDiscoveryModelId, isClaudeUserAgent } from "./claude-models"
-import type { MiddlewareHandler } from "hono"
+import type { Context, MiddlewareHandler } from "hono"
 
 import { getRawProviderConfig } from "./provider-config"
 import { resolveMappedModel } from "./model-policy"
-import { isApiKeyModelAllowed } from "./api-key-config"
+import {
+  isApiKeyModelAllowed,
+  type GatewayApiKeyConfig,
+} from "./api-key-config"
 import { forwardError } from "./error"
 import { requestContext } from "./request-context"
 import { isApiKeyUsageIsolated } from "./request-auth"
@@ -12,6 +15,44 @@ import { getApiKeyQuotaAdmission } from "./token-usage/store"
 export const apiKeyPolicyDependencies = {
   getRawProviderConfig,
   resolveMappedModel,
+}
+
+async function checkApiKeyQuota(
+  c: Context,
+  key: GatewayApiKeyConfig,
+): Promise<Response | undefined> {
+  try {
+    const { remainingCostNanos, endMs } = await getApiKeyQuotaAdmission(key)
+    if (remainingCostNanos !== 0) return undefined
+
+    if (endMs) {
+      const retryAfter = Math.max(1, Math.ceil((endMs - Date.now()) / 1000))
+      c.header("Retry-After", String(retryAfter))
+    }
+    return c.json(
+      {
+        error: {
+          message: "API key spending limit exhausted",
+          type: "rate_limit_error",
+          code: "api_key_quota_exceeded",
+        },
+      },
+      429,
+    )
+  } catch (error) {
+    return c.json(
+      {
+        error: {
+          message:
+            error instanceof Error ?
+              error.message
+            : "API key quota unavailable",
+          type: "service_unavailable",
+        },
+      },
+      503,
+    )
+  }
 }
 
 export const apiKeyPolicyMiddleware: MiddlewareHandler = async (c, next) => {
@@ -28,41 +69,8 @@ export const apiKeyPolicyMiddleware: MiddlewareHandler = async (c, next) => {
     )
   }
   if (key?.quota && c.req.method === "POST") {
-    try {
-      const usage = await getApiKeyQuotaAdmission(key)
-      if (usage.remainingAmount !== null && usage.remainingAmount <= 0) {
-        if (usage.resetsAt)
-          c.header(
-            "Retry-After",
-            String(
-              Math.max(1, Math.ceil((usage.resetsAt - Date.now()) / 1000)),
-            ),
-          )
-        return c.json(
-          {
-            error: {
-              message: "API key spending limit exhausted",
-              type: "rate_limit_error",
-              code: "api_key_quota_exceeded",
-            },
-          },
-          429,
-        )
-      }
-    } catch (error) {
-      return c.json(
-        {
-          error: {
-            message:
-              error instanceof Error ?
-                error.message
-              : "API key quota unavailable",
-            type: "service_unavailable",
-          },
-        },
-        503,
-      )
-    }
+    const rejection = await checkApiKeyQuota(c, key)
+    if (rejection) return rejection
   }
   try {
     await next()

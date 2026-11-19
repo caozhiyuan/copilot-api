@@ -1,4 +1,4 @@
-import type { ApiKeyQuotaPeriod } from "./api-key-config"
+import type { ApiKeyQuotaPeriod } from "./types/api-key"
 
 export interface ApiKeyQuotaBucket {
   api_key_id: string
@@ -62,11 +62,14 @@ export class ApiKeyQuotaLedger {
     }
   }
 
-  used(id: string, period: ApiKeyQuotaPeriod, at = Date.now()): number {
+  used(
+    id: string,
+    period: ApiKeyQuotaPeriod,
+    window = apiKeyQuotaWindow(period),
+  ): number {
     return (
-      this.buckets.get(
-        this.bucketKey(id, period, apiKeyQuotaWindow(period, at).startMs),
-      )?.used_cost_nanos ?? 0
+      this.buckets.get(this.bucketKey(id, period, window.startMs))
+        ?.used_cost_nanos ?? 0
     )
   }
 
