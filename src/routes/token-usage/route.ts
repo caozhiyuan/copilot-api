@@ -1,5 +1,4 @@
-import { requestContext } from "~/lib/request-context"
-import { isApiKeyUsageIsolated } from "~/lib/request-auth"
+import { getIsolatedApiKeyId } from "~/lib/request-auth"
 import { Hono, type Context } from "hono"
 
 import {
@@ -74,8 +73,8 @@ tokenUsageRoute.get("/sessions", async (c) =>
 )
 
 function apiKeyScope(c: Context): string | null | undefined {
-  const key = requestContext.getStore()?.apiKey
-  if (key && isApiKeyUsageIsolated()) return key.id
+  const isolatedKeyId = getIsolatedApiKeyId()
+  if (isolatedKeyId !== undefined) return isolatedKeyId
   const id =
     c.req.path.startsWith("/admin/") ? c.req.query("api_key_id") : undefined
   return id === "__unattributed__" ? null : id

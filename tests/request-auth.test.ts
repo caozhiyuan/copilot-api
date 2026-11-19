@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 
-import { createAuthMiddleware, isApiKeyUsageIsolated } from "~/lib/request-auth"
+import { createAuthMiddleware, getIsolatedApiKeyId } from "~/lib/request-auth"
 import { apiKeyPolicyMiddleware } from "~/lib/api-key-policy"
 import { traceIdMiddleware } from "~/lib/trace"
 import * as config from "~/lib/config"
@@ -57,11 +57,15 @@ describe("request auth middleware", () => {
         app.use("*", traceIdMiddleware)
         app.use("*", createAuthMiddleware())
         app.use("*", apiKeyPolicyMiddleware)
-        app.get("/models", (c) => c.json({ isolated: isApiKeyUsageIsolated() }))
+        app.get("/models", (c) =>
+          c.json({ isolatedKeyId: getIsolatedApiKeyId() ?? null }),
+        )
         app.get("/usage/codex", (c) => c.json({ available: true }))
         const headers = { "x-api-key": "regular-key" }
         const status = await app.request("/models", { headers })
-        expect(await status.json()).toEqual({ isolated: isolated === true })
+        expect(await status.json()).toEqual({
+          isolatedKeyId: isolated ? "client" : null,
+        })
         expect(status.headers.get("X-API-Key-Usage-Isolated")).toBe(
           String(isolated === true),
         )
@@ -73,6 +77,39 @@ describe("request auth middleware", () => {
       }
     },
   )
+  test("distinguishes an empty managed key list from disabled and expired keys", async () => {
+    const setting = spyOn(config, "getConfig").mockReturnValue({
+      auth: { apiKeyConfigs: [] },
+    })
+    try {
+      const app = new Hono()
+      app.use("*", createAuthMiddleware())
+      app.get("/models", (c) => c.json({ ok: true }))
+      expect((await app.request("/models")).status).toBe(200)
+
+      setting.mockReturnValue({
+        auth: {
+          apiKeyConfigs: [
+            { id: "disabled", key: "disabled-key", enabled: false },
+            { id: "expired", key: "expired-key", expiresAt: "2000-01-01" },
+          ],
+        },
+      })
+      expect((await app.request("/models")).status).toBe(401)
+      for (const key of ["disabled-key", "expired-key"]) {
+        const response = await app.request("/models", {
+          headers: { "x-api-key": key },
+        })
+        expect(response.status).toBe(401)
+        expect(response.headers.get("WWW-Authenticate")).toBe(
+          'Bearer realm="copilot-api"',
+        )
+      }
+    } finally {
+      setting.mockRestore()
+    }
+  })
+
   test("accepts regular api keys for protected non-admin routes", async () => {
     const app = createApp()
     const response = await app.request("/models", {

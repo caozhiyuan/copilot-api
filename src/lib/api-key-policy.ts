@@ -9,7 +9,7 @@ import {
 } from "./api-key-config"
 import { forwardError } from "./error"
 import { requestContext } from "./request-context"
-import { isApiKeyUsageIsolated } from "./request-auth"
+import { getIsolatedApiKeyId } from "./request-auth"
 import { getApiKeyQuotaAdmission } from "./token-usage/store"
 
 export const apiKeyPolicyDependencies = {
@@ -55,9 +55,77 @@ async function checkApiKeyQuota(
   }
 }
 
+async function filterModelCatalog(
+  c: Context,
+  key: GatewayApiKeyConfig,
+): Promise<void> {
+  const response = c.res
+  const payload: unknown = await response
+    .clone()
+    .json()
+    .catch(() => null)
+  if (typeof payload !== "object" || payload === null) return
+
+  const catalog:
+    | { field: "data" | "models"; entries: Array<unknown> }
+    | undefined =
+    "data" in payload && Array.isArray(payload.data) ?
+      { field: "data", entries: payload.data }
+    : "models" in payload && Array.isArray(payload.models) ?
+      { field: "models", entries: payload.models }
+    : undefined
+  if (!catalog) return
+
+  const { field, entries } = catalog
+  const pathProvider = c.req.path
+    .replace(/^\/|\/$/g, "")
+    .split("/")
+    .find((part) => part !== "v1" && part !== "models")
+  const isClaude = isClaudeUserAgent(c.req.header("user-agent"))
+  const models = entries.filter((model) => {
+    if (typeof model !== "object" || model === null) return false
+    const id =
+      "slug" in model && typeof model.slug === "string" ? model.slug
+      : "id" in model ? model.id
+      : undefined
+    if (typeof id !== "string") return false
+    const upstreamId = isClaude ? fromClaudeDiscoveryModelId(id) : id
+    const target =
+      pathProvider ? upstreamId : (
+        apiKeyPolicyDependencies.resolveMappedModel(upstreamId)
+      )
+    const slash = target.indexOf("/")
+    const provider =
+      pathProvider
+      ?? ((
+        slash > 0
+        && apiKeyPolicyDependencies.getRawProviderConfig(target.slice(0, slash))
+      ) ?
+        target.slice(0, slash)
+      : "github-copilot")
+    const actual =
+      target.startsWith(provider + "/") ?
+        target.slice(provider.length + 1)
+      : target
+    return isApiKeyModelAllowed(key, actual, provider)
+  })
+  const headers = new Headers(response.headers)
+  for (const name of ["content-length", "etag", "content-encoding"]) {
+    headers.delete(name)
+    c.header(name, undefined)
+  }
+  c.res = Response.json(
+    { ...payload, [field]: models },
+    { status: response.status, headers },
+  )
+}
+
 export const apiKeyPolicyMiddleware: MiddlewareHandler = async (c, next) => {
   const key = requestContext.getStore()?.apiKey
-  if (isApiKeyUsageIsolated() && /^\/usage(?:\/|$)/.test(c.req.path)) {
+  if (
+    /^\/usage(?:\/|$)/.test(c.req.path)
+    && getIsolatedApiKeyId() !== undefined
+  ) {
     return c.json(
       {
         error: {
@@ -78,62 +146,11 @@ export const apiKeyPolicyMiddleware: MiddlewareHandler = async (c, next) => {
     return await forwardError(c, error)
   }
   if (
-    !key?.allowedModels
-    || c.req.method !== "GET"
-    || !/(?:^|\/)models\/?$/.test(c.req.path)
-    || !c.res.ok
-  )
-    return
-  const body: unknown = await c.res
-    .clone()
-    .json()
-    .catch(() => null)
-  if (typeof body !== "object" || body === null) return
-  const payload = body as Record<string, unknown>
-  const list =
-    Array.isArray(payload.data) ? "data"
-    : Array.isArray(payload.models) ? "models"
-    : null
-  if (!list) return
-  const pathProvider = c.req.path
-    .replace(/^\/|\/$/g, "")
-    .split("/")
-    .find((part) => part !== "v1" && part !== "models")
-  const data = (payload[list] as Array<unknown>).filter((value) => {
-    if (typeof value !== "object" || value === null) return false
-    const model = value as Record<string, unknown>
-    const id = typeof model.slug === "string" ? model.slug : model.id
-    if (typeof id !== "string") return false
-    const upstreamId =
-      isClaudeUserAgent(c.req.header("user-agent")) ?
-        fromClaudeDiscoveryModelId(id)
-      : id
-    const target =
-      pathProvider ? upstreamId : (
-        apiKeyPolicyDependencies.resolveMappedModel(upstreamId)
-      )
-    const slash = target.indexOf("/")
-    const provider =
-      pathProvider
-      ?? ((
-        slash > 0
-        && apiKeyPolicyDependencies.getRawProviderConfig(target.slice(0, slash))
-      ) ?
-        target.slice(0, slash)
-      : "github-copilot")
-    const actual =
-      target.startsWith(provider + "/") ?
-        target.slice(provider.length + 1)
-      : target
-    return isApiKeyModelAllowed(key, actual, provider)
-  })
-  const headers = new Headers(c.res.headers)
-  for (const name of ["content-length", "etag", "content-encoding"]) {
-    headers.delete(name)
-    c.header(name, undefined)
+    key?.allowedModels
+    && c.req.method === "GET"
+    && /(?:^|\/)models\/?$/.test(c.req.path)
+    && c.res.ok
+  ) {
+    await filterModelCatalog(c, key)
   }
-  c.res = Response.json(
-    { ...payload, [list]: data },
-    { status: c.res.status, headers },
-  )
 }
