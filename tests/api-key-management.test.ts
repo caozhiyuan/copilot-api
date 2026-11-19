@@ -60,7 +60,7 @@ test.each(["default", "explicit"])("managed key policies (%s)", (source) => {
       `app.use("*", createAuthMiddleware({ ${managedKeyOptions}allowUnauthenticatedPaths: [], shouldSkipPath: (path) => path.startsWith("/admin/") }))`,
       'app.use("/admin/*", createAuthMiddleware({ getApiKeys: getConfiguredAdminApiKeys, allowWhenNoApiKeys: false, allowUnauthenticatedPaths: [] }))',
       'app.use("*", apiKeyPolicyMiddleware)',
-      'app.get("/models", (c) => c.json({ data: [{ id: "alias" }, { id: "forbidden" }], object: "list" }))',
+      'app.get("/models", (c) => c.json({ data: [{ id: "alias" }, { id: "codex/not-allowed" }], object: "list" }))',
       'app.post("/responses", async (c) => {',
       '  const payload = await c.req.json(); const target = resolveMappedModel(payload.model); const parts = target.split("/");',
       '  setPluginRequestActualModel(parts.slice(1).join("/"), parts[0]);',
@@ -76,7 +76,8 @@ test.each(["default", "explicit"])("managed key policies (%s)", (source) => {
       'result.disabled = (await call("disabled", "/models")).status',
       'result.expired = (await call("expired", "/models")).status',
       'result.legacy = (await call("legacy-only", "/models")).status',
-      'result.forbidden = (await call("old-a", "/responses", { model: "codex/not-allowed" })).status',
+      'const forbidden = await call("old-a", "/responses", { model: "codex/not-allowed" })',
+      "result.forbidden = { status: forbidden.status, code: (await forbidden.json()).error?.code }",
       'result.models = await (await call("old-a", "/models")).json()',
       'result.unpriced = (await call("key-b", "/responses", { model: "codex/no-price" })).status',
       'result.allowed = (await call("old-a", "/responses", { model: "alias" })).status',
@@ -141,7 +142,7 @@ test.each(["default", "explicit"])("managed key policies (%s)", (source) => {
       disabled: number
       expired: number
       legacy: number
-      forbidden: number
+      forbidden: { status: number; code: string }
       unpriced: number
       allowed: number
       exhausted: number
@@ -183,9 +184,12 @@ test.each(["default", "explicit"])("managed key policies (%s)", (source) => {
     expect([result.disabled, result.expired, result.legacy]).toEqual([
       401, 401, 401,
     ])
-    expect(result.forbidden).toBe(403)
+    expect(result.forbidden).toEqual({ status: 403, code: "model_not_allowed" })
     expect(result.unpriced).toBe(403)
-    expect(result.models.data).toEqual([{ id: "alias" }])
+    expect(result.models.data).toEqual([
+      { id: "alias" },
+      { id: "codex/not-allowed" },
+    ])
     expect([result.allowed, result.exhausted, result.other]).toEqual([
       200, 429, 200,
     ])

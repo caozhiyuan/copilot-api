@@ -54,7 +54,7 @@
 
 ### 访问密钥
 
-- **auth.apiKeyConfigs：** 客户端网关 Key 的配置数组。每个对象包含固定的 `id` 和 `key`，可选 `name`、`enabled`、`expiresAt`、`allowedModels`、`quota`。默认启用、无过期时间、允许全部模型、无额度限制；`allowedModels: []` 表示不允许任何模型。支持 `codex/*` 等模型规则，按映射后的实际 provider/model 检查。请求仍使用 `x-api-key` 或 `Authorization: Bearer`。
+- **auth.apiKeyConfigs：** 客户端网关 Key 的配置数组。每个对象包含固定的 `id` 和 `key`，可选 `name`、`enabled`、`expiresAt`、`allowedModels`、`quota`。默认启用、无过期时间、允许调用全部模型、无额度限制。`allowedModels: []` 禁止调用任何模型。模型请求转发前，网关用 `codex/*` 等规则检查映射后的实际 `provider/model`。模型目录可以包含该 Key 无权调用的模型。请求使用 `x-api-key` 或 `Authorization: Bearer`。
 - **auth.isolateApiKeyUsage：** 默认 `false`，普通 Key 可查看全部用量和历史数据。在 Desktop 的 API Keys 页开启后，每个 Key 只能查看自己的用量，网页端隐藏订阅额度页，订阅额度接口对普通 Key 返回 403。修改后刷新网页即可更新显示。Admin 用量查询和各 Key 的金额记账不受影响。
 
 - **auth.adminApiKey：** 管理接口专用的密钥，只能用于 `/admin/*`。若未配置，服务会在启动时自动生成一个随机 key，并回写到 `config.json`。它同样使用 `x-api-key` 或 `Authorization: Bearer` 这两种头，但普通 `auth.apiKeyConfigs` 不能访问 `/admin/*`。

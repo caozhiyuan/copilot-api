@@ -1,20 +1,9 @@
-import {
-  afterEach,
-  beforeEach,
-  expect,
-  mock,
-  setSystemTime,
-  spyOn,
-  test,
-} from "bun:test"
+import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test"
 import { Hono } from "hono"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import {
-  apiKeyPolicyMiddleware,
-  apiKeyPolicyDependencies,
-} from "~/lib/api-key-policy"
+import { apiKeyPolicyMiddleware } from "~/lib/api-key-policy"
 import type { GatewayApiKeyConfig } from "~/lib/types/api-key"
 import { invalidateConfigCache } from "~/lib/config-store"
 import { forwardError } from "~/lib/error"
@@ -41,34 +30,9 @@ beforeEach(async () => {
   process.env.COPILOT_API_SQLITE_DB_PATH = path.join(home, "usage.sqlite")
   fs.writeFileSync(
     PATHS.CONFIG_PATH,
-    JSON.stringify({
-      auth: { apiKeyConfigs: [] },
-      modelMappings: { alias: "custom/permitted" },
-      providers: {
-        custom: {
-          type: "openai-compatible",
-          baseUrl: "https://example.com",
-          apiKey: "unused",
-        },
-      },
-    }),
+    JSON.stringify({ auth: { apiKeyConfigs: [] } }),
   )
   invalidateConfigCache()
-  // Other route suites mock configuration exports. Give this middleware its
-  // own mapping dependencies while exercising its real HTTP and quota paths.
-  spyOn(apiKeyPolicyDependencies, "resolveMappedModel").mockImplementation(
-    (model) => (model === "alias" ? "custom/permitted" : model),
-  )
-  spyOn(apiKeyPolicyDependencies, "getRawProviderConfig").mockImplementation(
-    (name) =>
-      name === "custom" ?
-        {
-          type: "openai-compatible",
-          baseUrl: "https://example.com",
-          apiKey: "unused",
-        }
-      : null,
-  )
 })
 afterEach(async () => {
   await closeUsageStore().catch(() => {})
@@ -76,7 +40,6 @@ afterEach(async () => {
   if (originalDb === undefined) delete process.env.COPILOT_API_SQLITE_DB_PATH
   else process.env.COPILOT_API_SQLITE_DB_PATH = originalDb
   invalidateConfigCache()
-  mock.restore()
   fs.rmSync(home, { recursive: true, force: true })
 })
 function app(key?: GatewayApiKeyConfig) {
@@ -89,40 +52,17 @@ function app(key?: GatewayApiKeyConfig) {
     await next()
   })
   gateway.use("*", apiKeyPolicyMiddleware)
-  for (const endpoint of [
-    "/models",
-    "/custom/models",
-    "/v1/models",
-    "/other",
-  ]) {
-    gateway.get(endpoint, (c) => {
-      const shape = c.req.query("shape")
-      if (shape === "text") return c.text("plain")
-      if (shape === "error") return c.json({ error: "unavailable" }, 503)
-      if (shape === "null") return c.json(null)
-      if (shape === "other") return c.json({ metadata: true })
-      if (shape === "models")
-        return c.json({
-          data: null,
-          models: [{ slug: "custom/permitted" }, { slug: "custom/denied" }],
-        })
-      if (shape === "both") {
-        return c.json({
-          data: [{ id: "alias", slug: 1 }, { id: "denied" }],
-          models: [{ slug: "custom/permitted" }],
-        })
-      }
-      const id =
-        endpoint === "/custom/models" ? "permitted"
-        : c.req.header("user-agent")?.includes("claude") ? "my-claude-alias[1m]"
-        : "alias"
-      c.header("etag", "original-catalog")
-      return c.json({
-        data: [{ id }, { id: "denied" }, null, { id: 1 }, false],
-        object: "list",
-      })
+  gateway.get("/models", (c) => {
+    c.header("etag", '"original-catalog"')
+    return c.json({
+      data: [{ id: "custom/permitted" }, { id: "custom/denied" }],
+      object: "list",
     })
-  }
+  })
+  gateway.get("/custom/v1/models", (c) => {
+    c.header("etag", '"provider-catalog"')
+    return c.json({ models: [{ slug: "permitted" }, { slug: "denied" }] })
+  })
   gateway.post("/responses", (c) => {
     recordTokenUsageEvent({
       source: "provider",
@@ -136,65 +76,24 @@ function app(key?: GatewayApiKeyConfig) {
   })
   return gateway
 }
-async function responseJson(
-  response: Response | Promise<Response>,
-): Promise<unknown> {
-  return await (await response).json()
-}
-
-test("filters mapped model ids, Claude discovery ids, provider catalogs and Codex slugs", async () => {
+test("returns full model catalogs and their headers for a restricted key", async () => {
   const gateway = app({
     id: "one",
     key: "key",
     allowedModels: ["custom/permitted"],
   })
-  const request = async (url: string, headers?: Record<string, string>) => {
-    const response = await gateway.request(url, { headers })
-    expect(response.headers.get("etag")).toBeNull()
-    return await response.json()
-  }
-  expect(await request("/models")).toEqual({
-    data: [{ id: "alias" }],
+  const catalog = await gateway.request("/models")
+  expect(catalog.status).toBe(200)
+  expect(catalog.headers.get("etag")).toBe('"original-catalog"')
+  expect(await catalog.json()).toEqual({
+    data: [{ id: "custom/permitted" }, { id: "custom/denied" }],
     object: "list",
   })
-  expect(await request("/models", { "user-agent": "claude-code" })).toEqual({
-    data: [{ id: "my-claude-alias[1m]" }],
-    object: "list",
-  })
-  expect(await request("/custom/models")).toEqual({
-    data: [{ id: "permitted" }],
-    object: "list",
-  })
-  expect(await request("/v1/models?shape=models")).toEqual({
-    data: null,
-    models: [{ slug: "custom/permitted" }],
-  })
-  expect(await request("/models?shape=both")).toEqual({
-    data: [{ id: "alias", slug: 1 }],
-    models: [{ slug: "custom/permitted" }],
-  })
-  expect(
-    await responseJson(
-      app({ id: "none", key: "key", allowedModels: [] }).request("/models"),
-    ),
-  ).toEqual({ data: [], object: "list" })
-})
-test("leaves unrestricted catalogs, other endpoints and non-catalog responses unchanged", async () => {
-  const unrestricted = app()
-  expect((await unrestricted.request("/models")).headers.get("etag")).toBe(
-    "original-catalog",
-  )
-  const gateway = app({ id: "one", key: "key", allowedModels: ["custom/*"] })
-  expect((await gateway.request("/other")).headers.get("etag")).toBe(
-    "original-catalog",
-  )
-  expect(await (await gateway.request("/models?shape=text")).text()).toBe(
-    "plain",
-  )
-  expect((await gateway.request("/models?shape=error")).status).toBe(503)
-  expect(await responseJson(gateway.request("/models?shape=null"))).toBeNull()
-  expect(await responseJson(gateway.request("/models?shape=other"))).toEqual({
-    metadata: true,
+  const providerCatalog = await gateway.request("/custom/v1/models")
+  expect(providerCatalog.status).toBe(200)
+  expect(providerCatalog.headers.get("etag")).toBe('"provider-catalog"')
+  expect(await providerCatalog.json()).toEqual({
+    models: [{ slug: "permitted" }, { slug: "denied" }],
   })
 })
 test("settles actual tokens before admitting a later request", async () => {
