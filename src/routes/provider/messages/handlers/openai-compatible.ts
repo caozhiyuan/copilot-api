@@ -204,7 +204,11 @@ export const createOpenAICompatiblePayload = (
     providerConfig,
   )
 
-  if (!Object.hasOwn(openAIPayload, "parallel_tool_calls")) {
+  if (
+    Array.isArray(openAIPayload.tools)
+    && openAIPayload.tools.length > 0
+    && !Object.hasOwn(openAIPayload, "parallel_tool_calls")
+  ) {
     openAIPayload.parallel_tool_calls = true
   }
 

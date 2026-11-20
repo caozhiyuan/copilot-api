@@ -32,6 +32,12 @@ await mock.module("~/lib/config", () => ({
 const { providerMessageRoutes } = await import(
   "~/routes/provider/messages/route"
 )
+const { createOpenAICompatiblePayload } = await import(
+  "~/routes/provider/messages/handlers/openai-compatible"
+)
+const { translateResponsesToMessages } = await import(
+  "~/routes/responses/messages-translation"
+)
 
 const originalFetch = globalThis.fetch
 
@@ -485,6 +491,191 @@ describe("openai-compatible provider messages", () => {
     const init = fetchMock.mock.calls[0][1] as RequestInit
     const body = JSON.parse(init.body as string) as Record<string, unknown>
     expect(body.parallel_tool_calls).toBe(false)
+  })
+
+  test("omits parallel_tool_calls when request has no tools", async () => {
+    const app = createApp()
+    const response = await app.request("/dash/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "qwen-plus",
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body).not.toHaveProperty("tools")
+    expect(body).not.toHaveProperty("parallel_tool_calls")
+  })
+
+  test("omits parallel_tool_calls when translated tools array is empty", async () => {
+    const app = createApp()
+    const emptyToolsResponse = await app.request("/dash/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "qwen-plus",
+        tools: [],
+      }),
+    })
+
+    expect(emptyToolsResponse.status).toBe(200)
+    const emptyInit = fetchMock.mock.calls[0][1] as RequestInit
+    const emptyBody = JSON.parse(emptyInit.body as string) as Record<
+      string,
+      unknown
+    >
+    expect(emptyBody.tools).toEqual([])
+    expect(emptyBody).not.toHaveProperty("parallel_tool_calls")
+
+    const emptyToolsWithChoiceResponse = await app.request(
+      "/dash/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          max_tokens: 128,
+          messages: [{ role: "user", content: "hello" }],
+          model: "qwen-plus",
+          tools: [],
+          tool_choice: {
+            type: "auto",
+            disable_parallel_tool_use: true,
+          },
+        }),
+      },
+    )
+
+    expect(emptyToolsWithChoiceResponse.status).toBe(200)
+    const emptyWithChoiceInit = fetchMock.mock.calls[1][1] as RequestInit
+    const emptyWithChoiceBody = JSON.parse(
+      emptyWithChoiceInit.body as string,
+    ) as Record<string, unknown>
+    expect(emptyWithChoiceBody.tools).toEqual([])
+    expect(emptyWithChoiceBody).not.toHaveProperty("tool_choice")
+    expect(emptyWithChoiceBody).not.toHaveProperty("parallel_tool_calls")
+
+    const strippedWebSearchResponse = await app.request("/dash/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "hello" }],
+        model: "qwen-plus",
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        tool_choice: {
+          type: "auto",
+          disable_parallel_tool_use: true,
+        },
+      }),
+    })
+
+    expect(strippedWebSearchResponse.status).toBe(200)
+    const strippedInit = fetchMock.mock.calls[2][1] as RequestInit
+    const strippedBody = JSON.parse(strippedInit.body as string) as Record<
+      string,
+      unknown
+    >
+    expect(strippedBody.tools).toEqual([])
+    expect(strippedBody).not.toHaveProperty("tool_choice")
+    expect(strippedBody).not.toHaveProperty("parallel_tool_calls")
+  })
+
+  test("defaults parallel_tool_calls to true when tools are present and preserves explicit disable_parallel_tool_use", async () => {
+    const app = createApp()
+    const defaultResponse = await app.request("/dash/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "check weather" }],
+        model: "qwen-plus",
+        tools: [
+          {
+            name: "get_weather",
+            input_schema: { type: "object", properties: {} },
+          },
+        ],
+      }),
+    })
+
+    expect(defaultResponse.status).toBe(200)
+    const defaultInit = fetchMock.mock.calls[0][1] as RequestInit
+    const defaultBody = JSON.parse(defaultInit.body as string) as Record<
+      string,
+      unknown
+    >
+    expect(defaultBody.parallel_tool_calls).toBe(true)
+
+    const disabledResponse = await app.request("/dash/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        max_tokens: 128,
+        messages: [{ role: "user", content: "check weather" }],
+        model: "qwen-plus",
+        tools: [
+          {
+            name: "get_weather",
+            input_schema: { type: "object", properties: {} },
+          },
+        ],
+        tool_choice: {
+          type: "auto",
+          disable_parallel_tool_use: true,
+        },
+      }),
+    })
+
+    expect(disabledResponse.status).toBe(200)
+    const disabledInit = fetchMock.mock.calls[1][1] as RequestInit
+    const disabledBody = JSON.parse(disabledInit.body as string) as Record<
+      string,
+      unknown
+    >
+    expect(disabledBody.parallel_tool_calls).toBe(false)
+  })
+
+  test("omits parallel_tool_calls on tool-less streaming Responses-to-provider translation", () => {
+    const translation = translateResponsesToMessages(
+      {
+        model: "gpt-4.1",
+        input: "hello",
+        max_output_tokens: 128,
+        stream: true,
+      },
+      { model: "gpt-4.1" },
+    )
+
+    const openAIPayload = createOpenAICompatiblePayload(
+      translation.messagesPayload,
+      undefined,
+      providerConfig!,
+    )
+
+    expect(openAIPayload.max_completion_tokens).toBe(128)
+    expect(openAIPayload.stream).toBe(true)
+    expect(openAIPayload.stream_options).toEqual({ include_usage: true })
+    expect(openAIPayload.tools).toBeUndefined()
+    expect(Object.hasOwn(openAIPayload, "parallel_tool_calls")).toBe(false)
   })
 
   test("maps Anthropic thinking budget to OpenAI-compatible thinking_budget", async () => {

@@ -290,6 +290,13 @@ describe("Anthropic to OpenAI translation logic", () => {
       max_tokens: payload.max_tokens,
       tool_choice: { type: "none", disable_parallel_tool_use: true },
     })
+    const withEmptyTools = translateToOpenAI({
+      model: payload.model,
+      messages: payload.messages,
+      max_tokens: payload.max_tokens,
+      tools: [],
+      tool_choice: { type: "auto", disable_parallel_tool_use: true },
+    })
 
     expect(disabled.parallel_tool_calls).toBe(false)
     expect(disabled.tool_choice).toBe("auto")
@@ -301,7 +308,9 @@ describe("Anthropic to OpenAI translation logic", () => {
     })
     expect(omitted).not.toHaveProperty("parallel_tool_calls")
     expect(withoutTools.tool_choice).toBeUndefined()
-    expect(withoutTools.parallel_tool_calls).toBe(false)
+    expect(withoutTools).not.toHaveProperty("parallel_tool_calls")
+    expect(withEmptyTools.tool_choice).toBeUndefined()
+    expect(withEmptyTools).not.toHaveProperty("parallel_tool_calls")
   })
 
   test("should translate comprehensive Anthropic payload to valid OpenAI payload", () => {
