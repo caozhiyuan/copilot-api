@@ -538,6 +538,35 @@ describe("openai-compatible provider messages", () => {
     expect(emptyBody.tools).toEqual([])
     expect(emptyBody).not.toHaveProperty("parallel_tool_calls")
 
+    const emptyToolsWithChoiceResponse = await app.request(
+      "/dash/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          max_tokens: 128,
+          messages: [{ role: "user", content: "hello" }],
+          model: "qwen-plus",
+          tools: [],
+          tool_choice: {
+            type: "auto",
+            disable_parallel_tool_use: true,
+          },
+        }),
+      },
+    )
+
+    expect(emptyToolsWithChoiceResponse.status).toBe(200)
+    const emptyWithChoiceInit = fetchMock.mock.calls[1][1] as RequestInit
+    const emptyWithChoiceBody = JSON.parse(
+      emptyWithChoiceInit.body as string,
+    ) as Record<string, unknown>
+    expect(emptyWithChoiceBody.tools).toEqual([])
+    expect(emptyWithChoiceBody).not.toHaveProperty("tool_choice")
+    expect(emptyWithChoiceBody).not.toHaveProperty("parallel_tool_calls")
+
     const strippedWebSearchResponse = await app.request("/dash/v1/messages", {
       method: "POST",
       headers: {
@@ -548,16 +577,21 @@ describe("openai-compatible provider messages", () => {
         messages: [{ role: "user", content: "hello" }],
         model: "qwen-plus",
         tools: [{ type: "web_search_20250305", name: "web_search" }],
+        tool_choice: {
+          type: "auto",
+          disable_parallel_tool_use: true,
+        },
       }),
     })
 
     expect(strippedWebSearchResponse.status).toBe(200)
-    const strippedInit = fetchMock.mock.calls[1][1] as RequestInit
+    const strippedInit = fetchMock.mock.calls[2][1] as RequestInit
     const strippedBody = JSON.parse(strippedInit.body as string) as Record<
       string,
       unknown
     >
     expect(strippedBody.tools).toEqual([])
+    expect(strippedBody).not.toHaveProperty("tool_choice")
     expect(strippedBody).not.toHaveProperty("parallel_tool_calls")
   })
 
