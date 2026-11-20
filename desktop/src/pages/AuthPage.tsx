@@ -1,4 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
+
+import {
+  getQuickProviderLabel,
+  PROVIDER_COLORS,
+  QUICK_PROVIDER_DEFAULTS,
+  QUICK_PROVIDERS,
+  type OAuthProvider,
+  type ProviderChoice,
+} from '../components/auth/auth-constants'
+import { OAuthAccountsCard } from '../components/auth/OAuthAccountsCard'
+import {
+  CodexPendingCard,
+  DeviceCodePendingCard,
+} from '../components/auth/OAuthPendingCards'
+import {
+  ManualTokenCard,
+  ProviderInputCard,
+} from '../components/auth/ProviderInputCard'
+import Header from '../components/Header'
+import { useLanguage } from '../contexts/LanguageContext'
+import { refreshProviderAuthStatus } from '../lib/provider-management-auth'
 import type {
   AuthResult,
   CodexAccountSummary,
@@ -7,12 +28,8 @@ import type {
   ProviderAuthInput,
   ProviderAuthTypeInput,
   ProviderType,
-  QuickProviderName,
   XaiAuthInfo,
 } from '../types/ipc'
-import { useLanguage } from '../contexts/LanguageContext'
-import Header from '../components/Header'
-import { refreshProviderAuthStatus } from '../lib/provider-management-auth'
 
 interface AuthPageProps {
   backTarget?: 'home' | 'providers'
@@ -28,65 +45,11 @@ type AuthView =
   | 'oauth-accounts'
   | 'codex-pending'
   | 'xai-pending'
-type ProviderChoice = QuickProviderName | 'custom'
-type OAuthProvider = 'codex' | 'xai'
 
 const cancelOAuthLogin = (provider: OAuthProvider) =>
   provider === 'codex' ?
     window.electronAPI.cancelCodexLogin()
   : window.electronAPI.cancelXaiLogin()
-
-const PROVIDER_TYPES: ProviderType[] = [
-  'anthropic',
-  'openai-compatible',
-  'openai-responses',
-  'google',
-]
-const PROVIDER_AUTH_TYPES: ProviderAuthTypeInput[] = [
-  '__default__',
-  'x-api-key',
-  'x-goog-api-key',
-  'authorization',
-]
-const MAX_OAUTH_ACCOUNTS = 3
-const PROVIDER_COLORS: Record<QuickProviderName, string> = {
-  'opencode-go': 'bg-sky-500',
-  kimi: 'bg-cyan-500',
-  deepseek: 'bg-emerald-500',
-  dashscope: 'bg-orange-500',
-  openrouter: 'bg-violet-500',
-}
-// Renderer cannot import main-process config. Keep this in sync with src/lib/quick-providers.ts.
-const QUICK_PROVIDER_DEFAULTS: Record<
-  QuickProviderName,
-  { baseUrl: string; editableType: boolean; type: ProviderType }
-> = {
-  'opencode-go': {
-    baseUrl: 'https://opencode.ai/zen/go',
-    editableType: false,
-    type: 'openai-compatible',
-  },
-  kimi: {
-    baseUrl: 'https://api.kimi.com/coding',
-    editableType: true,
-    type: 'openai-compatible',
-  },
-  deepseek: {
-    baseUrl: 'https://api.deepseek.com/anthropic',
-    editableType: true,
-    type: 'anthropic',
-  },
-  dashscope: {
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode',
-    editableType: true,
-    type: 'openai-compatible',
-  },
-  openrouter: {
-    baseUrl: 'https://openrouter.ai/api',
-    editableType: false,
-    type: 'anthropic',
-  },
-}
 
 export default function AuthPage({
   backTarget = 'home',
@@ -179,6 +142,14 @@ export default function AuthPage({
       setLoading(false)
     }
   }
+
+  const pendingDeviceCode =
+    view === 'xai-pending' ?
+      xaiAuthInfo && {
+        user_code: xaiAuthInfo.userCode,
+        verification_uri: xaiAuthInfo.url,
+      }
+    : deviceCode
 
   const handleOpenDeviceUrl = () => {
     if (pendingDeviceCode)
@@ -446,7 +417,9 @@ export default function AuthPage({
     }
   }
 
-  const handleCopyCodexUrl = () => copyText(codexAuthUrl)
+  const handleCopyCodexUrl = () => {
+    void copyText(codexAuthUrl)
+  }
 
   const handleOpenCodexUrl = async () => {
     try {
@@ -517,44 +490,7 @@ export default function AuthPage({
     }
   }
 
-  const formatAccountId = (accountId: string): string =>
-    accountId.length > 18 ?
-      `${accountId.slice(0, 9)}…${accountId.slice(-6)}`
-    : accountId
-
-  const getQuickProviderLabel = (provider: QuickProviderName): string => {
-    switch (provider) {
-      case 'opencode-go':
-        return t('auth.providerOpencodeGo')
-      case 'kimi':
-        return t('auth.providerKimi')
-      case 'deepseek':
-        return t('auth.providerDeepseek')
-      case 'dashscope':
-        return t('auth.providerDashscope')
-      case 'openrouter':
-        return t('auth.providerOpenrouter')
-    }
-  }
-
-  const selectedQuickProvider =
-    providerChoice === 'custom' ? null : QUICK_PROVIDER_DEFAULTS[providerChoice]
-  const selectedProviderLabel =
-    providerChoice === 'custom' ?
-      t('auth.customProvider')
-    : getQuickProviderLabel(providerChoice)
-  const isProviderInput = view === 'provider-input'
-  const pendingDeviceCode =
-    view === 'xai-pending' ?
-      xaiAuthInfo && {
-        user_code: xaiAuthInfo.userCode,
-        verification_uri: xaiAuthInfo.url,
-      }
-    : deviceCode
-  const isExpandedInput = isProviderInput || view === 'oauth-accounts'
-  const isCustomProvider = providerChoice === 'custom'
-  const canEditProviderType =
-    providerChoice === 'custom' || selectedQuickProvider?.editableType
+  const isExpandedInput = view === 'provider-input' || view === 'oauth-accounts'
 
   return (
     <div className="flex flex-col h-screen bg-canvas">
@@ -654,15 +590,7 @@ export default function AuthPage({
 
               {/* Provider grid */}
               <div className="grid grid-cols-2 gap-2 mb-3">
-                {(
-                  [
-                    'opencode-go',
-                    'kimi',
-                    'deepseek',
-                    'dashscope',
-                    'openrouter',
-                  ] as QuickProviderName[]
-                ).map((provider) => (
+                {QUICK_PROVIDERS.map((provider) => (
                   <button
                     key={provider}
                     onClick={() => handleProviderSelect(provider)}
@@ -671,7 +599,7 @@ export default function AuthPage({
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${PROVIDER_COLORS[provider]}`}
                     />
-                    {getQuickProviderLabel(provider)}
+                    {getQuickProviderLabel(t, provider)}
                   </button>
                 ))}
                 <button
@@ -694,426 +622,88 @@ export default function AuthPage({
           )}
 
           {view === 'oauth-accounts' && (
-            <div className="w-full max-w-[440px] flex flex-col gap-3 rounded-xl border border-line-soft bg-surface p-4 shadow-[0_12px_32px_rgba(0,0,0,0.08)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[13px] font-semibold text-ink">
-                    {t(
-                      accountProvider === 'codex' ? 'auth.codexAccounts' : (
-                        'auth.xaiAccounts'
-                      ),
-                    )}
-                  </p>
-                  <p className="mt-1 text-[12px] text-ink-faint">
-                    {t('auth.codexAccountLimit')}
-                  </p>
-                </div>
-                <span className="rounded-full bg-sunken px-2 py-1 text-[11px] font-semibold text-ink-faint">
-                  {oauthAccounts.length}/{MAX_OAUTH_ACCOUNTS}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                {oauthAccounts.length === 0 && (
-                  <p className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-[13px] text-ink-faint">
-                    {t(
-                      accountProvider === 'codex' ?
-                        'auth.codexNoAccounts'
-                      : 'auth.xaiNoAccounts',
-                    )}
-                  </p>
-                )}
-                {oauthAccounts.map((account) => (
-                  <div
-                    key={account.accountId}
-                    className="flex items-center gap-3 rounded-lg border border-line px-3 py-2.5"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-[13px] font-medium text-ink">
-                          {account.alias ?? formatAccountId(account.accountId)}
-                        </span>
-                        {account.active && (
-                          <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                            {t('auth.codexActiveAccount')}
-                          </span>
-                        )}
-                      </div>
-                      {account.alias && (
-                        <p
-                          className="mt-0.5 truncate font-mono text-[11px] text-ink-faint"
-                          title={account.accountId}
-                        >
-                          {formatAccountId(account.accountId)}
-                        </p>
-                      )}
-                    </div>
-                    {!account.active && (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          onClick={() =>
-                            void handleOAuthSwitch(account.accountId)
-                          }
-                          disabled={loading}
-                          className="rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-ink-soft transition-colors hover:bg-sunken disabled:opacity-50"
-                        >
-                          {t('auth.codexUseAccount')}
-                        </button>
-                        <button
-                          onClick={() =>
-                            void handleOAuthRemove(account.accountId)
-                          }
-                          disabled={loading}
-                          className="rounded-md border border-red-200 px-2 py-1.5 text-[12px] font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-500/30 dark:hover:bg-red-500/15"
-                        >
-                          {t('auth.codexRemoveAccount')}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col gap-2 border-t border-line-soft pt-3">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[13px] text-ink-faint">
-                    {t('auth.codexAccountAlias')}
-                  </span>
-                  <input
-                    value={oauthAlias}
-                    onChange={(event) => setOAuthAlias(event.target.value)}
-                    placeholder={t('auth.codexAccountAliasPlaceholder')}
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-[13px] text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-accent/40"
-                  />
-                </label>
-                <button
-                  onClick={() => void handleAccountOAuth()}
-                  disabled={loading}
-                  className="w-full rounded-lg bg-accent-strong py-2.5 text-[13px] font-semibold text-white transition-all hover:bg-accent-strong/90 disabled:opacity-50"
-                >
-                  {loading ? t('auth.verifying') : t('auth.codexAddAccount')}
-                </button>
-              </div>
-
-              {oauthNotice && (
-                <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                  {oauthNotice}
-                </p>
-              )}
-
-              <button
-                onClick={handleBack}
-                className="text-center text-[13px] text-ink-faint hover:text-ink-soft"
-              >
-                {t('auth.back')}
-              </button>
-            </div>
+            <OAuthAccountsCard
+              accountProvider={accountProvider}
+              accounts={oauthAccounts}
+              alias={oauthAlias}
+              loading={loading}
+              notice={oauthNotice}
+              onAliasChange={setOAuthAlias}
+              onAddAccount={() => void handleAccountOAuth()}
+              onSwitchAccount={(accountId) => void handleOAuthSwitch(accountId)}
+              onRemoveAccount={(accountId) => void handleOAuthRemove(accountId)}
+              onBack={handleBack}
+              t={t}
+            />
           )}
 
           {/* OAuth pending state */}
           {((view === 'oauth-pending' && pendingDeviceCode)
             || view === 'xai-pending') && (
-            <div className="w-full max-w-[320px] flex flex-col gap-3 rounded-xl border border-line-soft bg-surface p-4 shadow-[0_12px_32px_rgba(0,0,0,0.08)]">
-              {pendingDeviceCode && !oauthSaving && (
-                <>
-                  <div>
-                    <p className="text-[13px] text-ink-faint mb-1.5">
-                      {t('auth.deviceCode')}
-                    </p>
-                    <div className="flex items-center gap-2 px-3 py-2.5 border border-dashed border-line rounded-lg bg-sunken">
-                      <span className="font-mono text-[13px] font-bold text-ink tracking-widest flex-1">
-                        {pendingDeviceCode.user_code}
-                      </span>
-                      <button
-                        onClick={handleCopyCode}
-                        className="text-[13px] text-accent hover:text-accent/80 shrink-0"
-                      >
-                        {copied ? t('auth.copied') : t('auth.copy')}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[13px] text-ink-faint mb-1.5">
-                      {t('auth.deviceCodeUrl')}
-                    </p>
-                    <button
-                      onClick={handleOpenDeviceUrl}
-                      className="w-full px-3 py-2.5 border border-line rounded-lg bg-surface text-left text-[13px] text-accent hover:text-accent/80 hover:bg-sunken transition-colors break-all"
-                    >
-                      {pendingDeviceCode.verification_uri}
-                    </button>
-                  </div>
-                  <button
-                    onClick={handleOpenDeviceUrl}
-                    className="w-full py-2.5 bg-accent-strong text-white text-[13px] font-semibold rounded-lg hover:bg-accent-strong/90 transition-colors"
-                  >
-                    {t('auth.openAuthPage')}
-                  </button>
-                </>
-              )}
-              {(polling || view === 'xai-pending') && (
-                <p className="text-center text-[13px] text-ink-faint animate-pulse">
-                  {view === 'xai-pending' ?
-                    t(oauthSaving ? 'auth.verifying' : 'auth.waitingXaiAuth')
-                  : t('auth.waitingAuth')}
-                </p>
-              )}
-              {view === 'xai-pending' && (
-                <button
-                  onClick={handleCancelAccountOAuth}
-                  disabled={oauthCancelling || oauthSaving}
-                  className="rounded-lg border border-line bg-surface py-2.5 text-[13px] font-semibold text-ink-soft hover:bg-sunken disabled:opacity-50"
-                >
-                  {t(
-                    oauthCancelling ? 'auth.cancelling' : (
-                      'auth.cancelCodexAuth'
-                    ),
-                  )}
-                </button>
-              )}
-              <button
-                onClick={handleBack}
-                disabled={oauthSaving || oauthCancelling}
-                className="text-[13px] text-ink-faint hover:text-ink-soft text-center disabled:opacity-50"
-              >
-                {t('auth.back')}
-              </button>
-            </div>
+            <DeviceCodePendingCard
+              copied={copied}
+              deviceCode={pendingDeviceCode}
+              mode={view === 'xai-pending' ? 'xai-pending' : 'oauth-pending'}
+              oauthCancelling={oauthCancelling}
+              oauthSaving={oauthSaving}
+              onBack={handleBack}
+              onCancel={() => void handleCancelAccountOAuth()}
+              onCopyCode={handleCopyCode}
+              onOpenDeviceUrl={handleOpenDeviceUrl}
+              polling={polling}
+              t={t}
+            />
           )}
 
           {/* Expanded token input state */}
           {view === 'token-input' && (
-            <div className="w-full max-w-[320px] flex flex-col gap-3 rounded-xl border border-line-soft bg-surface p-4 shadow-[0_12px_32px_rgba(0,0,0,0.08)]">
-              <textarea
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="gho_xxxxxxxxxxxxxxxx"
-                rows={3}
-                className="w-full px-3 py-2.5 border border-line rounded-lg text-[13px] resize-none focus:outline-none focus:ring-2 focus:ring-accent/40 font-mono bg-surface text-ink placeholder-ink-faint"
-              />
-              <button
-                onClick={handleSaveToken}
-                disabled={loading || !tokenInput.trim()}
-                className="w-full py-2.5 bg-accent-strong text-white text-[13px] font-semibold rounded-lg hover:bg-accent-strong/90 disabled:opacity-50 transition-colors"
-              >
-                {loading ? t('auth.verifying') : t('auth.confirmAdd')}
-              </button>
-              <button
-                onClick={handleBack}
-                className="text-[13px] text-ink-faint hover:text-ink-soft text-center"
-              >
-                {t('auth.back')}
-              </button>
-            </div>
+            <ManualTokenCard
+              loading={loading}
+              onBack={handleBack}
+              onSave={() => void handleSaveToken()}
+              onTokenInputChange={setTokenInput}
+              t={t}
+              tokenInput={tokenInput}
+            />
           )}
 
           {view === 'provider-input' && (
-            <div
-              className={`w-full ${isCustomProvider ? 'max-w-[560px]' : 'max-w-[360px]'} flex flex-col gap-2.5 rounded-xl border border-line-soft bg-surface p-4 shadow-[0_12px_32px_rgba(0,0,0,0.08)]`}
-            >
-              <div className="flex items-center justify-center gap-1.5 text-[13px] font-semibold text-ink">
-                {!isCustomProvider && selectedQuickProvider && (
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${PROVIDER_COLORS[providerChoice]}`}
-                  />
-                )}
-                {selectedProviderLabel}
-              </div>
-
-              <div
-                className={
-                  isCustomProvider ?
-                    'grid gap-2.5 sm:grid-cols-2'
-                  : 'flex flex-col gap-3'
-                }
-              >
-                {isCustomProvider && (
-                  <label className="flex flex-col gap-1.5 sm:col-span-2">
-                    <span className="text-[13px] text-ink-faint">
-                      {t('auth.modelsDevProvider')}
-                    </span>
-                    <select
-                      value={selectedModelsDevProviderId}
-                      onChange={(e) =>
-                        handleModelsDevProviderSelect(e.target.value)
-                      }
-                      disabled={modelsDevLoading}
-                      className="w-full px-3 py-2.5 border border-line rounded-lg bg-surface text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:opacity-50"
-                    >
-                      <option value="">
-                        {modelsDevLoading ?
-                          t('auth.modelsDevLoading')
-                        : t('auth.modelsDevManual')}
-                      </option>
-                      {modelsDevProviders.map((provider) => (
-                        <option key={provider.id} value={provider.id}>
-                          {provider.name} ({provider.id}) · {provider.type}
-                        </option>
-                      ))}
-                    </select>
-                    {modelsDevError && (
-                      <span className="text-[12px] text-amber-600 dark:text-amber-400">
-                        {t('auth.modelsDevUnavailable')}
-                      </span>
-                    )}
-                  </label>
-                )}
-
-                {isCustomProvider && (
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] text-ink-faint">
-                      {t('auth.providerName')}
-                    </span>
-                    <input
-                      value={providerName}
-                      onChange={(e) => setProviderName(e.target.value)}
-                      placeholder="dashscope"
-                      className="w-full px-3 py-2.5 border border-line rounded-lg text-[13px] bg-surface text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-accent/40"
-                    />
-                  </label>
-                )}
-
-                {canEditProviderType && (
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] text-ink-faint">
-                      {t('auth.providerType')}
-                    </span>
-                    <select
-                      value={providerType}
-                      onChange={(e) =>
-                        setProviderType(e.target.value as ProviderType)
-                      }
-                      className="w-full px-3 py-2.5 border border-line rounded-lg bg-surface text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-accent/40"
-                    >
-                      {PROVIDER_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {type}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-
-                <label
-                  className={`flex flex-col gap-1.5 ${isCustomProvider ? 'sm:col-span-2' : ''}`}
-                >
-                  <span className="text-[13px] text-ink-faint">
-                    {t('auth.providerBaseUrl')}
-                  </span>
-                  <input
-                    value={providerBaseUrl}
-                    onChange={(e) => setProviderBaseUrl(e.target.value)}
-                    placeholder="https://api.example.com"
-                    className="w-full px-3 py-2.5 border border-line rounded-lg text-[13px] bg-surface text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-accent/40"
-                  />
-                </label>
-
-                <label
-                  className={`flex flex-col gap-1.5 ${isCustomProvider ? 'sm:col-span-2' : ''}`}
-                >
-                  <span className="text-[13px] text-ink-faint">
-                    {t('auth.providerApiKey')}
-                  </span>
-                  <textarea
-                    value={providerApiKey}
-                    onChange={(e) => setProviderApiKey(e.target.value)}
-                    placeholder="sk-..."
-                    rows={isCustomProvider ? 2 : 3}
-                    className="w-full px-3 py-2.5 border border-line rounded-lg text-[13px] resize-none focus:outline-none focus:ring-2 focus:ring-accent/40 font-mono bg-surface text-ink placeholder-ink-faint"
-                  />
-                </label>
-
-                {isCustomProvider && (
-                  <label className="flex flex-col gap-1.5">
-                    <span className="text-[13px] text-ink-faint">
-                      {t('auth.providerAuthType')}
-                    </span>
-                    <select
-                      value={providerAuthType}
-                      onChange={(e) =>
-                        setProviderAuthType(
-                          e.target.value as ProviderAuthTypeInput,
-                        )
-                      }
-                      className="w-full px-3 py-2.5 border border-line rounded-lg bg-surface text-ink text-[13px] focus:outline-none focus:ring-2 focus:ring-accent/40"
-                    >
-                      {PROVIDER_AUTH_TYPES.map((authType) => (
-                        <option key={authType} value={authType}>
-                          {authType === '__default__' ?
-                            t('auth.providerAuthTypeDefault')
-                          : authType}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
-
-              <button
-                onClick={handleSaveProvider}
-                disabled={loading || !providerApiKey.trim()}
-                className="w-full py-2.5 bg-accent-strong text-white text-[13px] font-semibold rounded-lg hover:bg-accent-strong/90 disabled:opacity-50 transition-colors"
-              >
-                {loading ? t('auth.verifying') : t('auth.confirmAdd')}
-              </button>
-              <button
-                onClick={handleBack}
-                className="text-[13px] text-ink-faint hover:text-ink-soft text-center"
-              >
-                {t('auth.back')}
-              </button>
-            </div>
+            <ProviderInputCard
+              loading={loading}
+              modelsDevError={modelsDevError}
+              modelsDevLoading={modelsDevLoading}
+              modelsDevProviders={modelsDevProviders}
+              onBack={handleBack}
+              onModelsDevProviderSelect={handleModelsDevProviderSelect}
+              onProviderApiKeyChange={setProviderApiKey}
+              onProviderAuthTypeChange={setProviderAuthType}
+              onProviderBaseUrlChange={setProviderBaseUrl}
+              onProviderNameChange={setProviderName}
+              onProviderTypeChange={setProviderType}
+              onSave={() => void handleSaveProvider()}
+              providerApiKey={providerApiKey}
+              providerAuthType={providerAuthType}
+              providerBaseUrl={providerBaseUrl}
+              providerChoice={providerChoice}
+              providerName={providerName}
+              providerType={providerType}
+              selectedModelsDevProviderId={selectedModelsDevProviderId}
+              t={t}
+            />
           )}
 
           {view === 'codex-pending' && (
-            <div className="w-full max-w-[440px] flex flex-col gap-3 rounded-xl border border-line-soft bg-surface p-4 shadow-[0_12px_32px_rgba(0,0,0,0.08)]">
-              <p className="text-center text-[13px] text-ink-faint animate-pulse">
-                {oauthSaving ?
-                  t('auth.codexFinishingAuth')
-                : t('auth.waitingCodexAuth')}
-              </p>
-              {codexAuthUrl && !oauthSaving && (
-                <>
-                  <label className="flex flex-col gap-1.5 text-[13px] text-ink-faint">
-                    {t('auth.deviceCodeUrl')}
-                    <textarea
-                      readOnly
-                      rows={3}
-                      value={codexAuthUrl}
-                      onFocus={(event) => event.currentTarget.select()}
-                      className="w-full resize-none rounded-lg border border-line bg-sunken px-3 py-2 font-mono text-[11px] text-ink-soft break-all"
-                    />
-                  </label>
-                  <button
-                    onClick={handleOpenCodexUrl}
-                    className="w-full rounded-lg bg-accent-strong py-2.5 text-[13px] font-semibold text-white hover:bg-accent-strong/90 transition-colors"
-                  >
-                    {t('auth.openAuthPage')}
-                  </button>
-                  <button
-                    onClick={handleCopyCodexUrl}
-                    className="w-full rounded-lg border border-line bg-surface py-2.5 text-[13px] font-semibold text-ink-soft hover:bg-sunken transition-colors"
-                  >
-                    {copied ? t('auth.copied') : t('auth.copy')}
-                  </button>
-                </>
-              )}
-              <button
-                onClick={handleCancelAccountOAuth}
-                disabled={oauthCancelling || oauthSaving}
-                className="w-full py-2.5 border border-line bg-surface text-ink-soft text-[13px] font-semibold rounded-lg hover:bg-sunken disabled:opacity-50 transition-colors"
-              >
-                {oauthCancelling ?
-                  t('auth.cancelling')
-                : t('auth.cancelCodexAuth')}
-              </button>
-              <button
-                onClick={handleBack}
-                className="text-[13px] text-ink-faint hover:text-ink-soft text-center"
-              >
-                {t('auth.back')}
-              </button>
-            </div>
+            <CodexPendingCard
+              authUrl={codexAuthUrl}
+              copied={copied}
+              oauthCancelling={oauthCancelling}
+              oauthSaving={oauthSaving}
+              onBack={handleBack}
+              onCancel={() => void handleCancelAccountOAuth()}
+              onCopyUrl={handleCopyCodexUrl}
+              onOpenUrl={() => void handleOpenCodexUrl()}
+              t={t}
+            />
           )}
 
           {/* Error message */}
