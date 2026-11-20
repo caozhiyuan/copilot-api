@@ -2,22 +2,22 @@ import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
 
-import { logCodexRateLimitsEvent } from "~/lib/codex-rate-limit"
+import { logCodexRateLimitsEvent } from "~/lib/providers/codex-rate-limit"
 import {
   type ModelConfig,
   type ProviderType,
   resolveProviderConfigForModel,
 } from "~/lib/config"
-import { HTTPError } from "~/lib/error"
-import { recordResponsesFirstToken } from "~/lib/first-token"
+import { HTTPError } from "~/lib/http/error"
+import { recordResponsesFirstToken } from "~/lib/http/first-token"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
-import { requestContext } from "~/lib/request-context"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
+import { requestContext } from "~/lib/http/request-context"
 import {
   readResponsesStreamEvent,
   type ResponsesStreamChunk,
-} from "~/lib/responses-stream-event"
-import { writeSSEIfConnected } from "~/lib/sse"
+} from "~/lib/http/responses-stream-event"
+import { writeSSEIfConnected } from "~/lib/http/sse"
 import {
   createProviderTokenUsageRecorder,
   normalizeResponsesUsage,

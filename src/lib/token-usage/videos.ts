@@ -1,13 +1,13 @@
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { requestContext } from "~/lib/request-context"
+import { requestContext } from "~/lib/http/request-context"
 
 import { recordTokenUsageEvent, resolveTokenUsageSessionId } from "./index"
 import { xaiUsdTicksToCost } from "./pricing"
+import type { VideoUsageJob } from "~/lib/types/token-usage"
 import {
   saveVideoUsageJob,
   stopPollingVideoUsageJob,
-  type VideoUsageJob,
-} from "./store"
+} from "~/lib/video-settlement"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)

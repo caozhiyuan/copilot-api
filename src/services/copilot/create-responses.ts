@@ -1,8 +1,8 @@
 import consola from "consola"
 import { createHash } from "node:crypto"
 
-import type { SubagentMarker } from "~/lib/subagent"
-import type { ResponsesStreamChunk } from "~/lib/responses-stream-event"
+import type { SubagentMarker } from "~/lib/http/subagent"
+import type { ResponsesStreamChunk } from "~/lib/http/responses-stream-event"
 import type {
   CreateResponsesReturn,
   ResponsesPayload,
@@ -19,8 +19,8 @@ import {
   copilotWebSocketHeaders,
   prepareForCompact,
   prepareInteractionHeaders,
-} from "~/lib/api-config"
-import { COMPACT_REQUEST, type CompactType } from "~/lib/compact"
+} from "~/lib/providers/api-config"
+import { COMPACT_REQUEST, type CompactType } from "~/lib/http/compact"
 import {
   getUpstreamTransportConfig,
   isOutputEncryptedContentDisabled,
@@ -28,10 +28,10 @@ import {
 import {
   logCopilotQuotaSnapshots,
   logCopilotRateLimits,
-} from "~/lib/copilot-rate-limit"
-import { HTTPError } from "~/lib/error"
+} from "~/lib/providers/copilot-rate-limit"
+import { HTTPError } from "~/lib/http/error"
 import { getResponsesContinuationSession } from "~/lib/responses-continuation"
-import { setPluginRequestActualModel } from "~/lib/request-context"
+import { setPluginRequestActualModel } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
 import { createWebSocketUrl } from "~/services/responses-websocket"
 import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"

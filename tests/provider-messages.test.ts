@@ -13,7 +13,7 @@ import type { ResolvedProviderConfig } from "~/lib/config"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { ChatCompletionResponse } from "~/lib/types/chat-completions"
 import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
-import { UpstreamStreamInactivityTimeoutError } from "~/lib/error"
+import { UpstreamStreamInactivityTimeoutError } from "~/lib/http/error"
 import type { UsageTokens } from "~/lib/token-usage"
 
 const actualConfigModule = await import("~/lib/config")

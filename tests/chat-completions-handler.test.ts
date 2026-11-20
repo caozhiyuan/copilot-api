@@ -4,9 +4,9 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { requestContext, type RequestTiming } from "~/lib/request-context"
-import { requestEventsMiddleware } from "~/lib/request-events"
-import { traceIdMiddleware } from "~/lib/trace"
+import { requestContext, type RequestTiming } from "~/lib/http/request-context"
+import { requestEventsMiddleware } from "~/lib/http/request-events"
+import { traceIdMiddleware } from "~/lib/http/trace"
 import type { ChatCompletionChunk } from "~/lib/types/chat-completions"
 
 process.env.COPILOT_API_HOME = mkdtempSync(

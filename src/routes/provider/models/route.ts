@@ -1,10 +1,10 @@
 import { Hono } from "hono"
 
-import { forwardError } from "~/lib/error"
+import { forwardError } from "~/lib/http/error"
 import { createHandlerLogger } from "~/lib/logger"
-import { withModelDisplayName } from "~/lib/model-display-name"
-import { getLocalProviderModelRecords } from "~/lib/provider-model-catalog"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { withModelDisplayName } from "~/lib/catalog/model-display-name"
+import { getLocalProviderModelRecords } from "~/lib/catalog/provider-model-catalog"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import {
   handleCodexModelsProxy,
   isCodexUserAgent,

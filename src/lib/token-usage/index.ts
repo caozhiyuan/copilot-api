@@ -1,8 +1,8 @@
-import { requestContext, generateTraceId } from "~/lib/request-context"
+import { requestContext, generateTraceId } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
 
-import { EventBus } from "../event-bus"
-import type { GatewayApiKeyConfig } from "../api-key-config"
+import { EventBus } from "../plugins/event-bus"
+import type { GatewayApiKeyConfig } from "../config/api-key-config"
 import { toUsdCostNanos } from "./currency"
 import {
   resolveTokenUsageCost,

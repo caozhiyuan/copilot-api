@@ -1,10 +1,10 @@
-import { setPluginRequestActualModel } from "~/lib/request-context"
+import { setPluginRequestActualModel } from "~/lib/http/request-context"
 import type { ConsolaInstance } from "consola"
 
 import { getRawProviderConfig, type ResolvedProviderConfig } from "~/lib/config"
-import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
 import { debugJson, debugJsonAsync } from "~/lib/logger"
-import { prepareImageJsonRequest } from "~/lib/image-json-request"
+import { prepareImageJsonRequest } from "~/lib/images/image-json-request"
 import { observeImagesResponse } from "~/lib/token-usage/images"
 import { logImageEditRequest } from "~/routes/images/request-logging"
 import {

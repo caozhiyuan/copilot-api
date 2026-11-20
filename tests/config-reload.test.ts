@@ -13,20 +13,20 @@ import os from "node:os"
 import path from "node:path"
 
 import {
-  getClaudeAutoModel,
   getConfig,
   invalidateConfigCache,
   reloadConfig,
   writeConfigToDisk,
   type AppConfig,
-} from "~/lib/config-store"
-import { reloadServerConfig } from "~/lib/config-reload"
+} from "~/lib/config/config-store"
+import { getClaudeAutoModel } from "~/lib/config/model-policy"
+import { reloadServerConfig } from "~/lib/config/config-reload"
 import * as configModule from "~/lib/config"
-import * as credentials from "~/lib/credential-store"
-import { PATHS } from "~/lib/paths"
+import * as credentials from "~/lib/auth/credential-store"
+import { PATHS } from "~/lib/storage/paths"
 import { state, type State } from "~/lib/state"
-import * as tokens from "~/lib/token"
-import type { CodexCredentials } from "~/lib/oauth/codex"
+import * as tokens from "~/lib/auth/token"
+import type { CodexCredentials } from "~/lib/auth/oauth/codex"
 import * as models from "~/services/copilot/models-cache"
 import * as vscode from "~/services/vscode-env"
 import { createServer } from "~/server"

@@ -4,7 +4,7 @@ import {
   type ClackPromptBackend,
   promptWithClack,
   shouldUseClackPrompt,
-} from "~/lib/interactive-prompt"
+} from "~/lib/cli/interactive-prompt"
 
 function createBackend(
   overrides: Partial<ClackPromptBackend>,

@@ -6,9 +6,9 @@ import type {
 } from "~/lib/types/anthropic"
 import type { FilePart, TextPart } from "~/lib/types/chat-completions"
 
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import { getProviderModelPdfSupport } from "~/lib/model-pdf-support"
-import { createFallbackModel } from "~/lib/provider-model"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
+import { getProviderModelPdfSupport } from "~/lib/catalog/model-pdf-support"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
 import {
   RICH_TOOL_RESULT_MOVED_TEXT,
   translateToOpenAI as translatePayloadToOpenAI,

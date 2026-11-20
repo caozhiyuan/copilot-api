@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 
-import { createAuthMiddleware, getIsolatedApiKeyId } from "~/lib/request-auth"
-import { apiKeyPolicyMiddleware } from "~/lib/api-key-policy"
-import { traceIdMiddleware } from "~/lib/trace"
+import {
+  createAuthMiddleware,
+  getIsolatedApiKeyId,
+} from "~/lib/auth/request-auth"
+import { apiKeyPolicyMiddleware } from "~/lib/auth/api-key-policy"
+import { traceIdMiddleware } from "~/lib/http/trace"
 import * as config from "~/lib/config"
 
 let regularApiKeys: Array<string>

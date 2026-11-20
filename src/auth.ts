@@ -14,25 +14,25 @@ import {
   type ProviderConfig,
   type ProviderType,
 } from "./lib/config"
-import { loginCodex } from "./lib/oauth/codex"
-import { loginXai } from "./lib/oauth/xai"
+import { loginCodex } from "./lib/auth/oauth/codex"
+import { loginXai } from "./lib/auth/oauth/xai"
 import {
   persistXaiCredentials,
   getXaiAccounts,
   selectXaiAccount,
   removeXaiAccount,
-} from "./lib/xai-token"
+} from "./lib/auth/xai-token"
 import {
   loadModelsDevProviderOptions,
   type ModelsDevProviderOption,
-} from "./lib/models-dev-cache"
-import { PATHS, ensurePaths } from "./lib/paths"
-import { getConfiguredApiKeys } from "./lib/request-auth"
+} from "./lib/catalog/models-dev-cache"
+import { PATHS, ensurePaths } from "./lib/storage/paths"
+import { getConfiguredApiKeys } from "./lib/auth/request-auth"
 import {
   QUICK_PROVIDER_CONFIGS,
   type QuickProviderName,
-} from "./lib/quick-providers"
-import { prompt } from "./lib/interactive-prompt"
+} from "./lib/config/quick-providers"
+import { prompt } from "./lib/cli/interactive-prompt"
 import { state } from "./lib/state"
 import {
   getCodexAccounts,
@@ -41,7 +41,7 @@ import {
   selectCodexAccount,
   setupGitHubToken,
   type CodexAccountSummary,
-} from "./lib/token"
+} from "./lib/auth/token"
 
 interface RunAuthOptions {
   alias?: string
@@ -624,7 +624,7 @@ export async function runProviderSetup(): Promise<void> {
 }
 
 export async function runAuthLogin(options: RunAuthOptions): Promise<void> {
-  const tlsModule = await import("./lib/tls")
+  const tlsModule = await import("./lib/http/tls")
   tlsModule.enableSystemCACompat()
 
   if (options.verbose) {
@@ -784,7 +784,7 @@ function normalizeAuthKeyValue(value: string): string {
 }
 
 export async function runAuthKeys(options: RunAuthKeysOptions): Promise<void> {
-  const tlsModule = await import("./lib/tls")
+  const tlsModule = await import("./lib/http/tls")
   tlsModule.enableSystemCACompat()
 
   await ensurePaths()

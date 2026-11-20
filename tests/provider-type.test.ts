@@ -5,7 +5,7 @@ import {
   resolveProviderConfigForModel,
   type ResolvedProviderConfig,
 } from "~/lib/config"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
 import { resolveTokenUsageCost } from "~/lib/token-usage/pricing"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"

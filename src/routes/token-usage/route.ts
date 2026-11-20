@@ -1,4 +1,4 @@
-import { getIsolatedApiKeyId } from "~/lib/request-auth"
+import { getIsolatedApiKeyId } from "~/lib/auth/request-auth"
 import { Hono, type Context } from "hono"
 
 import {

@@ -4,8 +4,8 @@ import {
   UpstreamHeadersTimeoutError,
   UpstreamStreamInactivityTimeoutError,
   forwardError,
-} from "~/lib/error"
-import { writeSSEIfConnected } from "~/lib/sse"
+} from "~/lib/http/error"
+import { writeSSEIfConnected } from "~/lib/http/sse"
 import { state } from "~/lib/state"
 const originalFetch = globalThis.fetch
 const originalCopilotToken = state.copilotToken

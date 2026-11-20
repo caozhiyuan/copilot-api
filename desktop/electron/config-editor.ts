@@ -2,8 +2,11 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { z } from 'zod'
 
-import { defaultConfig, writeConfigToDisk } from '../../src/lib/config-store'
-import { PATHS } from '../../src/lib/paths'
+import {
+  defaultConfig,
+  writeConfigToDisk,
+} from '../../src/lib/config/config-store'
+import { PATHS } from '../../src/lib/storage/paths'
 import { validateConfigContent } from '../src/lib/config-editor'
 import {
   ConfigEditorError,

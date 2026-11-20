@@ -1,7 +1,7 @@
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
-import { ImageJsonMetadataReader } from "~/lib/image-json-metadata"
-import { requestContext } from "~/lib/request-context"
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
+import { ImageJsonMetadataReader } from "~/lib/images/image-json-metadata"
+import { requestContext } from "~/lib/http/request-context"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 
 import { createTokenUsageRecorder, type UsageTokens } from "./index"

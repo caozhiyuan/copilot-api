@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test"
 import { createHash } from "node:crypto"
 
-import { prepareImageJsonRequest } from "~/lib/image-json-request"
-import { readJsonBytes } from "~/lib/streaming-json"
+import { prepareImageJsonRequest } from "~/lib/images/image-json-request"
+import { readJsonBytes } from "~/lib/http/streaming-json"
 import { translateXaiImageJsonRequest } from "~/routes/images/xai-json-request"
 import { translateXaiImageEditJson } from "~/services/xai/images"
 

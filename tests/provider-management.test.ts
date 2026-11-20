@@ -7,15 +7,15 @@ import {
   getConfig,
   invalidateConfigCache,
   type AppConfig,
-} from "~/lib/config-store"
-import { PATHS } from "~/lib/paths"
+} from "~/lib/config/config-store"
+import { PATHS } from "~/lib/storage/paths"
 import {
   applyProviderManagementUpdate,
   getProviderAgentModels,
   getProviderManagementConfig,
   isProviderAgentModelVisible,
   saveProviderManagementConfig,
-} from "~/lib/provider-management"
+} from "~/lib/config/provider-management"
 
 const originalPath = PATHS.CONFIG_PATH
 let tempDir: string | undefined

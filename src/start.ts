@@ -5,29 +5,29 @@ import consola from "consola"
 import { serve, type ServerHandler } from "srvx"
 
 import { runProviderSetup } from "./auth"
-import { isGitHubCopilotEnabled } from "./lib/github-copilot-provider"
+import { isGitHubCopilotEnabled } from "./lib/providers/github-copilot-provider"
 import { listEnabledProviders, mergeConfigWithDefaults } from "./lib/config"
-import { setupCopilotRuntime } from "~/lib/copilot-runtime"
+import { setupCopilotRuntime } from "~/lib/providers/copilot-runtime"
 import {
   GITHUB_TOKEN_ENV,
   readGitHubToken,
   readGitHubTokenFromEnv,
-} from "./lib/credential-store"
-import { startModelsDevCache } from "./lib/models-dev-cache"
-import { initOpencodeVersion } from "./lib/opencode"
-import { ensurePaths, PATHS } from "./lib/paths"
-import { initProxyFromEnv } from "./lib/proxy"
+} from "./lib/auth/credential-store"
+import { startModelsDevCache } from "./lib/catalog/models-dev-cache"
+import { initOpencodeVersion } from "./lib/providers/opencode"
+import { ensurePaths, PATHS } from "./lib/storage/paths"
+import { initProxyFromEnv } from "./lib/http/proxy"
 import {
   getConfiguredApiKeys,
   getMissingApiKeysMessage,
-} from "./lib/request-auth"
+} from "./lib/auth/request-auth"
 import {
   DEFAULT_SERVER_HOST,
   formatServerUrl,
   resolveServerBinding,
-} from "./lib/server-host"
+} from "./lib/http/server-host"
 import { state } from "./lib/state"
-import { loadGatewayPlugins } from "./lib/gateway-plugins"
+import { loadGatewayPlugins } from "./lib/plugins/gateway-plugins"
 import { registerProcessCleanup } from "./lib/process-cleanup"
 
 interface RunServerOptions {
@@ -106,7 +106,7 @@ async function setupProviderMode(): Promise<void> {
 }
 
 export async function runServer(options: RunServerOptions): Promise<void> {
-  const tlsModule = await import("./lib/tls")
+  const tlsModule = await import("./lib/http/tls")
   tlsModule.enableSystemCACompat()
 
   consola.options.throttle = 0
@@ -172,11 +172,13 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     plugins,
   })
 
-  const {
-    initializeApiKeyQuotas,
-    startTokenUsageRetention,
-    startVideoUsageSettlement,
-  } = await import("./lib/token-usage/store")
+  const { initializeApiKeyQuotas } = await import(
+    "./lib/auth/api-key-quota-runtime"
+  )
+  const { startTokenUsageRetention } = await import(
+    "./lib/token-usage/retention"
+  )
+  const { startVideoUsageSettlement } = await import("./lib/video-settlement")
   const { settlePendingVideoUsage } = await import(
     "./services/xai/video-usage-settlement"
   )

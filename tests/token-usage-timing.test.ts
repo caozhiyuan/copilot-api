@@ -13,12 +13,15 @@ import { join } from "node:path"
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
 
-import { recordResponsesFirstToken } from "~/lib/first-token"
-import { GatewayPlugins, type GatewayPluginEvents } from "~/lib/gateway-plugins"
-import { requestContext, type RequestTiming } from "~/lib/request-context"
-import { requestEventsMiddleware } from "~/lib/request-events"
-import { writeSSEIfConnected } from "~/lib/sse"
-import { openSqliteDatabase } from "~/lib/sqlite"
+import { recordResponsesFirstToken } from "~/lib/http/first-token"
+import {
+  GatewayPlugins,
+  type GatewayPluginEvents,
+} from "~/lib/plugins/gateway-plugins"
+import { requestContext, type RequestTiming } from "~/lib/http/request-context"
+import { requestEventsMiddleware } from "~/lib/http/request-events"
+import { writeSSEIfConnected } from "~/lib/http/sse"
+import { openSqliteDatabase } from "~/lib/storage/sqlite"
 import {
   closeUsageStore,
   getTokenUsageDailySummary,
@@ -26,7 +29,7 @@ import {
   getTokenUsageSummary,
   recordTokenUsageEvent,
 } from "~/lib/token-usage"
-import { traceIdMiddleware } from "~/lib/trace"
+import { traceIdMiddleware } from "~/lib/http/trace"
 
 const previousDb = process.env.COPILOT_API_SQLITE_DB_PATH
 let now = 100

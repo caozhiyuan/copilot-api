@@ -1,13 +1,13 @@
 import type { ConsolaInstance } from "consola"
 
 import { debugJsonAsync } from "~/lib/logger"
-import { ImageJsonValueReader } from "~/lib/image-json-value"
+import { ImageJsonValueReader } from "~/lib/images/image-json-value"
 import { state } from "~/lib/state"
 import {
   createJsonByteSource,
   jsonByteStream,
   StreamingJsonReader,
-} from "~/lib/streaming-json"
+} from "~/lib/http/streaming-json"
 
 const MULTIPART_LOG_FIELDS = new Set([
   "model",

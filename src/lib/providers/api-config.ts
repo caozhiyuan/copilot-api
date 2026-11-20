@@ -1,0 +1,456 @@
+import { randomUUID } from "node:crypto"
+
+import { assertGitHubCopilotEnabled } from "./github-copilot-provider"
+
+import { COMPACT_REQUEST, type CompactType } from "~/lib/http/compact"
+
+import type { State } from "../state"
+
+import { getCachedOpencodeVersion } from "./opencode"
+import { requestContext } from "../http/request-context-store"
+
+export const isOpencodeOauthApp = (): boolean => {
+  return process.env.COPILOT_API_OAUTH_APP?.trim() === "opencode"
+}
+
+export const normalizeDomain = (input: string): string => {
+  return input
+    .trim()
+    .replace(/^https?:\/\//u, "")
+    .replace(/\/+$/u, "")
+}
+
+export const getEnterpriseDomain = (): string | null => {
+  const raw = (process.env.COPILOT_API_ENTERPRISE_URL ?? "").trim()
+  if (!raw) return null
+  const normalized = normalizeDomain(raw)
+  return normalized || null
+}
+
+export const getGitHubBaseUrl = (): string => {
+  const resolvedDomain = getEnterpriseDomain()
+  return resolvedDomain ? `https://${resolvedDomain}` : GITHUB_BASE_URL
+}
+
+export const getGitHubApiBaseUrl = (): string => {
+  const resolvedDomain = getEnterpriseDomain()
+  return resolvedDomain ? `https://api.${resolvedDomain}` : GITHUB_API_BASE_URL
+}
+
+const getOpencodeOauthHeaders = (): Record<string, string> => {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "User-Agent": getOpencodeVersion(),
+  }
+}
+
+const getOpencodeLLMHeaders = (): Record<string, string> => {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "User-Agent": OPENCODE_LLM_USER_AGENT,
+  }
+}
+
+const normalizeOpencodeUserAgent = (userAgent: string): string => {
+  const candidate = userAgent.trim()
+  if (candidate.startsWith("opencode/latest")) return candidate
+
+  const opencodeProduct = candidate.match(/^opencode\/[^\s,]+/u)?.[0]
+
+  if (!opencodeProduct || candidate.includes(`, ${opencodeProduct}`)) {
+    return candidate
+  }
+
+  return `${candidate}, ${opencodeProduct}`
+}
+
+export const getOauthUrls = (): {
+  deviceCodeUrl: string
+  accessTokenUrl: string
+} => {
+  const githubBaseUrl = getGitHubBaseUrl()
+
+  return {
+    deviceCodeUrl: `${githubBaseUrl}/login/device/code`,
+    accessTokenUrl: `${githubBaseUrl}/login/oauth/access_token`,
+  }
+}
+
+interface OauthAppConfig {
+  clientId: string
+  headers: Record<string, string>
+  scope: string
+}
+
+export const getOauthAppConfig = (): OauthAppConfig => {
+  if (isOpencodeOauthApp()) {
+    return {
+      clientId: OPENCODE_GITHUB_CLIENT_ID,
+      headers: getOpencodeOauthHeaders(),
+      scope: GITHUB_APP_SCOPES,
+    }
+  }
+
+  return {
+    clientId: GITHUB_CLIENT_ID,
+    headers: standardHeaders(),
+    scope: GITHUB_APP_SCOPES,
+  }
+}
+
+export const prepareForCompact = (
+  headers: Record<string, string>,
+  compactType?: CompactType,
+) => {
+  if (compactType) {
+    headers["x-initiator"] = "agent"
+    if (!isOpencodeOauthApp() && compactType === COMPACT_REQUEST) {
+      headers["x-interaction-type"] = "conversation-compaction"
+      headers["openai-intent"] = "conversation-agent"
+    }
+  }
+}
+
+export const prepareInteractionHeaders = (
+  sessionId: string | undefined,
+  isSubagent: boolean,
+  headers: Record<string, string>,
+) => {
+  const sendInteractionHeaders = !isOpencodeOauthApp()
+
+  if (isSubagent) {
+    headers["x-initiator"] = "agent"
+    if (sendInteractionHeaders) {
+      headers["x-interaction-type"] = "conversation-subagent"
+    }
+  }
+
+  if (sessionId && sendInteractionHeaders) {
+    headers["x-interaction-id"] = sessionId
+  }
+}
+
+export const standardHeaders = () => ({
+  "content-type": "application/json",
+  accept: "application/json",
+})
+
+export const getOpencodeVersion = () => {
+  const version = getCachedOpencodeVersion()
+  if (version) {
+    return "opencode/" + version
+  }
+  return OPENCODE_VERSION
+}
+
+const OPENCODE_VERSION = "opencode/1.14.29"
+const OPENCODE_LLM_USER_AGENT =
+  "opencode/1.14.29 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.13, opencode/1.14.29"
+
+const COPILOT_VERSION = "0.72.0"
+const EDITOR_PLUGIN_VERSION = `copilot-chat/${COPILOT_VERSION}`
+const USER_AGENT = `GitHubCopilotChat/${COPILOT_VERSION}`
+const CLAUDE_CODE_VERSION = "2.1.304"
+const CLAUDE_AGENT_SDK_VERSION = "0.3.304"
+const CLAUDE_AGENT_USER_AGENT = `vscode_claude_code/${CLAUDE_CODE_VERSION} (external, sdk-ts, agent-sdk/${CLAUDE_AGENT_SDK_VERSION})`
+const COPILOT_WEBSOCKET_VERSION = COPILOT_VERSION
+const EDITOR_WEBSOCKET_PLUGIN_VERSION = `copilot-chat/${COPILOT_WEBSOCKET_VERSION}`
+
+const API_VERSION = "2026-08-01"
+const WEBSOCKET_API_VERSION = API_VERSION
+
+export const copilotBaseUrl = (state: State) => {
+  const enterpriseDomain = getEnterpriseDomain()
+  if (enterpriseDomain) {
+    return `https://copilot-api.${enterpriseDomain}`
+  }
+
+  if (isOpencodeOauthApp()) {
+    return "https://api.githubcopilot.com"
+  }
+
+  if (state.copilotApiUrl) {
+    return state.copilotApiUrl
+  }
+
+  return state.accountType === "individual" ?
+      "https://api.githubcopilot.com"
+    : `https://api.${state.accountType}.githubcopilot.com`
+}
+
+export const prepareMessageProxyHeaders = (
+  headers: Record<string, string>,
+  state: State,
+) => {
+  if (isOpencodeOauthApp()) {
+    return
+  }
+
+  if (!state.githubToken) throw new Error("GitHub token not found")
+
+  // Preserve the Claude agent's fresh request ID for every upstream request.
+  const requestIdValue = randomUUID()
+  const source = createHeaderResolver(headers)
+  const proxyHeaders: Record<string, string> = {
+    "anthropic-version": source("anthropic-version", "2023-06-01"),
+    "User-Agent": CLAUDE_AGENT_USER_AGENT,
+    "Content-Type": source("content-type", "application/json"),
+    Authorization: `Bearer ${state.githubToken}`,
+    "X-Request-Id": requestIdValue,
+    "X-GitHub-Api-Version": API_VERSION,
+    "OpenAI-Intent": "messages-proxy",
+    "X-Interaction-Type": "messages-proxy",
+  }
+
+  setPreparedHeader(proxyHeaders, "anthropic-beta", headers, "anthropic-beta")
+  setPreparedHeader(
+    proxyHeaders,
+    "VScode-SessionId",
+    headers,
+    "vscode-sessionid",
+  )
+  setPreparedHeader(
+    proxyHeaders,
+    "VScode-MachineId",
+    headers,
+    "vscode-machineid",
+  )
+  Object.assign(proxyHeaders, {
+    "Editor-Device-Id": source("editor-device-id", state.vsCodeDeviceId),
+    "Editor-Plugin-Version": `copilot-chat/${state.vsCodeVersion}`,
+    "Editor-Version": source("editor-version", `vscode/${state.vsCodeVersion}`),
+  })
+
+  for (const headerName of Object.keys(headers)) {
+    delete headers[headerName]
+  }
+  Object.assign(headers, proxyHeaders)
+}
+
+export const githubUserHeaders = (state: State): Record<string, string> => {
+  if (isOpencodeOauthApp()) {
+    return {
+      Authorization: `Bearer ${state.githubToken}`,
+      "User-Agent": getOpencodeVersion(),
+    }
+  }
+  return {
+    accept: "application/vnd.github+json",
+    authorization: `token ${state.githubToken}`,
+    "user-agent": USER_AGENT,
+    "x-github-api-version": "2022-11-28",
+    "x-vscode-user-agent-library-version": "electron-fetch",
+  }
+}
+
+export const copilotModelsHeaders = (state: State) => {
+  assertGitHubCopilotEnabled()
+  if (isOpencodeOauthApp()) {
+    return {
+      Authorization: `Bearer ${state.copilotToken}`,
+      "User-Agent": getOpencodeVersion(),
+    }
+  }
+  const headers = githubCopilotHeaders(state)
+  headers["x-interaction-type"] = "model-access"
+  headers["openai-intent"] = "model-access"
+  delete headers["x-interaction-id"]
+  delete headers["content-type"]
+  return headers
+}
+
+export const copilotHeaders = (
+  state: State,
+  requestId?: string,
+  vision: boolean = false,
+) => {
+  assertGitHubCopilotEnabled()
+  if (isOpencodeOauthApp()) {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${state.copilotToken}`,
+      ...getOpencodeLLMHeaders(),
+      "Openai-Intent": "conversation-edits",
+    }
+
+    const store = requestContext.getStore()
+    const userAgent = store?.userAgent.trim()
+    // Real opencode traffic already carries a versioned opencode/* UA,
+    // so prefer the inbound header to keep upstream behavior aligned.
+    if (userAgent?.startsWith("opencode/")) {
+      headers["User-Agent"] = normalizeOpencodeUserAgent(userAgent)
+    }
+
+    if (store?.sessionAffinity) {
+      headers["x-session-affinity"] = store.sessionAffinity
+    }
+
+    if (store?.parentSessionId) {
+      headers["x-parent-session-id"] = store.parentSessionId
+    }
+
+    if (vision) headers["Copilot-Vision-Request"] = "true"
+
+    return headers
+  }
+
+  return githubCopilotHeaders(state, requestId, vision)
+}
+
+export const copilotWebSocketHeaders = (
+  preparedHeaders: Record<string, string>,
+) => {
+  assertGitHubCopilotEnabled()
+  if (isOpencodeOauthApp()) {
+    return omitHeader(preparedHeaders, "x-initiator")
+  }
+
+  const requestId =
+    getPreparedHeader(preparedHeaders, "x-request-id") ?? randomUUID()
+  const source = createHeaderResolver(preparedHeaders)
+  const headers: Record<string, string> = {
+    Authorization: source("authorization"),
+    "X-Request-Id": requestId,
+    "OpenAI-Intent": source("openai-intent", "conversation-agent"),
+    "X-GitHub-Api-Version": source(
+      "x-github-api-version",
+      WEBSOCKET_API_VERSION,
+    ),
+    "X-Interaction-Id": source("x-interaction-id", requestId),
+    "X-Interaction-Type": source("x-interaction-type", "conversation-agent"),
+    "X-Agent-Task-Id": source("x-agent-task-id", requestId),
+  }
+
+  setPreparedHeader(
+    headers,
+    "VScode-SessionId",
+    preparedHeaders,
+    "vscode-sessionid",
+  )
+
+  setPreparedHeader(
+    headers,
+    "VScode-MachineId",
+    preparedHeaders,
+    "vscode-machineid",
+  )
+
+  Object.assign(headers, {
+    "Editor-Device-Id": source("editor-device-id"),
+    "Editor-Plugin-Version": source(
+      "editor-plugin-version",
+      EDITOR_WEBSOCKET_PLUGIN_VERSION,
+    ),
+    "Editor-Version": source("editor-version"),
+    "Copilot-Integration-Id": source("copilot-integration-id", "vscode-chat"),
+  })
+
+  setPreparedHeader(
+    headers,
+    "Copilot-Vision-Request",
+    preparedHeaders,
+    "copilot-vision-request",
+  )
+
+  headers["user-agent"] = "node"
+
+  return headers
+}
+
+const createHeaderResolver =
+  (headers: Record<string, string>) =>
+  (headerName: string, fallback: string = ""): string =>
+    getPreparedHeader(headers, headerName) ?? fallback
+
+const getPreparedHeader = (
+  headers: Record<string, string>,
+  headerName: string,
+): string | undefined => {
+  const normalizedHeaderName = headerName.toLowerCase()
+  const match = Object.entries(headers).find(
+    ([key]) => key.toLowerCase() === normalizedHeaderName,
+  )
+
+  return match?.[1]
+}
+
+const setPreparedHeader = (
+  target: Record<string, string>,
+  targetHeaderName: string,
+  source: Record<string, string>,
+  sourceHeaderName: string,
+): void => {
+  const value = getPreparedHeader(source, sourceHeaderName)
+  if (value) {
+    target[targetHeaderName] = value
+  }
+}
+
+const omitHeader = (
+  headers: Record<string, string>,
+  headerName: string,
+): Record<string, string> => {
+  const normalizedHeaderName = headerName.toLowerCase()
+  return Object.fromEntries(
+    Object.entries(headers).filter(
+      ([key]) => key.toLowerCase() !== normalizedHeaderName,
+    ),
+  )
+}
+
+const githubCopilotHeaders = (
+  state: State,
+  requestId?: string,
+  vision: boolean = false,
+) => {
+  const requestIdValue = requestId ?? randomUUID()
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${state.copilotToken}`,
+    "content-type": standardHeaders()["content-type"],
+    "copilot-integration-id": "vscode-chat",
+    "editor-device-id": state.vsCodeDeviceId,
+    "editor-version": `vscode/${state.vsCodeVersion}`,
+    "editor-plugin-version": EDITOR_PLUGIN_VERSION,
+    "user-agent": USER_AGENT,
+    "openai-intent": "conversation-agent",
+    "x-github-api-version": API_VERSION,
+    "x-request-id": requestIdValue,
+    "x-vscode-user-agent-library-version": "electron-fetch",
+    "x-agent-task-id": requestIdValue,
+    "x-interaction-type": "conversation-agent",
+  }
+
+  if (vision) headers["copilot-vision-request"] = "true"
+
+  if (state.macMachineId) {
+    headers["vscode-machineid"] = state.macMachineId
+  }
+
+  if (state.vsCodeSessionId) {
+    headers["vscode-sessionid"] = state.vsCodeSessionId
+  }
+
+  return headers
+}
+
+export const GITHUB_API_BASE_URL = "https://api.github.com"
+export const githubHeaders = (state: State): Record<string, string> => {
+  if (isOpencodeOauthApp()) {
+    return {
+      Authorization: `Bearer ${state.githubToken}`,
+      ...getOpencodeOauthHeaders(),
+    }
+  }
+  return {
+    authorization: `token ${state.githubToken}`,
+    "user-agent": USER_AGENT,
+    "x-github-api-version": "2025-04-01",
+    "x-vscode-user-agent-library-version": "electron-fetch",
+  }
+}
+
+export const GITHUB_BASE_URL = "https://github.com"
+export const GITHUB_CLIENT_ID = "Iv1.b507a08c87ecfe98"
+export const GITHUB_APP_SCOPES = ["read:user"].join(" ")
+export const OPENCODE_GITHUB_CLIENT_ID = "Ov23li8tweQw6odWQebz"

@@ -8,7 +8,7 @@ import type { ProviderConfig, ResolvedProviderConfig } from "~/lib/config"
 import {
   ensureConfiguredProviderModelAlias,
   resolveConfiguredProviderModelAlias,
-} from "~/lib/provider-resolver"
+} from "~/lib/providers/provider-resolver"
 
 interface CodexCredentialsShape {
   accessToken: string
@@ -112,9 +112,9 @@ describe("provider resolver", () => {
     const output = runScript(
       tempDir,
       `
-      const { getProviderConfig, listEnabledProviders } = await import("./src/lib/provider-config");
-      const { saveProviderManagementConfig, isProviderAgentModelVisible } = await import("./src/lib/provider-management");
-      const { getConfig } = await import("./src/lib/config-store");
+      const { getProviderConfig, listEnabledProviders } = await import("./src/lib/config/provider-config");
+      const { saveProviderManagementConfig, isProviderAgentModelVisible } = await import("./src/lib/config/provider-management");
+      const { getConfig } = await import("./src/lib/config/config-store");
       const before = getProviderConfig("dashscope") !== null;
       saveProviderManagementConfig({ providers: { dashscope: { enabled: false } } });
       const disabled = getProviderConfig("dashscope") === null && !listEnabledProviders().includes("dashscope");
@@ -153,7 +153,7 @@ describe("provider resolver", () => {
 
     const output = runScript(
       tempDir,
-      'const { resolveProviderConfig } = await import("./src/lib/provider-resolver"); const { stopCodexRefreshLoop } = await import("./src/lib/token"); console.log(JSON.stringify(await resolveProviderConfig("codex"))); stopCodexRefreshLoop();',
+      'const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver"); const { stopCodexRefreshLoop } = await import("./src/lib/auth/token"); console.log(JSON.stringify(await resolveProviderConfig("codex"))); stopCodexRefreshLoop();',
     )
 
     expect(JSON.parse(output)).toMatchObject({
@@ -175,7 +175,7 @@ describe("provider resolver", () => {
 
     const output = runScript(
       tempDir,
-      'const { resolveProviderConfig } = await import("./src/lib/provider-resolver"); console.log(JSON.stringify(await resolveProviderConfig("codex")));',
+      'const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver"); console.log(JSON.stringify(await resolveProviderConfig("codex")));',
     )
 
     expect(JSON.parse(output)).toBeNull()
@@ -193,7 +193,7 @@ describe("provider resolver", () => {
 
     const output = runScript(
       tempDir,
-      'const { resolveProviderConfig } = await import("./src/lib/provider-resolver"); const { stopCodexRefreshLoop } = await import("./src/lib/token"); console.log(JSON.stringify(await resolveProviderConfig("codex"))); stopCodexRefreshLoop();',
+      'const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver"); const { stopCodexRefreshLoop } = await import("./src/lib/auth/token"); console.log(JSON.stringify(await resolveProviderConfig("codex"))); stopCodexRefreshLoop();',
     )
 
     expect(JSON.parse(output)).toMatchObject({
@@ -241,7 +241,7 @@ describe("provider resolver", () => {
 
     const output = runScript(
       tempDir,
-      'const { resolveProviderConfig } = await import("./src/lib/provider-resolver"); const { state } = await import("./src/lib/state"); const { stopCodexRefreshLoop } = await import("./src/lib/token"); const config = await resolveProviderConfig("codex"); console.log(JSON.stringify({ apiKey: config?.apiKey, accountId: state.codexAccountId })); stopCodexRefreshLoop();',
+      'const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver"); const { state } = await import("./src/lib/state"); const { stopCodexRefreshLoop } = await import("./src/lib/auth/token"); const config = await resolveProviderConfig("codex"); console.log(JSON.stringify({ apiKey: config?.apiKey, accountId: state.codexAccountId })); stopCodexRefreshLoop();',
     )
 
     expect(JSON.parse(output)).toEqual({
@@ -279,7 +279,7 @@ describe("provider resolver", () => {
 
     const output = runScript(
       tempDir,
-      'const { resolveProviderConfig } = await import("./src/lib/provider-resolver"); try { await resolveProviderConfig("codex"); } catch (error) { console.log(error instanceof Error ? error.message : String(error)); }',
+      'const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver"); try { await resolveProviderConfig("codex"); } catch (error) { console.log(error instanceof Error ? error.message : String(error)); }',
     )
 
     expect(output).toContain(
@@ -302,7 +302,7 @@ describe("provider resolver", () => {
 
     const output = runScript(
       tempDir,
-      'const { getRawProviderConfig } = await import("./src/lib/config"); const { persistCodexCredentials } = await import("./src/lib/token"); await persistCodexCredentials({ accessToken: "codex-access-token", accountId: "acct_test", expiresAt: Date.now() + 60 * 60 * 1000, refreshToken: "codex-refresh-token" }); console.log(JSON.stringify(getRawProviderConfig("codex")));',
+      'const { getRawProviderConfig } = await import("./src/lib/config"); const { persistCodexCredentials } = await import("./src/lib/auth/token"); await persistCodexCredentials({ accessToken: "codex-access-token", accountId: "acct_test", expiresAt: Date.now() + 60 * 60 * 1000, refreshToken: "codex-refresh-token" }); console.log(JSON.stringify(getRawProviderConfig("codex")));',
     )
 
     expect(JSON.parse(output)).toMatchObject({
@@ -327,7 +327,7 @@ describe("provider resolver", () => {
 
     const output = runScript(
       tempDir,
-      'const { resolveProviderConfig } = await import("./src/lib/provider-resolver"); console.log(JSON.stringify(await resolveProviderConfig("foundry", async () => "entra-access-token")));',
+      'const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver"); console.log(JSON.stringify(await resolveProviderConfig("foundry", async () => "entra-access-token")));',
     )
 
     expect(JSON.parse(output)).toMatchObject({

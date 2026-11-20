@@ -1,8 +1,8 @@
-import { GITHUB_COPILOT_PROVIDER } from '../../src/lib/github-copilot-provider'
+import { GITHUB_COPILOT_PROVIDER } from '../../src/lib/providers/github-copilot-provider'
 import {
   getProviderManagementConfig,
   type ProviderManagementConfig,
-} from '../../src/lib/provider-management'
+} from '../../src/lib/config/provider-management'
 import { readToken } from './auth'
 
 export async function getDesktopProviderManagementConfig(

@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { resolveOpencodeVersionFromNpmRoot } from "~/lib/opencode"
+import { resolveOpencodeVersionFromNpmRoot } from "~/lib/providers/opencode"
 
 const tempDirs: Array<string> = []
 

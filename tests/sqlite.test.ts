@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   isNodeSqliteSupportedVersion,
   isSqliteRuntimeSupported,
-} from "~/lib/sqlite"
+} from "~/lib/storage/sqlite"
 
 describe("sqlite runtime support", () => {
   test("detects the minimum Node.js version for node:sqlite", () => {

@@ -1,8 +1,8 @@
 import { Hono } from "hono"
 
-import { forwardError } from "~/lib/error"
+import { forwardError } from "~/lib/http/error"
 import { createHandlerLogger, debugJsonAsync } from "~/lib/logger"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import { handleAlphaSearchRequest } from "~/routes/alpha-search/route"
 import {
   createProviderProxyResponse,

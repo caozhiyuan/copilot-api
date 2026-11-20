@@ -5,8 +5,8 @@ import {
   recordChatCompletionFirstToken,
   recordGoogleFirstToken,
   recordResponsesFirstToken,
-} from "~/lib/first-token"
-import { requestContext } from "~/lib/request-context"
+} from "~/lib/http/first-token"
+import { requestContext } from "~/lib/http/request-context"
 import type { AnthropicStreamEventData } from "~/lib/types/anthropic"
 import type { ChatCompletionChunk, Delta } from "~/lib/types/chat-completions"
 import type { ResponseStreamEvent } from "~/lib/types/responses"

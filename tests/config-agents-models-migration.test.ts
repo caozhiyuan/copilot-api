@@ -12,12 +12,12 @@ import {
   writeConfigToDisk,
   type AppConfig,
   type ProviderConfig,
-} from "~/lib/config-store"
-import { PATHS } from "~/lib/paths"
+} from "~/lib/config/config-store"
+import { PATHS } from "~/lib/storage/paths"
 import {
   getProviderManagementConfig,
   saveProviderManagementConfig,
-} from "~/lib/provider-management"
+} from "~/lib/config/provider-management"
 
 type LegacyProviderConfig = ProviderConfig & { codexModels?: Array<string> }
 const originalConfigPath = PATHS.CONFIG_PATH

@@ -7,7 +7,7 @@ import type {
 } from "~/lib/types/anthropic"
 import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 import type { ResolvedProviderConfig } from "~/lib/config"
-import type { ProviderConfigResolver } from "~/lib/provider-resolver"
+import type { ProviderConfigResolver } from "~/lib/providers/provider-resolver"
 
 import {
   buildSyntheticStreamEvents,

@@ -14,10 +14,10 @@ import path from 'node:path'
 import {
   invalidateConfigCache,
   type AppConfig,
-} from '../../src/lib/config-store'
-import { GITHUB_TOKEN_ENV } from '../../src/lib/credential-store'
-import { PATHS } from '../../src/lib/paths'
-import { saveProviderManagementConfig } from '../../src/lib/provider-management'
+} from '../../src/lib/config/config-store'
+import { GITHUB_TOKEN_ENV } from '../../src/lib/auth/credential-store'
+import { PATHS } from '../../src/lib/storage/paths'
+import { saveProviderManagementConfig } from '../../src/lib/config/provider-management'
 import * as githubUser from '../../src/services/github/get-user'
 import { getDesktopProviderManagementConfig } from '../electron/provider-management'
 import { buildServerStartEnv } from '../electron/server-start-args'

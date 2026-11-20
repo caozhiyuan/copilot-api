@@ -4,7 +4,7 @@ import {
   getCopilotRateLimitUsageFromSnapshots,
   getCopilotRateLimitUsage,
   parseCopilotRateLimitHeader,
-} from "~/lib/copilot-rate-limit"
+} from "~/lib/providers/copilot-rate-limit"
 
 test("parseCopilotRateLimitHeader extracts remaining quota and reset time", () => {
   expect(

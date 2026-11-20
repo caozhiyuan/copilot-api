@@ -1,4 +1,4 @@
-import { BRIDGE_TOOL_SEARCH_NAME } from "~/lib/tool-search"
+import { BRIDGE_TOOL_SEARCH_NAME } from "~/lib/cli/tool-search"
 import {
   type ResponseCreatedEvent,
   type ResponsesResult,

@@ -3,25 +3,25 @@ import type { Context } from "hono"
 
 import { streamSSE } from "hono/streaming"
 
-import type { CompactType } from "~/lib/compact"
-import type { SubagentMarker } from "~/lib/subagent"
+import type { CompactType } from "~/lib/http/compact"
+import type { SubagentMarker } from "~/lib/http/subagent"
 import type { Model } from "~/lib/types/models"
 
 import {
   getMessageApiWebSearchModel,
   isResponsesApiWebSearchEnabled,
 } from "~/lib/config"
-import { findEndpointModel } from "~/lib/models"
-import { writeSSEIfConnected } from "~/lib/sse"
+import { findEndpointModel } from "~/lib/catalog/models"
+import { writeSSEIfConnected } from "~/lib/http/sse"
 import {
   parseProviderModelAlias,
   type ProviderModelAlias,
-} from "~/lib/provider-model"
+} from "~/lib/catalog/provider-model"
 import {
   ensureConfiguredProviderModelAlias,
   resolveProviderConfig,
   type ProviderConfigResolver,
-} from "~/lib/provider-resolver"
+} from "~/lib/providers/provider-resolver"
 import {
   createCopilotTokenUsageRecorder,
   normalizeOptionalToken,

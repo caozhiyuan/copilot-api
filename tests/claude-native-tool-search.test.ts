@@ -4,7 +4,7 @@ import { prepareResponsesContinuation } from "~/lib/responses-continuation"
 import {
   formatToolSearchArguments,
   resolveResponsesToolSearchMode,
-} from "~/lib/tool-search"
+} from "~/lib/cli/tool-search"
 import type {
   AnthropicInputMessage,
   AnthropicMessagesPayload,

@@ -12,7 +12,10 @@ import type {
   ProviderManagementConfig,
   ProviderModelOptions,
 } from '../src/types/ipc'
-import { defaultConfig, type AppConfig } from '../../src/lib/config-store'
+import {
+  defaultConfig,
+  type AppConfig,
+} from '../../src/lib/config/config-store'
 import type { ConfigEditorReply } from '../src/lib/config-editor-errors'
 
 let win: Window

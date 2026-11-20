@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { isMcpFastPath, MCP_SUBCOMMAND } from "~/lib/fast-path"
+import { isMcpFastPath, MCP_SUBCOMMAND } from "~/lib/cli/fast-path"
 
 describe("isMcpFastPath", () => {
   test("matches the exact mcp subcommand invocation", () => {

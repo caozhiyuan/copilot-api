@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 
-import { forwardError } from "~/lib/error"
-import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
+import { forwardError } from "~/lib/http/error"
+import { zstdDecompressionMiddleware } from "~/lib/http/zstd-request"
 
 import { handleResponses } from "./handler"
 

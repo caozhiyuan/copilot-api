@@ -15,8 +15,8 @@ import {
   withCredentialFileLock,
   writeCodexCredentials,
   writeGitHubToken,
-} from "~/lib/credential-store"
-import { PATHS } from "~/lib/paths"
+} from "~/lib/auth/credential-store"
+import { PATHS } from "~/lib/storage/paths"
 
 const originalGitHubTokenPath = PATHS.GITHUB_TOKEN_PATH
 const originalCodexCredentialPath = PATHS.CODEX_CREDENTIAL_PATH
@@ -408,7 +408,7 @@ describe("Codex account store", () => {
 
     const script = `
       const fs = await import("node:fs")
-      const { writeCodexCredentials } = await import("./src/lib/credential-store")
+      const { writeCodexCredentials } = await import("./src/lib/auth/credential-store")
       fs.writeFileSync(process.env.READY_PATH, "ready", "utf8")
       while (!fs.existsSync(process.env.GO_PATH)) await Bun.sleep(5)
       await writeCodexCredentials(JSON.parse(process.env.ACCOUNT))

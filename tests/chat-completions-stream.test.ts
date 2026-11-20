@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test"
 import type { ServerSentEventMessage } from "fetch-event-stream"
 
-import { guardChatCompletionsStream } from "~/lib/chat-completions-stream"
+import { guardChatCompletionsStream } from "~/lib/http/chat-completions-stream"
 import type { ChatCompletionChunk } from "~/lib/types/chat-completions"
 
 const collect = async (

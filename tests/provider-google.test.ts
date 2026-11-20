@@ -15,13 +15,13 @@ import {
   resolveProviderConfigForModel,
   type ResolvedProviderConfig,
 } from "~/lib/config"
-import { forwardError } from "~/lib/error"
+import { forwardError } from "~/lib/http/error"
 import {
   getModelsDevProviderOptions,
   installModelsDevCatalog,
-} from "~/lib/models-dev-cache"
-import { QUICK_PROVIDER_CONFIGS } from "~/lib/quick-providers"
-import { requestContext } from "~/lib/request-context"
+} from "~/lib/catalog/models-dev-cache"
+import { QUICK_PROVIDER_CONFIGS } from "~/lib/config/quick-providers"
+import { requestContext } from "~/lib/http/request-context"
 import * as tokenUsage from "~/lib/token-usage"
 import type {
   AnthropicMessagesPayload,

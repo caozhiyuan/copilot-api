@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { ApiKeyQuotaLedger, apiKeyQuotaWindow } from "~/lib/api-key-quota"
+import { ApiKeyQuotaLedger, apiKeyQuotaWindow } from "~/lib/auth/api-key-quota"
 import {
   initializeApiKeyQuotaTables,
   readApiKeyQuotaLedger,
   persistApiKeyQuotaLedger,
-} from "~/lib/api-key-quota-store"
-import { openSqliteDatabase, type SqliteDatabase } from "~/lib/sqlite"
+} from "~/lib/auth/api-key-quota-store"
+import { openSqliteDatabase, type SqliteDatabase } from "~/lib/storage/sqlite"
 
 const databases: Array<SqliteDatabase> = []
 afterEach(() => {

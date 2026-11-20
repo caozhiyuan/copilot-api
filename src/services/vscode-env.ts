@@ -2,7 +2,7 @@ import consola from "consola"
 import { createHash, randomUUID } from "node:crypto"
 import { networkInterfaces } from "node:os"
 
-import { getVSCodeDeviceId } from "~/lib/deviceid"
+import { getVSCodeDeviceId } from "~/lib/providers/deviceid"
 import { state } from "~/lib/state"
 import { getVSCodeVersion } from "~/services/get-vscode-version"
 

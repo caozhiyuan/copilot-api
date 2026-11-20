@@ -8,7 +8,7 @@
 import {
   isWildcardHostname,
   normalizeHostnameBase,
-} from '../../../src/lib/server-host-shared'
+} from '../../../src/lib/http/server-host-shared'
 
 export function resolveDisplayHost(host: string | null | undefined): string {
   const normalizedHost = host?.trim()

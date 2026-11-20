@@ -5,15 +5,12 @@ import {
   normalizeCodexInstructions,
   resolveCodexCatalogCompatibility,
   serializeCodexModelCatalog,
-} from "~/lib/codex-model-catalog"
+} from "~/lib/catalog/codex-model-catalog"
 import {
   FULL_MODEL_CATALOG_HEADER,
   stripInternalRequestHeaders,
-} from "~/lib/internal-headers"
-import type {
-  CodexModel,
-  CodexModelsResponse,
-} from "~/routes/models/codex-models-types"
+} from "~/lib/http/internal-headers"
+import type { CodexModel, CodexModelsResponse } from "~/lib/types/codex-models"
 import catalog from "~/routes/models/models.json"
 
 const fallback: CodexModel["model_messages"] = {

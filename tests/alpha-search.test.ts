@@ -12,9 +12,9 @@ import { Hono } from "hono"
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 import { supportsNativeDeepSeekAlphaSearch } from "~/services/providers/provider-proxy"
-import { traceIdMiddleware } from "~/lib/trace"
-import { requestEventsMiddleware } from "~/lib/request-events"
-import { requestContext } from "~/lib/request-context"
+import { traceIdMiddleware } from "~/lib/http/trace"
+import { requestEventsMiddleware } from "~/lib/http/request-events"
+import { requestContext } from "~/lib/http/request-context"
 
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
@@ -23,7 +23,7 @@ let alphaSearchCodexPriorityEnabled = true
 let modelMappings: Record<string, string> = {}
 
 const { state } = await import("~/lib/state")
-const { HTTPError } = await import("~/lib/error")
+const { HTTPError } = await import("~/lib/http/error")
 const { closeUsageStore, getTokenUsageEventsPage } = await import(
   "~/lib/token-usage"
 )

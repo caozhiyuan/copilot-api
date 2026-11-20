@@ -1,8 +1,11 @@
 import consola from "consola"
 
-import { copilotBaseUrl, copilotModelsHeaders } from "~/lib/api-config"
+import {
+  copilotBaseUrl,
+  copilotModelsHeaders,
+} from "~/lib/providers/api-config"
 
-import { HTTPError } from "~/lib/error"
+import { HTTPError } from "~/lib/http/error"
 import { state } from "~/lib/state"
 import type { ModelsResponse } from "~/lib/types/models"
 

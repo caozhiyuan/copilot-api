@@ -1,11 +1,11 @@
 import type { Context } from "hono"
 
-import { getProviderModelConfig } from "~/lib/provider-model-catalog"
+import { getProviderModelConfig } from "~/lib/catalog/provider-model-catalog"
 import type { ModelConfig, ResolvedProviderConfig } from "~/lib/config"
 import {
   resolveSupportedReasoningEffort,
   type ResponsesReasoningEffort,
-} from "~/lib/reasoning-effort"
+} from "~/lib/catalog/reasoning-effort"
 import type { ResponsesPayload } from "~/lib/types/responses"
 import { createProviderProxyResponseHeaders } from "~/services/providers/provider-proxy"
 

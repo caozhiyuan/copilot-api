@@ -3,9 +3,9 @@ import fs from "node:fs"
 import path from "node:path"
 import util from "node:util"
 
-import { PATHS } from "./paths"
+import { PATHS } from "./storage/paths"
 import { registerProcessCleanup } from "./process-cleanup"
-import { requestContext } from "./request-context"
+import { requestContext } from "./http/request-context"
 import { state } from "./state"
 
 const LOG_RETENTION_DAYS = 7

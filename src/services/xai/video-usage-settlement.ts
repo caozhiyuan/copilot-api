@@ -1,10 +1,10 @@
 import consola from "consola"
 
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import {
   deferVideoUsageJob,
   getDueVideoUsageJobs,
-} from "~/lib/token-usage/store"
+} from "~/lib/video-settlement"
 import { recordVideoResultUsage } from "~/lib/token-usage/videos"
 
 import { forwardXaiVideos } from "./videos"

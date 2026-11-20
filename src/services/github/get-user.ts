@@ -1,6 +1,9 @@
 import consola from "consola"
-import { getGitHubApiBaseUrl, githubUserHeaders } from "~/lib/api-config"
-import { HTTPError } from "~/lib/error"
+import {
+  getGitHubApiBaseUrl,
+  githubUserHeaders,
+} from "~/lib/providers/api-config"
+import { HTTPError } from "~/lib/http/http-error"
 import { state } from "~/lib/state"
 
 export async function getGitHubUser(githubToken?: string) {

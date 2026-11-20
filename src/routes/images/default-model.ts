@@ -1,14 +1,14 @@
-import { HTTPError } from "~/lib/error"
-import { isGitHubCopilotAvailable } from "~/lib/github-copilot-provider"
+import { HTTPError } from "~/lib/http/error"
+import { isGitHubCopilotAvailable } from "~/lib/providers/github-copilot-provider"
 import {
   DEFAULT_IMAGE_MODELS,
   IMAGE_PROVIDER_PRIORITY,
-} from "~/lib/image-models"
+} from "~/lib/catalog/image-models"
 import {
   parseProviderModelAlias,
   type ProviderModelAlias,
-} from "~/lib/provider-model"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+} from "~/lib/catalog/provider-model"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 
 /** Only missing models and bare gpt-image-2 select an available default. */
 export async function resolveImageRequestModel(

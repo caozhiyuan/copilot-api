@@ -8,16 +8,16 @@ import {
   getRawProviderConfig,
   resolveMappedModel,
 } from "~/lib/config"
-import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
-import { getProviderModelPdfSupport } from "~/lib/model-pdf-support"
-import { createFallbackModel } from "~/lib/provider-model"
-import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
-import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
-import { getTokenCount } from "~/lib/tokenizer"
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
+import { getProviderModelPdfSupport } from "~/lib/catalog/model-pdf-support"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
+import { fromClaudeDiscoveryModelId } from "~/lib/catalog/claude-models"
+import { resolveConfiguredProviderModelAlias } from "~/lib/providers/provider-resolver"
+import { getTokenCount } from "~/lib/catalog/tokenizer"
 import { handleProviderCountTokensForProvider } from "~/routes/provider/messages/count-tokens-handler"
 import { type Model } from "~/lib/types/models"
 
-import { findEndpointModel } from "../../lib/models"
+import { findEndpointModel } from "../../lib/catalog/models"
 import { type AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import { translateToOpenAI } from "./completions-translation"
 import { normalizeSystemMessages } from "./preprocess"

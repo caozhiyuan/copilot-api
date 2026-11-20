@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { createServer } from "node:http"
 import { Hono } from "hono"
-import { traceIdMiddleware } from "~/lib/trace"
+import { traceIdMiddleware } from "~/lib/http/trace"
 
 import type {
   AnthropicMessagesPayload,
   AnthropicResponse,
 } from "~/lib/types/anthropic"
 
-import { COMPACT_REQUEST } from "~/lib/compact"
-import { HTTPError } from "~/lib/error"
+import { COMPACT_REQUEST } from "~/lib/http/compact"
+import { HTTPError } from "~/lib/http/error"
 import { state } from "~/lib/state"
-import { requestContext } from "~/lib/request-context"
+import { requestContext } from "~/lib/http/request-context"
 import { isAsyncIterable } from "~/lib/utils"
 import { createMessages } from "~/services/copilot/create-messages"
 import { getVSCodeVersion } from "~/services/get-vscode-version"

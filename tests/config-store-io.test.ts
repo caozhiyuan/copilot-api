@@ -6,7 +6,6 @@ import path from "node:path"
 import {
   defaultConfig,
   getAlphaSearchModel,
-  getClaudeAutoModel,
   getMessageApiWebSearchModel,
   getOpencodeModelContextWindow,
   invalidateConfigCache,
@@ -15,13 +14,14 @@ import {
   setConfiguredApiKeys,
   writeConfigToDisk,
   type AppConfig,
-} from "~/lib/config-store"
+} from "~/lib/config/config-store"
 import {
+  getClaudeAutoModel,
   getSmallModel,
   getSmallModelForProvider,
   isOutputEncryptedContentDisabled,
-} from "~/lib/model-policy"
-import { PATHS } from "~/lib/paths"
+} from "~/lib/config/model-policy"
+import { PATHS } from "~/lib/storage/paths"
 import { state } from "~/lib/state"
 
 interface StoredConfig {

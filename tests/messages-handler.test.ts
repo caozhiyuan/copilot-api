@@ -11,13 +11,16 @@ import { Hono } from "hono"
 
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 
-import { compactSummaryPromptStart, compactTextOnlyGuard } from "~/lib/compact"
-import { createFallbackModel } from "~/lib/provider-model"
-import { traceIdMiddleware } from "~/lib/trace"
+import {
+  compactSummaryPromptStart,
+  compactTextOnlyGuard,
+} from "~/lib/http/compact"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
+import { traceIdMiddleware } from "~/lib/http/trace"
 
 const actualStateModule = await import("~/lib/state")
 const actualConfigModule = await import("~/lib/config")
-const actualModelsModule = await import("~/lib/models")
+const actualModelsModule = await import("~/lib/catalog/models")
 const actualUtilsModule = await import("~/lib/utils")
 const { responsesUtilsDependencies } = await import("~/routes/responses/utils")
 const actualProviderMessagesModule = await import(

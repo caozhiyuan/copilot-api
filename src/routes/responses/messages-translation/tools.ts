@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import { parseProviderModelAlias } from "~/lib/provider-model"
+import { parseProviderModelAlias } from "~/lib/catalog/provider-model"
 
 import type { NamespaceTool, ResponsesPayload } from "~/lib/types/responses"
 

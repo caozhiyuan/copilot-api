@@ -3,8 +3,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { AppConfig } from "~/lib/config-store"
-import { isGitHubCopilotAvailable } from "~/lib/github-copilot-provider"
+import type { AppConfig } from "~/lib/config/config-store"
+import { isGitHubCopilotAvailable } from "~/lib/providers/github-copilot-provider"
 import type { State } from "~/lib/state"
 
 test.each<{
@@ -83,15 +83,15 @@ test("builtin Copilot defaults on, blocks all transports when disabled, and pres
     const script = `
       import assert from "node:assert/strict"
       import fs from "node:fs"
-      import { PATHS } from "./src/lib/paths"
-      import { invalidateConfigCache } from "./src/lib/config-store"
-      import { applyProviderManagementUpdate } from "./src/lib/provider-management"
-      import { isGitHubCopilotEnabled } from "./src/lib/github-copilot-provider"
-      import { copilotHeaders, copilotModelsHeaders, copilotWebSocketHeaders } from "./src/lib/api-config"
-      import { listEnabledProviders } from "./src/lib/provider-config"
-      import { setupCopilotToken } from "./src/lib/token"
+      import { PATHS } from "./src/lib/storage/paths"
+      import { invalidateConfigCache } from "./src/lib/config/config-store"
+      import { applyProviderManagementUpdate } from "./src/lib/config/provider-management"
+      import { isGitHubCopilotEnabled } from "./src/lib/providers/github-copilot-provider"
+      import { copilotHeaders, copilotModelsHeaders, copilotWebSocketHeaders } from "./src/lib/providers/api-config"
+      import { listEnabledProviders } from "./src/lib/config/provider-config"
+      import { setupCopilotToken } from "./src/lib/auth/token"
       import { state } from "./src/lib/state"
-      import { createFallbackModel } from "./src/lib/provider-model"
+      import { createFallbackModel } from "./src/lib/catalog/provider-model"
       import { modelRoutes } from "./src/routes/models/route"
       PATHS.CONFIG_PATH = process.env.PROVIDER_CONTROL_CONFIG_PATH
       let config = { providers: { custom: { type: "openai-compatible", baseUrl: "https://custom.test", apiKey: "retain-key" } } }

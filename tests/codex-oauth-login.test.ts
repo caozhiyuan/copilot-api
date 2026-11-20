@@ -14,7 +14,7 @@ import {
   CodexOAuthError,
   type CodexCredentials,
   type LoginCodexOptions,
-} from "~/lib/oauth/codex"
+} from "~/lib/auth/oauth/codex"
 
 const originalFetch = globalThis.fetch
 const callbackBaseUrl = "http://127.0.0.1:1455"

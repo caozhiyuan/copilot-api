@@ -1,4 +1,4 @@
-import { isGitHubCopilotEnabled } from '../../src/lib/github-copilot-provider'
+import { isGitHubCopilotEnabled } from '../../src/lib/providers/github-copilot-provider'
 import {
   getRawProviderConfig,
   isSupportedProviderType,
@@ -9,16 +9,16 @@ import {
   type ProviderConfig,
   type ProviderType,
 } from '../../src/lib/config'
-import { loginCodex } from '../../src/lib/oauth/codex'
-import { loginXai, type XaiAuthInfo } from '../../src/lib/oauth/xai'
-import { persistXaiCredentials } from '../../src/lib/xai-token'
-import { QUICK_PROVIDER_CONFIGS } from '../../src/lib/quick-providers'
+import { loginCodex } from '../../src/lib/auth/oauth/codex'
+import { loginXai, type XaiAuthInfo } from '../../src/lib/auth/oauth/xai'
+import { persistXaiCredentials } from '../../src/lib/auth/xai-token'
+import { QUICK_PROVIDER_CONFIGS } from '../../src/lib/config/quick-providers'
 import {
   getCodexAccounts,
   persistCodexCredentials,
   removeCodexAccount,
   selectCodexAccount,
-} from '../../src/lib/token'
+} from '../../src/lib/auth/token'
 import type {
   AuthResult,
   AuthStatus,

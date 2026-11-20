@@ -16,12 +16,12 @@ import type {
 } from "~/lib/types/anthropic"
 import type { ResponsesResult } from "~/lib/types/responses"
 
-import { createFallbackModel } from "~/lib/provider-model"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
 
 const actualConfigModule = await import("~/lib/config")
-const actualModelsModule = await import("~/lib/models")
+const actualModelsModule = await import("~/lib/catalog/models")
 const actualStateModule = await import("~/lib/state")
-const actualTokenModule = await import("~/lib/token")
+const actualTokenModule = await import("~/lib/auth/token")
 const actualTokenUsageModule = await import("~/lib/token-usage")
 
 let providerConfigs: Record<string, ResolvedProviderConfig> = {}
@@ -52,7 +52,7 @@ await mock.module("~/lib/state", () => ({
   },
 }))
 
-await mock.module("~/lib/token", () => ({
+await mock.module("~/lib/auth/token", () => ({
   ...actualTokenModule,
   setupCodexToken: async () => {},
 }))

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
 import { state } from "~/lib/state"
 import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 import { encodeMessagesCompaction } from "~/routes/responses/messages-translation"

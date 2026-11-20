@@ -3,12 +3,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { PATHS } from '../../src/lib/paths'
+import { PATHS } from '../../src/lib/storage/paths'
 import {
   defaultConfig,
   invalidateConfigCache,
   writeConfigToDisk,
-} from '../../src/lib/config-store'
+} from '../../src/lib/config/config-store'
 import {
   createAppConfigEditor,
   configEditorReply,

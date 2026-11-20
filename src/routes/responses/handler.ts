@@ -7,13 +7,13 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson, debugJsonTail } from "~/lib/logger"
-import { recordResponsesFirstToken } from "~/lib/first-token"
-import { findEndpointModel } from "~/lib/models"
-import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
-import { requestContext } from "~/lib/request-context"
-import { setPluginRequestModel } from "~/lib/request-events"
-import { readResponsesStreamEvent } from "~/lib/responses-stream-event"
-import { writeSSEIfConnected } from "~/lib/sse"
+import { recordResponsesFirstToken } from "~/lib/http/first-token"
+import { findEndpointModel } from "~/lib/catalog/models"
+import { resolveConfiguredProviderModelAlias } from "~/lib/providers/provider-resolver"
+import { requestContext } from "~/lib/http/request-context"
+import { setPluginRequestModel } from "~/lib/http/request-events"
+import { readResponsesStreamEvent } from "~/lib/http/responses-stream-event"
+import { writeSSEIfConnected } from "~/lib/http/sse"
 import { isCodexUserAgent } from "~/routes/models/codex-models"
 import {
   handleProviderResponsesForProvider,

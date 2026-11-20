@@ -1,4 +1,4 @@
-import { compactTextOnlyGuard } from "~/lib/compact"
+import { compactTextOnlyGuard } from "~/lib/http/compact"
 import type {
   AnthropicMessagesPayload,
   AnthropicTool,

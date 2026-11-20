@@ -15,7 +15,7 @@
  * via @ai-sdk/openai provider requires the Responses API endpoint.
  */
 
-import type { ResponsesStreamChunk } from "~/lib/responses-stream-event"
+import type { ResponsesStreamChunk } from "~/lib/http/responses-stream-event"
 import type {
   ResponseOutputItem,
   ResponseOutputItemAddedEvent,

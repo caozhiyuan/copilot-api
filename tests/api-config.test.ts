@@ -8,10 +8,10 @@ import {
   githubUserHeaders,
   prepareForCompact,
   prepareMessageProxyHeaders,
-} from "~/lib/api-config"
-import { COMPACT_AUTO_CONTINUE, COMPACT_REQUEST } from "~/lib/compact"
+} from "~/lib/providers/api-config"
+import { COMPACT_AUTO_CONTINUE, COMPACT_REQUEST } from "~/lib/http/compact"
 import { isAlphaSearchCodexPriorityEnabled } from "~/lib/config"
-import { requestContext } from "~/lib/request-context"
+import { requestContext } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
 import { getVSCodeVersion } from "~/services/get-vscode-version"
 

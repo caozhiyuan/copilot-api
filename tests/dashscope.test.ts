@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { applyOpenAICompatibleContextCache } from "~/lib/dashscope"
+import { applyOpenAICompatibleContextCache } from "~/lib/providers/dashscope"
 import type { Message } from "~/lib/types/chat-completions"
 
 const buildPayload = (model: string) => ({

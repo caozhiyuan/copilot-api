@@ -3,7 +3,7 @@ import type { Context } from "hono"
 import { expect, test } from "bun:test"
 import { createHash, randomUUID } from "node:crypto"
 
-import { requestContext } from "~/lib/request-context"
+import { requestContext } from "~/lib/http/request-context"
 
 import {
   getPromptCacheKey,

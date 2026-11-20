@@ -1,14 +1,76 @@
 import { Worker } from "node:worker_threads"
 
-import type { usageDatabaseOperations } from "./store"
+import type { ApiKeyQuotaBucket } from "../types/api-key"
+import type {
+  PersistedTokenUsageEvent,
+  RequestTiming,
+  TokenUsageDailySummary,
+  TokenUsageEventsPage,
+  TokenUsagePageInput,
+  TokenUsagePeriod,
+  TokenUsageSessionsPage,
+  TokenUsageSummary,
+  VideoUsageJob,
+} from "../types/token-usage"
 
-type Operations = typeof usageDatabaseOperations
-export type UsageOperation = keyof Operations
+export interface UsageDatabaseOperations {
+  writeTokenUsageEvent: (event: PersistedTokenUsageEvent) => Promise<boolean>
+  writeTokenUsageTiming: (
+    timing: Pick<
+      RequestTiming,
+      "id" | "firstTokenMs" | "durationMs" | "outcome"
+    >,
+  ) => Promise<void>
+  getTokenUsageSummary: (
+    period: TokenUsagePeriod,
+    nowMs: number,
+    apiKeyId?: string | null,
+  ) => Promise<TokenUsageSummary>
+  getTokenUsageDailySummary: (
+    period: TokenUsagePeriod,
+    nowMs: number,
+    apiKeyId?: string | null,
+  ) => Promise<TokenUsageDailySummary>
+  getTokenUsageEventsPage: (
+    input: TokenUsagePageInput,
+    nowMs: number,
+  ) => Promise<TokenUsageEventsPage>
+  getTokenUsageSessionsPage: (
+    input: TokenUsagePageInput,
+    nowMs: number,
+  ) => Promise<TokenUsageSessionsPage>
+  pruneTokenUsageEvents: (cutoffMs: number) => Promise<number>
+  closeUsageDatabase: () => Promise<void>
+  flushApiKeyQuotas: () => Promise<void>
+  readQuotaBuckets: (
+    dayStartMs: number,
+    monthStartMs: number,
+  ) => Promise<Array<ApiKeyQuotaBucket>>
+  getVideoUsageJob: (
+    provider: string,
+    requestId: string,
+  ) => Promise<VideoUsageJob | undefined>
+  saveVideoUsageJob: (
+    job: Omit<VideoUsageJob, "settled" | "next_poll_at_ms">,
+  ) => Promise<void>
+  getDueVideoUsageJobs: (
+    provider: string,
+    now: number,
+    limit: number,
+  ) => Promise<Array<VideoUsageJob>>
+  deferVideoUsageJob: (
+    job: VideoUsageJob,
+    nextPollAt: number,
+  ) => Promise<boolean>
+  stopPollingVideoUsageJob: (job: VideoUsageJob) => Promise<void>
+}
+
+export type UsageOperation = keyof UsageDatabaseOperations
 type OperationArgs = {
-  [Name in UsageOperation]: Parameters<Operations[Name]>
+  [Name in UsageOperation]: Parameters<UsageDatabaseOperations[Name]>
 }
 type OperationResult = {
-  [Name in UsageOperation]: Awaited<ReturnType<Operations[Name]>>
+  [Name in UsageOperation]: Awaited<ReturnType<UsageDatabaseOperations[Name]>>
 }
 
 export type UsageDatabaseHandlers = {

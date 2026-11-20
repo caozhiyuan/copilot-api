@@ -6,7 +6,7 @@ import {
   HTTPError,
   UpstreamHeadersTimeoutError,
   UpstreamStreamInactivityTimeoutError,
-} from "~/lib/error"
+} from "~/lib/http/error"
 
 const forward = (error: unknown, signal?: AbortSignal) => {
   const app = new Hono()

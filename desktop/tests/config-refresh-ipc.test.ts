@@ -11,15 +11,15 @@ import type { BrowserWindow } from 'electron'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { PATHS } from '../../src/lib/paths'
+import { PATHS } from '../../src/lib/storage/paths'
 import { VIDEO_IMAGE_MAX_BYTES } from '../electron/compress-video-image'
 
 import * as serverAuth from '../electron/server-auth-config'
 import * as settingsStore from '../electron/settings-store'
-import * as providerManagement from '../../src/lib/provider-management'
-import { CodexOAuthError } from '../../src/lib/oauth/codex'
-import { XaiOAuthError } from '../../src/lib/oauth/xai'
-import * as xaiToken from '../../src/lib/xai-token'
+import * as providerManagement from '../../src/lib/config/provider-management'
+import { CodexOAuthError } from '../../src/lib/auth/oauth/codex'
+import { XaiOAuthError } from '../../src/lib/auth/oauth/xai'
+import * as xaiToken from '../../src/lib/auth/xai-token'
 import type {
   AppConfigDocument,
   AppConfigSaveResult,
@@ -30,6 +30,7 @@ import type {
 
 type IpcHandler = (event: unknown, ...parameters: unknown[]) => unknown
 const handlers = new Map<string, IpcHandler>()
+const ipcListeners = new Map<string, () => void>()
 const openExternal = mock(() => Promise.resolve())
 const openPath = mock(() => Promise.resolve(''))
 let saveDialogResult: { canceled: boolean; filePath?: string } = {
@@ -81,7 +82,8 @@ await mock.module('electron', () => ({
   ipcMain: {
     handle: (channel: string, handler: IpcHandler) =>
       handlers.set(channel, handler),
-    on: () => {},
+    on: (channel: string, listener: () => void) =>
+      ipcListeners.set(channel, listener),
   },
   shell: { openExternal, openPath },
   dialog: { showSaveDialog },
@@ -135,6 +137,7 @@ async function invoke(
 
 beforeEach(async () => {
   handlers.clear()
+  ipcListeners.clear()
   openExternal.mockClear()
   openPath.mockClear()
   showSaveDialog.mockClear()
@@ -1448,6 +1451,219 @@ describe('desktop client integration IPC', () => {
     openPath.mockResolvedValueOnce('could not open')
     expect(await invoke('clients:open-config', 'claude')).toEqual({
       error: 'operationFailed',
+    })
+  })
+})
+
+describe('IPC submodules: shared, server-usage and window-shell', () => {
+  test('handles window controls, zoom levels and shell external links', async () => {
+    let maximized = false
+    let zoomLevel = 1
+    const reload = mock(() => {})
+    const minimize = mock(() => {})
+    const maximize = mock(() => {
+      maximized = true
+    })
+    const unmaximize = mock(() => {
+      maximized = false
+    })
+    const close = mock(() => {})
+    const setZoomLevel = mock((level: number) => {
+      zoomLevel = level
+    })
+    const onQuit = mock(() => {})
+
+    handlers.clear()
+    ipcListeners.clear()
+    registerIpcHandlers(
+      {
+        once: () => {},
+        reload,
+        minimize,
+        maximize,
+        unmaximize,
+        close,
+        isMaximized: () => maximized,
+        webContents: {
+          getZoomLevel: () => zoomLevel,
+          setZoomLevel,
+        },
+      } as unknown as BrowserWindow,
+      { onQuit },
+    )
+
+    await invoke('shell:open-url', 'https://example.com')
+    expect(openExternal).toHaveBeenCalledWith('https://example.com')
+
+    ipcListeners.get('window:reload')?.()
+    ipcListeners.get('window:minimize')?.()
+    expect(await invoke('window:is-maximized')).toBe(false)
+    ipcListeners.get('window:maximize-toggle')?.()
+    expect(maximize).toHaveBeenCalledTimes(1)
+    expect(await invoke('window:is-maximized')).toBe(true)
+    ipcListeners.get('window:maximize-toggle')?.()
+    expect(unmaximize).toHaveBeenCalledTimes(1)
+    ipcListeners.get('window:close')?.()
+    ipcListeners.get('window:quit')?.()
+    ipcListeners.get('window:zoom-in')?.()
+    ipcListeners.get('window:zoom-out')?.()
+    ipcListeners.get('window:zoom-reset')?.()
+
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(minimize).toHaveBeenCalledTimes(1)
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(onQuit).toHaveBeenCalledTimes(1)
+    expect(setZoomLevel).toHaveBeenNthCalledWith(1, 1.5)
+    expect(setZoomLevel).toHaveBeenNthCalledWith(2, 1)
+    expect(setZoomLevel).toHaveBeenNthCalledWith(3, 0)
+  })
+
+  test('covers model-mappings API proxy, error parsing and server auth info fallbacks', async () => {
+    const requestUrl = (input: Parameters<typeof fetch>[0]): string =>
+      typeof input === 'string' ? input
+      : input instanceof URL ? input.href
+      : input.url
+    const urls: string[] = []
+    spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(
+        (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          const url = requestUrl(input)
+          urls.push(url)
+          if (url.endsWith('/admin/config/model-mappings')) {
+            if (init?.method === 'POST') {
+              return Promise.resolve(Response.json({ ok: true }))
+            }
+            return Promise.resolve(Response.json({ modelMappings: { a: 'b' } }))
+          }
+          return Promise.resolve(Response.json({ reloaded: true }))
+        },
+        { preconnect: () => {} },
+      ),
+    )
+
+    expect(await invoke('config:get-model-mappings')).toEqual({
+      modelMappings: { a: 'b' },
+    })
+    await invoke('config:save-model-mappings', { a: 'c' })
+    expect(urls.some((u) => u.endsWith('/admin/config/model-mappings'))).toBe(
+      true,
+    )
+
+    // Structured JSON error and plain-text fallback error
+    spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({ error: { message: 'Bad mapping' } }, { status: 400 }),
+    )
+    await expect(invoke('config:get-model-mappings')).rejects.toThrow(
+      'Bad mapping',
+    )
+
+    spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('plain failure', { status: 502, statusText: 'Bad Gateway' }),
+    )
+    await expect(
+      invoke('config:save-model-mappings', { a: 'bad' }),
+    ).rejects.toThrow('Bad Gateway')
+
+    running = false
+    await expect(invoke('config:get-model-mappings')).rejects.toThrow(
+      'Server is not running',
+    )
+    running = true
+
+    // server:get-auth-info branches: active key, missing key, read failure
+    expect(await invoke('server:get-auth-info')).toEqual({
+      enabled: true,
+      headerName: 'x-api-key',
+      headerValue: 'old-api',
+    })
+    keys = { apiKeys: [], adminApiKey: '' }
+    expect(await invoke('server:get-auth-info')).toEqual({ enabled: false })
+    spyOn(serverAuth, 'readServerKeysConfig').mockRejectedValueOnce(
+      new Error('disk error'),
+    )
+    expect(await invoke('server:get-auth-info')).toEqual({ enabled: false })
+  })
+
+  test('covers server usage, models, token-usage queries, logs and start guards', async () => {
+    const requestUrl = (input: Parameters<typeof fetch>[0]): string =>
+      typeof input === 'string' ? input
+      : input instanceof URL ? input.href
+      : input.url
+    const requestedUrls: string[] = []
+    spyOn(globalThis, 'fetch').mockImplementation(
+      Object.assign(
+        (input: Parameters<typeof fetch>[0]) => {
+          const url = requestUrl(input)
+          requestedUrls.push(url)
+          return Promise.resolve(Response.json({ ok: true, url }))
+        },
+        { preconnect: () => {} },
+      ),
+    )
+
+    expect(await invoke('server:get-status')).toEqual({
+      running: true,
+      port: 4141,
+      host: '127.0.0.1',
+    })
+    expect(await invoke('server:get-logs')).toEqual([])
+    expect(await invoke('server:clear-logs')).toBe(0)
+
+    expect(await invoke('server:fetch-usage')).toEqual({
+      ok: true,
+      url: 'http://127.0.0.1:4141/admin/usage',
+    })
+    expect(await invoke('server:fetch-models')).toEqual({
+      ok: true,
+      url: 'http://127.0.0.1:4141/models',
+    })
+    await invoke('server:fetch-token-usage', 'invalid_period', 'k/1')
+    await invoke('server:fetch-token-usage-daily', 'last_7_days', 'k1')
+    await invoke('server:fetch-token-usage-events', 'today', 0, -5, 'k1')
+    await invoke('server:fetch-token-usage-sessions', 'this_month', 2, 10, 'k1')
+
+    expect(requestedUrls).toContain(
+      'http://127.0.0.1:4141/admin/token-usage?period=today&api_key_id=k%2F1',
+    )
+    expect(requestedUrls).toContain(
+      'http://127.0.0.1:4141/admin/token-usage/daily?period=last_7_days&api_key_id=k1',
+    )
+    expect(requestedUrls).toContain(
+      'http://127.0.0.1:4141/admin/token-usage/events?page=1&page_size=20&period=today&api_key_id=k1',
+    )
+    expect(requestedUrls).toContain(
+      'http://127.0.0.1:4141/admin/token-usage/sessions?page=2&page_size=10&period=this_month&api_key_id=k1',
+    )
+
+    // Non-OK and network failure return null
+    spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('', { status: 500 }),
+    )
+    expect(await invoke('server:fetch-usage')).toBeNull()
+    spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('network'))
+    expect(await invoke('server:fetch-models')).toBeNull()
+    spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('', { status: 500 }),
+    )
+    expect(await invoke('server:fetch-models')).toBeNull()
+    spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('network'))
+    expect(await invoke('server:fetch-token-usage', 'today')).toBeNull()
+
+    // server:start authRequired, invalidHost, and thrown Invalid server host
+    spyOn(providerAuth, 'getEnabledDesktopProviders').mockReturnValueOnce([])
+    expect(await invoke('server:start', 4141)).toMatchObject({ running: false })
+
+    expect(
+      await invoke('server:start', 4141, undefined, 'bad host!'),
+    ).toMatchObject({
+      running: false,
+    })
+
+    startServer.mockRejectedValueOnce(new Error('Invalid server host: bad'))
+    expect(
+      await invoke('server:start', 4141, undefined, '127.0.0.1'),
+    ).toMatchObject({
+      running: false,
     })
   })
 })

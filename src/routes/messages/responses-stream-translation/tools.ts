@@ -1,7 +1,7 @@
 import {
   BRIDGE_TOOL_SEARCH_NAME,
   formatToolSearchArguments,
-} from "~/lib/tool-search"
+} from "~/lib/cli/tool-search"
 import {
   type ResponseFunctionCallArgumentsDeltaEvent,
   type ResponseFunctionCallArgumentsDoneEvent,

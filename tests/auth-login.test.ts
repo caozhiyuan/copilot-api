@@ -883,14 +883,14 @@ describe("Codex account commands", () => {
       tempDir,
       `
       const { getRawProviderConfig } = await import("./src/lib/config");
-      const { removeCodexAccount } = await import("./src/lib/token");
+      const { removeCodexAccount } = await import("./src/lib/auth/token");
       getRawProviderConfig("codex");
 
       const switchResult = Bun.spawnSync({
         cmd: [
           process.execPath,
           "--eval",
-          'const { selectCodexAccount } = await import("./src/lib/token"); await selectCodexAccount("acct_two");',
+          'const { selectCodexAccount } = await import("./src/lib/auth/token"); await selectCodexAccount("acct_two");',
         ],
         cwd: process.cwd(),
         env: { ...process.env },

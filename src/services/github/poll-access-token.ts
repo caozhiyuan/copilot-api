@@ -1,12 +1,16 @@
 import consola from "consola"
 
-import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
-import { sleep } from "~/lib/utils"
+import { getOauthAppConfig, getOauthUrls } from "~/lib/providers/api-config"
 
 import type { DeviceCodeResponse } from "./get-device-code"
 
 // RFC 8628 section 3.5: every slow_down adds 5 seconds to the poll interval.
 const SLOW_DOWN_INTERVAL_INCREMENT_SECONDS = 5
+
+const defaultSleep = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 
 export interface PollAccessTokenDependencies {
   now: () => number
@@ -20,7 +24,7 @@ export interface PollAccessTokenOptions {
 
 const defaultPollAccessTokenDependencies: PollAccessTokenDependencies = {
   now: () => Date.now(),
-  sleep,
+  sleep: defaultSleep,
 }
 
 // Interval is in seconds, we need to multiply by 1000 to get milliseconds
