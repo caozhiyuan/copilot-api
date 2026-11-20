@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises'
-import { PATHS, ensurePaths } from '../../src/lib/paths'
+import { PATHS, ensurePaths } from '../../src/lib/storage/paths'
 import {
   getCopilotAccountType as fetchCopilotAccountType,
   type CopilotAccountType,

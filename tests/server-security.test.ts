@@ -10,7 +10,7 @@ import {
   resolveClientHostname,
   resolveClientHostnameOrDefault,
   resolveServerBinding,
-} from "~/lib/server-host"
+} from "~/lib/http/server-host"
 import { createServer } from "~/server"
 import * as subscriptions from "~/services/subscription-usage"
 

@@ -4,13 +4,13 @@ import {
   type RequestInit as UndiciRequestInit,
 } from "undici"
 
-import { copilotBaseUrl } from "~/lib/api-config"
-import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
-import { HTTPError } from "~/lib/error"
-import { assertGitHubCopilotEnabled } from "~/lib/github-copilot-provider"
-import { DEFAULT_IMAGE_MODELS } from "~/lib/image-models"
+import { copilotBaseUrl } from "~/lib/providers/api-config"
+import { logCopilotRateLimits } from "~/lib/providers/copilot-rate-limit"
+import { HTTPError } from "~/lib/http/error"
+import { assertGitHubCopilotEnabled } from "~/lib/providers/github-copilot-provider"
+import { DEFAULT_IMAGE_MODELS } from "~/lib/catalog/image-models"
 import { state } from "~/lib/state"
-import { createTimeoutDispatcher } from "~/lib/timeout-dispatcher"
+import { createTimeoutDispatcher } from "~/lib/http/timeout-dispatcher"
 
 export const DEFAULT_COPILOT_IMAGE_MODEL =
   DEFAULT_IMAGE_MODELS["github-copilot"]

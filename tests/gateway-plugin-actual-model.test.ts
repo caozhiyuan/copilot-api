@@ -2,13 +2,16 @@ import { afterAll, afterEach, beforeEach, expect, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { GatewayPlugins, type GatewayPluginEvents } from "~/lib/gateway-plugins"
+import {
+  GatewayPlugins,
+  type GatewayPluginEvents,
+} from "~/lib/plugins/gateway-plugins"
 import {
   requestEventsMiddleware,
   setPluginRequestModel,
-} from "~/lib/request-events"
+} from "~/lib/http/request-events"
 import { state } from "~/lib/state"
-import { traceIdMiddleware } from "~/lib/trace"
+import { traceIdMiddleware } from "~/lib/http/trace"
 import { createChatCompletions } from "~/services/copilot/create-chat-completions"
 import { createMessages } from "~/services/copilot/create-messages"
 import { createResponses } from "~/services/copilot/create-responses"

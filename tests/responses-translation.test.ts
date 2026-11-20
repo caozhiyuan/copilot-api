@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test"
 
 import { getExtraPromptForModel } from "~/lib/config"
-import { requestContext } from "~/lib/request-context"
-import { createMcpToolSearchSentinel } from "~/lib/tool-search"
+import { requestContext } from "~/lib/http/request-context"
+import { createMcpToolSearchSentinel } from "~/lib/cli/tool-search"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type {
   ResponseFunctionCallOutputItem,

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test"
 import consola from "consola"
 
-import { refreshCodexCredentials } from "~/lib/oauth/codex"
+import { refreshCodexCredentials } from "~/lib/auth/oauth/codex"
 import { pollAccessToken } from "~/services/github/poll-access-token"
 
 const originalDebug = consola.debug

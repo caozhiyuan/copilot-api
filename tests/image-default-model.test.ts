@@ -1,8 +1,11 @@
 import { describe, expect, mock, test } from "bun:test"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import type { ProviderModelAlias } from "~/lib/provider-model"
-import { getDefaultImageModel, type ImageProvider } from "~/lib/image-models"
+import type { ProviderModelAlias } from "~/lib/catalog/provider-model"
+import {
+  getDefaultImageModel,
+  type ImageProvider,
+} from "~/lib/catalog/image-models"
 import { resolveImageRequestModel } from "~/routes/images/default-model"
 
 const codex = "codex/gpt-image-2"

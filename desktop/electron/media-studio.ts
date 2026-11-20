@@ -13,7 +13,7 @@ import {
 import {
   DEFAULT_IMAGE_MODELS,
   getDefaultImageModel,
-} from '../../src/lib/image-models'
+} from '../../src/lib/catalog/image-models'
 import {
   IMAGE_QUALITIES,
   IMAGE_SIZES,

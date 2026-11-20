@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, test } from "bun:test"
 import {
   getModelsDevProviderModelRecords,
   installModelsDevCatalog,
-} from "~/lib/models-dev-cache"
-import { resolveProviderConfigForModel } from "~/lib/provider-config"
+} from "~/lib/catalog/models-dev-cache"
+import { resolveProviderConfigForModel } from "~/lib/config/provider-config"
 import { resolveProviderEndpointUrl } from "~/services/providers/provider-proxy"
 import {
   getLocalProviderModelRecords,
   getProviderModelConfig,
   resolveProviderModelsDevId,
-} from "~/lib/provider-model-catalog"
+} from "~/lib/catalog/provider-model-catalog"
 
 import {
   modelsDevReleaseModelsFixture,

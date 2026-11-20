@@ -1,5 +1,5 @@
-import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
-import { HTTPError } from "~/lib/error"
+import { getOauthAppConfig, getOauthUrls } from "~/lib/providers/api-config"
+import { HTTPError } from "~/lib/http/http-error"
 
 export async function getDeviceCode(): Promise<DeviceCodeResponse> {
   const { clientId, headers, scope } = getOauthAppConfig()

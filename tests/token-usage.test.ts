@@ -8,8 +8,8 @@ import {
 } from "bun:test"
 import { Hono } from "hono"
 
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import { requestContext } from "~/lib/request-context"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
+import { requestContext } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
 import {
   closeUsageStore,
@@ -27,7 +27,7 @@ import {
   resolveTokenUsageCost,
   type TokenUsageCostInput,
 } from "~/lib/token-usage/pricing"
-import { traceIdMiddleware } from "~/lib/trace"
+import { traceIdMiddleware } from "~/lib/http/trace"
 import { tokenUsageRoute } from "~/routes/token-usage/route"
 import { translateToOpenAI } from "~/routes/messages/completions-translation"
 

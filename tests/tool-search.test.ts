@@ -6,8 +6,8 @@ import {
   resolveBridgeToolSearchName,
   selectDeferredToolsByNames,
   shouldEnableResponsesToolSearch,
-} from "~/lib/tool-search"
-import { runMcpServer } from "~/lib/mcp-server"
+} from "~/lib/cli/tool-search"
+import { runMcpServer } from "~/lib/cli/mcp-server"
 
 describe("tool search helpers", () => {
   test("detects eligible Responses tool search requests", () => {

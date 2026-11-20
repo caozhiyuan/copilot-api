@@ -1,7 +1,7 @@
 import type { Context } from "hono"
 
-import { forwardError } from "~/lib/error"
-import { prepareImageJsonRequest } from "~/lib/image-json-request"
+import { forwardError } from "~/lib/http/error"
+import { prepareImageJsonRequest } from "~/lib/images/image-json-request"
 import {
   imageEditRequestErrorResponse,
   withImageEditRequest,

@@ -2,8 +2,8 @@ import type { Context } from "hono"
 
 import type { Model } from "~/lib/types/models"
 
-import { COMPACT_REQUEST } from "~/lib/compact"
-import { setPluginRequestModel } from "~/lib/request-events"
+import { COMPACT_REQUEST } from "~/lib/http/compact"
+import { setPluginRequestModel } from "~/lib/http/request-events"
 import {
   getClaudeAutoModel,
   getSmallModel,
@@ -11,12 +11,12 @@ import {
   resolveMappedModel,
 } from "~/lib/config"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
-import { findEndpointModel } from "~/lib/models"
-import { resolveConfiguredProviderModelAlias } from "~/lib/provider-resolver"
+import { fromClaudeDiscoveryModelId } from "~/lib/catalog/claude-models"
+import { findEndpointModel } from "~/lib/catalog/models"
+import { resolveConfiguredProviderModelAlias } from "~/lib/providers/provider-resolver"
 import { state } from "~/lib/state"
-import { requestContext } from "~/lib/request-context"
-import type { SubagentMarker } from "~/lib/subagent"
+import { requestContext } from "~/lib/http/request-context"
+import type { SubagentMarker } from "~/lib/http/subagent"
 import type { TokenUsageEndpoint } from "~/lib/token-usage"
 import {
   generateRequestIdFromPayload,

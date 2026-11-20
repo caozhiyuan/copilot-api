@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { resolveSupportedReasoningEffort } from "~/lib/reasoning-effort"
+import { resolveSupportedReasoningEffort } from "~/lib/catalog/reasoning-effort"
 
 describe("resolveSupportedReasoningEffort", () => {
   test("keeps the requested effort when it is supported", () => {

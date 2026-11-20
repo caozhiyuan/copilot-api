@@ -3,14 +3,14 @@ import {
   isApiKeyActive,
   normalizeApiKeyRecord,
   normalizeApiKeyRecords,
-} from '../../src/lib/api-key-config'
+  normalizeApiKeys,
+} from '../../src/lib/config/api-key-config'
 
 import {
   readEditableConfigFromDisk,
   writeConfigToDisk,
   type AppConfig,
 } from '../../src/lib/config'
-import { normalizeApiKeys } from '../../src/lib/request-auth'
 import type {
   ApiKeyQuotaUsage,
   ServerKeysConfig,

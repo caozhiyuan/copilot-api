@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { withModelDisplayName } from "~/lib/model-display-name"
+import { withModelDisplayName } from "~/lib/catalog/model-display-name"
 
 describe("model display names", () => {
   test.each([

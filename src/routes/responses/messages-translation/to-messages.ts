@@ -1,11 +1,11 @@
 import {
   getProviderModelConfig,
   resolveProviderModelsDevId,
-} from "~/lib/provider-model-catalog"
-import { findEndpointModel } from "~/lib/models"
-import { getModelsDevModelMaxOutputTokens } from "~/lib/models-dev-cache"
-import { getRawProviderConfig } from "~/lib/provider-config"
-import { parseProviderModelAlias } from "~/lib/provider-model"
+} from "~/lib/catalog/provider-model-catalog"
+import { findEndpointModel } from "~/lib/catalog/models"
+import { getModelsDevModelMaxOutputTokens } from "~/lib/catalog/models-dev-cache"
+import { getRawProviderConfig } from "~/lib/config/provider-config"
+import { parseProviderModelAlias } from "~/lib/catalog/provider-model"
 import type {
   AnthropicAssistantContentBlock,
   AnthropicAssistantMessage,

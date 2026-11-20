@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
 
-import { HTTPError } from "~/lib/error"
+import { HTTPError } from "~/lib/http/error"
 import type {
   AnthropicAssistantContentBlock,
   AnthropicMessagesPayload,

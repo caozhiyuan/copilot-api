@@ -45,12 +45,12 @@ test.each(["default", "explicit"])("managed key policies (%s)", (source) => {
       source === "explicit" ? "getApiKeys: getConfiguredApiKeys, " : ""
     const script = [
       'import { Hono } from "hono"',
-      'import { traceIdMiddleware } from "./src/lib/trace.ts"',
-      'import { createAuthMiddleware, getConfiguredAdminApiKeys, getConfiguredApiKeys } from "./src/lib/request-auth.ts"',
-      'import { apiKeyPolicyMiddleware } from "./src/lib/api-key-policy.ts"',
-      'import { requestContext, setPluginRequestActualModel } from "./src/lib/request-context.ts"',
-      'import { forwardError } from "./src/lib/error.ts"',
-      'import { resolveMappedModel, upsertConfiguredApiKey, removeConfiguredApiKey, getConfig } from "./src/lib/config.ts"',
+      'import { traceIdMiddleware } from "./src/lib/http/trace.ts"',
+      'import { createAuthMiddleware, getConfiguredAdminApiKeys, getConfiguredApiKeys } from "./src/lib/auth/request-auth.ts"',
+      'import { apiKeyPolicyMiddleware } from "./src/lib/auth/api-key-policy.ts"',
+      'import { requestContext, setPluginRequestActualModel } from "./src/lib/http/request-context.ts"',
+      'import { forwardError } from "./src/lib/http/error.ts"',
+      'import { resolveMappedModel, upsertConfiguredApiKey, removeConfiguredApiKey, getConfig } from "./src/lib/config/index.ts"',
       'import { recordTokenUsageEvent, closeUsageStore } from "./src/lib/token-usage/index.ts"',
       'import { getApiKeyQuotaUsage, pruneTokenUsageEvents } from "./src/lib/token-usage/store.ts"',
       'import { tokenUsageRoute } from "./src/routes/token-usage/route.ts"',

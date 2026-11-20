@@ -1,4 +1,4 @@
-import { apiKeyPolicyMiddleware } from "./lib/api-key-policy"
+import { apiKeyPolicyMiddleware } from "./lib/auth/api-key-policy"
 import { apiKeyUsageRoutes } from "./routes/admin/api-keys/route"
 import { Hono, type Context } from "hono"
 import { cors } from "hono/cors"
@@ -8,10 +8,10 @@ import { readFileSync } from "node:fs"
 import {
   createAuthMiddleware,
   getConfiguredAdminApiKeys,
-} from "./lib/request-auth"
-import { traceIdMiddleware } from "./lib/trace"
-import type { GatewayPlugins } from "./lib/gateway-plugins"
-import { requestEventsMiddleware } from "./lib/request-events"
+} from "./lib/auth/request-auth"
+import { traceIdMiddleware } from "./lib/http/trace"
+import type { GatewayPlugins } from "./lib/plugins/gateway-plugins"
+import { requestEventsMiddleware } from "./lib/http/request-events"
 import { alphaSearchRoutes } from "./routes/alpha-search/route"
 import { completionRoutes } from "./routes/chat-completions/route"
 import { configRoutes } from "./routes/admin/config/route"

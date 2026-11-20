@@ -8,8 +8,8 @@ import type {
 } from "~/lib/types/anthropic"
 import type { Model } from "~/lib/types/models"
 
-import { COMPACT_REQUEST } from "~/lib/compact"
-import { requestContext } from "~/lib/request-context"
+import { COMPACT_REQUEST } from "~/lib/http/compact"
+import { requestContext } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
 import {
   RICH_TOOL_RESULT_MOVED_TEXT,

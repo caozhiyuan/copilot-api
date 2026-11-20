@@ -3,7 +3,7 @@ import {
   type RequestInit as UndiciRequestInit,
 } from "undici"
 
-import { createTimeoutDispatcher } from "~/lib/timeout-dispatcher"
+import { createTimeoutDispatcher } from "~/lib/http/timeout-dispatcher"
 import { CODEX_API_BASE_URL } from "~/services/codex/constants"
 import { buildCodexRequestHeaders } from "~/services/codex/create-responses"
 

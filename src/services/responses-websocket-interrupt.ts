@@ -3,7 +3,7 @@ import consola from "consola"
 import {
   readResponsesStreamEvent,
   type ResponsesStreamChunk,
-} from "~/lib/responses-stream-event"
+} from "~/lib/http/responses-stream-event"
 
 const INTERRUPT_TIMEOUT_MS = 10000
 

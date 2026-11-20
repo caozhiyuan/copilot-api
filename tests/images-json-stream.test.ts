@@ -1,17 +1,17 @@
 import { describe, expect, test, mock } from "bun:test"
 import consola from "consola"
 import { access } from "node:fs/promises"
-import { createImageJsonFiles } from "~/lib/image-json-files"
+import { createImageJsonFiles } from "~/lib/images/image-json-files"
 
-import { prepareImageJsonRequest } from "~/lib/image-json-request"
-import { readExternalImageJson } from "~/lib/image-json-value"
+import { prepareImageJsonRequest } from "~/lib/images/image-json-request"
+import { readExternalImageJson } from "~/lib/images/image-json-value"
 import { state } from "~/lib/state"
 import {
   ImageModelReader,
   StreamingJsonReader,
   readJsonBytes,
   rewriteImageModel,
-} from "~/lib/streaming-json"
+} from "~/lib/http/streaming-json"
 import { logImageEditRequest } from "~/routes/images/request-logging"
 import { translateXaiImageJsonRequest } from "~/routes/images/xai-json-request"
 import {

@@ -4,7 +4,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
-import { builtinProviderModelRegistry } from "~/lib/builtin-provider-models"
+import { builtinProviderModelRegistry } from "~/lib/catalog/builtin-provider-models"
 import { resolveTokenUsageCost } from "~/lib/token-usage/pricing"
 import {
   getModelsDevModelApi,
@@ -24,7 +24,7 @@ import {
   loadModelsDevProviderOptions,
   startModelsDevCache,
   stopModelsDevRefreshLoop,
-} from "~/lib/models-dev-cache"
+} from "~/lib/catalog/models-dev-cache"
 
 import {
   modelsDevCatalogFixture,

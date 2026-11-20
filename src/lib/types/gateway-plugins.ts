@@ -1,4 +1,4 @@
-import type { PersistedTokenUsageEvent } from "../token-usage/store"
+import type { PersistedTokenUsageEvent } from "./token-usage"
 
 export interface PluginRequest {
   id: string

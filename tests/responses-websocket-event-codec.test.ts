@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { readResponsesStreamEvent } from "~/lib/responses-stream-event"
+import { readResponsesStreamEvent } from "~/lib/http/responses-stream-event"
 import { createCodexResponsesWebSocketStreamChunk } from "~/services/codex/create-responses"
 import { createResponsesWebSocketStreamChunk } from "~/services/copilot/create-responses"
 import { getResponsesStreamTerminalDisposition } from "~/services/responses-websocket-helpers"

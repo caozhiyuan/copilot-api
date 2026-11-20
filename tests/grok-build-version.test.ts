@@ -8,7 +8,7 @@ import {
   test,
 } from "bun:test"
 
-import { getGrokBuildVersion } from "~/lib/grok-build"
+import { getGrokBuildVersion } from "~/lib/providers/grok-build"
 
 const originalFetch = globalThis.fetch
 const dayMs = 24 * 60 * 60 * 1000

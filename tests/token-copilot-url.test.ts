@@ -6,7 +6,7 @@ import {
   logUser,
   setupCopilotToken,
   stopCopilotRefreshLoop,
-} from "~/lib/token"
+} from "~/lib/auth/token"
 import { state } from "~/lib/state"
 
 type TokenResponse = {

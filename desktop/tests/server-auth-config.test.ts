@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { PATHS } from '../../src/lib/paths'
+import { PATHS } from '../../src/lib/storage/paths'
 import {
   parseApiKeyQuotaUsage,
   readManagedApiKeys,

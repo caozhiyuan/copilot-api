@@ -23,7 +23,7 @@ interface ConfigFileShape {
 const cwd = fileURLToPath(new URL("../", import.meta.url))
 const decoder = new TextDecoder()
 const requestAuthModuleUrl = pathToFileURL(
-  path.join(cwd, "src", "lib", "request-auth.ts"),
+  path.join(cwd, "src", "lib", "auth", "request-auth.ts"),
 ).href
 const tempDirs: Array<string> = []
 

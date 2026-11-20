@@ -10,14 +10,14 @@ import {
 import {
   resolveCodexCatalogCompatibility,
   serializeCodexModelCatalog,
-} from "~/lib/codex-model-catalog"
+} from "~/lib/catalog/codex-model-catalog"
 import {
   getProviderAgentModels,
   isProviderAgentModelVisible,
-} from "~/lib/provider-management"
+} from "~/lib/config/provider-management"
 import { createHandlerLogger } from "~/lib/logger"
-import { stripInternalRequestHeaders } from "~/lib/internal-headers"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { stripInternalRequestHeaders } from "~/lib/http/internal-headers"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import { state } from "~/lib/state"
 import { getSyntheticCodexModels } from "~/routes/models/codex-model-candidates"
 import type {
@@ -25,7 +25,7 @@ import type {
   CodexModelsResponse,
   CodexReasoningEffort,
   SyntheticCodexModelCandidate,
-} from "~/routes/models/codex-models-types"
+} from "~/lib/types/codex-models"
 import { isImageOnlyModel, isRecord } from "~/routes/models/model-discovery"
 import fallbackCodexCatalogJson from "~/routes/models/models.json"
 import { forwardCodexModels } from "~/services/codex/get-models"

@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 
-import { isClaudeUserAgent } from "~/lib/claude-models"
-import { forwardError } from "~/lib/error"
+import { isClaudeUserAgent } from "~/lib/catalog/claude-models"
+import { forwardError } from "~/lib/http/error"
 import { handleClaudeModels } from "~/routes/models/claude-models"
 import {
   handleCodexModels,

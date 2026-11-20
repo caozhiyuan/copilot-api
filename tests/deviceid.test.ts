@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from "bun:test"
 
-import { getVSCodeDeviceId } from "~/lib/deviceid"
+import { getVSCodeDeviceId } from "~/lib/providers/deviceid"
 
 const failingRegistryError = new Error("registry unavailable")
 

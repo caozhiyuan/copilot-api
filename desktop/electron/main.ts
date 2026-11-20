@@ -12,7 +12,7 @@ import {
 import path from 'node:path'
 import electronUpdater from 'electron-updater'
 
-import { bindElectronFetch } from '../../src/lib/electron-fetch'
+import { bindElectronFetch } from '../../src/lib/http/electron-fetch'
 import type {
   DesktopProxySettings,
   DesktopSettings,
@@ -134,7 +134,7 @@ function getEffectiveProxySettings(
 let runtimeDependenciesPromise: Promise<RuntimeDependencies> | null = null
 
 function warmOpencodeVersion(): void {
-  void import('../../src/lib/opencode')
+  void import('../../src/lib/providers/opencode')
     .then(({ initOpencodeVersion }) => initOpencodeVersion())
     .catch(() => {})
 }

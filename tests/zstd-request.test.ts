@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 
-import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
+import { zstdDecompressionMiddleware } from "~/lib/http/zstd-request"
 import { createServer } from "~/server"
 
 const createApp = () => {

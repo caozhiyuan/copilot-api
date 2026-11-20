@@ -59,7 +59,9 @@ await mock.module("@azure/identity", () => {
   }
 })
 
-const { resolveProviderConfig } = await import("~/lib/provider-resolver")
+const { resolveProviderConfig } = await import(
+  "~/lib/providers/provider-resolver"
+)
 
 const credentialInstancesAfterImport = credentialInstances
 const tokenProviderFactoriesAfterImport = tokenProviderFactories

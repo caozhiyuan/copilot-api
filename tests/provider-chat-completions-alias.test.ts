@@ -10,14 +10,14 @@ import {
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
 import {
   requestContext,
   type RequestContext,
   type RequestTiming,
-} from "~/lib/request-context"
-import { requestEventsMiddleware } from "~/lib/request-events"
-import { traceIdMiddleware } from "~/lib/trace"
+} from "~/lib/http/request-context"
+import { requestEventsMiddleware } from "~/lib/http/request-events"
+import { traceIdMiddleware } from "~/lib/http/trace"
 import type { UsageTokens } from "~/lib/token-usage"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"

@@ -6,8 +6,8 @@ import {
   legacyApiKeyId,
   normalizeApiKeyRecord,
   normalizeApiKeyRecords,
-} from "~/lib/api-key-config"
-import { migrateApiKeyConfig } from "~/lib/config-store"
+} from "~/lib/config/api-key-config"
+import { migrateApiKeyConfig } from "~/lib/config/config-store"
 
 describe("API key configuration", () => {
   test("migrates old keys once and retains the unused old field", () => {

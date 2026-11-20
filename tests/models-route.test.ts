@@ -13,13 +13,13 @@ import os from "node:os"
 import path from "node:path"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { fromClaudeDiscoveryModelId } from "~/lib/claude-models"
-import { CODEX_MODEL_CATALOG_MAX_BYTES } from "~/lib/codex-model-catalog"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import { PATHS } from "~/lib/paths"
-import { defaultConfig, invalidateConfigCache } from "~/lib/config-store"
+import { fromClaudeDiscoveryModelId } from "~/lib/catalog/claude-models"
+import { CODEX_MODEL_CATALOG_MAX_BYTES } from "~/lib/catalog/codex-model-catalog"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
+import { PATHS } from "~/lib/storage/paths"
+import { defaultConfig, invalidateConfigCache } from "~/lib/config/config-store"
 import type { ModelsResponse } from "~/lib/types/models"
-import type { CodexModelsResponse } from "~/routes/models/codex-models-types"
+import type { CodexModelsResponse } from "~/lib/types/codex-models"
 import {
   isOpencodeUserAgent,
   type OpencodeModel,
@@ -33,7 +33,7 @@ import {
 } from "./fixtures/models-dev-catalog"
 
 const actualConfigModule = await import("~/lib/config")
-const actualTokenModule = await import("~/lib/token")
+const actualTokenModule = await import("~/lib/auth/token")
 
 let enabledProviders: Array<string> = []
 let providerConfigs: Record<
@@ -82,7 +82,7 @@ await mock.module("~/lib/config", () => ({
   listEnabledProviders: () => enabledProviders,
 }))
 
-await mock.module("~/lib/token", () => ({
+await mock.module("~/lib/auth/token", () => ({
   ...actualTokenModule,
   setupCodexToken: () => {
     if (codexSetupError) return Promise.reject(codexSetupError)

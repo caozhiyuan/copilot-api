@@ -1,12 +1,12 @@
 import { Hono, type Context } from "hono"
 
-import { forwardError } from "~/lib/error"
-import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
-import { prepareImageJsonRequest } from "~/lib/image-json-request"
-import { getDefaultImageModel } from "~/lib/image-models"
+import { forwardError } from "~/lib/http/error"
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
+import { prepareImageJsonRequest } from "~/lib/images/image-json-request"
+import { getDefaultImageModel } from "~/lib/catalog/image-models"
 import { createHandlerLogger } from "~/lib/logger"
-import { parseProviderModelAlias } from "~/lib/provider-model"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { parseProviderModelAlias } from "~/lib/catalog/provider-model"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import {
   forwardCopilotImagesWithLogging,
   forwardProviderImagesWithLogging,

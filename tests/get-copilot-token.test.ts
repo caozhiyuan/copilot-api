@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from "bun:test"
 
-import { HTTPError } from "~/lib/error"
+import { HTTPError } from "~/lib/http/error"
 import { state } from "~/lib/state"
 import { getCopilotToken } from "~/services/github/get-copilot-token"
 

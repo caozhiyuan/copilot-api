@@ -4,14 +4,14 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import type { CodexCredentials } from "~/lib/oauth/codex"
+import type { CodexCredentials } from "~/lib/auth/oauth/codex"
 import {
   getRefreshDeadlineMs,
   getRefreshPollDelayMs,
   refreshCodexCredentialsOnce,
   scheduleRefreshRetry,
   type CodexRefreshDependencies,
-} from "~/lib/token"
+} from "~/lib/auth/token"
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url))
 const decoder = new TextDecoder()
@@ -329,11 +329,11 @@ test("refreshes expired Codex credentials once for concurrent Codex requests", (
       )
     }
 
-    const { resolveProviderConfig } = await import("./src/lib/provider-resolver")
+    const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver")
     const resolved = await Promise.all(
       [0, 1, 2].map(() => resolveProviderConfig("codex")),
     )
-    const { stopCodexRefreshLoop } = await import("./src/lib/token")
+    const { stopCodexRefreshLoop } = await import("./src/lib/auth/token")
 
     console.log(
       JSON.stringify({
@@ -414,11 +414,11 @@ test("refreshes only the selected Codex account and preserves the selection", ()
       }),
     )
 
-    const { resolveProviderConfig } = await import("./src/lib/provider-resolver")
+    const { resolveProviderConfig } = await import("./src/lib/providers/provider-resolver")
     await resolveProviderConfig("codex")
-    const { readCodexCredentialStore } = await import("./src/lib/credential-store")
+    const { readCodexCredentialStore } = await import("./src/lib/auth/credential-store")
     const { getRawProviderConfig } = await import("./src/lib/config")
-    const { stopCodexRefreshLoop } = await import("./src/lib/token")
+    const { stopCodexRefreshLoop } = await import("./src/lib/auth/token")
     console.log(JSON.stringify({
       accountId: getRawProviderConfig("codex")?.accountId,
       store: await readCodexCredentialStore(),
@@ -486,8 +486,8 @@ test("does not write a removed Codex account back when refreshing it", () => {
       }),
     )
 
-    const { readCodexCredentialStore } = await import("./src/lib/credential-store")
-    const { refreshCodexCredentialsOnce, stopCodexRefreshLoop } = await import("./src/lib/token")
+    const { readCodexCredentialStore } = await import("./src/lib/auth/credential-store")
+    const { refreshCodexCredentialsOnce, stopCodexRefreshLoop } = await import("./src/lib/auth/token")
     const refreshed = await refreshCodexCredentialsOnce({
       accessToken: "removed-access",
       refreshToken: "removed-refresh",

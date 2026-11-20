@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { HTTPError } from "~/lib/error"
+import { HTTPError } from "~/lib/http/error"
 import type { GoogleGenerateContentPayload } from "~/lib/types/google"
 import type {
   AnthropicMessagesPayload,

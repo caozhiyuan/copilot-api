@@ -3,9 +3,9 @@ import { runCommand } from "citty"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import type { AppConfig } from "~/lib/config-store"
-import { invalidateConfigCache } from "~/lib/config-store"
-import { PATHS } from "~/lib/paths"
+import type { AppConfig } from "~/lib/config/config-store"
+import { invalidateConfigCache } from "~/lib/config/config-store"
+import { PATHS } from "~/lib/storage/paths"
 import { provider } from "../src/provider"
 
 const tempDirs: Array<string> = []

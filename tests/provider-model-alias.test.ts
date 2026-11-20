@@ -15,15 +15,15 @@ import type {
   FilePart,
 } from "~/lib/types/chat-completions"
 
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import { createFallbackModel } from "~/lib/provider-model"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
 import { RICH_TOOL_RESULT_MOVED_TEXT } from "~/routes/messages/completions-translation"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
 
 const actualConfigModule = await import("~/lib/config")
 const actualTokenUsageModule = await import("~/lib/token-usage")
-const actualTokenizerModule = await import("~/lib/tokenizer")
+const actualTokenizerModule = await import("~/lib/catalog/tokenizer")
 
 let providerConfig: ResolvedProviderConfig | null = null
 let modelMappings: Record<string, string> = {}

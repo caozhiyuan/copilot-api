@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test"
 import {
   normalizeServerHostname,
   resolveClientHostname,
-} from "~/lib/server-host"
-import { normalizeHostnameBase } from "~/lib/server-host-shared"
+} from "~/lib/http/server-host"
+import { normalizeHostnameBase } from "~/lib/http/server-host-shared"
 import {
   buildServerBaseUrl,
   isValidServerHost,

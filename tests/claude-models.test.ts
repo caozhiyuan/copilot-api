@@ -4,7 +4,7 @@ import {
   fromClaudeDiscoveryModelId,
   isClaudeUserAgent,
   toClaudeDiscoveryModelId,
-} from "~/lib/claude-models"
+} from "~/lib/catalog/claude-models"
 
 describe("Claude gateway model discovery", () => {
   test.each([

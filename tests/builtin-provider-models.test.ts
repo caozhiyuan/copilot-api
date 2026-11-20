@@ -3,8 +3,8 @@ import { beforeAll, describe, expect, test } from "bun:test"
 import {
   builtinProviderModelRegistry,
   BuiltinProviderModelRegistry,
-} from "~/lib/builtin-provider-models"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+} from "~/lib/catalog/builtin-provider-models"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
 

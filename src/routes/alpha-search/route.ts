@@ -8,13 +8,13 @@ import {
   resolveMappedModel,
   type ResolvedProviderConfig,
 } from "~/lib/config"
-import { forwardError } from "~/lib/error"
-import { setPluginRequestModel } from "~/lib/request-events"
-import { setPluginRequestActualModel } from "~/lib/request-context"
+import { forwardError } from "~/lib/http/error"
+import { setPluginRequestModel } from "~/lib/http/request-events"
+import { setPluginRequestActualModel } from "~/lib/http/request-context"
 import { createHandlerLogger, debugJson, debugJsonAsync } from "~/lib/logger"
-import { findEndpointModel } from "~/lib/models"
-import { parseProviderModelAlias } from "~/lib/provider-model"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { findEndpointModel } from "~/lib/catalog/models"
+import { parseProviderModelAlias } from "~/lib/catalog/provider-model"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import type {
   AlphaSearchRequest,
   AlphaSearchResponse,

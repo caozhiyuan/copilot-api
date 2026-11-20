@@ -1,6 +1,6 @@
 import { defineCommand } from "citty"
 
-import { saveProviderManagementConfig } from "./lib/provider-management"
+import { saveProviderManagementConfig } from "./lib/config/provider-management"
 
 function providerStateCommand(enabled: boolean) {
   return defineCommand({

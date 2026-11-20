@@ -94,7 +94,7 @@ const createMessagesResponse = (
 
 const { state } = await import("~/lib/state")
 const { closeUsageStore } = await import("~/lib/token-usage")
-const { traceIdMiddleware } = await import("~/lib/trace")
+const { traceIdMiddleware } = await import("~/lib/http/trace")
 const { tokenUsageRoute } = await import("~/routes/token-usage/route")
 const { responsesHandlerDependencies } = await import(
   "~/routes/responses/handler"

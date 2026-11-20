@@ -196,7 +196,7 @@ test("settles text, search, image, Copilot and deduplicated video costs into one
   const { closeUsageStore, recordTokenUsageEvent, getTokenUsageSummary } =
     await import("~/lib/token-usage")
   const { getApiKeyQuotaUsage } = await import("~/lib/token-usage/store")
-  const { requestContext } = await import("~/lib/request-context")
+  const { requestContext } = await import("~/lib/http/request-context")
   const { recordNativeAlphaSearchUsage } = await import(
     "~/lib/token-usage/alpha-search"
   )
@@ -316,7 +316,7 @@ test("settles text, search, image, Copilot and deduplicated video costs into one
 
 test("rejects an unpriced dispatch before any upstream call", async () => {
   const { requestContext, setPluginRequestActualModel } = await import(
-    "~/lib/request-context"
+    "~/lib/http/request-context"
   )
   const context = {
     apiKey: {

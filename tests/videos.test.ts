@@ -9,9 +9,9 @@ import {
   invalidateConfigCache,
   type ResolvedProviderConfig,
 } from "~/lib/config"
-import { PATHS } from "~/lib/paths"
-import { requestContext } from "~/lib/request-context"
-import { openSqliteDatabase } from "~/lib/sqlite"
+import { PATHS } from "~/lib/storage/paths"
+import { requestContext } from "~/lib/http/request-context"
+import { openSqliteDatabase } from "~/lib/storage/sqlite"
 import { state } from "~/lib/state"
 import {
   closeUsageStore,

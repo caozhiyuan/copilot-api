@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
-import { requestContext } from "~/lib/request-context"
+import { requestContext } from "~/lib/http/request-context"
 
 import type {
   AnthropicMessagesPayload,
@@ -22,8 +22,8 @@ import type {
   ResponsesTransport,
 } from "~/lib/types/responses"
 
-import { COMPACT_REQUEST } from "~/lib/compact"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+import { COMPACT_REQUEST } from "~/lib/http/compact"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
 import { closeUsageStore, getTokenUsageEventsPage } from "~/lib/token-usage"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"

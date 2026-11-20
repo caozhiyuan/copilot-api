@@ -7,7 +7,7 @@ import os from "node:os"
 import { fileURLToPath } from "node:url"
 
 import { getRawProviderConfig, listEnabledProviders } from "./lib/config"
-import { PATHS } from "./lib/paths"
+import { PATHS } from "./lib/storage/paths"
 
 interface DebugInfo {
   providers: {

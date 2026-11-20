@@ -1,10 +1,10 @@
 import { Hono } from "hono"
 import { z } from "zod"
 
-import { forwardError } from "~/lib/error"
+import { forwardError } from "~/lib/http/error"
 import { getModelMappings, setModelMappings } from "~/lib/config"
-import { reloadServerConfig } from "~/lib/config-reload"
-import { PATHS } from "~/lib/paths"
+import { reloadServerConfig } from "~/lib/config/config-reload"
+import { PATHS } from "~/lib/storage/paths"
 
 export const configRoutes = new Hono()
 

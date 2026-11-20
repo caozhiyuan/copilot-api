@@ -1,8 +1,8 @@
 import consola from "consola"
 import { events } from "fetch-event-stream"
 
-import type { CompactType } from "~/lib/compact"
-import type { SubagentMarker } from "~/lib/subagent"
+import type { CompactType } from "~/lib/http/compact"
+import type { SubagentMarker } from "~/lib/http/subagent"
 import type {
   ChatCompletionResponse,
   ChatCompletionsPayload,
@@ -13,11 +13,11 @@ import {
   copilotHeaders,
   prepareForCompact,
   prepareInteractionHeaders,
-} from "~/lib/api-config"
+} from "~/lib/providers/api-config"
 import { getUpstreamTransportConfig } from "~/lib/config"
-import { logCopilotRateLimits } from "~/lib/copilot-rate-limit"
-import { HTTPError } from "~/lib/error"
-import { setPluginRequestActualModel } from "~/lib/request-context"
+import { logCopilotRateLimits } from "~/lib/providers/copilot-rate-limit"
+import { HTTPError } from "~/lib/http/error"
+import { setPluginRequestActualModel } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 

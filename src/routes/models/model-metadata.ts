@@ -1,9 +1,9 @@
 import type { CodexReasoningEffort, ProviderConfig } from "~/lib/config"
-import { getModelsDevModel } from "~/lib/models-dev-cache"
+import { getModelsDevModel } from "~/lib/catalog/models-dev-cache"
 import {
   getProviderModelConfig,
   resolveProviderModelsDevId,
-} from "~/lib/provider-model-catalog"
+} from "~/lib/catalog/provider-model-catalog"
 import {
   firstPositiveInteger,
   getRecordField,

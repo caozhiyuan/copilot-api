@@ -10,13 +10,13 @@ import {
   normalizeProviderBaseUrl,
   type ResolvedProviderConfig,
 } from "~/lib/config"
-import { getGrokBuildVersion } from "~/lib/grok-build"
-import { XAI_API_BASE_URL } from "~/lib/oauth/xai"
+import { getGrokBuildVersion } from "~/lib/providers/grok-build"
+import { XAI_API_BASE_URL } from "~/lib/auth/oauth/xai"
 import {
   requestContext,
   setPluginRequestActualModel,
-} from "~/lib/request-context"
-import { createTimeoutDispatcher } from "~/lib/timeout-dispatcher"
+} from "~/lib/http/request-context"
+import { createTimeoutDispatcher } from "~/lib/http/timeout-dispatcher"
 import type { AnthropicMessagesPayload } from "~/lib/types/anthropic"
 import type { ChatCompletionsPayload } from "~/lib/types/chat-completions"
 import type { ResponsesPayload } from "~/lib/types/responses"

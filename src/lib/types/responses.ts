@@ -2,7 +2,7 @@
 
 import type { events } from "fetch-event-stream"
 
-import type { CopilotQuotaSnapshot } from "~/lib/copilot-rate-limit"
+import type { CopilotQuotaSnapshot } from "./copilot-rate-limit"
 
 export interface ResponsesPayload {
   model: string

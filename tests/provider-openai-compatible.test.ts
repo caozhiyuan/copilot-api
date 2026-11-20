@@ -10,8 +10,8 @@ import {
 import { Hono } from "hono"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import { traceIdMiddleware } from "~/lib/trace"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
+import { traceIdMiddleware } from "~/lib/http/trace"
 
 import { modelsDevCatalogFixture } from "./fixtures/models-dev-catalog"
 

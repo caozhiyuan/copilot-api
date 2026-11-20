@@ -5,7 +5,7 @@ import { existsSync } from "node:fs"
 import type { ResolvedProviderConfig } from "~/lib/config"
 
 const actualConfigModule = await import("~/lib/config")
-const actualTokenModule = await import("~/lib/token")
+const actualTokenModule = await import("~/lib/auth/token")
 
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
@@ -29,7 +29,7 @@ await mock.module("~/lib/config", () => ({
   resolveMappedModel: (model: string) => modelMappings[model] ?? model,
 }))
 
-await mock.module("~/lib/token", () => ({
+await mock.module("~/lib/auth/token", () => ({
   ...actualTokenModule,
   setupCodexToken: async () => {},
 }))
@@ -53,7 +53,7 @@ const server = createServer()
 const { closeUsageStore, getTokenUsageEventsPage } = await import(
   "~/lib/token-usage"
 )
-const { GatewayPlugins } = await import("~/lib/gateway-plugins")
+const { GatewayPlugins } = await import("~/lib/plugins/gateway-plugins")
 const { CODEX_CLI_VERSION, createMediaStudioClient } = await import(
   "../desktop/electron/media-studio"
 )

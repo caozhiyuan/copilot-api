@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
 import type { ResponsesPayload } from "~/lib/types/responses"
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
 
 import { modelsDevProviderCatalogFixture } from "./fixtures/models-dev-catalog"
 
@@ -49,10 +49,12 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
     invalidateConfigCache,
     listEnabledProviders,
   } = await import("~/lib/config")
-  const { PATHS } = await import("~/lib/paths")
-  const { resolveProviderConfig } = await import("~/lib/provider-resolver")
-  const { requestContext } = await import("~/lib/request-context")
-  const { traceIdMiddleware } = await import("~/lib/trace")
+  const { PATHS } = await import("~/lib/storage/paths")
+  const { resolveProviderConfig } = await import(
+    "~/lib/providers/provider-resolver"
+  )
+  const { requestContext } = await import("~/lib/http/request-context")
+  const { traceIdMiddleware } = await import("~/lib/http/trace")
   const {
     getXaiAccessToken,
     persistXaiCredentials,
@@ -60,7 +62,7 @@ if (process.env.COPILOT_API_XAI_TEST_PROCESS !== "1") {
     getXaiAccounts,
     selectXaiAccount,
     removeXaiAccount,
-  } = await import("~/lib/xai-token")
+  } = await import("~/lib/auth/xai-token")
   const {
     buildProviderUpstreamHeaders,
     resolveProviderEndpointUrl,

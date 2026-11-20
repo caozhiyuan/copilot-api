@@ -3,7 +3,7 @@ import type { Context } from "hono"
 import {
   getBuiltinProviderImageModelRecords,
   getBuiltinProviderModelRecords,
-} from "~/lib/builtin-provider-models"
+} from "~/lib/catalog/builtin-provider-models"
 import {
   getRawProviderConfig,
   listEnabledProviders,
@@ -14,18 +14,18 @@ import {
   GITHUB_COPILOT_PROVIDER,
   isGitHubCopilotAvailable,
   isGitHubCopilotEnabled,
-} from "~/lib/github-copilot-provider"
+} from "~/lib/providers/github-copilot-provider"
 import { createHandlerLogger } from "~/lib/logger"
-import { withModelDisplayName } from "~/lib/model-display-name"
-import { toClientModelId } from "~/lib/models"
-import { getModelsDevModel } from "~/lib/models-dev-cache"
+import { withModelDisplayName } from "~/lib/catalog/model-display-name"
+import { toClientModelId } from "~/lib/catalog/models"
+import { getModelsDevModel } from "~/lib/catalog/models-dev-cache"
 import {
   getLocalProviderModelRecords,
   isProviderModelVisible,
   resolveProviderModelsDevId,
-} from "~/lib/provider-model-catalog"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
-import { getProviderAgentModels } from "~/lib/provider-management"
+} from "~/lib/catalog/provider-model-catalog"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
+import { getProviderAgentModels } from "~/lib/config/provider-management"
 import { state } from "~/lib/state"
 import type { Model } from "~/lib/types/models"
 import { getModels as getCodexModels } from "~/services/codex/get-models"

@@ -7,9 +7,9 @@ import {
   resolveProviderConfigForModel,
   type ResolvedProviderConfig,
 } from "~/lib/config"
-import { HTTPError } from "~/lib/error"
+import { HTTPError } from "~/lib/http/error"
 import { debugJson, createHandlerLogger } from "~/lib/logger"
-import { findEndpointModel } from "~/lib/models"
+import { findEndpointModel } from "~/lib/catalog/models"
 import {
   createCopilotTokenUsageRecorder,
   createProviderTokenUsageRecorder,
@@ -17,7 +17,7 @@ import {
   normalizeResponsesUsage,
   type UsageTokens,
 } from "~/lib/token-usage"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import { generateRequestIdFromPayload, getUUID } from "~/lib/utils"
 import {
   alphaSearchRequestSchema,

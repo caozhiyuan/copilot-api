@@ -1,6 +1,6 @@
 import type { Context } from "hono"
 
-import { GITHUB_COPILOT_PROVIDER } from "~/lib/github-copilot-provider"
+import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
 import {
   InvalidMultipartBodyError,
   MultipartBodyTooLargeError,

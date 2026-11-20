@@ -11,7 +11,7 @@ import type {
   ResponsesTransport,
 } from "~/lib/types/responses"
 
-import { COMPACT_REQUEST, type CompactType } from "~/lib/compact"
+import { COMPACT_REQUEST, type CompactType } from "~/lib/http/compact"
 import {
   getModelResponsesApiCompactThreshold as getConfiguredModelResponsesApiCompactThreshold,
   isContextManagementEnabledForMessages as isConfiguredContextManagementEnabledForMessages,
@@ -22,7 +22,7 @@ import {
 import {
   resolveSupportedReasoningEffort,
   type ResponsesReasoningEffort,
-} from "~/lib/reasoning-effort"
+} from "~/lib/catalog/reasoning-effort"
 
 import {
   decodeMessagesCompaction,

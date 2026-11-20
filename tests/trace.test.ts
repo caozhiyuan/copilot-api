@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
 
-import { requestContext } from "~/lib/request-context"
-import { traceIdMiddleware } from "~/lib/trace"
+import { requestContext } from "~/lib/http/request-context"
+import { traceIdMiddleware } from "~/lib/http/trace"
 
 const createTracingApp = () => {
   const app = new Hono()

@@ -5,7 +5,7 @@ import {
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import type { GoogleGenerateContentPayload } from "~/lib/types/google"
-import { setPluginRequestActualModel } from "~/lib/request-context"
+import { setPluginRequestActualModel } from "~/lib/http/request-context"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 
 import {

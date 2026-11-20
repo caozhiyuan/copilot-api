@@ -12,7 +12,10 @@ import * as files from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
-import { loadGatewayPlugins, type GatewayPlugins } from "~/lib/gateway-plugins"
+import {
+  loadGatewayPlugins,
+  type GatewayPlugins,
+} from "~/lib/plugins/gateway-plugins"
 
 const previousMonitorDir = process.env.COPILOT_API_MONITOR_DIR
 const releases: Array<() => void> = []

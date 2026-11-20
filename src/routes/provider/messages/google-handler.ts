@@ -4,10 +4,10 @@ import { events } from "fetch-event-stream"
 import { streamSSE } from "hono/streaming"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { HTTPError } from "~/lib/error"
-import { recordGoogleFirstToken } from "~/lib/first-token"
+import { HTTPError } from "~/lib/http/error"
+import { recordGoogleFirstToken } from "~/lib/http/first-token"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { writeSSEIfConnected } from "~/lib/sse"
+import { writeSSEIfConnected } from "~/lib/http/sse"
 import {
   createProviderTokenUsageRecorder,
   normalizeAnthropicUsage,

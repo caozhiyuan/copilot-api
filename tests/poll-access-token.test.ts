@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
 import consola from "consola"
 
-import { getOauthAppConfig, getOauthUrls } from "~/lib/api-config"
+import { getOauthAppConfig, getOauthUrls } from "~/lib/providers/api-config"
 import type { DeviceCodeResponse } from "~/services/github/get-device-code"
 import {
   pollAccessToken,

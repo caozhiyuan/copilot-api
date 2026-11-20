@@ -6,7 +6,7 @@ import {
   refreshXaiCredentials,
   XaiOAuthError,
   type XaiAuthInfo,
-} from "~/lib/oauth/xai"
+} from "~/lib/auth/oauth/xai"
 
 const device = {
   device_code: "private-device-code",

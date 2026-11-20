@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { installModelsDevCatalog } from '../../src/lib/models-dev-cache'
+import { installModelsDevCatalog } from '../../src/lib/catalog/models-dev-cache'
 import {
   modelsDevReleaseModelsFixture,
   modelsDevProviderCatalogFixture,

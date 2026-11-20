@@ -5,7 +5,7 @@ import { createHash, randomUUID } from "node:crypto"
 import type { ResponsesStream } from "~/lib/types/responses"
 
 import { state } from "./state"
-import { requestContext } from "./request-context"
+import { requestContext } from "./http/request-context"
 
 export const sleep = (ms: number) =>
   new Promise((resolve) => {

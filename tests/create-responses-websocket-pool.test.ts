@@ -214,7 +214,7 @@ await mock.module("undici", () => ({
 
 const { state } = await import("~/lib/state")
 const { getConfig, invalidateConfigCache } = await import("~/lib/config")
-const { PATHS } = await import("~/lib/paths")
+const { PATHS } = await import("~/lib/storage/paths")
 const { createResponses, COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES } =
   await import("~/services/copilot/create-responses")
 const {
@@ -240,7 +240,7 @@ const originalState = {
   vsCodeDeviceId: state.vsCodeDeviceId,
   vsCodeVersion: state.vsCodeVersion,
 }
-const { requestContext } = await import("~/lib/request-context")
+const { requestContext } = await import("~/lib/http/request-context")
 const originalConfigPath = PATHS.CONFIG_PATH
 let configDir: string
 

@@ -9,10 +9,10 @@ import {
   compactSystemPromptStarts,
   compactTextOnlyGuard,
   type CompactType,
-} from "~/lib/compact"
-import { isClaudeUserAgent } from "~/lib/claude-models"
+} from "~/lib/http/compact"
+import { isClaudeUserAgent } from "~/lib/catalog/claude-models"
 import { getReasoningEffortForModel } from "~/lib/config"
-import { normalizeSdkModelId } from "~/lib/models"
+import { normalizeSdkModelId } from "~/lib/catalog/models"
 
 import type {
   AnthropicAssistantContentBlock,

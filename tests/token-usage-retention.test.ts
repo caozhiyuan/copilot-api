@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test"
 
-import { resolveTokenUsageRetentionDays } from "~/lib/config-store"
+import { resolveTokenUsageRetentionDays } from "~/lib/config/config-store"
 import {
   closeUsageStore,
   getTokenUsageEventsPage,

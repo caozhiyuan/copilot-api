@@ -10,10 +10,10 @@ import {
   copilotWebSocketHeaders,
   prepareForCompact,
   prepareInteractionHeaders,
-} from "~/lib/api-config"
-import { COMPACT_REQUEST } from "~/lib/compact"
+} from "~/lib/providers/api-config"
+import { COMPACT_REQUEST } from "~/lib/http/compact"
 import { getConfig, invalidateConfigCache } from "~/lib/config"
-import { PATHS } from "~/lib/paths"
+import { PATHS } from "~/lib/storage/paths"
 import { state } from "~/lib/state"
 import { translateAnthropicMessagesToResponsesPayload } from "~/routes/messages/responses-translation"
 import {

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
 
-import * as providerResolver from "~/lib/provider-resolver"
-import * as grokBuild from "~/lib/grok-build"
-import * as xaiToken from "~/lib/xai-token"
-import * as githubProvider from "~/lib/github-copilot-provider"
+import * as providerResolver from "~/lib/providers/provider-resolver"
+import * as grokBuild from "~/lib/providers/grok-build"
+import * as xaiToken from "~/lib/auth/xai-token"
+import * as githubProvider from "~/lib/providers/github-copilot-provider"
 import { state } from "~/lib/state"
 import * as subscriptionUsage from "~/services/subscription-usage"
 import {

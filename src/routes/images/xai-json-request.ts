@@ -1,9 +1,9 @@
-import { HTTPError } from "~/lib/error"
+import { HTTPError } from "~/lib/http/error"
 import {
   assertExternalImageBase64,
   externalImageJsonStream,
   readExternalImageJson,
-} from "~/lib/image-json-value"
+} from "~/lib/images/image-json-value"
 import {
   translateXaiImageEditJson,
   translateXaiImageGeneration,

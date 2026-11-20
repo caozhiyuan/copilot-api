@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import consola from "consola"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
-import { ImageJsonMetadataReader } from "~/lib/image-json-metadata"
-import { requestContext } from "~/lib/request-context"
+import { ImageJsonMetadataReader } from "~/lib/images/image-json-metadata"
+import { requestContext } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
 import {
   closeUsageStore,

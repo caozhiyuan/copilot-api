@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test"
 
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import { createFallbackModel } from "~/lib/provider-model"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
 import { normalizeCopilotModel } from "~/routes/models/model-discovery"
 import { getModelMetadata } from "~/routes/models/model-metadata"
 

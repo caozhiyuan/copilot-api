@@ -2,8 +2,8 @@
 
 import { defineCommand } from "citty"
 
-import { MCP_SUBCOMMAND } from "./lib/fast-path"
-import { runMcpServer } from "./lib/mcp-server"
+import { MCP_SUBCOMMAND } from "./lib/cli/fast-path"
+import { runMcpServer } from "./lib/cli/mcp-server"
 
 export const mcp = defineCommand({
   meta: {

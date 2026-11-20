@@ -1,6 +1,6 @@
 import type { Context } from "hono"
 
-import { stripInternalRequestHeaders } from "~/lib/internal-headers"
+import { stripInternalRequestHeaders } from "~/lib/http/internal-headers"
 import {
   createModelListResponse,
   getAgentModels,

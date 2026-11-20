@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { getConfig } from "~/lib/config"
-import { normalizeApiKeyRecords } from "~/lib/api-key-config"
-import { getApiKeyQuotaUsage } from "~/lib/token-usage/store"
+import { normalizeApiKeyRecords } from "~/lib/config/api-key-config"
+import { getApiKeyQuotaUsage } from "~/lib/auth/api-key-quota-runtime"
 import type { ApiKeyQuotaUsage } from "~/lib/types/api-key"
 
 export const apiKeyUsageRoutes = new Hono()

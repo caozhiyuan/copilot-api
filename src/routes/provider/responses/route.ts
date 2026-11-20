@@ -1,9 +1,9 @@
 import { Hono } from "hono"
 
-import { forwardError } from "~/lib/error"
-import { setPluginRequestModel } from "~/lib/request-events"
+import { forwardError } from "~/lib/http/error"
+import { setPluginRequestModel } from "~/lib/http/request-events"
 import type { ResponsesPayload } from "~/lib/types/responses"
-import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
+import { zstdDecompressionMiddleware } from "~/lib/http/zstd-request"
 
 import { handleProviderResponsesForProvider } from "./handler"
 

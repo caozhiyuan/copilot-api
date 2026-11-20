@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { requestContext } from "~/lib/request-context"
+import { requestContext } from "~/lib/http/request-context"
 import {
   getResponsesContinuationSession,
   prepareResponsesContinuation,

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import { getProxyForUrl } from "proxy-from-env"
 import { WebSocket } from "undici"
 
-import type { ResponsesStreamChunk } from "~/lib/responses-stream-event"
+import type { ResponsesStreamChunk } from "~/lib/http/responses-stream-event"
 import { createResponsesWebSocketInterruption } from "~/services/responses-websocket-interrupt"
 
 export interface PooledWebSocketConnection {

@@ -1,6 +1,6 @@
 import consola from "consola"
-import { getGitHubApiBaseUrl, githubHeaders } from "~/lib/api-config"
-import { HTTPError } from "~/lib/error"
+import { getGitHubApiBaseUrl, githubHeaders } from "~/lib/providers/api-config"
+import { HTTPError } from "~/lib/http/http-error"
 import { state } from "~/lib/state"
 
 export type CopilotAccountType = "individual" | "business" | "enterprise"

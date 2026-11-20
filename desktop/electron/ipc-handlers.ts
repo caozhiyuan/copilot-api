@@ -1,7 +1,7 @@
 import {
   upsertConfiguredApiKey,
   removeConfiguredApiKey,
-} from '../../src/lib/config-store'
+} from '../../src/lib/config/config-store'
 import path from 'node:path'
 
 import {
@@ -30,18 +30,18 @@ import type {
   VideoCreationInput,
 } from '../src/types/media'
 
-import { CodexOAuthError } from '../../src/lib/oauth/codex'
-import { XaiOAuthError, type XaiAuthInfo } from '../../src/lib/oauth/xai'
+import { CodexOAuthError } from '../../src/lib/auth/oauth/codex'
+import { XaiOAuthError, type XaiAuthInfo } from '../../src/lib/auth/oauth/xai'
 import { createOAuthLoginFlow } from './oauth-login'
 import {
   getXaiAccounts,
   selectXaiAccount,
   removeXaiAccount,
-} from '../../src/lib/xai-token'
-import { loadModelsDevProviderOptions } from '../../src/lib/models-dev-cache'
-import { invalidateConfigCache } from '../../src/lib/config-store'
+} from '../../src/lib/auth/xai-token'
+import { loadModelsDevProviderOptions } from '../../src/lib/catalog/models-dev-cache'
+import { invalidateConfigCache } from '../../src/lib/config/config-store'
 import { loadProviderModelOptions } from './provider-model-options'
-import { saveProviderManagementConfig } from '../../src/lib/provider-management'
+import { saveProviderManagementConfig } from '../../src/lib/config/provider-management'
 import { getDesktopProviderManagementConfig } from './provider-management'
 import {
   isValidServerHost,

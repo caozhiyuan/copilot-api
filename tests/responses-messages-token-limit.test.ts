@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 
 import type { ProviderConfig } from "~/lib/config"
 
-import { installModelsDevCatalog } from "~/lib/models-dev-cache"
-import * as providerConfig from "~/lib/provider-config"
-import { createFallbackModel } from "~/lib/provider-model"
+import { installModelsDevCatalog } from "~/lib/catalog/models-dev-cache"
+import * as providerConfig from "~/lib/config/provider-config"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
 import { state } from "~/lib/state"
 import { translateAnthropicMessagesToResponsesPayload } from "~/routes/messages/responses-translation"
 import { translateResponsesToMessages } from "~/routes/responses/messages-translation"

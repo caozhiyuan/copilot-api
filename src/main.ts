@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
-import { isMcpFastPath } from "./lib/fast-path"
+import { isMcpFastPath } from "./lib/cli/fast-path"
 
 // Fast path: `copilot-api mcp` starts the MCP bridge without loading citty
 // or the gateway modules, keeping MCP client startup fast.
 if (isMcpFastPath(process.argv)) {
-  const { runMcpServer } = await import("./lib/mcp-server")
+  const { runMcpServer } = await import("./lib/cli/mcp-server")
   await runMcpServer()
 } else {
   const { defineCommand, runMain, parseArgs } = await import("citty")
@@ -47,7 +47,7 @@ if (isMcpFastPath(process.argv)) {
     process.env.WT_SESSION = "copilot-api"
   }
 
-  const { bindElectronFetch } = await import("./lib/electron-fetch")
+  const { bindElectronFetch } = await import("./lib/http/electron-fetch")
   bindElectronFetch()
 
   // Dynamically import other modules to ensure environment variables are set

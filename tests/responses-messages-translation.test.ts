@@ -9,7 +9,7 @@ import type {
   ResponsesPayload,
   ResponseStreamEvent,
 } from "~/lib/types/responses"
-import { requestContext } from "~/lib/request-context"
+import { requestContext } from "~/lib/http/request-context"
 import {
   buildOutputFormatInstruction,
   createMessagesBackedResponsesResult,

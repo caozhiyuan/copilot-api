@@ -13,6 +13,13 @@ export interface GatewayApiKeyConfig {
   }
 }
 
+export interface ApiKeyQuotaBucket {
+  api_key_id: string
+  period: ApiKeyQuotaPeriod
+  period_start_ms: number
+  used_cost_nanos: number
+}
+
 export interface ApiKeyQuotaUsage {
   id: string
   usedAmount: number

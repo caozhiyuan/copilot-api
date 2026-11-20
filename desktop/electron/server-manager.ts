@@ -17,7 +17,7 @@ import {
   isInvalidBindErrorCode,
   normalizeServerHostname,
   resolveClientHostnameOrDefault,
-} from '../../src/lib/server-host'
+} from '../../src/lib/http/server-host'
 import { applyDesktopProxySettingsToEnv } from './electron-proxy-config'
 import { detectBunRuntime } from './bun-runtime'
 import { tMain } from './i18n'

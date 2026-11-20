@@ -5,12 +5,12 @@ import {
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import { createHandlerLogger } from "~/lib/logger"
-import { toClientModelId } from "~/lib/models"
-import { isProviderModelVisible } from "~/lib/provider-model-catalog"
-import { getProviderAgentModels } from "~/lib/provider-management"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { toClientModelId } from "~/lib/catalog/models"
+import { isProviderModelVisible } from "~/lib/catalog/provider-model-catalog"
+import { getProviderAgentModels } from "~/lib/config/provider-management"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import type { Model } from "~/lib/types/models"
-import type { SyntheticCodexModelCandidate } from "~/routes/models/codex-models-types"
+import type { SyntheticCodexModelCandidate } from "~/lib/types/codex-models"
 import {
   deduplicateModels,
   getCopilotModelRecords,

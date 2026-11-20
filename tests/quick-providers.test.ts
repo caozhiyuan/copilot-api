@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { QUICK_PROVIDER_CONFIGS } from "~/lib/quick-providers"
+import { QUICK_PROVIDER_CONFIGS } from "~/lib/config/quick-providers"
 
 describe("quick provider configs", () => {
   test("uses Anthropic defaults for DeepSeek", () => {

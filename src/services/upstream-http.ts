@@ -1,7 +1,7 @@
 import {
   UpstreamHeadersTimeoutError,
   UpstreamStreamInactivityTimeoutError,
-} from "~/lib/error"
+} from "~/lib/http/error"
 
 export interface UpstreamHttpLifecycleOptions {
   clientSignal?: AbortSignal

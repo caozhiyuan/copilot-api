@@ -1,7 +1,7 @@
 import type { Context } from "hono"
 
-import { toClaudeDiscoveryModelId } from "~/lib/claude-models"
-import { stripInternalRequestHeaders } from "~/lib/internal-headers"
+import { toClaudeDiscoveryModelId } from "~/lib/catalog/claude-models"
+import { stripInternalRequestHeaders } from "~/lib/http/internal-headers"
 import {
   createModelListResponse,
   getAgentModels,

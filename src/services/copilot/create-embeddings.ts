@@ -1,6 +1,6 @@
-import { setPluginRequestActualModel } from "~/lib/request-context"
-import { copilotHeaders, copilotBaseUrl } from "~/lib/api-config"
-import { HTTPError } from "~/lib/error"
+import { setPluginRequestActualModel } from "~/lib/http/request-context"
+import { copilotHeaders, copilotBaseUrl } from "~/lib/providers/api-config"
+import { HTTPError } from "~/lib/http/error"
 import { state } from "~/lib/state"
 
 export const createEmbeddings = async (payload: EmbeddingRequest) => {

@@ -13,7 +13,7 @@ type ListenerEvent = {
 
 type Listener = (event: ListenerEvent) => void
 
-const { requestContext } = await import("~/lib/request-context")
+const { requestContext } = await import("~/lib/http/request-context")
 const originalFetch = globalThis.fetch
 const originalSetTimeout = globalThis.setTimeout
 
@@ -196,7 +196,7 @@ await mock.module("undici", () => ({
 }))
 
 const { state } = await import("~/lib/state")
-const { traceIdMiddleware } = await import("~/lib/trace")
+const { traceIdMiddleware } = await import("~/lib/http/trace")
 const { codexResponsesDependencies, forwardCodexResponses } = await import(
   "~/services/codex/create-responses"
 )

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { encode } from "gpt-tokenizer/encoding/o200k_base"
 
-import { createFallbackModel } from "~/lib/provider-model"
-import { getTokenCount } from "~/lib/tokenizer"
+import { createFallbackModel } from "~/lib/catalog/provider-model"
+import { getTokenCount } from "~/lib/catalog/tokenizer"
 import type { ContentPart, ImagePart } from "~/lib/types/chat-completions"
 
 const model = createFallbackModel("gpt-test")

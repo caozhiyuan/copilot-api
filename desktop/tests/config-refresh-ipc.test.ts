@@ -11,15 +11,15 @@ import type { BrowserWindow } from 'electron'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { PATHS } from '../../src/lib/paths'
+import { PATHS } from '../../src/lib/storage/paths'
 import { VIDEO_IMAGE_MAX_BYTES } from '../electron/compress-video-image'
 
 import * as serverAuth from '../electron/server-auth-config'
 import * as settingsStore from '../electron/settings-store'
-import * as providerManagement from '../../src/lib/provider-management'
-import { CodexOAuthError } from '../../src/lib/oauth/codex'
-import { XaiOAuthError } from '../../src/lib/oauth/xai'
-import * as xaiToken from '../../src/lib/xai-token'
+import * as providerManagement from '../../src/lib/config/provider-management'
+import { CodexOAuthError } from '../../src/lib/auth/oauth/codex'
+import { XaiOAuthError } from '../../src/lib/auth/oauth/xai'
+import * as xaiToken from '../../src/lib/auth/xai-token'
 import type {
   AppConfigDocument,
   AppConfigSaveResult,

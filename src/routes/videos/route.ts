@@ -1,16 +1,16 @@
 import {
   requestContext,
   setPluginRequestActualModel,
-} from "~/lib/request-context"
+} from "~/lib/http/request-context"
 import { Hono, type Context } from "hono"
 
 import { resolveMappedModel } from "~/lib/config"
-import { forwardError } from "~/lib/error"
+import { forwardError } from "~/lib/http/error"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
-import { parseProviderModelAlias } from "~/lib/provider-model"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import { parseProviderModelAlias } from "~/lib/catalog/provider-model"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import { recordVideoResultUsage } from "~/lib/token-usage/videos"
-import { getVideoUsageJob } from "~/lib/token-usage/store"
+import { getVideoUsageJob } from "~/lib/video-settlement"
 import { createProviderProxyResponse } from "~/services/providers/provider-proxy"
 import {
   forwardXaiVideos,

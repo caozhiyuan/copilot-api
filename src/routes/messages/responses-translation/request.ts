@@ -10,8 +10,8 @@ import {
   resolveResponsesToolSearchMode,
   selectDeferredToolsByNames,
   type ResponsesToolSearchMode,
-} from "~/lib/tool-search"
-import { HTTPError } from "~/lib/error"
+} from "~/lib/cli/tool-search"
+import { HTTPError } from "~/lib/http/error"
 import {
   getExtraPromptForModel,
   getReasoningEffortForModel,

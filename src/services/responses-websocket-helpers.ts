@@ -2,7 +2,7 @@ import {
   decodedResponsesEvent,
   readResponsesStreamEvent,
   type ResponsesStreamChunk,
-} from "~/lib/responses-stream-event"
+} from "~/lib/http/responses-stream-event"
 import type {
   ResponseErrorEvent,
   ResponseStreamEvent,

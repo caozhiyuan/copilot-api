@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
 import { parseEnv } from 'node:util'
-import { writeFileAtomically } from '../../src/lib/atomic-file'
+import { writeFileAtomically } from '../../src/lib/storage/atomic-file'
 import {
   isObject,
   patchJsonConfig,

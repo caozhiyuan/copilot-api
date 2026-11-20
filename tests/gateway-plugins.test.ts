@@ -9,22 +9,22 @@ import {
   GatewayPlugins,
   loadGatewayPlugins,
   type GatewayPluginEvents,
-} from "~/lib/gateway-plugins"
+} from "~/lib/plugins/gateway-plugins"
 import {
   requestEventsMiddleware,
   setPluginRequestModel,
-} from "~/lib/request-events"
-import { traceIdMiddleware } from "~/lib/trace"
+} from "~/lib/http/request-events"
+import { traceIdMiddleware } from "~/lib/http/trace"
 import {
   recordResponsesFirstToken,
   recordAnthropicFirstToken,
-} from "~/lib/first-token"
+} from "~/lib/http/first-token"
 import {
   requestContext,
   setPluginRequestActualModel,
-} from "~/lib/request-context"
-import { createAuthMiddleware } from "~/lib/request-auth"
-import { zstdDecompressionMiddleware } from "~/lib/zstd-request"
+} from "~/lib/http/request-context"
+import { createAuthMiddleware } from "~/lib/auth/request-auth"
+import { zstdDecompressionMiddleware } from "~/lib/http/zstd-request"
 import {
   recordTokenUsageEvent,
   createTokenUsageRecorder,

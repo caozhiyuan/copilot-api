@@ -43,7 +43,7 @@ await mock.module("@modelcontextprotocol/sdk/server/stdio.js", () => ({
   StdioServerTransport: MockStdioServerTransport,
 }))
 
-const { runMcpServer } = await import("~/lib/mcp-server")
+const { runMcpServer } = await import("~/lib/cli/mcp-server")
 const { mcp } = await import("~/mcp")
 
 afterEach(() => {

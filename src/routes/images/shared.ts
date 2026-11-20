@@ -1,14 +1,14 @@
 import consola from "consola"
 
 import { resolveMappedModel } from "~/lib/config"
-import { HTTPError } from "~/lib/error"
+import { HTTPError } from "~/lib/http/error"
 import {
   GITHUB_COPILOT_PROVIDER,
   isGitHubCopilotAvailable,
-} from "~/lib/github-copilot-provider"
+} from "~/lib/providers/github-copilot-provider"
 import { createHandlerLogger } from "~/lib/logger"
-import type { ProviderModelAlias } from "~/lib/provider-model"
-import { resolveProviderConfig } from "~/lib/provider-resolver"
+import type { ProviderModelAlias } from "~/lib/catalog/provider-model"
+import { resolveProviderConfig } from "~/lib/providers/provider-resolver"
 import {
   forwardCopilotImagesWithLogging,
   forwardProviderImagesWithLogging,

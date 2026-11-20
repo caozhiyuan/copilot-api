@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
 
 const actualConfigModule = await import("~/lib/config")
-const actualPathsModule = await import("~/lib/paths")
+const actualPathsModule = await import("~/lib/storage/paths")
 
 let modelMappings: Record<string, string> = {
   "claude-opus-4-7": "gpt-5-mini",
