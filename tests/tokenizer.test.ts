@@ -79,10 +79,10 @@ describe("image token estimates", () => {
     ])
 
     expect(smallPdf.input - baseline.input).toBe(
-      765 + encode("report.pdf").length,
+      2_000 + encode("report.pdf").length,
     )
     expect(largePdf).toEqual(smallPdf)
-    expect(untitledPdf.input - baseline.input).toBe(765)
+    expect(untitledPdf.input - baseline.input).toBe(2_000)
   })
 
   test("leaves ordinary text input and assistant output counting unchanged", async () => {
@@ -170,7 +170,7 @@ describe("image token estimates", () => {
       claudeModel,
     )
 
-    expect(gptResult.input).toBeGreaterThan(765)
+    expect(gptResult.input).toBeGreaterThan(2_000)
     expect(gptResult.output).toBeGreaterThan(0)
     expect(nonGptResult.input).toBeGreaterThan(0)
   })
