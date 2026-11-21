@@ -59,7 +59,9 @@ const calculateContentPartsTokens = (
       // four high-detail tiles. Never tokenize URLs or Base64 as image text.
       tokens += part.image_url.detail === "low" ? 85 : 85 + 170 * 4
     } else if (part.type === "file") {
-      tokens += encoder.encode(part.file.file_data).length
+      // Fast local fallback: do not decode or tokenize inline PDF Base64.
+      // Actual usage varies by document and model.
+      tokens += 2_000
       if (part.file.filename) {
         tokens += encoder.encode(part.file.filename).length
       }
