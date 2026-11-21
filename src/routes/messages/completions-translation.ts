@@ -28,6 +28,10 @@ import {
   type AnthropicUserContentBlock,
   type AnthropicUserMessage,
 } from "~/lib/types/anthropic"
+import {
+  isGeminiControlTokenModel,
+  stripGeminiControlTokens,
+} from "./gemini-control-tokens"
 import { mapOpenAIStopReasonToAnthropic } from "./utils"
 import { getPromptCacheKey } from "~/lib/utils"
 
@@ -621,14 +625,22 @@ function translateParallelToolCalls(
 
 export function translateToAnthropic(
   response: ChatCompletionResponse,
+  options: { model?: string; vendor?: string } = {},
 ): AnthropicResponse {
+  const stripGeminiTokens =
+    isGeminiControlTokenModel(response.model)
+    || isGeminiControlTokenModel(options.model, options.vendor)
+
   // Merge content from all choices
   const assistantContentBlocks: Array<AnthropicAssistantContentBlock> = []
   let stopReason = response.choices[0]?.finish_reason ?? null
 
   // Process all choices to extract text and tool use blocks
   for (const choice of response.choices) {
-    const textBlocks = getAnthropicTextBlocks(choice.message.content)
+    const textBlocks = getAnthropicTextBlocks(
+      choice.message.content,
+      stripGeminiTokens,
+    )
     const thinkBlocks = getAnthropicThinkBlocks(
       getOpenAIReasoningText(choice.message),
       choice.message.reasoning_opaque,
@@ -692,15 +704,25 @@ function getOpenAIReasoningText(message: {
 
 function getAnthropicTextBlocks(
   messageContent: Message["content"],
+  stripGeminiTokens = false,
 ): Array<AnthropicTextBlock> {
-  if (typeof messageContent === "string" && messageContent.length > 0) {
-    return [{ type: "text", text: messageContent }]
+  if (typeof messageContent === "string") {
+    const text =
+      stripGeminiTokens ?
+        stripGeminiControlTokens(messageContent)
+      : messageContent
+    return text.length > 0 ? [{ type: "text", text }] : []
   }
 
   if (Array.isArray(messageContent)) {
     return messageContent
       .filter((part): part is TextPart => part.type === "text")
-      .map((part) => ({ type: "text", text: part.text }))
+      .map((part) => ({
+        type: "text" as const,
+        text:
+          stripGeminiTokens ? stripGeminiControlTokens(part.text) : part.text,
+      }))
+      .filter((block) => !stripGeminiTokens || block.text.length > 0)
   }
 
   return []

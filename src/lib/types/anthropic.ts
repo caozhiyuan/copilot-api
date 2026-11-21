@@ -321,6 +321,12 @@ export interface AnthropicStreamState {
   thinkingBlockOpen: boolean
   pendingMessageDelta?: AnthropicMessageDeltaEvent
   deferredContent?: string
+  stripGeminiControlTokens?: boolean
+  geminiTextSanitizer?: {
+    leading: boolean
+    strippedLeading: boolean
+    buffer: string
+  }
   toolCalls: {
     [openAIToolIndex: number]: {
       id: string

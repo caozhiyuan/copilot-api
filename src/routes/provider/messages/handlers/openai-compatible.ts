@@ -34,6 +34,7 @@ import {
   translateToAnthropic,
   translateToOpenAI,
 } from "~/routes/messages/completions-translation"
+import { isGeminiControlTokenModel } from "~/routes/messages/gemini-control-tokens"
 import {
   flushPendingAnthropicStreamEvents,
   translateChunkToAnthropicEvents,
@@ -341,6 +342,7 @@ export const streamOpenAICompatibleProviderMessages = ({
       contentBlockOpen: false,
       toolCalls: {},
       thinkingBlockOpen: false,
+      stripGeminiControlTokens: isGeminiControlTokenModel(payload.model),
     }
 
     try {
@@ -464,7 +466,9 @@ export const respondOpenAICompatibleProviderMessagesJson = (
   )
   recordUsage(normalizeOpenAIUsage(body.usage))
 
-  const anthropicResponse = translateToAnthropic(body)
+  const anthropicResponse = translateToAnthropic(body, {
+    model: payload.model,
+  })
   debugJson(
     logger,
     "provider.messages.openai_compatible.no_stream result:",

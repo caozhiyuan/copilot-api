@@ -16,6 +16,7 @@ import type {
   GoogleUsageMetadata,
 } from "~/lib/types/google"
 
+import { stripGeminiControlTokens } from "./gemini-control-tokens"
 import { translateGoogleThinking } from "./google-thinking"
 
 // Anthropic has a standard opaque signature field only on thinking blocks.
@@ -362,7 +363,13 @@ export function translateGoogleToAnthropic(
       })
       continue
     } else if (part.text !== undefined) {
-      content.push({ type: "text", text: part.text })
+      const sanitizedText = stripGeminiControlTokens(part.text)
+      const strippedControlToken = sanitizedText.length !== part.text.length
+      if (sanitizedText.length > 0) {
+        content.push({ type: "text", text: sanitizedText })
+      } else if (strippedControlToken && content.at(-1)?.type !== "text") {
+        continue
+      }
     }
     if (part.thoughtSignature)
       content.push(googleSignatureBlock(part.thoughtSignature))
