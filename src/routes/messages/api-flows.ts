@@ -68,6 +68,7 @@ import {
   translateToAnthropic,
   translateToOpenAI,
 } from "./completions-translation"
+import { isGeminiControlTokenModel } from "./gemini-control-tokens"
 import { prepareMessagesApiPayload } from "./preprocess"
 import {
   flushPendingAnthropicStreamEvents,
@@ -162,7 +163,10 @@ export const handleWithChatCompletions = async (
         response.copilot_usage?.total_nano_aiu,
       ),
     })
-    const anthropicResponse = translateToAnthropic(response)
+    const anthropicResponse = translateToAnthropic(response, {
+      model: openAIPayload.model,
+      vendor: selectedModel?.vendor,
+    })
     debugJson(logger, "Translated Anthropic response:", anthropicResponse)
     return c.json(anthropicResponse)
   }
@@ -177,6 +181,10 @@ export const handleWithChatCompletions = async (
       contentBlockOpen: false,
       toolCalls: {},
       thinkingBlockOpen: false,
+      stripGeminiControlTokens: isGeminiControlTokenModel(
+        openAIPayload.model,
+        selectedModel?.vendor,
+      ),
     }
 
     try {

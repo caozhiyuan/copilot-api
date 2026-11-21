@@ -9,6 +9,13 @@ import {
   type AnthropicStreamEventData,
   type AnthropicStreamState,
 } from "~/lib/types/anthropic"
+import {
+  createGeminiTextSanitizerState,
+  finishGeminiTextSanitizer,
+  isGeminiControlTokenModel,
+  pushGeminiTextChunk,
+  stripGeminiControlTokens,
+} from "./gemini-control-tokens"
 import { mapOpenAIStopReasonToAnthropic } from "./utils"
 
 function isToolBlockOpen(state: AnthropicStreamState): boolean {
@@ -40,6 +47,10 @@ export function translateChunkToAnthropicEvents(
 
   const choice = chunk.choices[0]
   const { delta } = choice
+
+  if (!state.stripGeminiControlTokens && chunk.model) {
+    state.stripGeminiControlTokens = isGeminiControlTokenModel(chunk.model)
+  }
 
   handleMessageStart(state, events, chunk)
 
@@ -93,6 +104,7 @@ function handleFinish(
   const { events, chunk } = context
   if (choice.finish_reason && choice.finish_reason.length > 0) {
     closeThinkingBlockIfOpen(state, events, choice.delta.reasoning_opaque ?? "")
+    flushGeminiTextSanitizer(state, events)
     if (state.contentBlockOpen) {
       const toolBlockOpen = isToolBlockOpen(state)
       context.events.push({
@@ -166,6 +178,7 @@ function handleToolCalls(
 ) {
   if (delta.tool_calls && delta.tool_calls.length > 0) {
     closeThinkingBlockIfOpen(state, events)
+    flushGeminiTextSanitizer(state, events)
 
     handleReasoningOpaqueInToolCalls(state, events, delta)
 
@@ -292,33 +305,22 @@ function handleContent(
   events: Array<AnthropicStreamEventData>,
 ) {
   if (delta.content && delta.content.length > 0) {
-    closeThinkingBlockIfOpen(state, events)
-
     if (isToolBlockOpen(state)) {
+      closeThinkingBlockIfOpen(state, events)
       state.deferredContent = `${state.deferredContent ?? ""}${delta.content}`
       return
     }
 
-    if (!state.contentBlockOpen) {
-      events.push({
-        type: "content_block_start",
-        index: state.contentBlockIndex,
-        content_block: {
-          type: "text",
-          text: "",
-        },
-      })
-      state.contentBlockOpen = true
+    if (state.stripGeminiControlTokens) {
+      state.geminiTextSanitizer ??= createGeminiTextSanitizerState()
+      const sanitized = pushGeminiTextChunk(
+        state.geminiTextSanitizer,
+        delta.content,
+      )
+      emitTextDelta(sanitized, state, events)
+    } else {
+      emitTextDelta(delta.content, state, events)
     }
-
-    events.push({
-      type: "content_block_delta",
-      index: state.contentBlockIndex,
-      delta: {
-        type: "text_delta",
-        text: delta.content,
-      },
-    })
   }
 
   // handle for claude model
@@ -347,11 +349,66 @@ function handleContent(
   }
 }
 
+function emitTextDelta(
+  text: string,
+  state: AnthropicStreamState,
+  events: Array<AnthropicStreamEventData>,
+): void {
+  if (text.length === 0) {
+    return
+  }
+
+  closeThinkingBlockIfOpen(state, events)
+
+  if (!state.contentBlockOpen) {
+    events.push({
+      type: "content_block_start",
+      index: state.contentBlockIndex,
+      content_block: {
+        type: "text",
+        text: "",
+      },
+    })
+    state.contentBlockOpen = true
+  }
+
+  events.push({
+    type: "content_block_delta",
+    index: state.contentBlockIndex,
+    delta: {
+      type: "text_delta",
+      text,
+    },
+  })
+}
+
+function flushGeminiTextSanitizer(
+  state: AnthropicStreamState,
+  events: Array<AnthropicStreamEventData>,
+): void {
+  if (!state.geminiTextSanitizer) {
+    return
+  }
+
+  const remaining = finishGeminiTextSanitizer(state.geminiTextSanitizer)
+  state.geminiTextSanitizer = undefined
+  emitTextDelta(remaining, state, events)
+}
+
 function flushDeferredContent(
   state: AnthropicStreamState,
   events: Array<AnthropicStreamEventData>,
 ): void {
   if (!state.deferredContent) {
+    return
+  }
+
+  const deferredText =
+    state.stripGeminiControlTokens ?
+      stripGeminiControlTokens(state.deferredContent)
+    : state.deferredContent
+  state.deferredContent = undefined
+  if (!deferredText) {
     return
   }
 
@@ -373,7 +430,7 @@ function flushDeferredContent(
       index: state.contentBlockIndex,
       delta: {
         type: "text_delta",
-        text: state.deferredContent,
+        text: deferredText,
       },
     },
     {
@@ -381,7 +438,6 @@ function flushDeferredContent(
       index: state.contentBlockIndex,
     },
   )
-  state.deferredContent = undefined
   state.contentBlockOpen = false
   state.contentBlockIndex++
 }
