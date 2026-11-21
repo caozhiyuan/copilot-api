@@ -30,15 +30,17 @@ export async function settlePendingVideoUsage(
       try {
         if (!(await deferVideoUsageJob(job, now + VIDEO_USAGE_RETRY_DELAY_MS)))
           return
+        const pollSignal = AbortSignal.any([
+          signal,
+          AbortSignal.timeout(VIDEO_USAGE_REQUEST_TIMEOUT_MS),
+        ])
         const request = new Request("http://localhost/", {
-          signal: AbortSignal.any([
-            signal,
-            AbortSignal.timeout(VIDEO_USAGE_REQUEST_TIMEOUT_MS),
-          ]),
+          signal: pollSignal,
         })
         const response = await forwardXaiVideos(providerConfig, request, {
           operation: "result",
           requestId: job.request_id,
+          signal: pollSignal,
         })
         try {
           await recordVideoResultUsage(response, {

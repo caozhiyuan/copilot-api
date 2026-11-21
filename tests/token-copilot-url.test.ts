@@ -190,3 +190,47 @@ test("refresh loop re-applies the exchanged endpoints.api", async () => {
   expect(getCopilotTokenMock.mock.calls.length).toBeGreaterThan(1)
   expect(state.copilotApiUrl).toBe(BUSINESS_API_URL)
 })
+
+test("refresh loop passes an AbortSignal to getCopilotToken and stops when aborted in-flight", async () => {
+  getCopilotTokenMock.mockImplementationOnce(
+    (): Promise<TokenResponse> =>
+      Promise.resolve({
+        token: "copilot-token-initial",
+        refresh_in: 0,
+        expires_at: 0,
+      }),
+  )
+
+  let inFlightSignal: AbortSignal | undefined
+  const startedInFlight = Promise.withResolvers<void>()
+  getCopilotTokenMock.mockImplementationOnce(
+    (options?: { signal?: AbortSignal }): Promise<TokenResponse> => {
+      inFlightSignal = options?.signal
+      startedInFlight.resolve()
+      return new Promise<TokenResponse>((_resolve, reject) => {
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            reject(
+              options.signal?.reason instanceof Error ?
+                options.signal.reason
+              : new Error("aborted"),
+            )
+          },
+          { once: true },
+        )
+      })
+    },
+  )
+
+  await setupCopilotToken(dependencies)
+  await startedInFlight.promise
+
+  expect(inFlightSignal).toBeInstanceOf(AbortSignal)
+  expect(inFlightSignal?.aborted).toBe(false)
+
+  stopCopilotRefreshLoop()
+
+  expect(inFlightSignal?.aborted).toBe(true)
+  expect(state.copilotToken).toBe("copilot-token-initial")
+})

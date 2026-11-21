@@ -33,6 +33,7 @@ import {
   replayMessagesCompactionForResponses,
 } from "~/routes/responses/utils"
 import { handleResponsesViaMessages } from "~/routes/responses/messages-handler"
+import { createResponsesStreamTerminalTracker } from "~/routes/responses/stream-failure"
 import { getCodexTaskTitleModel } from "~/routes/responses/task-title"
 import {
   forwardProviderResponseHeaders,
@@ -195,6 +196,7 @@ export async function handleProviderResponsesForProvider(
       return streamProviderResponses(c, upstreamResponse, {
         normalizeCodex: true,
         provider,
+        publicModel,
         recordUsage,
         streamAbort,
       })
@@ -230,6 +232,7 @@ export async function handleProviderResponsesForProvider(
     return streamProviderResponses(c, getResponsesEvents(upstreamResponse), {
       normalizeCodex: false,
       provider,
+      publicModel,
       recordUsage,
     })
   }
@@ -288,6 +291,7 @@ const streamProviderResponses = async (
   options: {
     normalizeCodex: boolean
     provider: string
+    publicModel: string
     recordUsage: (usage: UsageTokens) => void
     streamAbort?: AbortController
   },
@@ -310,6 +314,9 @@ const streamProviderResponses = async (
   if (firstEvent?.type === "error") {
     const statusCode = firstEvent.status_code ?? 500
     await iterator.return?.()
+    if (firstEvent.headers) {
+      forwardProviderResponseHeaders(c, new Headers(firstEvent.headers))
+    }
     return c.json(
       {
         error: {
@@ -318,12 +325,15 @@ const streamProviderResponses = async (
         },
       },
       statusCode as ContentfulStatusCode,
-      firstEvent.headers ?? undefined,
     )
   }
 
   return streamSSE(c, async (stream) => {
     stream.onAbort(() => options.streamAbort?.abort())
+    const terminalTracker = createResponsesStreamTerminalTracker(
+      options.publicModel,
+    )
+    let responseId: string | undefined
     let usage: UsageTokens = {}
 
     const writeChunk = async (
@@ -333,6 +343,16 @@ const streamProviderResponses = async (
       debugJson(logger, "Responses stream chunk:", chunk)
       if (options.normalizeCodex) {
         logCodexRateLimitsEvent(event)
+      }
+
+      terminalTracker.observe(event)
+      if (
+        event
+        && "response" in event
+        && typeof event.response.id === "string"
+        && event.response.id
+      ) {
+        responseId = event.response.id
       }
 
       recordResponsesFirstToken(event)
@@ -364,6 +384,13 @@ const streamProviderResponses = async (
     } finally {
       await iterator.return?.()
       options.recordUsage(usage)
+
+      const failure = terminalTracker.finalize(responseId)
+      if (failure && (await writeSSEIfConnected(stream, failure.sse))) {
+        logger.warn(
+          `Responses stream ended without a terminal event; sent response.failed (${failure.code}: ${failure.message})`,
+        )
+      }
     }
   })
 }

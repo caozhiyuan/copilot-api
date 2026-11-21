@@ -74,3 +74,36 @@ test("throws HTTPError when the token exchange fails", () => {
 
   expect(getCopilotToken()).rejects.toBeInstanceOf(HTTPError)
 })
+
+test("aborts an in-flight token fetch when the caller signal or timeout fires", async () => {
+  state.githubToken = "github-token"
+  let receivedSignal: AbortSignal | undefined
+
+  globalThis.fetch = mock(
+    (_input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        receivedSignal = init?.signal ?? undefined
+        receivedSignal?.addEventListener(
+          "abort",
+          () => {
+            const reason: unknown = receivedSignal?.reason
+            reject(
+              reason instanceof Error ? reason : (
+                new Error("Token fetch aborted")
+              ),
+            )
+          },
+          { once: true },
+        )
+      }),
+  ) as unknown as typeof fetch
+
+  const controller = new AbortController()
+  const pending = getCopilotToken({ signal: controller.signal, timeoutMs: 500 })
+  controller.abort(new Error("Refresh loop stopped"))
+
+  const error: unknown = await pending.catch((cause: unknown) => cause)
+  expect(error).toBeInstanceOf(Error)
+  expect((error as Error).message).toBe("Refresh loop stopped")
+  expect(receivedSignal?.aborted).toBe(true)
+})

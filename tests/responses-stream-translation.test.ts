@@ -716,3 +716,149 @@ describe("translateResponsesStreamEvent reasoning summaries", () => {
     )
   })
 })
+
+describe("translateResponsesStreamEvent error handling", () => {
+  test("closes open blocks and prefers nested error.message on error events", () => {
+    const state = createResponsesStreamState()
+    const events = [
+      translateResponsesStreamEvent(
+        {
+          type: "response.output_text.delta",
+          item_id: "msg-1",
+          output_index: 0,
+          content_index: 0,
+          sequence_number: 1,
+          delta: "Partial reply",
+        } satisfies ResponseTextDeltaEvent,
+        state,
+      ),
+      translateResponsesStreamEvent(
+        {
+          type: "error",
+          code: null,
+          message: "",
+          param: null,
+          sequence_number: 2,
+          error: {
+            code: "rate_limit_exceeded",
+            message: "Upstream rate limit exceeded",
+          },
+        },
+        state,
+      ),
+    ].flat()
+
+    expect(events).toEqual([
+      {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      },
+      {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "Partial reply" },
+      },
+      {
+        type: "content_block_stop",
+        index: 0,
+      },
+      {
+        type: "error",
+        error: {
+          type: "api_error",
+          message: "Upstream rate limit exceeded",
+        },
+      },
+    ])
+    expect(state.messageCompleted).toBe(true)
+    expect(state.openBlocks.size).toBe(0)
+  })
+
+  test("supports top-level error message, fallback error message, and response.failed", () => {
+    const topLevelState = createResponsesStreamState()
+    expect(
+      translateResponsesStreamEvent(
+        {
+          type: "error",
+          code: "bad_request",
+          message: "Top-level stream error",
+          param: null,
+          sequence_number: 1,
+        },
+        topLevelState,
+      ),
+    ).toEqual([
+      {
+        type: "error",
+        error: {
+          type: "api_error",
+          message: "Top-level stream error",
+        },
+      },
+    ])
+
+    const fallbackState = createResponsesStreamState()
+    expect(
+      translateResponsesStreamEvent(
+        {
+          type: "error",
+          code: null,
+          message: "",
+          param: null,
+          sequence_number: 1,
+        },
+        fallbackState,
+      ),
+    ).toEqual([
+      {
+        type: "error",
+        error: {
+          type: "api_error",
+          message: "An unexpected error occurred during streaming.",
+        },
+      },
+    ])
+
+    const failedState = createResponsesStreamState()
+    expect(
+      translateResponsesStreamEvent(
+        {
+          type: "response.failed",
+          sequence_number: 1,
+          response: {
+            id: "resp-failed",
+            object: "response",
+            created_at: 0,
+            model: "gpt-5",
+            output: [],
+            output_text: "",
+            status: "failed",
+            usage: null,
+            error: {
+              code: "server_error",
+              message: "Response failed upstream",
+            },
+            incomplete_details: null,
+            instructions: null,
+            metadata: null,
+            parallel_tool_calls: true,
+            temperature: null,
+            tool_choice: null,
+            tools: [],
+            top_p: null,
+          },
+        },
+        failedState,
+      ),
+    ).toEqual([
+      {
+        type: "error",
+        error: {
+          type: "api_error",
+          message: "Response failed upstream",
+        },
+      },
+    ])
+  })
+})

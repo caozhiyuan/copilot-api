@@ -20,7 +20,7 @@ export type XaiVideoRequest =
       operation: "generations"
       payload: Record<string, unknown> & { model: string }
     }
-  | { operation: "result"; requestId: string }
+  | { operation: "result"; requestId: string; signal?: AbortSignal }
 
 function encodeRequestId(requestId: string): string {
   if (
@@ -61,6 +61,9 @@ export async function forwardXaiVideos(
         videoRequest.operation === "generations" ?
           JSON.stringify(videoRequest.payload)
         : undefined,
+      ...(videoRequest.operation === "result" && videoRequest.signal ?
+        { signal: videoRequest.signal }
+      : {}),
     },
     {
       clientSignal: request.signal,
