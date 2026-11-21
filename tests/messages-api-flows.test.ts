@@ -1550,6 +1550,58 @@ test("messages Responses flow skips a [DONE] sentinel and keeps translating", as
   )
 })
 
+test("messages Responses flow enables vision option for tool_result images", async () => {
+  const payload: AnthropicMessagesPayload = {
+    max_tokens: 128,
+    messages: [
+      { role: "user", content: "capture screenshot" },
+      {
+        role: "assistant",
+        content: [
+          {
+            id: "toolu_shot_1",
+            input: {},
+            name: "take_screenshot",
+            type: "tool_use",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            content: [
+              {
+                source: {
+                  data: "AAAA",
+                  media_type: "image/png",
+                  type: "base64",
+                },
+                type: "image",
+              },
+            ],
+            tool_use_id: "toolu_shot_1",
+            type: "tool_result",
+          },
+        ],
+      },
+    ],
+    model: "gpt-test",
+    stream: false,
+  }
+
+  const response = await handleWithResponsesApi(createContext(), payload, {
+    logger,
+    requestId: "request-tool-result-image",
+  })
+
+  expect(response.status).toBe(200)
+  expect(createResponses).toHaveBeenCalledTimes(1)
+  expect(createResponses.mock.calls[0][1]).toMatchObject({
+    vision: true,
+  })
+})
+
 const createModel = (
   supportedEndpoints: Array<string>,
   options: { reasoningEffort?: Array<string> } = {},
