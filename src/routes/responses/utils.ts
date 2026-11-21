@@ -602,8 +602,12 @@ const containsVisionContent = (value: unknown): boolean => {
     return true
   }
 
-  if (Array.isArray(record.content)) {
-    return record.content.some((entry) => containsVisionContent(entry))
+  if (Array.isArray(record.content) && containsVisionContent(record.content)) {
+    return true
+  }
+
+  if (Array.isArray(record.output) && containsVisionContent(record.output)) {
+    return true
   }
 
   return false
