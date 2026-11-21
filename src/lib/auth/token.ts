@@ -24,6 +24,7 @@ import {
 import { CODEX_API_BASE_URL } from "~/services/codex/constants"
 import {
   getCopilotToken,
+  type GetCopilotTokenOptions,
   type GetCopilotTokenResponse,
 } from "~/services/github/get-copilot-token"
 import { getCopilotUsage } from "~/services/github/get-copilot-usage"
@@ -61,7 +62,9 @@ interface CopilotUserIdentity {
 }
 
 export interface CopilotTokenDependencies {
-  getCopilotToken: () => Promise<GetCopilotTokenResponse>
+  getCopilotToken: (
+    options?: GetCopilotTokenOptions,
+  ) => Promise<GetCopilotTokenResponse>
   getCopilotUsage: () => Promise<CopilotUserIdentity | null>
 }
 
@@ -542,7 +545,7 @@ const runCopilotRefreshLoop = async (
     consola.debug("Refreshing Copilot token")
 
     try {
-      const response = await dependencies.getCopilotToken()
+      const response = await dependencies.getCopilotToken({ signal })
       if (signal.aborted) return
       applyCopilotTokenResponse(response)
       refreshAtMs = getRefreshDeadlineMs(response.refresh_in)
@@ -552,6 +555,7 @@ const runCopilotRefreshLoop = async (
         consola.info("Refreshed Copilot token:", state.copilotToken)
       }
     } catch (error) {
+      if (signal.aborted) return
       consola.error("Failed to refresh Copilot token:", error)
       const retry = scheduleRefreshRetry(retryDelayMs)
       refreshAtMs = retry.refreshAtMs

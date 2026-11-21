@@ -58,13 +58,19 @@ export const handleErrorEvent = (
   rawEvent: ResponseErrorEvent,
   state: ResponsesStreamState,
 ): Array<AnthropicStreamEventData> => {
-  const message =
-    typeof rawEvent.message === "string" ?
-      rawEvent.message
-    : "An unexpected error occurred during streaming."
+  const events = new Array<AnthropicStreamEventData>()
+  closeAllOpenBlocks(state, events)
 
+  const message =
+    (typeof rawEvent.error?.message === "string" && rawEvent.error.message ?
+      rawEvent.error.message
+    : typeof rawEvent.message === "string" && rawEvent.message ?
+      rawEvent.message
+    : undefined) ?? "An unexpected error occurred during streaming."
+
+  events.push(buildErrorEvent(message))
   state.messageCompleted = true
-  return [buildErrorEvent(message)]
+  return events
 }
 
 export const buildErrorEvent = (message: string): AnthropicStreamEventData => ({
