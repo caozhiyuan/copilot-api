@@ -215,8 +215,11 @@ await mock.module("undici", () => ({
 const { state } = await import("~/lib/state")
 const { getConfig, invalidateConfigCache } = await import("~/lib/config")
 const { PATHS } = await import("~/lib/storage/paths")
-const { createResponses, COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES } =
-  await import("~/services/copilot/create-responses")
+const {
+  createResponses,
+  COPILOT_RESPONSES_HTTP_MAX_REQUEST_BYTES,
+  COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES,
+} = await import("~/services/copilot/create-responses")
 const {
   createPooledWebSocketStream,
   ResponsesWebSocketInactivityTimeoutError,
@@ -1840,14 +1843,35 @@ test("Responses websocket applies maxMessageBytes to the prepared payload", asyn
   ])
 })
 
-test("Copilot websocket fails fast with context_length_exceeded above 32 MiB", async () => {
-  const chunks = await collectStreamChunks(
+const mockCopilotHttpResponses = () => {
+  const originalFetch = globalThis.fetch
+  const fetchMock = mock((_url: string | URL | Request, init?: RequestInit) => {
+    const { model } = JSON.parse(init?.body as string) as { model: string }
+    const completed = {
+      response: createResponsesResult(model, "resp-http"),
+      sequence_number: 1,
+      type: "response.completed",
+    }
+    return Promise.resolve(
+      new Response(
+        `event: response.completed\ndata: ${JSON.stringify(completed)}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    )
+  })
+  globalThis.fetch = fetchMock as unknown as typeof fetch
+  return {
+    fetchMock,
+    restore: () => {
+      globalThis.fetch = originalFetch
+    },
+  }
+}
+
+const createCopilotWebSocketResponses = async (input: string) =>
+  collectStreamChunks(
     (await createResponses(
-      {
-        input: "x".repeat(COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES),
-        model: "gpt-test",
-        stream: true,
-      },
+      { input, model: "gpt-test", stream: true },
       {
         initiator: "user",
         requestId: "request-1",
@@ -1857,17 +1881,50 @@ test("Copilot websocket fails fast with context_length_exceeded above 32 MiB", a
     )) as AsyncIterable<unknown>,
   )
 
-  expect(chunks).toHaveLength(1)
-  expect(chunks[0]?.event).toBe("error")
-  expect(JSON.parse(chunks[0]?.data ?? "{}")).toMatchObject({
-    code: "context_length_exceeded",
-    type: "error",
-  })
-  expect(chunks[0]?.data).toContain("exceeds the 32.0 MiB limit")
-  expect(MockWebSocket.instances.flatMap((socket) => socket.sent)).toEqual([])
+test("Copilot sends a request above the 16 MiB WebSocket limit over HTTP", async () => {
+  const { fetchMock, restore } = mockCopilotHttpResponses()
+  try {
+    const input = "x".repeat(COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES)
+    const chunks = await createCopilotWebSocketResponses(input)
+
+    expect(chunks.map((chunk) => chunk.event)).toEqual(["response.completed"])
+    expect(MockWebSocket.instances.flatMap((socket) => socket.sent)).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("https://api.githubcopilot.com/responses")
+    expect(new Headers(init?.headers).get("x-initiator")).toBe("user")
+    expect(JSON.parse(init?.body as string)).toEqual({
+      input,
+      model: "gpt-test",
+      stream: true,
+    })
+  } finally {
+    restore()
+  }
 })
 
-test("Copilot websocket checks the continuation delta, not the full history, against 32 MiB", async () => {
+test("Copilot fails fast with context_length_exceeded above the 32 MiB HTTP limit", async () => {
+  const { fetchMock, restore } = mockCopilotHttpResponses()
+  try {
+    const chunks = await createCopilotWebSocketResponses(
+      "x".repeat(COPILOT_RESPONSES_HTTP_MAX_REQUEST_BYTES),
+    )
+
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]?.event).toBe("error")
+    expect(JSON.parse(chunks[0]?.data ?? "{}")).toMatchObject({
+      code: "context_length_exceeded",
+      type: "error",
+    })
+    expect(chunks[0]?.data).toContain("exceeds the 32.0 MiB request limit")
+    expect(MockWebSocket.instances.flatMap((socket) => socket.sent)).toEqual([])
+    expect(fetchMock).not.toHaveBeenCalled()
+  } finally {
+    restore()
+  }
+})
+
+test("Copilot websocket checks the continuation delta, not the full history, against 16 MiB", async () => {
   const mib = 1024 * 1024
   const firstInput = [
     {
@@ -1893,13 +1950,19 @@ test("Copilot websocket checks the continuation delta, not the full history, aga
     input: [...delta],
   })
 
-  const cold = await withAffinity("cold-history", () =>
-    sendContinuationTurn(fullHistory),
-  )
-  expect(cold.map((chunk) => chunk.event)).toEqual(["error"])
-  expect(JSON.parse(cold[0]?.data ?? "{}")).toMatchObject({
-    code: "context_length_exceeded",
-  })
-  expect(MockWebSocket.instances).toHaveLength(2)
-  expect(MockWebSocket.instances[1]?.sent).toEqual([])
+  const { fetchMock, restore } = mockCopilotHttpResponses()
+  try {
+    const cold = await withAffinity("cold-history", () =>
+      sendContinuationTurn(fullHistory),
+    )
+    expect(cold.map((chunk) => chunk.event)).toEqual(["response.completed"])
+    expect(MockWebSocket.instances).toHaveLength(2)
+    expect(MockWebSocket.instances[1]?.sent).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(
+      JSON.parse(fetchMock.mock.calls[0][1]?.body as string),
+    ).toMatchObject({ input: fullHistory })
+  } finally {
+    restore()
+  }
 })

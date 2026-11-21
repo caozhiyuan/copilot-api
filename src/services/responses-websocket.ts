@@ -113,7 +113,7 @@ export class ResponsesWebSocketMessageTooLargeError extends Error {
 
   constructor(messageBytes: number, maxMessageBytes: number) {
     super(
-      `The Responses request is ${formatMiB(messageBytes)} MiB, which exceeds the ${formatMiB(maxMessageBytes)} MiB limit of the GitHub Copilot Responses WebSocket. Compact the conversation or start a new one.`,
+      `The Responses request is ${formatMiB(messageBytes)} MiB, which exceeds the ${formatMiB(maxMessageBytes)} MiB request limit of GitHub Copilot. Compact the conversation or start a new one.`,
     )
     this.name = "ResponsesWebSocketMessageTooLargeError"
   }

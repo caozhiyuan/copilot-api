@@ -33,7 +33,10 @@ import { HTTPError } from "~/lib/http/error"
 import { getResponsesContinuationSession } from "~/lib/responses-continuation"
 import { setPluginRequestActualModel } from "~/lib/http/request-context"
 import { state } from "~/lib/state"
-import { createWebSocketUrl } from "~/services/responses-websocket"
+import {
+  createWebSocketUrl,
+  ResponsesWebSocketMessageTooLargeError,
+} from "~/services/responses-websocket"
 import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
   createResponsesSafeStream,
@@ -44,9 +47,10 @@ import {
 import { createResponsesHttpEventStream } from "~/services/responses-http"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 
-// Copilot closes the Responses WebSocket with code 1009 (message too big) and
-// no terminal event for a message above 32 MiB.
-export const COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+// Copilot answers a Responses WebSocket message above 16 MiB with a generic
+// `internal_error`, while its HTTP endpoint accepts requests up to 32 MiB.
+export const COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
+export const COPILOT_RESPONSES_HTTP_MAX_REQUEST_BYTES = 32 * 1024 * 1024
 const COPILOT_RESPONSES_MIN_OUTPUT_TOKENS = 16
 
 interface ResponsesRequestOptions {
@@ -120,6 +124,8 @@ export const createResponses = async (
       websocketRequest,
       clientSignal,
       getResponsesContinuationSession(),
+      () =>
+        createOversizedHttpResponses(upstreamPayload, headers, clientSignal),
     )
     return stream
   }
@@ -153,6 +159,7 @@ const createHttpResponses = async (
   payload: ResponsesPayload,
   headers: Record<string, string>,
   clientSignal?: AbortSignal,
+  body = JSON.stringify(payload),
 ): Promise<CreateResponsesReturn> => {
   const transportConfig = getUpstreamTransportConfig()
   const response = await fetchUpstreamWithLifecycle(
@@ -160,7 +167,7 @@ const createHttpResponses = async (
     {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body,
     },
     {
       clientSignal,
@@ -181,6 +188,31 @@ const createHttpResponses = async (
   }
 
   return (await response.json()) as ResponsesResult
+}
+
+const createOversizedHttpResponses = async (
+  payload: ResponsesPayload,
+  headers: Record<string, string>,
+  clientSignal?: AbortSignal,
+): Promise<ResponsesStream> => {
+  const body = JSON.stringify(payload)
+  const requestBytes = Buffer.byteLength(body)
+  if (requestBytes > COPILOT_RESPONSES_HTTP_MAX_REQUEST_BYTES) {
+    throw new ResponsesWebSocketMessageTooLargeError(
+      requestBytes,
+      COPILOT_RESPONSES_HTTP_MAX_REQUEST_BYTES,
+    )
+  }
+
+  consola.info(
+    `Responses request is ${(requestBytes / (1024 * 1024)).toFixed(1)} MiB, above the Copilot WebSocket limit; sending it over HTTP`,
+  )
+  return (await createHttpResponses(
+    payload,
+    headers,
+    clientSignal,
+    body,
+  )) as ResponsesStream
 }
 
 type ResponsesWebSocketPayload = ResponsesPayload & {
@@ -246,24 +278,42 @@ export const getResponsesWebSocketInitiator = (
 
 const createPooledResponsesWebSocketStream = (
   request: ResponsesWebSocketRequest,
-  clientSignal?: AbortSignal,
-  continuationSession?: string,
+  clientSignal: AbortSignal | undefined,
+  continuationSession: string | undefined,
+  sendOverHttp: () => Promise<ResponsesStream>,
 ): ResponsesStream =>
   createResponsesSafeStream(
     createClientPreflightStream(
-      createContinuableResponsesWebSocketStream(
-        request,
-        {
-          ...getResponsesWebSocketOptions(),
-        },
-        {
-          sessionId: continuationSession,
-          clientSignal,
-        },
+      sendOverHttpWhenTooLarge(
+        createContinuableResponsesWebSocketStream(
+          request,
+          {
+            ...getResponsesWebSocketOptions(),
+          },
+          {
+            sessionId: continuationSession,
+            clientSignal,
+          },
+        ),
+        sendOverHttp,
       ),
       clientSignal,
     ),
   )
+
+// The WebSocket size check runs before the message is sent and before any
+// chunk is yielded, so the same request can still go over HTTP.
+const sendOverHttpWhenTooLarge = async function* (
+  source: AsyncIterable<ResponsesStreamChunk>,
+  sendOverHttp: () => Promise<ResponsesStream>,
+): AsyncGenerator<ResponsesStreamChunk, void, unknown> {
+  try {
+    yield* source
+  } catch (error) {
+    if (!(error instanceof ResponsesWebSocketMessageTooLargeError)) throw error
+    yield* await sendOverHttp()
+  }
+}
 
 const getResponsesWebSocketOptions = () => {
   const transportConfig = getUpstreamTransportConfig()
