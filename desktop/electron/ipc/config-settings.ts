@@ -8,7 +8,7 @@ import { tMain } from '../i18n'
 import { getDesktopProviderManagementConfig } from '../provider-management'
 import { loadProviderModelOptions } from '../provider-model-options'
 import { readServerKeysConfig } from '../server-auth-config'
-import { getPort, isRunning, startServer } from '../server-manager'
+import { getHost, getPort, isRunning, startServer } from '../server-manager'
 import { shouldRestartServerForSettings } from '../settings-runtime'
 import { readSettings, writeSettings } from '../settings-store'
 import { runSettingsTransaction } from '../settings-transaction'
@@ -36,26 +36,56 @@ export function registerConfigAndSettingsIpcHandlers({
     }
     await saveAndRefreshConfig(async () => {
       const prev = await readSettings()
-      await runSettingsTransaction(
-        () => options.onBeforeSettingsSave?.(settings, prev),
-        () => writeSettings(settings),
-        () => options.onBeforeSettingsSave?.(prev, settings),
-      )
-      if (options.onSettingsChange) {
-        await options.onSettingsChange(settings, prev)
-      }
-      if (isRunning() && shouldRestartServerForSettings(prev, settings)) {
-        const status = await startServer(getPort(), {
-          runtime: settings.serverRuntime,
-          host: settings.host,
-          verbose: settings.verbose,
-          showToken: settings.showToken,
-          proxy:
-            options.getEffectiveProxySettings?.(settings) ?? settings.proxy,
+      let previousListener: { port: number; host: string } | undefined
+      let replacementStarted = false
+
+      const restartGateway = async (
+        port: number,
+        next: DesktopSettings,
+        host = next.host,
+      ) => {
+        const status = await startServer(port, {
+          runtime: next.serverRuntime,
+          host,
+          verbose: next.verbose,
+          showToken: next.showToken,
+          proxy: options.getEffectiveProxySettings?.(next) ?? next.proxy,
         })
         if (!status.running) {
           throw new Error(status.error ?? (await tMain('server.restartFailed')))
         }
+      }
+
+      await runSettingsTransaction(
+        async () => {
+          await options.onBeforeSettingsSave?.(settings, prev)
+          if (isRunning() && shouldRestartServerForSettings(prev, settings)) {
+            const port = getPort()
+            previousListener = { port, host: getHost() }
+            await restartGateway(port, settings)
+            replacementStarted = true
+          }
+        },
+        () => writeSettings(settings),
+        async () => {
+          try {
+            await options.onBeforeSettingsSave?.(prev, settings)
+          } finally {
+            if (previousListener && (replacementStarted || !isRunning())) {
+              await restartGateway(
+                previousListener.port,
+                prev,
+                previousListener.host,
+              )
+              setActiveAdminApiKey((await readServerKeysConfig()).adminApiKey)
+            }
+          }
+        },
+      )
+      if (options.onSettingsChange) {
+        await options.onSettingsChange(settings, prev)
+      }
+      if (replacementStarted) {
         setActiveAdminApiKey((await readServerKeysConfig()).adminApiKey)
       }
     })

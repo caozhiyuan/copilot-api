@@ -35,7 +35,7 @@ let currentPort = 4141
 let currentHost = ''
 let statusCallback: ((status: ServerStatus) => void) | null = null
 let logCallback: ((log: ServerLogRecord) => void) | null = null
-const STOP_TIMEOUT_MS = 5000
+const STOP_TIMEOUT_MS = 7000 // Leave time for cleanup after the default 5s drain.
 let nextLogSequence = 0
 const serverLogs: ServerLogRecord[] = []
 const ESC_CHAR_CODE = 27
@@ -220,17 +220,16 @@ export async function startServer(
   // Resolve the runtime before stopping a healthy server. Never use an old Bun.
   const bun =
     serverOptions?.runtime !== 'node' ? await detectBunRuntime() : null
-  // Validate the host before touching a running server, so an invalid host
-  // never stops a healthy instance.
-  // When the port changes, a conflicting listener cannot be our own
-  // previous instance. Probe first so an occupied new port fails fast
-  // without stopping the running server. The same-port case still stops
-  // first, because our own listener would otherwise report as a conflict
-  // (including wildcard/loopback overlap on the same port).
-  if (serverProcess && port !== currentPort) {
-    const preProbe = await checkPortAvailable(port, bindHostname)
+  // Use an ephemeral port to validate a changed host without conflicting
+  // with our own listener during a same-port restart.
+  const portChanged = port !== currentPort
+  if (serverProcess && (portChanged || host !== currentHost)) {
+    const preProbe = await checkPortAvailable(
+      portChanged ? port : 0,
+      bindHostname,
+    )
     if (!preProbe.available) {
-      if (isInvalidBindErrorCode(preProbe.code)) {
+      if (!portChanged || isInvalidBindErrorCode(preProbe.code)) {
         return {
           running: false,
           error: await tMain('server.invalidHost'),

@@ -454,10 +454,9 @@ async function initializeApplication(): Promise<void> {
       if (settings.launchAtLogin !== prevSettings.launchAtLogin) {
         await applyLaunchAtLogin(app, settings)
       }
+      await applyElectronProxy(getEffectiveProxySettings(settings))
     },
     onSettingsChange: async (settings, prevSettings) => {
-      await applyElectronProxy(getEffectiveProxySettings(settings))
-
       if (
         settings.theme !== prevSettings.theme
         && mainWindow
