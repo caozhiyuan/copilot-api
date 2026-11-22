@@ -31,7 +31,8 @@ import type {
 import { getServerRequestHeaders, type IpcHandlerContext } from './shared'
 
 export function registerClientsAndMediaIpcHandlers({
-  mainWindow,
+  getMainWindow,
+  onMainWindowClosed,
 }: IpcHandlerContext): void {
   let clientIntegrations:
     ReturnType<typeof createClientIntegrations> | undefined
@@ -84,7 +85,7 @@ export function registerClientsAndMediaIpcHandlers({
     },
     getHeaders: () => getServerRequestHeaders(),
   })
-  mainWindow.once?.('closed', () => mediaClient.cancelAll())
+  onMainWindowClosed(() => mediaClient.cancelAll())
 
   ipcMain.handle(
     'media:create-images',
@@ -113,7 +114,7 @@ export function registerClientsAndMediaIpcHandlers({
   ipcMain.handle('media:save', async (_event, input: SaveMediaInput) => {
     validateMediaUrl(input.url, input.kind)
     const extension = mediaFileExtension(input)
-    const result = await dialog.showSaveDialog(mainWindow, {
+    const dialogOptions = {
       defaultPath: `copilot-${Date.now()}.${extension}`,
       filters: [
         {
@@ -124,7 +125,11 @@ export function registerClientsAndMediaIpcHandlers({
             : ['png', 'jpg', 'jpeg', 'webp', 'gif'],
         },
       ],
-    })
+    }
+    const win = getMainWindow()
+    const result = await (win ?
+      dialog.showSaveDialog(win, dialogOptions)
+    : dialog.showSaveDialog(dialogOptions))
     if (result.canceled || !result.filePath) return false
     await saveMediaFile(input, result.filePath)
     return true

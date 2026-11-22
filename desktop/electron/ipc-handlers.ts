@@ -1,6 +1,5 @@
-import type { BrowserWindow } from 'electron'
-
 import { invalidateConfigCache } from '../../src/lib/config/config-store'
+import { resolveLiveWindow } from './app-lifecycle'
 import { createAppConfigEditor } from './config-editor'
 import { createConfigRefresher } from './config-refresh'
 import { registerAuthIpcHandlers } from './ipc/auth'
@@ -11,6 +10,7 @@ import {
   readConfigApiError,
   type IpcHandlerContext,
   type IpcHandlersOptions,
+  type MainWindowSource,
 } from './ipc/shared'
 import { registerWindowAndShellIpcHandlers } from './ipc/window-shell'
 import { readServerKeysConfig } from './server-auth-config'
@@ -67,11 +67,23 @@ const appConfigEditor = createAppConfigEditor({
 })
 
 export function registerIpcHandlers(
-  mainWindow: BrowserWindow,
+  mainWindow: MainWindowSource,
   options: IpcHandlersOptions = {},
 ): void {
+  const readWindow =
+    typeof mainWindow === 'function' ? mainWindow : () => mainWindow
+  const getMainWindow = () => resolveLiveWindow(readWindow)
+  const onMainWindowClosed = (listener: () => void) => {
+    if (options.onWindowClosed) {
+      options.onWindowClosed(listener)
+      return
+    }
+    readWindow()?.once?.('closed', listener)
+  }
+
   const ctx: IpcHandlerContext = {
-    mainWindow,
+    getMainWindow,
+    onMainWindowClosed,
     options,
     saveAndRefreshConfig,
     setActiveAdminApiKey,

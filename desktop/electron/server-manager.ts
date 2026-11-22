@@ -31,6 +31,7 @@ interface ServerProcess extends EventEmitter {
 }
 
 let serverProcess: ServerProcess | null = null
+let lifecycleQueue: Promise<void> = Promise.resolve()
 let currentPort = 4141
 let currentHost = ''
 let statusCallback: ((status: ServerStatus) => void) | null = null
@@ -203,7 +204,25 @@ interface ServerStartOptions {
   proxy?: DesktopProxySettings
 }
 
-export async function startServer(
+function serializeServerLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+  const result = lifecycleQueue.then(operation)
+  lifecycleQueue = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
+
+export function startServer(
+  port: number,
+  serverOptions?: ServerStartOptions,
+): Promise<ServerStatus> {
+  return serializeServerLifecycle(() =>
+    startServerUnlocked(port, serverOptions),
+  )
+}
+
+async function startServerUnlocked(
   port: number,
   serverOptions?: ServerStartOptions,
 ): Promise<ServerStatus> {
@@ -488,8 +507,8 @@ async function stopServerProcess(notifyStatus: boolean): Promise<void> {
   }
 }
 
-export async function stopServer(): Promise<void> {
-  await stopServerProcess(true)
+export function stopServer(): Promise<void> {
+  return serializeServerLifecycle(() => stopServerProcess(true))
 }
 
 export function isRunning(): boolean {

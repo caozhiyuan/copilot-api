@@ -18,6 +18,7 @@ import type {
   DesktopSettings,
   ThemePreference,
 } from '../src/types/ipc'
+import { createBeforeQuitController, resolveLiveWindow } from './app-lifecycle'
 import {
   applyElectronProxy,
   applyElectronProxyCommandLine,
@@ -168,8 +169,31 @@ function getRuntimeDependencies(): Promise<RuntimeDependencies> {
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
 let showWindowWhenReady = false
-// Track exits triggered by menu or system actions instead of the close button
-let isQuitting = false
+const windowClosedListeners = new Set<() => void>()
+const quitLifecycle = createBeforeQuitController({
+  stopServer: async () => {
+    const { clearCallbacks, stopServer } = await getRuntimeDependencies()
+    clearCallbacks()
+    await stopServer()
+  },
+  quit: () => app.quit(),
+  onError: (error) => {
+    console.error('Failed to stop server during quit:', error)
+  },
+})
+
+function getLiveMainWindow(): BrowserWindow | null {
+  return resolveLiveWindow(() => mainWindow)
+}
+
+function showOrCreateMainWindow(): void {
+  const win = getLiveMainWindow()
+  if (win) {
+    showWindow(win)
+  } else {
+    createWindow()
+  }
+}
 
 function createTrayNativeImage(): Electron.NativeImage {
   // macOS uses a template image so the system adapts it for light and dark mode.
@@ -208,14 +232,15 @@ function showWindow(win: BrowserWindow): void {
 }
 
 async function quitApplication(): Promise<void> {
-  isQuitting = true
+  quitLifecycle.markQuitting()
   const { clearCallbacks, stopServer } = await getRuntimeDependencies()
   clearCallbacks()
   await stopServer()
+  quitLifecycle.markServerStopped()
   app.quit()
 }
 
-async function refreshTrayContextMenu(win: BrowserWindow): Promise<void> {
+async function refreshTrayContextMenu(): Promise<void> {
   if (!tray) return
 
   const [showWindowLabel, quitLabel] = await Promise.all([
@@ -226,7 +251,7 @@ async function refreshTrayContextMenu(win: BrowserWindow): Promise<void> {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: showWindowLabel,
-      click: () => showWindow(win),
+      click: () => showOrCreateMainWindow(),
     },
     { type: 'separator' },
     {
@@ -240,17 +265,17 @@ async function refreshTrayContextMenu(win: BrowserWindow): Promise<void> {
   tray.setContextMenu(contextMenu)
 }
 
-async function createTray(win: BrowserWindow): Promise<void> {
+async function createTray(): Promise<void> {
   if (tray) return
 
   const icon = createTrayNativeImage()
   tray = new Tray(icon)
   tray.setToolTip('Copilot API')
-  await refreshTrayContextMenu(win)
-  tray.on('double-click', () => showWindow(win))
+  await refreshTrayContextMenu()
+  tray.on('double-click', () => showOrCreateMainWindow())
   // On macOS, a single tray click should also show the window.
   if (process.platform === 'darwin') {
-    tray.on('click', () => showWindow(win))
+    tray.on('click', () => showOrCreateMainWindow())
   }
 }
 
@@ -303,6 +328,9 @@ function createWindow(startHidden = false): BrowserWindow {
     if (mainWindow === win) {
       mainWindow = null
     }
+    for (const listener of windowClosedListeners) {
+      listener()
+    }
   })
 
   win.on('maximize', () => {
@@ -319,7 +347,7 @@ function createWindow(startHidden = false): BrowserWindow {
 
   win.on('close', async (e) => {
     // Allow the close event to proceed when quitting from the menu or system.
-    if (isQuitting) return
+    if (quitLifecycle.isQuitting()) return
 
     e.preventDefault()
     const { readSettings } = await getRuntimeDependencies()
@@ -331,11 +359,7 @@ function createWindow(startHidden = false): BrowserWindow {
         app.dock?.hide()
       }
     } else {
-      isQuitting = true
-      const { clearCallbacks, stopServer } = await getRuntimeDependencies()
-      clearCallbacks()
-      await stopServer()
-      app.quit()
+      await quitApplication()
     }
   })
 
@@ -371,7 +395,8 @@ async function initializeApplication(): Promise<void> {
   const beforeInstall = async () => {
     const { stopServer } = await getRuntimeDependencies()
     await stopServer()
-    isQuitting = true
+    quitLifecycle.markQuitting()
+    quitLifecycle.markServerStopped()
   }
   const updateManager = createUpdateManager(autoUpdater, {
     currentVersion: app.getVersion(),
@@ -404,7 +429,9 @@ async function initializeApplication(): Promise<void> {
       ),
     beforeInstall,
     onStatus: (status) => {
-      if (status.phase === 'downloaded' && status.error) isQuitting = false
+      if (status.phase === 'downloaded' && status.error) {
+        quitLifecycle.resetForRetry()
+      }
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed())
           window.webContents.send('update:status', status)
@@ -445,11 +472,14 @@ async function initializeApplication(): Promise<void> {
   const startHidden =
     settings.minimizeToTray && launchedAtLogin && !showWindowWhenReady
   showWindowWhenReady = false
-  const win = createWindow(startHidden)
+  createWindow(startHidden)
 
-  registerIpcHandlers(win, {
+  registerIpcHandlers(getLiveMainWindow, {
     getEffectiveProxySettings,
     onQuit: quitApplication,
+    onWindowClosed: (listener) => {
+      windowClosedListeners.add(listener)
+    },
     onBeforeSettingsSave: async (settings, prevSettings) => {
       if (settings.launchAtLogin !== prevSettings.launchAtLogin) {
         await applyLaunchAtLogin(app, settings)
@@ -457,27 +487,24 @@ async function initializeApplication(): Promise<void> {
       await applyElectronProxy(getEffectiveProxySettings(settings))
     },
     onSettingsChange: async (settings, prevSettings) => {
-      if (
-        settings.theme !== prevSettings.theme
-        && mainWindow
-        && !mainWindow.isDestroyed()
-      ) {
-        mainWindow.setBackgroundColor(
+      const liveWindow = getLiveMainWindow()
+      if (settings.theme !== prevSettings.theme && liveWindow) {
+        liveWindow.setBackgroundColor(
           resolveNativeBackgroundColor(settings.theme),
         )
       }
 
       if (settings.minimizeToTray) {
-        await createTray(win)
-        await refreshTrayContextMenu(win)
+        await createTray()
+        await refreshTrayContextMenu()
         return
       }
 
       if (prevSettings.minimizeToTray) {
         destroyTray()
         // Restore the window if it was hidden when this setting is turned off.
-        if (!win.isVisible()) {
-          showWindow(win)
+        if (liveWindow && !liveWindow.isVisible()) {
+          showWindow(liveWindow)
         }
       }
     },
@@ -485,30 +512,22 @@ async function initializeApplication(): Promise<void> {
 
   // Only create the tray when minimize-to-tray is enabled.
   if (settings.minimizeToTray) {
-    await createTray(win)
+    await createTray()
     if (startHidden && process.platform === 'darwin') {
       app.dock?.hide()
     }
   }
 
   onStatusChange((status) => {
-    if (!win.isDestroyed()) {
-      win.webContents.send('server:status', status)
-    }
+    getLiveMainWindow()?.webContents.send('server:status', status)
   })
 
   onLog((log) => {
-    if (!win.isDestroyed()) {
-      win.webContents.send('server:log', log)
-    }
+    getLiveMainWindow()?.webContents.send('server:log', log)
   })
 
   app.on('activate', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      createWindow()
-    } else {
-      showWindow(mainWindow)
-    }
+    showOrCreateMainWindow()
   })
 }
 
@@ -516,8 +535,9 @@ if (app.requestSingleInstanceLock()) {
   app.on('second-instance', (_event, argv) => {
     if (argv.includes(LOGIN_ITEM_ARG)) return
 
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      showWindow(mainWindow)
+    const liveWindow = getLiveMainWindow()
+    if (liveWindow) {
+      showWindow(liveWindow)
     } else {
       showWindowWhenReady = true
     }
@@ -525,10 +545,8 @@ if (app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(initializeApplication)
 
-  app.on('before-quit', async () => {
-    isQuitting = true
-    const { stopServer } = await getRuntimeDependencies()
-    await stopServer()
+  app.on('before-quit', (event) => {
+    quitLifecycle.handleBeforeQuit(event)
   })
 
   // This will not fire in the macOS tray flow because the close event is intercepted.

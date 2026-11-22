@@ -346,3 +346,68 @@ test('forces an unresponsive external process to exit before completing a stop',
     } finally { globalThis.setTimeout = originalSetTimeout }
   `)
 })
+
+test('serializes overlapping startServer calls so superseded processes are stopped', () => {
+  runManagerScenario(`
+    const killed = []
+    const firstHealthStarted = Promise.withResolvers()
+    const releaseFirstHealth = Promise.withResolvers()
+    let healthChecks = 0
+    globalThis.fetch = () => {
+      healthChecks += 1
+      if (healthChecks === 1) {
+        firstHealthStarted.resolve()
+        return releaseFirstHealth.promise
+      }
+      return Promise.resolve(new Response('ready'))
+    }
+
+    const firstPromise = manager.startServer(0, { host: '127.0.0.1' })
+    const secondPromise = manager.startServer(0, { host: '0.0.0.0' })
+
+    await firstHealthStarted.promise
+    assert.equal(processes.length, 1)
+    const firstProc = processes[0]
+    const originalKill = firstProc.kill.bind(firstProc)
+    firstProc.kill = (...args) => {
+      killed.push(firstProc)
+      return originalKill(...args)
+    }
+
+    releaseFirstHealth.resolve(new Response('ready'))
+    const [firstStatus, secondStatus] = await Promise.all([
+      firstPromise,
+      secondPromise,
+    ])
+    assert.deepEqual(firstStatus, { running: true, port: 0, host: '127.0.0.1' })
+    assert.deepEqual(secondStatus, { running: true, port: 0, host: '0.0.0.0' })
+    assert.equal(processes.length, 2)
+    assert.deepEqual(killed, [firstProc])
+    assert.equal(manager.isRunning(), true)
+    assert.equal(manager.getHost(), '0.0.0.0')
+  `)
+})
+
+test('serializes stopServer behind an in-flight startServer', () => {
+  runManagerScenario(`
+    const healthStarted = Promise.withResolvers()
+    const releaseHealth = Promise.withResolvers()
+    globalThis.fetch = () => {
+      healthStarted.resolve()
+      return releaseHealth.promise
+    }
+
+    const startPromise = manager.startServer(0)
+    const stopPromise = manager.stopServer()
+
+    await healthStarted.promise
+    assert.equal(processes.length, 1)
+    releaseHealth.resolve(new Response('ready'))
+
+    const status = await startPromise
+    await stopPromise
+    assert.equal(status.running, true)
+    assert.equal(manager.isRunning(), false)
+    assert.deepEqual(events.at(-1), { running: false, intentional: true })
+  `)
+})

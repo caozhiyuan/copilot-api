@@ -19,6 +19,8 @@ interface ConfigApiErrorResponse {
 
 export type ServerAuthScope = 'default' | 'admin'
 
+export type MainWindowSource = BrowserWindow | (() => BrowserWindow | null)
+
 export interface IpcHandlersOptions {
   getEffectiveProxySettings?: (
     settings: DesktopSettings,
@@ -32,10 +34,12 @@ export interface IpcHandlersOptions {
     prevSettings: DesktopSettings,
   ) => void | Promise<void>
   onQuit?: () => void | Promise<void>
+  onWindowClosed?: (listener: () => void) => void
 }
 
 export interface IpcHandlerContext {
-  mainWindow: BrowserWindow
+  getMainWindow: () => BrowserWindow | null
+  onMainWindowClosed: (listener: () => void) => void
   options: IpcHandlersOptions
   saveAndRefreshConfig: ReturnType<
     typeof createConfigRefresher

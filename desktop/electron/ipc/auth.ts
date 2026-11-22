@@ -59,10 +59,18 @@ import type {
 import { getServerRequestHeaders, type IpcHandlerContext } from './shared'
 
 export function registerAuthIpcHandlers({
-  mainWindow,
+  getMainWindow,
+  onMainWindowClosed,
   saveAndRefreshConfig,
   saveCredentialsAndRefresh,
 }: IpcHandlerContext): void {
+  const sendToMainWindow = (channel: string, ...args: unknown[]): void => {
+    const win = getMainWindow()
+    if (win) {
+      win.webContents.send(channel, ...args)
+    }
+  }
+
   ipcMain.handle('auth:get-status', async () => getDesktopAuthStatus())
 
   // Auth: Start the OAuth device flow. The token is polled in the background
@@ -83,21 +91,17 @@ export function registerAuthIpcHandlers({
         }),
       writeSettings,
       onSuccess: () => {
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('auth:success', {
-            success: true,
-            mode: 'copilot',
-          })
-        }
+        sendToMainWindow('auth:success', {
+          success: true,
+          mode: 'copilot',
+        })
       },
     }),
     onError: (err) => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('auth:success', {
-          success: false,
-          error: err.message,
-        })
-      }
+      sendToMainWindow('auth:success', {
+        success: false,
+        error: err.message,
+      })
     },
   })
   ipcMain.handle('auth:get-device-code', () => startDeviceFlow())
@@ -181,12 +185,10 @@ export function registerAuthIpcHandlers({
         }),
       ),
     onAuth: (url) => {
-      if (!mainWindow.isDestroyed())
-        mainWindow.webContents.send('auth:codex-url', url)
+      sendToMainWindow('auth:codex-url', url)
     },
     onSaving: () => {
-      if (!mainWindow.isDestroyed())
-        mainWindow.webContents.send('auth:codex-saving')
+      sendToMainWindow('auth:codex-saving')
     },
     inProgressError: () => tMain('auth.codexLoginInProgress'),
     formatError: (error) =>
@@ -233,12 +235,10 @@ export function registerAuthIpcHandlers({
         loginXaiForDesktop({ ...input, ...callbacks }),
       ),
     onAuth: (info) => {
-      if (!mainWindow.isDestroyed())
-        mainWindow.webContents.send('auth:xai-code', info)
+      sendToMainWindow('auth:xai-code', info)
     },
     onSaving: () => {
-      if (!mainWindow.isDestroyed())
-        mainWindow.webContents.send('auth:xai-saving')
+      sendToMainWindow('auth:xai-saving')
     },
     inProgressError: () => tMain('auth.xaiLoginInProgress'),
     formatError: (error) =>
@@ -254,7 +254,7 @@ export function registerAuthIpcHandlers({
     xaiLogin.start(input),
   )
   ipcMain.handle('auth:cancel-xai-login', () => xaiLogin.cancel())
-  mainWindow.once('closed', () => {
+  onMainWindowClosed(() => {
     codexLogin.cancel()
     xaiLogin.cancel()
   })
