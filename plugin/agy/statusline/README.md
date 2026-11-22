@@ -63,7 +63,7 @@ On Windows, put double quotes around a script's absolute path if it contains spa
 
 ```text
 🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND
-CTX ███░░░░░░░░░░░ 14.2% (149K/1.0M)
+CTX [##------------] 14.2% (149K/1.0M)
 IN 2.4M | OUT 161K | LAST 96.2% | SESSION 93.8%
 QUOTA gemini-weekly: 94%
 ```
@@ -128,6 +128,6 @@ agy plugin validate ./plugin/agy/statusline
 - **No footer at all**: verify that `node` works in the environment running AGY, inspect `agy plugin list --json`, and check the `statusLine` setting.
 - **AGY hook validation fails**: run `agy plugin validate ./plugin/agy/statusline` and review the exact error before continuing.
 
-The plugin ships with Node.js unit tests, but **live installation on each operating system and actual AGY transcript formats still need integration verification**. See [PR #541](https://github.com/caozhiyuan/copilot-api/pull/541).
+The plugin ships with Node.js unit tests, but **live installation on each operating system and actual AGY transcript formats still need integration verification**.
 
 Official references: [Antigravity plugin guide](https://antigravity.google/docs/plugins?tab=cli) · [Build plugins](https://antigravity.google/docs/build-plugins/).

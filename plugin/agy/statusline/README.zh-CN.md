@@ -61,7 +61,7 @@ Windows 路径含空格时，给 JS 文件的绝对路径加双引号。安装�
 
 ```text
 🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND
-CTX ███░░░░░░░░░░░ 14.2% (149K/1.0M)
+CTX [##------------] 14.2% (149K/1.0M)
 IN 2.4M | OUT 161K | LAST 96.2% | SESSION 93.8%
 QUOTA gemini-weekly: 94%
 ```
@@ -126,4 +126,4 @@ agy plugin validate ./plugin/agy/statusline
 
 Node.js 的模拟数据单元测试已提供，但**尚未完成各系统真实 AGY CLI 安装和真实日志格式验证**。
 
-相关：[PR #541](https://github.com/caozhiyuan/copilot-api/pull/541) · [AGY 插件文档](https://antigravity.google/docs/plugins?tab=cli) · [官方开发规范](https://antigravity.google/docs/build-plugins/)。
+相关：[AGY 插件文档](https://antigravity.google/docs/plugins?tab=cli) · [官方开发规范](https://antigravity.google/docs/build-plugins/)。
