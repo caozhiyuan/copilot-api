@@ -321,6 +321,8 @@ export interface AnthropicStreamState {
   thinkingBlockOpen: boolean
   pendingMessageDelta?: AnthropicMessageDeltaEvent
   deferredContent?: string
+  // Text held back while it may be only image control tokens; undefined when not checking.
+  heldImageControlText?: string
   toolCalls: {
     [openAIToolIndex: number]: {
       id: string

@@ -9,7 +9,11 @@ import {
   type AnthropicStreamEventData,
   type AnthropicStreamState,
 } from "~/lib/types/anthropic"
-import { mapOpenAIStopReasonToAnthropic } from "./utils"
+import {
+  isImageControlTokenOnly,
+  mapOpenAIStopReasonToAnthropic,
+  mayBeImageControlTokenOnly,
+} from "./utils"
 
 function isToolBlockOpen(state: AnthropicStreamState): boolean {
   if (!state.contentBlockOpen) {
@@ -93,6 +97,11 @@ function handleFinish(
   const { events, chunk } = context
   if (choice.finish_reason && choice.finish_reason.length > 0) {
     closeThinkingBlockIfOpen(state, events, choice.delta.reasoning_opaque ?? "")
+    if (isImageControlTokenOnly(state.heldImageControlText ?? "")) {
+      // Leave the message incomplete so the caller sends a retryable error.
+      return
+    }
+    releaseHeldImageControlText(state, events)
     if (state.contentBlockOpen) {
       const toolBlockOpen = isToolBlockOpen(state)
       context.events.push({
@@ -166,6 +175,7 @@ function handleToolCalls(
 ) {
   if (delta.tool_calls && delta.tool_calls.length > 0) {
     closeThinkingBlockIfOpen(state, events)
+    releaseHeldImageControlText(state, events)
 
     handleReasoningOpaqueInToolCalls(state, events, delta)
 
@@ -292,6 +302,16 @@ function handleContent(
   events: Array<AnthropicStreamEventData>,
 ) {
   if (delta.content && delta.content.length > 0) {
+    if (state.heldImageControlText !== undefined) {
+      const text = state.heldImageControlText + delta.content
+      if (mayBeImageControlTokenOnly(text)) {
+        state.heldImageControlText = text
+        return
+      }
+      state.heldImageControlText = undefined
+      delta.content = text
+    }
+
     closeThinkingBlockIfOpen(state, events)
 
     if (isToolBlockOpen(state)) {
@@ -344,6 +364,17 @@ function handleContent(
     )
     state.contentBlockIndex++
     state.thinkingBlockOpen = false
+  }
+}
+
+function releaseHeldImageControlText(
+  state: AnthropicStreamState,
+  events: Array<AnthropicStreamEventData>,
+): void {
+  const text = state.heldImageControlText
+  state.heldImageControlText = undefined
+  if (text) {
+    handleContent({ content: text }, state, events)
   }
 }
 

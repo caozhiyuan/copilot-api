@@ -69,6 +69,7 @@ import {
   translateToOpenAI,
 } from "./completions-translation"
 import { prepareMessagesApiPayload } from "./preprocess"
+import { isImageControlTokenOnly } from "./utils"
 import {
   flushPendingAnthropicStreamEvents,
   translateChunkToAnthropicEvents,
@@ -136,6 +137,7 @@ export const handleWithChatCompletions = async (
       selectedModel?.capabilities.supports.reasoning_effort,
   })
   prepareCopilotChatCompletionsPayload(openAIPayload)
+  const checkImageControlTokens = selectedModel?.vendor === "Google"
   const recordUsage = createCopilotUsageRecorder({
     endpoint: options.usageEndpoint ?? "chat_completions",
     fallbackSessionId: sessionId,
@@ -162,6 +164,19 @@ export const handleWithChatCompletions = async (
         response.copilot_usage?.total_nano_aiu,
       ),
     })
+    if (checkImageControlTokens && isImageControlTokenOnlyResponse(response)) {
+      logger.warn("Copilot returned only image control tokens; returning 502")
+      return c.json(
+        {
+          type: "error",
+          error: {
+            type: "api_error",
+            message: "Upstream returned an empty response, retry your request.",
+          },
+        },
+        502,
+      )
+    }
     const anthropicResponse = translateToAnthropic(response)
     debugJson(logger, "Translated Anthropic response:", anthropicResponse)
     return c.json(anthropicResponse)
@@ -177,6 +192,7 @@ export const handleWithChatCompletions = async (
       contentBlockOpen: false,
       toolCalls: {},
       thinkingBlockOpen: false,
+      heldImageControlText: checkImageControlTokens ? "" : undefined,
     }
 
     try {
@@ -560,6 +576,14 @@ const uniqueIndexes = (indexes: Array<number>): Array<number> => [
 const isNonStreaming = (
   response: Awaited<ReturnType<typeof createCopilotChatCompletions>>,
 ): response is ChatCompletionResponse => Object.hasOwn(response, "choices")
+
+const isImageControlTokenOnlyResponse = (
+  response: ChatCompletionResponse,
+): boolean =>
+  response.choices.every((choice) => !choice.message.tool_calls?.length)
+  && isImageControlTokenOnly(
+    response.choices.map((choice) => choice.message.content ?? "").join(""),
+  )
 
 const createCopilotUsageRecorder = (options: {
   endpoint: TokenUsageEndpoint

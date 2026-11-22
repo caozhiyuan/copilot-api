@@ -11,6 +11,7 @@ import type {
   ChatCompletionChunk,
   ChatCompletionResponse,
   ChatCompletionsPayload,
+  Delta,
 } from "~/lib/types/chat-completions"
 import type {
   createMessages as createCopilotMessages,
@@ -1684,3 +1685,173 @@ const parseSseEvents = (
   }
   return events
 }
+
+const googleModel: Model = {
+  ...createModel(["/chat/completions"]),
+  vendor: "Google",
+}
+
+const runGoogleChatCompletions = async (
+  deltas: Array<Delta>,
+  options: { selectedModel?: Model; stream?: boolean } = {},
+) => {
+  const selectedModel =
+    "selectedModel" in options ? options.selectedModel : googleModel
+  const stream = options.stream ?? true
+  createChatCompletions.mockImplementationOnce((payload) => {
+    const chunks = deltas.map(
+      (delta, index): ChatCompletionChunk => ({
+        id: "chatcmpl-gemini",
+        object: "chat.completion.chunk",
+        created: 0,
+        model: payload.model,
+        choices: [
+          {
+            index: 0,
+            delta,
+            finish_reason: index === deltas.length - 1 ? "stop" : null,
+            logprobs: null,
+          },
+        ],
+      }),
+    )
+    if (stream) {
+      return Promise.resolve(
+        createChatCompletionsStream([...chunks, "[DONE]"]),
+      ) as unknown as Promise<ChatCompletionResponse>
+    }
+    return Promise.resolve({
+      id: "chatcmpl-gemini",
+      object: "chat.completion",
+      created: 0,
+      model: payload.model,
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: deltas.map((delta) => delta.content ?? "").join(""),
+            tool_calls: deltas.flatMap((delta) =>
+              (delta.tool_calls ?? []).map((toolCall) => ({
+                id: toolCall.id ?? "",
+                type: "function" as const,
+                function: {
+                  name: toolCall.function?.name ?? "",
+                  arguments: toolCall.function?.arguments ?? "{}",
+                },
+              })),
+            ),
+          },
+          logprobs: null,
+          finish_reason: "stop",
+        },
+      ],
+    })
+  })
+  const app = new Hono()
+  app.post("/", (c) =>
+    handleWithChatCompletions(
+      c,
+      {
+        max_tokens: 64,
+        messages: [{ role: "user", content: "hi" }],
+        model: "gemini-4-carbon",
+        stream,
+      },
+      { logger, requestId: "request-gemini", selectedModel },
+    ),
+  )
+  const response = await app.request("/", { method: "POST" })
+  if (!stream) return { status: response.status, events: [], text: "" }
+  const events = parseSseEvents(await response.text())
+  return {
+    status: response.status,
+    events: events.map((event) => event.event),
+    text: events
+      .map((event) => JSON.parse(event.data) as { delta?: { text?: string } })
+      .map((event) => event.delta?.text ?? "")
+      .join(""),
+  }
+}
+
+const toolCallDelta: Delta = {
+  tool_calls: [
+    {
+      index: 0,
+      id: "call_1",
+      type: "function",
+      function: { name: "read", arguments: "{}" },
+    },
+  ],
+}
+
+test("messages Chat Completions flow turns a Google stream of only image control tokens into a retryable error", async () => {
+  const pure = await runGoogleChatCompletions([
+    { content: "<end_of_" },
+    { content: "image> <end_of_image>" },
+  ])
+  expect(pure.events).toEqual(["message_start", "error"])
+
+  const afterThinking = await runGoogleChatCompletions([
+    { reasoning_text: "plan" },
+    { content: "<start_of_image><end_of_image>" },
+  ])
+  expect(afterThinking.events.at(-1)).toBe("error")
+  expect(afterThinking.events).not.toContain("message_stop")
+})
+
+test("messages Chat Completions flow streams other image control token output unchanged", async () => {
+  const cases: Array<[Array<Delta>, Model | undefined, string]> = [
+    [
+      [{ content: "<end_of_image>" }, { content: "Hello" }],
+      googleModel,
+      "<end_of_image>Hello",
+    ],
+    [[{ content: "<end_of" }, { content: " tag" }], googleModel, "<end_of tag"],
+    [
+      [{ content: " ".repeat(70) }, { content: "indented" }],
+      googleModel,
+      `${" ".repeat(70)}indented`,
+    ],
+    [
+      [{ content: "<end_of_image>".repeat(300) }],
+      googleModel,
+      "<end_of_image>".repeat(300),
+    ],
+    [
+      [{ content: "<end_of_image>" }, toolCallDelta],
+      googleModel,
+      "<end_of_image>",
+    ],
+    [[{ content: "<end_of_image>" }], createModel([]), "<end_of_image>"],
+    [[{ content: "<end_of_image>" }], undefined, "<end_of_image>"],
+  ]
+  for (const [deltas, selectedModel, text] of cases) {
+    const result = await runGoogleChatCompletions(deltas, { selectedModel })
+    expect(result.events.at(-1)).toBe("message_stop")
+    expect(result.text).toBe(text)
+  }
+})
+
+test("messages Chat Completions flow returns 502 only for non-streaming Google responses of only image control tokens", async () => {
+  const tokens = { content: "<end_of_image>".repeat(13) }
+  expect(
+    (await runGoogleChatCompletions([tokens], { stream: false })).status,
+  ).toBe(502)
+  expect(
+    (await runGoogleChatCompletions([tokens, toolCallDelta], { stream: false }))
+      .status,
+  ).toBe(200)
+  expect(
+    (
+      await runGoogleChatCompletions([tokens], {
+        selectedModel: createModel([]),
+        stream: false,
+      })
+    ).status,
+  ).toBe(200)
+  expect(
+    (await runGoogleChatCompletions([{ content: "" }], { stream: false }))
+      .status,
+  ).toBe(200)
+})
