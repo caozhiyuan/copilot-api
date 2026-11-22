@@ -15,6 +15,30 @@ agy plugin install https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/agy
 agy plugin list
 ```
 
+### Show the statusline on the very first launch (recommended)
+
+`agy plugin install` installs the plugin files but does **not** run a post-install setup script. The `SessionStart` hook runs only when a conversation starts. If you launch AGY immediately after installing, the hook can configure `statusLine.command` only **after the first prompt**, when the TUI may already have loaded its statusline configuration. The new setting may not appear until AGY restarts.
+
+To avoid having to send `hi` and restart, run the bundled setup script in your **normal terminal (outside AGY)** after installing the plugin and **before your first `agy` launch**:
+
+**Windows PowerShell:**
+
+```powershell
+node "$HOME\.gemini\config\plugins\copilot-api-statusline\scripts\install.js"
+agy
+```
+
+**macOS / Linux:**
+
+```sh
+node "$HOME/.gemini/config/plugins/copilot-api-statusline/scripts/install.js"
+agy
+```
+
+The script only sets `~/.gemini/antigravity-cli/settings.json` when no non-empty custom statusline command is configured. If you already use another statusline, it returns `skipped-existing` and leaves your configuration intact. Add `--force` to the installer only when you intend to replace it. The directory above is AGY's default global plugin location; use `agy plugin list --json` if you installed into a different location.
+
+If **AGY is already open**, changing the settings JSON may not enable the footer in the current TUI. Restart AGY, or copy the configured `statusLine.command` and run AGY's built-in `/statusline <command>` command to activate it immediately.
+
 The URL points at the plugin **subfolder**, not the root of copilot-api. Recent AGY CLI versions support installing GitHub repository subpaths; use an up-to-date `agy`. If your AGY CLI cannot resolve the GitHub subpath, use the local-directory fallback below.
 
 ### Local-directory fallback
@@ -36,12 +60,11 @@ These commands run in PowerShell, Windows Terminal, bash, or zsh provided `agy`,
 
 ## Activate
 
-1. Install the plugin.
-2. Start a **new AGY CLI conversation** (restart `agy` if necessary).
-3. The plugin's `SessionStart` hook registers `statusLine.command` in `~/.gemini/antigravity-cli/settings.json` **only if a statusline is not already configured**.
-4. The footer then displays model/state, context usage, token/cache statistics, subagent counts, and native quota values when available.
+**Recommended:** Run the installer script above **before launching AGY**. Your custom statusline will be configured on the first launch; there is no need to send `hi` and restart.
 
-This uses a native AGY lifecycle hook, **not a Skill**. There is no `/copilot-api-statusline:...` command to run. The gateway can remain stopped.
+**Fallback:** Without the manual setup step, the plugin's `SessionStart` hook attempts to configure `statusLine.command` when your first conversation starts. Since AGY may already have initialized its footer, restart AGY to see the change, or activate it immediately through `/statusline <command>`.
+
+The footer shows model/state, context usage, token/cache statistics, nested subagents, and any quota already reported by AGY. This plugin requires **no Skill** and the copilot-api gateway can remain stopped.
 
 ### Already using another statusline?
 
