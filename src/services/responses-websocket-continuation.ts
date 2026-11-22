@@ -115,11 +115,16 @@ function parseEvent(chunk: ResponsesStreamChunk): ResponseStreamEvent | null {
   }
 }
 
+// Copilot reports some continuation rejections, such as a parent that is no
+// longer the socket's latest response, as `bad_request` without `param`.
+const PREVIOUS_RESPONSE_ID_PATTERN = /\bprevious_response_id\b/u
+
 function isPreviousResponseMiss(event: ResponseStreamEvent | null): boolean {
   if (event?.type !== "error") return false
   const code = event.error?.code ?? event.code
   return (
     code === "previous_response_not_found"
     || (event.error?.param ?? event.param) === "previous_response_id"
+    || PREVIOUS_RESPONSE_ID_PATTERN.test(event.error?.message ?? event.message)
   )
 }

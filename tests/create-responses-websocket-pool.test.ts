@@ -50,7 +50,11 @@ class MockWebSocket {
   static readonly OPEN = 1
   static readonly CLOSING = 2
   static readonly CLOSED = 3
-  static continuationError: { code: string; param?: string } | null = null
+  static continuationError: {
+    code: string
+    message?: string
+    param?: string
+  } | null = null
   static errorAfterCreated = false
   static autoComplete = true
   static closeAfterComplete = false
@@ -108,8 +112,8 @@ class MockWebSocket {
             JSON.stringify({
               type: "error",
               error: {
-                ...MockWebSocket.continuationError,
                 message: "continuation unavailable",
+                ...MockWebSocket.continuationError,
               },
             }),
           )
@@ -1426,6 +1430,11 @@ test.each([
   { code: "unsupported_parameter", param: "previous_response_id" },
   { code: "unknown_parameter", param: "previous_response_id" },
   { code: "invalid_request_body", param: "previous_response_id" },
+  {
+    code: "bad_request",
+    message:
+      "previous_response_id is not the most recent response in this session; starting a new conversation invalidates prior response IDs",
+  },
 ])(
   "retries a rejected automatic continuation once with full input (%j)",
   async (error) => {
