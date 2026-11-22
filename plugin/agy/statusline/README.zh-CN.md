@@ -15,6 +15,30 @@ agy plugin install https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/agy
 agy plugin list
 ```
 
+### 首次启动直接显示（推荐）
+
+`agy plugin install` 只安装插件文件；`SessionStart` 要等新会话开始才执行。**如果只安装插件就立刻打开 AGY，第一次进入时状态栏可能还未激活，需要发一条消息让 Hook 写入设置，再重启才显示。**
+
+为了避免“先输入 hi，再重启”的步骤，请在**普通终端（不要在 AGY 内）**安装插件后、**首次运行 `agy` 前**，额外运行一次安装脚本：
+
+**Windows PowerShell：**
+
+```powershell
+node "$HOME\.gemini\config\plugins\copilot-api-statusline\scripts\install.js"
+agy
+```
+
+**macOS / Linux：**
+
+```sh
+node "$HOME/.gemini/config/plugins/copilot-api-statusline/scripts/install.js"
+agy
+```
+
+脚本只在尚未设置有效状态栏命令时写入 `~/.gemini/antigravity-cli/settings.json`；如果已有其他非空自定义命令，则会显示 `skipped-existing` 并保留原配置。确实想覆盖时，可在安装脚本末尾加 `--force`。上述插件路径是 AGY 默认的全局插件安装位置；其他安装位置可通过 `agy plugin list --json` 查找。
+
+如果 AGY **已经打开**，仅修改磁盘上的 `settings.json` 不一定会让当前界面立即启用状态栏。你可以重启 AGY；或者把已配置的 `statusLine.command` 作为参数输入 AGY 内置的 `/statusline <command>`，AGY 会立即加载状态栏。
+
 AGY 新版本支持从 GitHub 仓库**子目录**安装插件。如果你的 AGY 版本无法正确解析 GitHub 子目录地址，请使用下面的本地安装方式。
 
 ### 本地安装（备用）
@@ -34,12 +58,11 @@ agy plugin validate https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/ag
 
 ## 启用方式
 
-1. 安装插件。
-2. 重新启动 `agy`（如有必要），开启新的对话。
-3. 插件通过 `SessionStart` Hook 自动写入 `~/.gemini/antigravity-cli/settings.json` 的 `statusLine.command`；**只有未配置状态栏时才会写入**。
-4. 状态栏显示模型、Context、Token、缓存命中率、子 Agent 数量，以及 AGY 原生配额信息（若有）。
+**推荐流程：** 安装插件后、打开 AGY 前执行上面的 `install.js`，首次启动就可以使用自定义状态栏，不需要先输入 `hi`。
 
-**不需要执行 `/xxx:statusline` 或任何 Skill。**
+**备选自动配置：** 如果跳过手动安装脚本，插件的 `SessionStart` Hook 会在创建第一条新对话时尝试写入 `statusLine.command`。但本次 AGY 进程可能已经完成了状态栏初始化，因此需要重新启动 AGY，或用内置的 `/statusline <command>` 立即重新配置。
+
+状态栏显示模型、Context、Token、缓存命中率、子 Agent 数量以及 CLI 原生配额（若有）。整个插件**不需要 Skill**，也不需要启动 copilot-api 网关。
 
 ### 已经配置其他 Statusline？
 
