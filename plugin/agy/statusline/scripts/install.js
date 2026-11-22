@@ -45,11 +45,17 @@ function configure(file = configFile, command = makeCommand(), force = false) {
 
   const existing = current.statusLine;
   if (existing != null && !force) {
-    if (typeof existing !== 'object' || Array.isArray(existing) ||
-        !isOurs(existing.command)) {
+    if (typeof existing !== 'object' || Array.isArray(existing)) {
       return { status: 'skipped-existing' };
     }
-    if (existing.command === command) return { status: 'unchanged' };
+    if (existing.enabled === false) return { status: 'skipped-disabled' };
+    // An empty command is an unconfigured placeholder, not a custom statusline.
+    if (typeof existing.command === 'string' && existing.command.trim()) {
+      if (!isOurs(existing.command)) return { status: 'skipped-existing' };
+      if (existing.command === command && existing.type === 'command') {
+        return { status: 'unchanged' };
+      }
+    }
   }
 
   current.statusLine = {
