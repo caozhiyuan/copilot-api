@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "copilot-api-statusline",
   "displayName": "Copilot API Statusline",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cross-platform Antigravity CLI statusline with session cache hit rates, nested subagent counts, context and tokens; no gateway connection required.",
   "author": {
     "name": "copilot-api maintainers"
