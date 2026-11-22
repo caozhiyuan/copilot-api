@@ -8,27 +8,19 @@ Works on **Windows, macOS, and Linux** with Node.js 20+ (no npm dependencies).
 
 ## Install from GitHub (recommended)
 
-**Preview / PR #541 (before merging into `dev`):**
-
-```sh
-agy plugin install https://github.com/caozhiyuan/copilot-api/tree/feat/agy-statusline-plugin/plugin/agy/statusline
-agy plugin list
-```
-
-The URL points at the plugin **subfolder**, not the root of copilot-api. Recent AGY CLI versions support installing GitHub repository subpaths; use an up-to-date `agy`.
-
-**After PR #541 is merged into `dev`**, use:
+Install the plugin directly from the `dev` branch:
 
 ```sh
 agy plugin install https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/agy/statusline
+agy plugin list
 ```
 
-> The `dev` command is for **after the merge**. Until then, use the preview branch above. The GitHub URL uses a branch name containing a slash; if your AGY CLI cannot resolve it, use the local-directory fallback below.
+The URL points at the plugin **subfolder**, not the root of copilot-api. Recent AGY CLI versions support installing GitHub repository subpaths; use an up-to-date `agy`. If your AGY CLI cannot resolve the GitHub subpath, use the local-directory fallback below.
 
 ### Local-directory fallback
 
 ```sh
-git clone --branch feat/agy-statusline-plugin --single-branch https://github.com/caozhiyuan/copilot-api.git
+git clone --branch dev --single-branch https://github.com/caozhiyuan/copilot-api.git
 agy plugin validate ./copilot-api/plugin/agy/statusline
 agy plugin install ./copilot-api/plugin/agy/statusline
 agy plugin list
@@ -37,7 +29,7 @@ agy plugin list
 You can also validate the GitHub URL directly on AGY versions that support remote validation:
 
 ```sh
-agy plugin validate https://github.com/caozhiyuan/copilot-api/tree/feat/agy-statusline-plugin/plugin/agy/statusline
+agy plugin validate https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/agy/statusline
 ```
 
 These commands run in PowerShell, Windows Terminal, bash, or zsh provided `agy`, Git (for the fallback), and Node.js are installed.
