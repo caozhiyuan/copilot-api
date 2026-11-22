@@ -8,25 +8,19 @@
 
 ## 从 GitHub 安装（推荐）
 
-**PR #541 尚未合并到 `dev` 时**，安装功能分支的插件子目录：
-
-```sh
-agy plugin install https://github.com/caozhiyuan/copilot-api/tree/feat/agy-statusline-plugin/plugin/agy/statusline
-agy plugin list
-```
-
-**合并到 `dev` 后**，使用：
+直接从 `dev` 分支安装插件子目录：
 
 ```sh
 agy plugin install https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/agy/statusline
+agy plugin list
 ```
 
-注意：现在不要提前使用 `dev` 命令。AGY 新版本支持从 GitHub 仓库**子目录**安装插件。如果你的 AGY 版本不能正确解析带斜杠的功能分支名，请使用下面的本地安装方式。
+AGY 新版本支持从 GitHub 仓库**子目录**安装插件。如果你的 AGY 版本无法正确解析 GitHub 子目录地址，请使用下面的本地安装方式。
 
 ### 本地安装（备用）
 
 ```sh
-git clone --branch feat/agy-statusline-plugin --single-branch https://github.com/caozhiyuan/copilot-api.git
+git clone --branch dev --single-branch https://github.com/caozhiyuan/copilot-api.git
 agy plugin validate ./copilot-api/plugin/agy/statusline
 agy plugin install ./copilot-api/plugin/agy/statusline
 agy plugin list
@@ -35,7 +29,7 @@ agy plugin list
 较新的 AGY CLI 还支持直接验证 GitHub 子目录 URL：
 
 ```sh
-agy plugin validate https://github.com/caozhiyuan/copilot-api/tree/feat/agy-statusline-plugin/plugin/agy/statusline
+agy plugin validate https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/agy/statusline
 ```
 
 ## 启用方式
