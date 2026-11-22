@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test"
+import fsPromises from "node:fs/promises"
 
 import * as config from "~/lib/config"
 
@@ -157,5 +158,53 @@ describe("network-exposed server policy", () => {
     expect(response.headers.get("access-control-expose-headers")).toBe(
       "X-API-Key-Usage-Isolated",
     )
+  })
+})
+
+describe("usage viewer serving", () => {
+  test("reads usage viewer asynchronously in non-production and caches after retry in production", async () => {
+    const app = createServer()
+    const originalNodeEnv = process.env.NODE_ENV
+    const readFileSpy = spyOn(fsPromises, "readFile")
+
+    try {
+      process.env.NODE_ENV = "test"
+      const devFirst = await app.request("/usage-viewer")
+      const devSecond = await app.request("/usage-viewer")
+      expect(devFirst.status).toBe(200)
+      expect(devSecond.status).toBe(200)
+      expect(await devFirst.text()).toContain("<!doctype html>")
+      expect(readFileSpy).toHaveBeenCalledTimes(2)
+
+      readFileSpy.mockClear()
+      process.env.NODE_ENV = "production"
+      readFileSpy.mockRejectedValueOnce(new Error("transient read failure"))
+
+      const failed = await app.request("/usage-viewer")
+      expect(failed.status).toBe(500)
+
+      const [prodFirst, prodSecond] = await Promise.all([
+        app.request("/usage-viewer"),
+        app.request("/usage-viewer"),
+      ])
+      const prodThird = await app.request("/usage-viewer")
+      expect(prodFirst.status).toBe(200)
+      expect(prodSecond.status).toBe(200)
+      expect(prodThird.status).toBe(200)
+      expect(await prodThird.text()).toContain("<!doctype html>")
+      // 1 rejected read + 1 shared successful read cached across concurrent & follow-up calls
+      expect(readFileSpy).toHaveBeenCalledTimes(2)
+
+      const redirect = await app.request("/usage-viewer/")
+      expect(redirect.status).toBe(301)
+      expect(redirect.headers.get("location")).toBe("/usage-viewer")
+    } finally {
+      readFileSpy.mockRestore()
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = originalNodeEnv
+      }
+    }
   })
 })

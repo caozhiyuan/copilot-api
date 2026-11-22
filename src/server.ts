@@ -3,7 +3,7 @@ import { apiKeyUsageRoutes } from "./routes/admin/api-keys/route"
 import { Hono, type Context } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
-import { readFileSync } from "node:fs"
+import fsPromises from "node:fs/promises"
 
 import {
   createAuthMiddleware,
@@ -50,6 +50,29 @@ function resolveSameOriginCorsOrigin(
   }
 }
 
+let cachedUsageViewerHtml: Promise<string> | null = null
+
+function readUsageViewerHtml(): Promise<string> {
+  const usageViewerFileUrl = new URL("../pages/index.html", import.meta.url)
+  if (process.env.NODE_ENV !== "production") {
+    return fsPromises.readFile(usageViewerFileUrl, "utf8")
+  }
+
+  if (!cachedUsageViewerHtml) {
+    const pending: Promise<string> = fsPromises
+      .readFile(usageViewerFileUrl, "utf8")
+      .catch((error: unknown) => {
+        if (cachedUsageViewerHtml === pending) {
+          cachedUsageViewerHtml = null
+        }
+        throw error
+      })
+    cachedUsageViewerHtml = pending
+  }
+
+  return cachedUsageViewerHtml
+}
+
 export function createServer(options: CreateServerOptions = {}): Hono {
   const server = new Hono()
   const networkExposed = options.networkExposed ?? false
@@ -88,10 +111,7 @@ export function createServer(options: CreateServerOptions = {}): Hono {
   )
 
   server.get("/", (c) => c.text("Server running"))
-  server.get("/usage-viewer", (c) => {
-    const usageViewerFileUrl = new URL("../pages/index.html", import.meta.url)
-    return c.html(readFileSync(usageViewerFileUrl, "utf8"))
-  })
+  server.get("/usage-viewer", async (c) => c.html(await readUsageViewerHtml()))
   server.get("/usage-viewer/", (c) => c.redirect("/usage-viewer", 301))
 
   server.route("/chat/completions", completionRoutes)
