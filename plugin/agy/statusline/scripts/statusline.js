@@ -1,4 +1,4 @@
-// Antigravity CLI statusline: root + nested subagents.
+// Antigravity CLI statusline with subagent and Workflow usage.
 // Cross-platform: Windows, macOS, and Linux (Node.js built-ins only).
 // No npm dependencies. Read-only access to Antigravity transcripts.
 // Optional path overrides: GEMINI_HOME, ANTIGRAVITY_CLI_HOME,
@@ -15,7 +15,8 @@ const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_AGENTS = 200;
-const CACHE_VERSION = 3;
+const TASK_LOG_TAIL_BYTES = 256 * 1024;
+const CACHE_VERSION = 4;
 
 // Override these when Antigravity stores its data outside the default location.
 // All paths are resolved with Node's platform-native path implementation.
@@ -112,31 +113,75 @@ function childrenFromResult(record, ids) {
   }
 }
 
+function collectWorkflowAgents(text, ids) {
+  const agentRow = /^[ \t]*- \[agent:[^\]\r\n]+\] [^\r\n]*?:[ \t]+[a-z][a-z _-]*[ \t]+\(([a-f0-9-]{36})\)(?::[^\r\n]*)?[ \t]*\r?$/gim;
+  for (const [, id] of text.matchAll(agentRow)) {
+    if (UUID.test(id)) ids.add(id.toLowerCase());
+  }
+}
+
+function workflowAgentsFromTasks(dir) {
+  const tasks = path.join(dir, '.system_generated', 'tasks');
+  const ids = new Set();
+  let entries;
+  try { entries = fs.readdirSync(tasks, { withFileTypes: true }); } catch { return ids; }
+  for (const entry of entries) {
+    if (!entry.isFile() || !/^task-\d+\.log$/.test(entry.name)) continue;
+    try {
+      const fd = fs.openSync(path.join(tasks, entry.name), 'r');
+      try {
+        // Task logs also contain shell output. Read a bounded tail for the agent rows.
+        const size = fs.fstatSync(fd).size;
+        const length = Math.min(size, TASK_LOG_TAIL_BYTES);
+        const bytes = Buffer.alloc(length);
+        const read = fs.readSync(fd, bytes, 0, length, size - length);
+        collectWorkflowAgents(bytes.toString('utf8', 0, read), ids);
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {} // AGY may replace a task log while it is running.
+  }
+  return ids;
+}
+
+function workflowAgentsFromReport(record, conversationId, ids) {
+  if (record.type !== 'GENERIC' || typeof record.content !== 'string') return;
+  const report = /^Task: ([a-f0-9-]{36})\/task-\d+\r?\nStatus: [^\r\n]+\r?\nLog: [^\r\n]+\r?\nLog output:\r?$/im.exec(record.content);
+  if (report?.[1].toLowerCase() === conversationId) {
+    collectWorkflowAgents(record.content.slice(report.index + report[0].length), ids);
+  }
+}
+
 // Cache only numeric counts + child IDs; no conversation text is saved.
 function readStats(dir) {
   const file = transcriptOf(dir);
   const children = childrenFromMetadata(dir);
-  const blank = { input: 0, cached: 0, created: 0, output: 0, calls: 0, children: [...children] };
+  const blank = { input: 0, cached: 0, created: 0, output: 0, calls: 0, children: [...children], workflowAgents: [] };
   if (!file) return blank;
 
   let stat;
   try { stat = fs.statSync(file); } catch { return blank; }
+  const conversationId = path.basename(dir).toLowerCase();
   const cacheFile = path.join(CACHE_ROOT, `${path.basename(dir)}.json`);
   try {
     const data = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
     if (data.v === CACHE_VERSION && data.file === file && data.size === stat.size &&
-        data.mtime === stat.mtimeMs && data.ctime === stat.ctimeMs) {
+        data.mtime === stat.mtimeMs && data.ctime === stat.ctimeMs &&
+        Array.isArray(data.stats?.workflowAgents)) {
       return { ...data.stats, children: unique([...children, ...data.stats.children]) };
     }
   } catch {}
 
   const records = new Map();
+  const workflowAgents = new Set();
   try {
     for (const [lineIndex, line] of fs.readFileSync(file, 'utf8').split(/\r?\n/).entries()) {
       if (!line) continue;
       let record;
       try { record = JSON.parse(line); } catch { continue; }
+      if (!record || typeof record !== 'object') continue;
       childrenFromResult(record, children);
+      workflowAgentsFromReport(record, conversationId, workflowAgents);
       if (record.type !== 'PLANNER_RESPONSE') continue;
       const key = record.step_index ?? `line:${lineIndex}`;
       // Last occurrence wins; preserve earlier usage if a later step omits it.
@@ -150,7 +195,7 @@ function readStats(dir) {
     }
   } catch { return blank; }
 
-  const stats = { ...blank, children: [...children] };
+  const stats = { ...blank, children: [...children], workflowAgents: [...workflowAgents] };
   for (const usage of records.values()) {
     if (![usage.input, usage.cached, usage.created, usage.output].some(v => v != null)) continue;
     stats.input += num(usage.input);
@@ -175,25 +220,33 @@ function readStats(dir) {
 function sessionTree(payload) {
   const rootId = payload.conversation_id || payload.session_id;
   if (!UUID.test(String(rootId))) return null;
+  const rootKey = String(rootId).toLowerCase();
   const { resolve } = createResolver(payload);
   const seen = new Set();
-  const totals = { input: 0, cached: 0, created: 0, output: 0, calls: 0, childCount: 0 };
+  const workflowAgents = new Set();
+  const totals = { input: 0, cached: 0, created: 0, output: 0, calls: 0, childCount: 0, workflowCount: 0 };
   const pending = [rootId];
   while (pending.length && seen.size < MAX_AGENTS + 1) {
     const id = pending.pop();
-    if (seen.has(id)) continue;
-    seen.add(id);
+    const key = String(id).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
     const dir = resolve(id);
     if (!dir) continue;
     const stats = readStats(dir);
     for (const key of ['input', 'cached', 'created', 'output', 'calls']) {
       totals[key] += stats[key];
     }
-    for (const child of stats.children) {
-      if (child !== rootId && !seen.has(child)) pending.push(child);
+    const workflows = new Set([...stats.workflowAgents, ...workflowAgentsFromTasks(dir)]);
+    for (const child of workflows) {
+      if (child !== key && child !== rootKey) workflowAgents.add(child);
+    }
+    for (const child of [...stats.children, ...workflows]) {
+      if (!seen.has(String(child).toLowerCase())) pending.push(child);
     }
   }
-  totals.childCount = Math.max(0, seen.size - 1);
+  totals.workflowCount = [...workflowAgents].filter(id => seen.has(id)).length;
+  totals.childCount = seen.size - 1 - totals.workflowCount;
   return totals;
 }
 
@@ -211,8 +264,9 @@ function render(s) {
   const live = Array.isArray(s.subagents) ? s.subagents : [];
   const running = live.filter(a => String(a?.status).toLowerCase() === 'running').length;
   const total = Math.max(live.length, tree?.childCount || 0);
+  const workflows = tree?.workflowCount ? ` | WORKFLOW AGENTS ${tree.workflowCount}` : '';
   const line1 = `${CYAN}🤖 ${name}${RESET}  ${stateColor}${state}${RESET}` +
-    `  ${DIM}SUB ${running} RUN | ${total} FOUND${RESET}`;
+    `  ${DIM}SUB ${running} RUN | ${total} FOUND${workflows}${RESET}`;
 
   const used = cw.used_percentage == null ? NaN : Number(cw.used_percentage);
   const size = num(cw.context_window_size);

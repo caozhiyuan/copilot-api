@@ -159,6 +159,79 @@ test('recursive nested subagents, token stats and deduplication', () => withTemp
   assert.equal(output.trim().split('\n').length, 4);
 }));
 
+test('aggregates Workflow agents from task logs and reports without double-counting', () => withTemp(dir => {
+  const brain = path.join(dir, '.gemini', 'antigravity-cli', 'brain');
+  const root = '11111111-1111-4111-8111-111111111111';
+  const taskAgent = '22222222-2222-4222-8222-222222222222';
+  const reportAgent = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const nested = '44444444-4444-4444-8444-444444444444';
+  const unrelated = '55555555-5555-4555-8555-555555555555';
+  const report = (owner, lines) => [
+    'Task: ' + owner + '/task-1',
+    'Status: RUNNING',
+    'Log: file:///task-1.log',
+    'Log output:',
+    ...lines
+  ].join('\r\n');
+  const file = writeTranscript(brain, root, [
+    { type: 'PLANNER_RESPONSE', input_tokens: 80, cache_read_tokens: 20, output_tokens: 10 },
+    { type: 'GENERIC', content: report(root, [
+      '- [agent:self] First: running (' + taskAgent + ')',
+      '- [agent:research] Second: needs approval (' + reportAgent.toUpperCase() + ')'
+    ]) },
+    { type: 'GENERIC', content: report(unrelated, ['- [agent:self] Other: running (' + unrelated + ')']) },
+    { type: 'GENERIC', content: '- [agent:self] Unrelated output: running (' + unrelated + ')' }
+  ], taskAgent);
+  writeTranscript(brain, taskAgent,
+    [{ type: 'PLANNER_RESPONSE', input_tokens: 25, cache_read_tokens: 75, output_tokens: 20 }], nested);
+  writeTranscript(brain, reportAgent,
+    [{ type: 'PLANNER_RESPONSE', input_tokens: 50, cache_read_tokens: 50, output_tokens: 30 }]);
+  writeTranscript(brain, nested,
+    [{ type: 'PLANNER_RESPONSE', input_tokens: 40, cache_read_tokens: 10, output_tokens: 5 }]);
+  writeTranscript(brain, unrelated,
+    [{ type: 'PLANNER_RESPONSE', input_tokens: 10000, output_tokens: 10000 }]);
+  const tasks = path.join(brain, root, '.system_generated', 'tasks');
+  fs.mkdirSync(tasks, { recursive: true });
+  fs.writeFileSync(path.join(tasks, 'task-1.log'), 'x'.repeat(270 * 1024) +
+    '\n- [agent:self] Review: core: error (' + taskAgent + '): timed out\n');
+
+  const stat = fs.statSync(file);
+  const cache = path.join(dir, '.gemini', 'antigravity-cli', 'statusline-cache');
+  fs.mkdirSync(cache, { recursive: true });
+  fs.writeFileSync(path.join(cache, root + '.json'), JSON.stringify({
+    v: 3, file, size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs,
+    stats: { input: 80, cached: 20, created: 0, output: 10, calls: 1, children: [taskAgent] }
+  }));
+
+  const payload = { conversation_id: root };
+  const output = runStatusline(dir, payload);
+  assert.match(output, /SUB 0 RUN \| 1 FOUND \| WORKFLOW AGENTS 2/);
+  assert.match(output, /IN 350 \| OUT 65\r?\nCACHE HIT  Last request N\/A \| Session 44\.3%/);
+  assert.equal(runStatusline(dir, payload), output);
+}));
+
+test('updates the Workflow count and usage as task and child logs arrive', () => withTemp(dir => {
+  const brain = path.join(dir, '.gemini', 'antigravity-cli', 'brain');
+  const root = '11111111-1111-4111-8111-111111111111';
+  const child = '22222222-2222-4222-8222-222222222222';
+  const payload = { conversation_id: root };
+  writeTranscript(brain, root, [{ type: 'PLANNER_RESPONSE', input_tokens: 10, output_tokens: 1 }]);
+  assert.doesNotMatch(runStatusline(dir, payload), /WORKFLOW AGENTS/);
+
+  const tasks = path.join(brain, root, '.system_generated', 'tasks');
+  fs.mkdirSync(tasks, { recursive: true });
+  fs.writeFileSync(path.join(tasks, 'task-2.log'), '- [phase] Review\n- [agent:self] Reviewer: running (' + child + ')\n');
+  const beforeUsage = runStatusline(dir, payload);
+  assert.match(beforeUsage, /WORKFLOW AGENTS 1/);
+  assert.match(beforeUsage, /IN 10 \| OUT 1/);
+
+  writeTranscript(brain, child,
+    [{ type: 'PLANNER_RESPONSE', input_tokens: 10, cache_read_tokens: 20, output_tokens: 2 }]);
+  const afterUsage = runStatusline(dir, payload);
+  assert.match(afterUsage, /WORKFLOW AGENTS 1/);
+  assert.match(afterUsage, /IN 40 \| OUT 3\r?\nCACHE HIT  Last request N\/A \| Session 50\.0%/);
+}));
+
 test('session totals stay unavailable until a transcript contains usage', () => withTemp(dir => {
   const brain = path.join(dir, '.gemini', 'antigravity', 'brain');
   const id = '11111111-1111-4111-8111-111111111111';

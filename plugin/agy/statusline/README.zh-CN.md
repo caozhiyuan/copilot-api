@@ -71,7 +71,7 @@ node ./scripts/install.js --force
 ## 显示效果
 
 ```text
-🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND
+🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND | WORKFLOW AGENTS 8
 CTX [##------------] 14.2% (149K/1.0M)
 IN 2.4M | OUT 161K
 CACHE HIT  Last request 96.2% | Session 93.8%
@@ -83,19 +83,20 @@ QUOTA gemini-weekly: 94%
 | 指标 | 含义 |
 | --- | --- |
 | `SUB N RUN` | 官方 Statusline JSON 中正在运行的子 Agent 数量 |
-| `N FOUND` | 从本地日志和父子元数据中发现的子 Agent 会话 ID 数量，包含嵌套子 Agent |
+| `N FOUND` | 从本地日志和元数据中发现的普通子 Agent 会话数，包含嵌套子 Agent |
+| `WORKFLOW AGENTS N` | 从本地任务日志和报告中发现的 Workflow Agent 会话数，按 ID 去重 |
 | `CTX` | 主 Agent 的上下文使用率，**不是**自动压缩阈值 |
-| `IN / OUT` | 主 Agent 及可发现子 Agent 的日志 Token 累计 |
+| `IN / OUT` | 主会话及已发现的普通子 Agent、Workflow Agent 的 Token 累计 |
 | `CACHE HIT` · `Last request` | 主 Agent 最近一次请求的缓存命中率 |
-| `CACHE HIT` · `Session` | 当前会话及嵌套子 Agent 的累计缓存命中率（根据本地日志估算） |
+| `CACHE HIT` · `Session` | 根据本地日志汇总当前会话、普通子 Agent 和 Workflow Agent 的缓存命中率 |
 | `QUOTA` | CLI 原生传入的配额；不单独请求配额 API |
 
-会话缓存统计和 `FOUND` 取决于 AGY 写出的日志和元数据。等日志中出现用量记录后，累计 Token 才会从 `N/A` 变为数字。累计值包含已有用量记录的子会话。
+AGY 写出子会话 ID 后，状态栏就能更新计数。Workflow Agent 的会话日志写出用量后，就会计入累计值。用量尚未写出时，累计 Token 显示 `N/A`。
 
 ## 隐私与数据来源
 
 - 状态来源：AGY 通过 stdin 传给状态栏的 JSON。
-- 累计统计：仅读取本地 `transcript_full.jsonl` / `transcript.jsonl` 和子 Agent 关系元数据。
+- 累计统计读取本地 `transcript_full.jsonl` / `transcript.jsonl`、子 Agent 关系元数据和任务日志尾部。
 - 本地缓存：仅保存数字统计和子会话 ID，避免每次重复解析。
 - 不请求 Google 内部接口，不读取凭据，也不连接 copilot-api 网关。
 
