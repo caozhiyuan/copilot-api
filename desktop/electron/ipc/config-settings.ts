@@ -82,12 +82,10 @@ export function registerConfigAndSettingsIpcHandlers({
           }
         },
       )
-      if (options.onSettingsChange) {
-        await options.onSettingsChange(settings, prev)
-      }
       if (replacementStarted) {
         setActiveAdminApiKey((await readServerKeysConfig()).adminApiKey)
       }
+      await options.onSettingsChange?.(settings, prev)
     })
   })
 

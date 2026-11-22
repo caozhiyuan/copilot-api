@@ -1182,6 +1182,24 @@ describe('desktop saves automatically refresh the running gateway', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  test('uses the replacement admin key after a settings callback fails', async () => {
+    registerIpcHandlers({ once: () => {} } as unknown as BrowserWindow, {
+      onSettingsChange: () => Promise.reject(new Error('Tray refresh failed')),
+    })
+    await invoke('config:save-provider-management', {})
+    keys.adminApiKey = 'restarted-admin'
+
+    await expect(
+      invoke('settings:save', { ...settings, host: '0.0.0.0' }),
+    ).rejects.toThrow('Tray refresh failed')
+    expect(settings.host).toBe('0.0.0.0')
+    expect(startServer).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    await invoke('config:save-provider-management', {})
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   test('does not start a stopped service after saving startup settings', async () => {
     running = false
     await invoke('settings:save', { ...settings, host: '0.0.0.0' })
