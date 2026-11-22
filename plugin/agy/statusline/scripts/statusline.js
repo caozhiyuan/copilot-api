@@ -15,6 +15,7 @@ const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_AGENTS = 200;
+const CACHE_VERSION = 3;
 
 // Override these when Antigravity stores its data outside the default location.
 // All paths are resolved with Node's platform-native path implementation.
@@ -123,7 +124,7 @@ function readStats(dir) {
   const cacheFile = path.join(CACHE_ROOT, `${path.basename(dir)}.json`);
   try {
     const data = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-    if (data.v === 2 && data.file === file && data.size === stat.size &&
+    if (data.v === CACHE_VERSION && data.file === file && data.size === stat.size &&
         data.mtime === stat.mtimeMs && data.ctime === stat.ctimeMs) {
       return { ...data.stats, children: unique([...children, ...data.stats.children]) };
     }
@@ -139,30 +140,30 @@ function readStats(dir) {
       if (record.type !== 'PLANNER_RESPONSE') continue;
       const key = record.step_index ?? `line:${lineIndex}`;
       // Last occurrence wins; preserve earlier usage if a later step omits it.
-      const prev = records.get(key) || {};
-      records.set(key, { ...prev, ...record,
-        input_tokens: record.input_tokens ?? prev.input_tokens,
-        cache_read_tokens: record.cache_read_tokens ?? prev.cache_read_tokens,
-        cache_creation_input_tokens: record.cache_creation_input_tokens ?? prev.cache_creation_input_tokens,
-        output_tokens: record.output_tokens ?? prev.output_tokens });
+      const prev = records.get(key);
+      records.set(key, {
+        input: record.input_tokens ?? prev?.input,
+        cached: record.cache_read_tokens ?? record.cache_read_input_tokens ?? prev?.cached,
+        created: record.cache_creation_input_tokens ?? prev?.created,
+        output: record.output_tokens ?? prev?.output
+      });
     }
   } catch { return blank; }
 
   const stats = { ...blank, children: [...children] };
-  for (const r of records.values()) {
-    if (![r.input_tokens, r.cache_read_tokens, r.cache_read_input_tokens,
-      r.output_tokens].some(v => v != null)) continue;
-    stats.input += num(r.input_tokens);
-    stats.cached += num(r.cache_read_tokens ?? r.cache_read_input_tokens);
-    stats.created += num(r.cache_creation_input_tokens);
-    stats.output += num(r.output_tokens);
+  for (const usage of records.values()) {
+    if (![usage.input, usage.cached, usage.created, usage.output].some(v => v != null)) continue;
+    stats.input += num(usage.input);
+    stats.cached += num(usage.cached);
+    stats.created += num(usage.created);
+    stats.output += num(usage.output);
     stats.calls++;
   }
   try {
     fs.mkdirSync(CACHE_ROOT, { recursive: true });
     const tmp = `${cacheFile}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify({
-      v: 2, file, size: stat.size, mtime: stat.mtimeMs,
+      v: CACHE_VERSION, file, size: stat.size, mtime: stat.mtimeMs,
       ctime: stat.ctimeMs, stats
     }));
     try { fs.renameSync(tmp, cacheFile); }
@@ -176,7 +177,7 @@ function sessionTree(payload) {
   if (!UUID.test(String(rootId))) return null;
   const { resolve } = createResolver(payload);
   const seen = new Set();
-  const totals = { input: 0, cached: 0, created: 0, output: 0, calls: 0, childCount: 0, available: 0 };
+  const totals = { input: 0, cached: 0, created: 0, output: 0, calls: 0, childCount: 0 };
   const pending = [rootId];
   while (pending.length && seen.size < MAX_AGENTS + 1) {
     const id = pending.pop();
@@ -185,7 +186,6 @@ function sessionTree(payload) {
     const dir = resolve(id);
     if (!dir) continue;
     const stats = readStats(dir);
-    if (transcriptOf(dir)) totals.available++;
     for (const key of ['input', 'cached', 'created', 'output', 'calls']) {
       totals[key] += stats[key];
     }
@@ -223,22 +223,23 @@ function render(s) {
     : `${DIM}CTX${RESET} N/A`;
 
   const latest = cw.current_usage;
-  let last = 'LAST N/A';
+  let lastHit = 'N/A';
   if (latest) {
     const prompt = num(latest.input_tokens) + num(latest.cache_read_input_tokens) +
       num(latest.cache_creation_input_tokens);
-    if (prompt > 0) last = `LAST ${(num(latest.cache_read_input_tokens) / prompt * 100).toFixed(1)}%`;
+    if (prompt > 0) lastHit = `${(num(latest.cache_read_input_tokens) / prompt * 100).toFixed(1)}%`;
   }
 
-  let input = 'N/A', output = 'N/A', session = 'SESSION N/A';
-  if (tree && tree.available) {
+  let input = 'N/A', output = 'N/A', sessionHit = 'N/A';
+  if (tree?.calls) {
     // Native transcript input_tokens excludes cache reads.
     const prompt = tree.input + tree.cached + tree.created;
     input = fmt(prompt);
     output = fmt(tree.output);
-    if (prompt > 0) session = `SESSION ${(tree.cached / prompt * 100).toFixed(1)}%`;
+    if (prompt > 0) sessionHit = `${(tree.cached / prompt * 100).toFixed(1)}%`;
   }
-  const line3 = `${DIM}IN ${input} | OUT ${output}${RESET} | ${last} | ${CYAN}${session}${RESET}`;
+  const tokens = `${DIM}IN ${input} | OUT ${output}${RESET}`;
+  const cacheHit = `${CYAN}CACHE HIT${RESET}  Last request ${lastHit} | Session ${sessionHit}`;
 
   const buckets = Object.entries(s.quota || {}).map(([key, q]) => {
     if (!q) return null;
@@ -247,8 +248,8 @@ function render(s) {
     if (q.remaining_amount != null) return `${key}: ${fmt(q.remaining_amount)} left`;
     return null;
   }).filter(Boolean);
-  const line4 = buckets.length ? `${DIM}QUOTA${RESET} ${buckets.join(' | ')}` : null;
-  return [line1, line2, line3, line4].filter(Boolean).join('\n');
+  const quota = buckets.length ? `${DIM}QUOTA${RESET} ${buckets.join(' | ')}` : null;
+  return [line1, line2, tokens, cacheHit, quota].filter(Boolean).join('\n');
 }
 
 let input = '';

@@ -1,9 +1,8 @@
-// Register this plugin's local-only statusline at the first AGY SessionStart.
+// Configure the AGY statusline command in the user's settings.
 // An existing foreign statusline is never replaced unless --force is passed.
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { pathToFileURL } = require('node:url');
 
 const pluginScript = path.join(__dirname, 'statusline.js');
 const configFile = path.join(
@@ -11,25 +10,37 @@ const configFile = path.join(
   'antigravity-cli', 'settings.json'
 );
 
+// Give cmd.exe only a fixed loader and a path argument containing shell-safe characters.
+const windowsLoader = [
+  'import { pathToFileURL } from "node:url";',
+  'const file = Buffer.from(process.argv[1], "base64url").toString("utf8");',
+  'await import(pathToFileURL(file));'
+].join('\n');
+const windowsCommand = 'node --import=data:text/javascript;base64,' +
+  Buffer.from(windowsLoader).toString('base64') + ' -e 0 -- ';
+const pluginScriptPath =
+  /(?:^|[\\/])(?:copilot-api-statusline|copilot-api[\\/]plugin[\\/]agy[\\/]statusline)[\\/]scripts[\\/]statusline\.js$/i;
+
 function quotePosix(value) {
   return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 
 function makeCommand(file = pluginScript, platform = process.platform, node = process.execPath) {
   if (platform === 'win32') {
-    // AGY uses cmd /c on Windows. Avoid nested quotes when paths contain spaces.
-    const full = path.resolve(file);
-    return full.includes(' ')
-      ? 'node --import ' + pathToFileURL(full).href + ' -e 0'
-      : 'node ' + full;
+    return windowsCommand + Buffer.from(path.win32.resolve(file)).toString('base64url');
   }
-  return quotePosix(node) + ' ' + quotePosix(path.resolve(file));
+  return quotePosix(node) + ' ' + quotePosix(path.posix.resolve(file));
 }
 
 function isOurs(command) {
-  return typeof command === 'string' &&
-    /(?:^|[\\/])copilot-api-statusline[\\/]scripts[\\/]statusline\.js\b/i
-      .test(command.replace(/%20/g, ' '));
+  if (typeof command !== 'string') return false;
+  if (command.startsWith(windowsCommand)) {
+    const argument = command.slice(windowsCommand.length);
+    return /^[A-Za-z0-9_-]+$/.test(argument) &&
+      pluginScriptPath.test(Buffer.from(argument, 'base64url').toString('utf8'));
+  }
+  // Match commands written by the earlier POSIX and Windows installers.
+  return pluginScriptPath.test(command.trimEnd().replace(/(?: -e 0|['"])$/, ''));
 }
 
 function configure(file = configFile, command = makeCommand(), force = false) {
@@ -51,10 +62,10 @@ function configure(file = configFile, command = makeCommand(), force = false) {
     if (existing.enabled === false) return { status: 'skipped-disabled' };
     // An empty command is an unconfigured placeholder, not a custom statusline.
     if (typeof existing.command === 'string' && existing.command.trim()) {
-      if (!isOurs(existing.command)) return { status: 'skipped-existing' };
       if (existing.command === command && existing.type === 'command') {
         return { status: 'unchanged' };
       }
+      if (!isOurs(existing.command)) return { status: 'skipped-existing' };
     }
   }
 
@@ -79,22 +90,16 @@ function configure(file = configFile, command = makeCommand(), force = false) {
 }
 
 if (require.main === module) {
-  const hook = process.argv.includes('--hook');
   try {
-    const result = configure(configFile, makeCommand(), process.argv.includes('--force'));
-    if (hook) {
-      // SessionStart hooks must emit a JSON object, not model-facing text.
-      process.stdout.write('{}\n');
-    } else {
-      console.log(result.status + ': ' + configFile);
+    const args = process.argv.slice(2);
+    if (args.some(arg => arg !== '--force')) {
+      throw new Error('Usage: node ./scripts/install.js [--force]');
     }
+    const result = configure(configFile, makeCommand(), args.includes('--force'));
+    console.log(result.status + ': ' + configFile);
   } catch (err) {
-    if (hook) {
-      process.stdout.write('{}\n');
-    } else {
-      console.error(err.message);
-      process.exitCode = 1;
-    }
+    console.error(err.message);
+    process.exitCode = 1;
   }
 }
 

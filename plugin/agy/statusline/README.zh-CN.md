@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-这是放在 [copilot-api](https://github.com/caozhiyuan/copilot-api) 仓库中的独立 `agy` 状态栏插件。**不需要 Skill**，不用运行 copilot-api 网关，也不提供 AGY 模型代理；只使用 CLI 提供的 Statusline JSON 和本地会话日志，不读取 OAuth/CSRF，不调用内部 ConnectRPC。
+这是 [copilot-api](https://github.com/caozhiyuan/copilot-api) 仓库中的独立 `agy` 状态栏插件，数据来自 CLI 提供的状态信息和本地会话日志。
 
 支持 **Windows、macOS、Linux**，要求 Node.js 20+，无需安装 npm 依赖。
 
@@ -15,11 +15,9 @@ agy plugin install https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/agy
 agy plugin list
 ```
 
-### 首次启动直接显示（推荐）
+### 首次启动直接显示
 
-`agy plugin install` 只安装插件文件；`SessionStart` 要等新会话开始才执行。**如果只安装插件就立刻打开 AGY，第一次进入时状态栏可能还未激活，需要发一条消息让 Hook 写入设置，再重启才显示。**
-
-为了避免“先输入 hi，再重启”的步骤，请在**普通终端（不要在 AGY 内）**安装插件后、**首次运行 `agy` 前**，额外运行一次安装脚本：
+安装插件后，在打开 AGY 之前从普通终端运行安装脚本。
 
 **Windows PowerShell：**
 
@@ -35,9 +33,7 @@ node "$HOME/.gemini/config/plugins/copilot-api-statusline/scripts/install.js"
 agy
 ```
 
-脚本只在尚未设置有效状态栏命令时写入 `~/.gemini/antigravity-cli/settings.json`；如果已有其他非空自定义命令，则会显示 `skipped-existing` 并保留原配置。确实想覆盖时，可在安装脚本末尾加 `--force`。上述插件路径是 AGY 默认的全局插件安装位置；其他安装位置可通过 `agy plugin list --json` 查找。
-
-如果 AGY **已经打开**，仅修改磁盘上的 `settings.json` 不一定会让当前界面立即启用状态栏。你可以重启 AGY；或者把已配置的 `statusLine.command` 作为参数输入 AGY 内置的 `/statusline <command>`，AGY 会立即加载状态栏。
+上面的路径是 AGY 默认的全局安装位置。用 `agy plugin list --json` 可以查看实际插件路径。
 
 AGY 新版本支持从 GitHub 仓库**子目录**安装插件。如果你的 AGY 版本无法正确解析 GitHub 子目录地址，请使用下面的本地安装方式。
 
@@ -58,34 +54,27 @@ agy plugin validate https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/ag
 
 ## 启用方式
 
-**推荐流程：** 安装插件后、打开 AGY 前执行上面的 `install.js`，首次启动就可以使用自定义状态栏，不需要先输入 `hi`。
-
-**备选自动配置：** 如果跳过手动安装脚本，插件的 `SessionStart` Hook 会在创建第一条新对话时尝试写入 `statusLine.command`。但本次 AGY 进程可能已经完成了状态栏初始化，因此需要重新启动 AGY，或用内置的 `/statusline <command>` 立即重新配置。
-
-状态栏显示模型、Context、Token、缓存命中率、子 Agent 数量以及 CLI 原生配额（若有）。整个插件**不需要 Skill**，也不需要启动 copilot-api 网关。
+在 AGY 中执行 `/install-statusline` 配置状态栏，然后重启 AGY。也可以把保存的 `statusLine.command` 传给内置的 `/statusline <command>`，在当前会话加载。
 
 ### 已经配置其他 Statusline？
 
-安装插件不会覆盖已有**非空命令**的状态栏；若 `statusLine.command` 是空字符串或只有空格（例如 `{ "type": "", "command": "", "enabled": true }`），会自动完成配置。明确设置 `enabled: false` 的状态栏不会被自动启用。要明确切换到本插件，可在本地克隆的仓库目录外执行：
+安装脚本会保留已有的自定义命令和明确禁用的状态栏（`enabled: false`）。如果 `statusLine.command` 是空字符串或只有空白，则会自动配置。
+
+要切换到本插件，先用 `agy plugin list --json` 找到已安装的插件目录，进入该目录后执行以下命令。
 
 ```sh
-node ./copilot-api/plugin/agy/statusline/scripts/install.js --force
+node ./scripts/install.js --force
 ```
 
-也可以在已安装插件目录中运行 `scripts/install.js --force`。通过下面的命令查看实际安装路径：
-
-```sh
-agy plugin list --json
-```
-
-Windows 路径含空格时，给 JS 文件的绝对路径加双引号。安装脚本保留其他设置，只修改 `statusLine`；`--force` 仅在你确实要替换旧状态栏时使用。
+本地开发时，也可以从检出的仓库执行安装脚本。状态栏会使用该仓库内的脚本路径，使用期间请保留该目录。
 
 ## 显示效果
 
 ```text
 🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND
 CTX [##------------] 14.2% (149K/1.0M)
-IN 2.4M | OUT 161K | LAST 96.2% | SESSION 93.8%
+IN 2.4M | OUT 161K
+CACHE HIT  Last request 96.2% | Session 93.8%
 QUOTA gemini-weekly: 94%
 ```
 
@@ -97,11 +86,11 @@ QUOTA gemini-weekly: 94%
 | `N FOUND` | 从本地日志和父子元数据中发现的子 Agent 会话 ID 数量，包含嵌套子 Agent |
 | `CTX` | 主 Agent 的上下文使用率，**不是**自动压缩阈值 |
 | `IN / OUT` | 主 Agent 及可发现子 Agent 的日志 Token 累计 |
-| `LAST` | 主 Agent 最近一次请求的缓存命中率 |
-| `SESSION` | 当前会话及嵌套子 Agent 的累计缓存命中率（根据本地日志估算） |
+| `CACHE HIT` · `Last request` | 主 Agent 最近一次请求的缓存命中率 |
+| `CACHE HIT` · `Session` | 当前会话及嵌套子 Agent 的累计缓存命中率（根据本地日志估算） |
 | `QUOTA` | CLI 原生传入的配额；不单独请求配额 API |
 
-`SESSION`、`FOUND` 依赖当前 AGY 版本实际写出的会话文件。日志缺失或延迟时，累计结果可能不完整；找不到日志会显示 `N/A`，不会用假数据替代。已发现的子 Agent 不代表它一定有可计入的 Token 数据。
+会话缓存统计和 `FOUND` 取决于 AGY 写出的日志和元数据。等日志中出现用量记录后，累计 Token 才会从 `N/A` 变为数字。累计值包含已有用量记录的子会话。
 
 ## 隐私与数据来源
 
@@ -119,14 +108,14 @@ agy plugin enable copilot-api-statusline
 agy plugin uninstall copilot-api-statusline
 ```
 
-升级时使用相同的 GitHub 子目录安装地址重新安装。如果升级后状态栏仍指向旧安装路径，可在新插件目录执行一次 `node scripts/install.js --force`。
+升级时从同一个 GitHub 子目录重新安装，再运行 `/install-statusline` 刷新保存的状态栏命令。也可以从终端运行安装脚本刷新。
 
 **卸载插件不会自动删除用户的 `statusLine` 设置。** 请在 AGY 中执行 `/statusline delete`，或从 `~/.gemini/antigravity-cli/settings.json` 中仅删除 `statusLine` 字段，恢复默认状态栏。
 
 ## 可选路径
 
-- `GEMINI_HOME`：覆盖默认的 `~/.gemini` 目录。
-- `ANTIGRAVITY_CLI_HOME`：覆盖 CLI 数据目录。
+- `GEMINI_HOME` 用来指定原 `~/.gemini` 目录。安装器在该目录下写入 `antigravity-cli/settings.json`。
+- `ANTIGRAVITY_CLI_HOME` 用来指定状态栏读取 `brain/` 日志和写入 `statusline-cache/` 缓存的上级目录。
 - `ANTIGRAVITY_BRAIN_DIR`：覆盖会话日志根目录。
 - `ANTIGRAVITY_STATUSLINE_CACHE`：覆盖本地数字统计缓存目录。
 
@@ -141,8 +130,8 @@ node --test plugin/agy/statusline/scripts/statusline.test.js
 agy plugin validate ./plugin/agy/statusline
 ```
 
-- **安装成功却没有变化**：升级或重新安装 v1.0.1，重启 AGY 并**开启新会话**，在 AGY 中执行 `/hooks` 检查 `statusline-setup` 的 `SessionStart` Hook 是否加载。空 `statusLine.command` 现在会自动配置；若原来有其他非空命令，仍需明确执行 `--force` 才会覆盖。
-- **`SESSION N/A`**：本地日志尚不存在，或当前 AGY 版本日志结构不同。
+- **找不到安装 Skill**。重新安装插件后，在 AGY 中执行 `/skills reload` 或重启 AGY。
+- **`Session N/A`**。本地日志可能还未写出，或暂时没有输入用量。可检查日志路径变量。
 - **GitHub 安装失败**：升级 AGY，或按上面的本地安装方式安装。
 - **完全没有状态栏**：检查 `node`、`agy plugin list --json`、`statusLine` 设置。
 - **插件校验失败**：运行 `agy plugin validate ./plugin/agy/statusline`，按报错排查。

@@ -13,16 +13,35 @@ function withTemp(fn) {
   try { return fn(dir); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
+function fixtureEnv(dir) {
+  return {
+    ...process.env,
+    GEMINI_HOME: path.join(dir, '.gemini'),
+    ANTIGRAVITY_CLI_HOME: '',
+    ANTIGRAVITY_BRAIN_DIR: '',
+    ANTIGRAVITY_STATUSLINE_CACHE: ''
+  };
+}
+
+function runStatusline(dir, payload) {
+  const result = spawnSync(process.execPath, [statuslineFile], {
+    input: JSON.stringify(payload), encoding: 'utf8', env: fixtureEnv(dir)
+  });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.replace(/\x1b\[[\d;]*m/g, '');
+}
+
 function writeTranscript(brain, id, records, child) {
   const dir = path.join(brain, id, '.system_generated');
   fs.mkdirSync(path.join(dir, 'logs'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'logs', 'transcript_full.jsonl'),
-    records.map(r => JSON.stringify(r)).join('\n') + '\n');
+  const file = path.join(dir, 'logs', 'transcript_full.jsonl');
+  fs.writeFileSync(file, records.map(r => JSON.stringify(r)).join('\n') + '\n');
   if (child) {
     fs.mkdirSync(path.join(dir, 'subagents'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'subagents', 'first.json'),
       JSON.stringify({ conversationId: child }));
   }
+  return file;
 }
 
 test('preserves unrelated settings and does not replace foreign statuslines', () => withTemp(dir => {
@@ -42,17 +61,68 @@ test('preserves unrelated settings and does not replace foreign statuslines', ()
 
 test('invalid settings are never overwritten', () => withTemp(dir => {
   const config = path.join(dir, 'settings.json');
-  fs.writeFileSync(config, '{broken json');
-  assert.equal(configure(config, 'node statusline.js', true).status, 'invalid-config');
-  assert.equal(fs.readFileSync(config, 'utf8'), '{broken json');
+  for (const invalid of ['{broken json', '[]', 'null']) {
+    fs.writeFileSync(config, invalid);
+    assert.equal(configure(config, 'node statusline.js', true).status, 'invalid-config');
+    assert.equal(fs.readFileSync(config, 'utf8'), invalid);
+  }
 }));
 
-test('cross-platform command shape', () => {
-  assert.match(makeCommand('/tmp/a folder/statusline.js', 'linux', '/usr/bin/node'), /'\/tmp\/a folder\/statusline\.js'/);
-  const win = makeCommand('/tmp/a folder/statusline.js', 'win32');
-  assert.match(win, /node --import file:\/\/\//);
-  assert.ok(!win.includes('"'));
+test('uses the target platform and encodes the Windows script path', () => {
+  assert.equal(makeCommand('/tmp/a folder/statusline.js', 'linux', '/usr/bin/node'),
+    "'/usr/bin/node' '/tmp/a folder/statusline.js'");
+  const file = 'C:\\a folder & (100%)\\copilot-api-statusline\\scripts\\statusline.js';
+  const command = makeCommand(file, 'win32');
+  const argument = command.split(' ').at(-1);
+  assert.match(argument, /^[A-Za-z0-9_-]+$/);
+  assert.equal(Buffer.from(argument, 'base64url').toString('utf8'), file);
+  assert.equal(isOurs(command), true);
+  assert.equal(isOurs(command + ' extra-argument'), false);
 });
+
+test('runs the generated command in a path with spaces and shell characters', () => withTemp(dir => {
+  const script = path.join(dir, '状态栏 & team (100%)', 'statusline.js');
+  fs.mkdirSync(path.dirname(script), { recursive: true });
+  fs.copyFileSync(statuslineFile, script);
+  const result = spawnSync(makeCommand(script), {
+    shell: true, input: '{}', encoding: 'utf8', env: fixtureEnv(dir), timeout: 5000
+  });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.match(result.stdout, /Last request N\/A \| Session N\/A/);
+}));
+
+test('migrates commands from the previous installer and a source checkout', () => withTemp(dir => {
+  const config = path.join(dir, 'settings.json');
+  const command = makeCommand('C:\\new\\copilot-api-statusline\\scripts\\statusline.js', 'win32');
+  const oldCommands = [
+    'node C:\\old\\copilot-api-statusline\\scripts\\statusline.js',
+    'node --import file:///C:/old%20folder/copilot-api-statusline/scripts/statusline.js -e 0',
+    makeCommand('/work/copilot-api/plugin/agy/statusline/scripts/statusline.js', 'linux', '/usr/bin/node'),
+    makeCommand('C:\\old\\copilot-api-statusline\\scripts\\statusline.js', 'win32')
+  ];
+  for (const oldCommand of oldCommands) {
+    fs.writeFileSync(config, JSON.stringify({ statusLine: { type: 'command', command: oldCommand } }));
+    assert.equal(configure(config, command).status, 'configured');
+    assert.equal(JSON.parse(fs.readFileSync(config, 'utf8')).statusLine.command, command);
+    assert.equal(configure(config, command).status, 'unchanged');
+  }
+}));
+
+test('runs the installer from the checkout with supported arguments', () => withTemp(dir => {
+  const install = path.join(__dirname, 'install.js');
+  const options = { encoding: 'utf8', env: fixtureEnv(dir) };
+  const config = path.join(options.env.GEMINI_HOME, 'antigravity-cli', 'settings.json');
+  const obsolete = spawnSync(process.execPath, [install, '--hook'], options);
+  assert.equal(obsolete.status, 1);
+  assert.equal(fs.existsSync(config), false);
+  const setup = spawnSync(process.execPath, [install, '--force'], options);
+  assert.equal(setup.status, 0, setup.stderr);
+  assert.match(setup.stdout, /^configured:/);
+  const repeated = spawnSync(process.execPath, [install], options);
+  assert.equal(repeated.status, 0, repeated.stderr);
+  assert.match(repeated.stdout, /^unchanged:/);
+  assert.equal(JSON.parse(fs.readFileSync(config, 'utf8')).statusLine.command, makeCommand());
+}));
 
 test('recursive nested subagents, token stats and deduplication', () => withTemp(dir => {
   const brain = path.join(dir, '.gemini', 'antigravity', 'brain');
@@ -82,26 +152,46 @@ test('recursive nested subagents, token stats and deduplication', () => withTemp
       current_usage: { input_tokens: 50, cache_read_input_tokens: 50 }
     }
   };
-  const result = spawnSync(process.execPath, [statuslineFile], {
-    input: JSON.stringify(payload), encoding: 'utf8',
-    env: { ...process.env, GEMINI_HOME: path.join(dir, '.gemini') }
-  });
-  assert.equal(result.status, 0, result.stderr);
-  const output = result.stdout.replace(/\x1b\[[\d;]*m/g, '');
+  const output = runStatusline(dir, payload);
   assert.match(output, /SUB 1 RUN \| 2 FOUND/);
-  assert.match(output, /LAST 50\.0%/);
-  assert.match(output, /SESSION 88\.4%/);
+  assert.match(output, /^CACHE HIT  Last request 50\.0% \| Session 88\.4%$/m);
   assert.match(output, /IN 1\.2K \| OUT 6/);
-  assert.equal(output.trim().split('\n').length, 3);
+  assert.equal(output.trim().split('\n').length, 4);
 }));
 
-test('missing transcript shows N/A rather than fabricated session cache', () => withTemp(dir => {
-  const result = spawnSync(process.execPath, [statuslineFile], {
-    input: JSON.stringify({ conversation_id: '11111111-1111-4111-8111-111111111111' }),
-    encoding: 'utf8', env: { ...process.env, GEMINI_HOME: path.join(dir, '.gemini') }
-  });
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /SESSION N\/A/);
+test('session totals stay unavailable until a transcript contains usage', () => withTemp(dir => {
+  const brain = path.join(dir, '.gemini', 'antigravity', 'brain');
+  const id = '11111111-1111-4111-8111-111111111111';
+  const payload = { conversation_id: id };
+  const missingUsage = /IN N\/A \| OUT N\/A\r?\nCACHE HIT  Last request N\/A \| Session N\/A/;
+  assert.match(runStatusline(dir, payload), missingUsage);
+  writeTranscript(brain, id, [{ type: 'PLANNER_RESPONSE', step_index: 0 }]);
+  assert.match(runStatusline(dir, payload), missingUsage);
+  writeTranscript(brain, id, [
+    { type: 'PLANNER_RESPONSE', step_index: 0, cache_creation_input_tokens: 1024 }
+  ]);
+  assert.match(runStatusline(dir, payload), /IN 1\.0K \| OUT 0\r?\nCACHE HIT  Last request N\/A \| Session 0\.0%/);
+}));
+
+test('preserves cache counts across aliases and rebuilds old cached results', () => withTemp(dir => {
+  const brain = path.join(dir, '.gemini', 'antigravity', 'brain');
+  const id = '11111111-1111-4111-8111-111111111111';
+  const file = writeTranscript(brain, id, [
+    { type: 'PLANNER_RESPONSE', step_index: 0, input_tokens: 100, cache_read_tokens: 400 },
+    { type: 'PLANNER_RESPONSE', step_index: 0, cache_read_input_tokens: 900 },
+    { type: 'PLANNER_RESPONSE', step_index: 0, cache_read_input_tokens: null, output_tokens: 12 }
+  ]);
+  const stat = fs.statSync(file);
+  const cache = path.join(dir, '.gemini', 'antigravity-cli', 'statusline-cache');
+  fs.mkdirSync(cache, { recursive: true });
+  fs.writeFileSync(path.join(cache, id + '.json'), JSON.stringify({
+    v: 2, file, size: stat.size, mtime: stat.mtimeMs, ctime: stat.ctimeMs,
+    stats: { input: 100, cached: 400, created: 0, output: 12, calls: 1, children: [] }
+  }));
+  const payload = { conversation_id: id };
+  const output = runStatusline(dir, payload);
+  assert.match(output, /IN 1\.0K \| OUT 12\r?\nCACHE HIT  Last request N\/A \| Session 90\.0%/);
+  assert.equal(runStatusline(dir, payload), output);
 }));
 
 test('empty statusLine placeholders are auto-configured without --force', () => withTemp(dir => {
