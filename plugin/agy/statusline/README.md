@@ -45,7 +45,7 @@ This uses a native AGY lifecycle hook, **not a Skill**. There is no `/copilot-ap
 
 ### Already using another statusline?
 
-The plugin intentionally **does not overwrite** an existing statusline. If the installation succeeds but the old footer remains, run the installer's explicit override from a checked-out repository:
+The plugin intentionally **does not overwrite** an existing statusline with a non-empty command. A placeholder with an empty or whitespace-only `statusLine.command` (for example, `{ "type": "", "command": "", "enabled": true }`) is automatically configured. An explicitly disabled statusline (`enabled: false`) is preserved. If the installation succeeds but the old footer remains, run the installer's explicit override from a checked-out repository:
 
 ```sh
 node ./copilot-api/plugin/agy/statusline/scripts/install.js --force
@@ -122,7 +122,7 @@ node --test plugin/agy/statusline/scripts/statusline.test.js
 agy plugin validate ./plugin/agy/statusline
 ```
 
-- **Nothing changes after installation**: restart AGY and open a new conversation. If you already configured a custom statusline, use the manual `--force` override above.
+- **Nothing changes after installation**: upgrade/reinstall plugin v1.0.1, restart AGY, and start a **new conversation**. Use `/hooks` to confirm the `statusline-setup` SessionStart hook loaded. Empty `statusLine.command` placeholders are now auto-configured. A non-empty custom command is deliberately preserved; use the manual `--force` override above only if you want it replaced.
 - **`SESSION N/A`**: local transcripts were not found or have not yet been written. Check the AGY version and optional log path variables.
 - **Plugin fails to install from GitHub**: upgrade AGY and try the local-directory fallback, which does not depend on GitHub URL branch/subpath resolution.
 - **No footer at all**: verify that `node` works in the environment running AGY, inspect `agy plugin list --json`, and check the `statusLine` setting.

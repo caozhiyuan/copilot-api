@@ -103,3 +103,32 @@ test('missing transcript shows N/A rather than fabricated session cache', () => 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /SESSION N\/A/);
 }));
+
+test('empty statusLine placeholders are auto-configured without --force', () => withTemp(dir => {
+  const config = path.join(dir, 'settings.json');
+  const command = '/usr/bin/node /some/copilot-api-statusline/scripts/statusline.js';
+  for (const existing of [
+    { type: '', command: '', enabled: true },
+    { type: 'command', command: '  ', enabled: true },
+    { type: '', enabled: true }
+  ]) {
+    fs.writeFileSync(config, JSON.stringify({
+      altScreenMode: 'always', trustedWorkspaces: ['D:\\bud\\copilot-api'],
+      statusLine: existing
+    }));
+    assert.equal(configure(config, command).status, 'configured');
+    const updated = JSON.parse(fs.readFileSync(config, 'utf8'));
+    assert.equal(updated.statusLine.type, 'command');
+    assert.equal(updated.statusLine.command, command);
+    assert.equal(updated.statusLine.enabled, true);
+    assert.equal(updated.altScreenMode, 'always');
+    assert.deepEqual(updated.trustedWorkspaces, ['D:\\bud\\copilot-api']);
+  }
+}));
+
+test('explicitly disabled statusLine is preserved unless forced', () => withTemp(dir => {
+  const config = path.join(dir, 'settings.json');
+  fs.writeFileSync(config, JSON.stringify({ statusLine: { command: '', enabled: false } }));
+  assert.equal(configure(config, 'node statusline.js').status, 'skipped-disabled');
+  assert.equal(configure(config, 'node statusline.js', true).status, 'configured');
+}));

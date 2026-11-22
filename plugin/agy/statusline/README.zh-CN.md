@@ -43,7 +43,7 @@ agy plugin validate https://github.com/caozhiyuan/copilot-api/tree/dev/plugin/ag
 
 ### 已经配置其他 Statusline？
 
-安装插件不会覆盖已有状态栏。要明确切换到本插件，可在本地克隆的仓库目录外执行：
+安装插件不会覆盖已有**非空命令**的状态栏；若 `statusLine.command` 是空字符串或只有空格（例如 `{ "type": "", "command": "", "enabled": true }`），会自动完成配置。明确设置 `enabled: false` 的状态栏不会被自动启用。要明确切换到本插件，可在本地克隆的仓库目录外执行：
 
 ```sh
 node ./copilot-api/plugin/agy/statusline/scripts/install.js --force
@@ -118,7 +118,7 @@ node --test plugin/agy/statusline/scripts/statusline.test.js
 agy plugin validate ./plugin/agy/statusline
 ```
 
-- **安装成功却没有变化**：重启 AGY、开启新会话；已使用其他自定义状态栏则需要手动 `--force`。
+- **安装成功却没有变化**：升级或重新安装 v1.0.1，重启 AGY 并**开启新会话**，在 AGY 中执行 `/hooks` 检查 `statusline-setup` 的 `SessionStart` Hook 是否加载。空 `statusLine.command` 现在会自动配置；若原来有其他非空命令，仍需明确执行 `--force` 才会覆盖。
 - **`SESSION N/A`**：本地日志尚不存在，或当前 AGY 版本日志结构不同。
 - **GitHub 安装失败**：升级 AGY，或按上面的本地安装方式安装。
 - **完全没有状态栏**：检查 `node`、`agy plugin list --json`、`statusLine` 设置。
