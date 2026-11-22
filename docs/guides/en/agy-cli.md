@@ -4,6 +4,12 @@
 
 Strict AGY model access controls currently prevent copilot-api from proxying these models. Use Antigravity CLI (`agy`) directly from your project directory. For complex coding tasks or full-repository reviews, try `Gemini 4 Neon (XHigh)` when it is available in `/model`. [Install AGY CLI](https://antigravity.google/docs/getting-started?tab=cli) · [Model selection](https://antigravity.google/docs/models)
 
+## Disable telemetry
+
+With a personal Google Account, run `/config` in AGY and set **Enable Telemetry** to `off`. AGY saves this preference to your account. [AGY settings reference](https://antigravity.google/docs/settings?tab=cli)
+
+When telemetry is enabled, Google can use your interactions to improve Antigravity and its models. This data can include code you share in a conversation. [Antigravity terms of service](https://antigravity.google/terms)
+
 ## Cross-platform settings
 
 Merge these settings into your existing `~/.gemini/antigravity-cli/settings.json`. On Windows, macOS, and Linux, `~` refers to your user home directory. [AGY settings reference](https://antigravity.google/docs/settings?tab=cli)

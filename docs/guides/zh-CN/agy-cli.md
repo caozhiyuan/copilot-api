@@ -4,6 +4,12 @@
 
 AGY 对模型访问的管控较严，copilot-api 目前无法代理 AGY 模型。推荐在项目目录直接运行 Antigravity CLI（`agy`）。复杂编码或全仓审查可以优先试 `Gemini 4 Neon (XHigh)`，模型可用时在 `/model` 中选择。见 [AGY CLI 安装指南](https://antigravity.google/docs/getting-started?tab=cli)和[模型说明](https://antigravity.google/docs/models)。
 
+## 关闭遥测
+
+使用个人 Google 账号时，在 AGY 中运行 `/config`，将 **Enable Telemetry** 设为 `off`。这项设置保存在账号中。见 [AGY 配置说明](https://antigravity.google/docs/settings?tab=cli)。
+
+开启遥测后，Google 可以将会话交互用于改进 Antigravity 和相关模型。你在会话中提供的代码也可能包含在这些数据中。见 [Antigravity 服务条款](https://antigravity.google/terms)。
+
 ## 跨平台参考配置
 
 把下面的配置项合并到现有的 `~/.gemini/antigravity-cli/settings.json`。Windows、macOS 和 Linux 上的 `~` 都指当前用户的主目录。见 [AGY 配置说明](https://antigravity.google/docs/settings?tab=cli)。
