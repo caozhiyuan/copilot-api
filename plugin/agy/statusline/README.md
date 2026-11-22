@@ -63,7 +63,7 @@ On Windows, put double quotes around a script's absolute path if it contains spa
 
 ```text
 🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND
-CTX ███░░░░░░░░░░░ 14.2% (149K/1.0M)
+CTX [##------------] 14.2% (149K/1.0M)
 IN 2.4M | OUT 161K | LAST 96.2% | SESSION 93.8%
 QUOTA gemini-weekly: 94%
 ```
