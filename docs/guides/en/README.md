@@ -2,7 +2,7 @@
 
 [Home](../../../README.md) · [简体中文](../zh-CN/README.md)
 
-Start with the [quick start](../../../README.md#quick-start), then choose the guide for your client.
+To run the gateway, follow the [quick start](../../../README.md#quick-start).
 
 | Guide | Contents |
 | --- | --- |
@@ -10,6 +10,7 @@ Start with the [quick start](../../../README.md#quick-start), then choose the gu
 | [Claude Code](claude-code.md) | settings.json, gateway model discovery, and model mappings |
 | [OpenCode](opencode.md) | v2 Responses plugin, automatic model discovery, and v1 Anthropic SDK setup |
 | [Codex](codex.md) | config.toml, `GITHUB_COPILOT_API_KEY` setup, model catalog, and auto-review mapping |
+| [AGY CLI](agy-cli.md) | Recommended model, cross-platform settings, and [AGY CLI Statusline](agy-cli.md#agy-cli-statusline) |
 | [DeepSeek Harness](dsh.md) | Install `dsh-copilot-api` and connect it to the local gateway |
 | [Docker](docker.md) | Docker Compose, persistent storage, and networking |
 | [Desktop App](desktop.md) | Installation, accounts, and advanced settings |
