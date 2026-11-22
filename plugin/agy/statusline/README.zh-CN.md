@@ -61,7 +61,7 @@ Windows 路径含空格时，给 JS 文件的绝对路径加双引号。安装�
 
 ```text
 🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND
-CTX ███░░░░░░░░░░░ 14.2% (149K/1.0M)
+CTX [##------------] 14.2% (149K/1.0M)
 IN 2.4M | OUT 161K | LAST 96.2% | SESSION 93.8%
 QUOTA gemini-weekly: 94%
 ```
