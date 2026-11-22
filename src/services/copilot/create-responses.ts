@@ -39,6 +39,7 @@ import {
 } from "~/services/responses-websocket"
 import { createContinuableResponsesWebSocketStream } from "~/services/responses-websocket-continuation"
 import {
+  createResponsesErrorServerSentEventChunk,
   createResponsesSafeStream,
   decodeResponsesWebSocketChunk,
   encodePoolKeyPart,
@@ -194,7 +195,7 @@ const createOversizedHttpResponses = async (
   payload: ResponsesPayload,
   headers: Record<string, string>,
   clientSignal?: AbortSignal,
-): Promise<ResponsesStream> => {
+): Promise<AsyncIterable<ResponsesStreamChunk>> => {
   const body = JSON.stringify(payload)
   const requestBytes = Buffer.byteLength(body)
   if (requestBytes > COPILOT_RESPONSES_HTTP_MAX_REQUEST_BYTES) {
@@ -207,12 +208,49 @@ const createOversizedHttpResponses = async (
   consola.info(
     `Responses request is ${(requestBytes / (1024 * 1024)).toFixed(1)} MiB, above the Copilot WebSocket limit; sending it over HTTP`,
   )
-  return (await createHttpResponses(
-    payload,
-    headers,
-    clientSignal,
-    body,
-  )) as ResponsesStream
+  try {
+    return (await createHttpResponses(
+      payload,
+      headers,
+      clientSignal,
+      body,
+    )) as ResponsesStream
+  } catch (error) {
+    if (!(error instanceof HTTPError)) throw error
+    // The client already received the stream's 200 status, so Copilot's error
+    // is reported as a stream error event instead of a generic failure.
+    return createCopilotHttpErrorStream(error.response)
+  }
+}
+
+const createCopilotHttpErrorStream = async function* (
+  response: Response,
+): AsyncGenerator<ResponsesStreamChunk, void, unknown> {
+  const text = await response.text()
+  const { code, message } = parseCopilotHttpError(text) ?? {
+    code: null,
+    message:
+      `Failed to create responses: HTTP ${response.status} ${text}`.trim(),
+  }
+  consola.warn("Copilot responses HTTP error:", { code, message })
+  yield createResponsesErrorServerSentEventChunk(message, code)
+}
+
+const parseCopilotHttpError = (
+  text: string,
+): { code: string | null; message: string } | null => {
+  try {
+    const { error } = JSON.parse(text) as {
+      error?: { code?: unknown; message?: unknown }
+    }
+    if (typeof error?.message !== "string") return null
+    return {
+      code: typeof error.code === "string" ? error.code : null,
+      message: error.message,
+    }
+  } catch {
+    return null
+  }
 }
 
 type ResponsesWebSocketPayload = ResponsesPayload & {
@@ -280,7 +318,7 @@ const createPooledResponsesWebSocketStream = (
   request: ResponsesWebSocketRequest,
   clientSignal: AbortSignal | undefined,
   continuationSession: string | undefined,
-  sendOverHttp: () => Promise<ResponsesStream>,
+  sendOverHttp: () => Promise<AsyncIterable<ResponsesStreamChunk>>,
 ): ResponsesStream =>
   createResponsesSafeStream(
     createClientPreflightStream(
@@ -305,7 +343,7 @@ const createPooledResponsesWebSocketStream = (
 // chunk is yielded, so the same request can still go over HTTP.
 const sendOverHttpWhenTooLarge = async function* (
   source: AsyncIterable<ResponsesStreamChunk>,
-  sendOverHttp: () => Promise<ResponsesStream>,
+  sendOverHttp: () => Promise<AsyncIterable<ResponsesStreamChunk>>,
 ): AsyncGenerator<ResponsesStreamChunk, void, unknown> {
   try {
     yield* source

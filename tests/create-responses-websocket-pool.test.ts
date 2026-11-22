@@ -1843,21 +1843,25 @@ test("Responses websocket applies maxMessageBytes to the prepared payload", asyn
   ])
 })
 
-const mockCopilotHttpResponses = () => {
+const createCompletedHttpResponse = (model: string): Response => {
+  const completed = {
+    response: createResponsesResult(model, "resp-http"),
+    sequence_number: 1,
+    type: "response.completed",
+  }
+  return new Response(
+    `event: response.completed\ndata: ${JSON.stringify(completed)}\n\n`,
+    { headers: { "content-type": "text/event-stream" } },
+  )
+}
+
+const mockCopilotHttpResponses = (
+  createResponse: (model: string) => Response = createCompletedHttpResponse,
+) => {
   const originalFetch = globalThis.fetch
   const fetchMock = mock((_url: string | URL | Request, init?: RequestInit) => {
     const { model } = JSON.parse(init?.body as string) as { model: string }
-    const completed = {
-      response: createResponsesResult(model, "resp-http"),
-      sequence_number: 1,
-      type: "response.completed",
-    }
-    return Promise.resolve(
-      new Response(
-        `event: response.completed\ndata: ${JSON.stringify(completed)}\n\n`,
-        { headers: { "content-type": "text/event-stream" } },
-      ),
-    )
+    return Promise.resolve(createResponse(model))
   })
   globalThis.fetch = fetchMock as unknown as typeof fetch
   return {
@@ -1902,6 +1906,56 @@ test("Copilot sends a request above the 16 MiB WebSocket limit over HTTP", async
     restore()
   }
 })
+
+test.each([
+  {
+    body: JSON.stringify({
+      error: {
+        code: "invalid_request_body",
+        message:
+          "Exceeded maximum number of images (50) allowed in the request.",
+      },
+    }),
+    expected: {
+      code: "invalid_request_body",
+      message: "Exceeded maximum number of images (50) allowed in the request.",
+    },
+    status: 400,
+  },
+  {
+    body: "failed to parse request",
+    expected: {
+      code: null,
+      message: "Failed to create responses: HTTP 413 failed to parse request",
+    },
+    status: 413,
+  },
+])(
+  "Copilot reports the HTTP $status error from the oversized request fallback",
+  async ({ body, expected, status }) => {
+    const { restore } = mockCopilotHttpResponses(
+      () =>
+        new Response(body, {
+          headers: { "content-type": "text/plain; charset=utf-8" },
+          status,
+        }),
+    )
+    try {
+      const chunks = await createCopilotWebSocketResponses(
+        "x".repeat(COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES),
+      )
+
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0]?.event).toBe("error")
+      expect(JSON.parse(chunks[0]?.data ?? "{}")).toMatchObject({
+        ...expected,
+        type: "error",
+      })
+    } finally {
+      restore()
+    }
+  },
+)
 
 test("Copilot fails fast with context_length_exceeded above the 32 MiB HTTP limit", async () => {
   const { fetchMock, restore } = mockCopilotHttpResponses()
