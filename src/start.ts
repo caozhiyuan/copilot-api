@@ -2,6 +2,7 @@
 
 import { defineCommand } from "citty"
 import consola from "consola"
+import { setTimeout as delay } from "node:timers/promises"
 import { serve, type ServerHandler } from "srvx"
 
 import { runProviderSetup } from "./auth"
@@ -28,7 +29,10 @@ import {
 } from "./lib/http/server-host"
 import { state } from "./lib/state"
 import { loadGatewayPlugins } from "./lib/plugins/gateway-plugins"
-import { registerProcessCleanup } from "./lib/process-cleanup"
+import {
+  registerProcessCleanup,
+  registerProcessShutdownDrain,
+} from "./lib/process-cleanup"
 
 interface RunServerOptions {
   host: string
@@ -192,13 +196,30 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   }
   startVideoUsageSettlement(settlePendingVideoUsage)
 
-  serve({
+  const listener = serve({
     fetch: server.fetch as ServerHandler,
     hostname: binding.hostname,
     port: options.port,
+    // The process cleanup runtime drains the listener before closing storage.
+    gracefulShutdown: false,
     bun: {
       idleTimeout: 0,
     },
+  })
+  registerProcessShutdownDrain(async () => {
+    const timeoutMs =
+      (Number.parseInt(process.env.SERVER_SHUTDOWN_TIMEOUT ?? "", 10) || 5)
+      * 1000
+    const timer = new AbortController()
+    try {
+      const drained = await Promise.race([
+        listener.close().then(() => true),
+        delay(timeoutMs, false, { signal: timer.signal }),
+      ])
+      if (!drained) await listener.close(true)
+    } finally {
+      timer.abort()
+    }
   })
 }
 
