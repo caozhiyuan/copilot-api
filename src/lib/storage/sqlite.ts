@@ -144,7 +144,17 @@ export class SqliteDbStore {
   }
 
   getDb(): Promise<SqliteDatabase> {
-    this.dbPromise ??= this.open()
+    if (!this.dbPromise) {
+      const pending: Promise<SqliteDatabase> = this.open().catch(
+        (error: unknown) => {
+          if (this.dbPromise === pending) {
+            this.dbPromise = null
+          }
+          throw error
+        },
+      )
+      this.dbPromise = pending
+    }
     return this.dbPromise
   }
 
@@ -165,7 +175,16 @@ export class SqliteDbStore {
 
   private async open(): Promise<SqliteDatabase> {
     const db = await openSqliteDatabase(this.options.getPath())
-    this.options.initialize?.(db)
+    try {
+      this.options.initialize?.(db)
+    } catch (error) {
+      try {
+        db.close?.()
+      } catch {
+        // Preserve the original initialization error.
+      }
+      throw error
+    }
     return db
   }
 }

@@ -28,8 +28,8 @@ export function apiKeyUsageTable(apiKeyId?: string | null): string {
 }
 
 export function initializeTokenUsageDb(db: SqliteDatabase): void {
-  db.exec("PRAGMA journal_mode = WAL")
   db.exec("PRAGMA busy_timeout = 5000")
+  db.exec("PRAGMA journal_mode = WAL")
   db.exec(`
     CREATE TABLE IF NOT EXISTS token_usage_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
