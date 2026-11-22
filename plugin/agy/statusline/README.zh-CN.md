@@ -126,4 +126,4 @@ agy plugin validate ./plugin/agy/statusline
 
 Node.js 的模拟数据单元测试已提供，但**尚未完成各系统真实 AGY CLI 安装和真实日志格式验证**。
 
-相关：[PR #541](https://github.com/caozhiyuan/copilot-api/pull/541) · [AGY 插件文档](https://antigravity.google/docs/plugins?tab=cli) · [官方开发规范](https://antigravity.google/docs/build-plugins/)。
+相关：[AGY 插件文档](https://antigravity.google/docs/plugins?tab=cli) · [官方开发规范](https://antigravity.google/docs/build-plugins/)。
