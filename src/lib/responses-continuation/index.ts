@@ -188,6 +188,7 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
   const outputItems = new Map<number, OutputMarker>()
   let candidate: ContinuationState | null | undefined
   let interruptedTerminal = false
+  let terminalObserved = false
   const markOutput = (item: ContinuationItem): OutputMarker => ({
     anchor: getAnchor(item),
     textAnchor: getTextAnchor(item),
@@ -206,6 +207,7 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
         && event.type !== "response.incomplete"
       )
         return
+      terminalObserved = true
       const interrupted =
         event.type === "response.incomplete"
         && event.response?.status === "incomplete"
@@ -248,12 +250,14 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
         }
     },
     finish(): void {
-      if (
-        !connection.closed
-        && (interruptedTerminal || !clientSignal?.aborted)
-      ) {
-        if (candidate) states.set(connection, candidate)
-        else if (candidate === null) states.delete(connection)
+      if (connection.closed || !terminalObserved) return
+      // A finished response becomes the socket's latest one, and only the
+      // latest can be continued. Keep it as the parent only when the client
+      // received it; otherwise send full input next time.
+      if (candidate && (interruptedTerminal || !clientSignal?.aborted)) {
+        states.set(connection, candidate)
+      } else {
+        states.delete(connection)
       }
     },
   }
