@@ -73,7 +73,7 @@ Use the installer in a source checkout for local development. It registers the s
 ## Display
 
 ```text
-🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND
+🤖 Gemini 4 Argon (Medium)  WORKING  SUB 2 RUN | 5 FOUND | WORKFLOW AGENTS 8
 CTX [##------------] 14.2% (149K/1.0M)
 IN 2.4M | OUT 161K
 CACHE HIT  Last request 96.2% | Session 93.8%
@@ -85,19 +85,20 @@ The numbers above are illustrative.
 | Field | Meaning |
 | --- | --- |
 | `SUB N RUN` | Running subagents reported in the current AGY statusline JSON |
-| `N FOUND` | Distinct subagent conversation IDs found in local parent/child metadata and transcripts, including nested agents |
+| `N FOUND` | Distinct regular subagent conversations found in local metadata and transcripts, including nested agents |
+| `WORKFLOW AGENTS N` | Distinct Workflow Agent conversations found in local task logs and reports |
 | `CTX` | Main agent's native context usage; **not** an automatic compaction threshold |
-| `IN / OUT` | Aggregated transcript usage of the main agent and reachable nested subagents |
+| `IN / OUT` | Aggregated transcript usage of the main agent and discovered subagents and Workflow Agents |
 | `CACHE HIT` · `Last request` | Cache hit rate of the last main-agent model request |
-| `CACHE HIT` · `Session` | Cache hit rate across available logs for this conversation and its nested subagents |
+| `CACHE HIT` · `Session` | Cache hit rate across available logs for this conversation, including its subagents and Workflow Agents |
 | `QUOTA` | Quota fields already supplied by AGY's statusline payload; no extra quota/API polling |
 
-Session cache statistics and `FOUND` depend on the transcripts and metadata AGY writes, which can be absent, delayed, or version-dependent. Token totals show `N/A` until a transcript contains usage data. The total includes child sessions with available usage records.
+Counts update as AGY records child conversation IDs. A Workflow Agent contributes to totals once its transcript contains usage. Token totals show `N/A` until usage is available.
 
 ## Privacy and data flow
 
 - Statusline input: the JSON payload provided to the command by AGY.
-- Session totals: **read-only** access to local `transcript_full.jsonl` / `transcript.jsonl` files and locally discoverable child-agent metadata.
+- Session totals read local `transcript_full.jsonl` / `transcript.jsonl`, child-agent metadata, and the tail of local task logs.
 - Disk writes: small local JSON caches containing numeric counters and child conversation IDs, to avoid reparsing unchanged logs.
 - No Google internal API calls, credentials, network usage, or copilot-api gateway requests.
 
