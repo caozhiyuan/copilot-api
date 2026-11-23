@@ -116,7 +116,9 @@ These builds do not have Developer ID signing or notarization. The custom macOS 
 
 ### Bun detection and update metadata
 
-The app checks `PATH`, `BUN_INSTALL`, the user Bun installation directory, and common desktop installation locations. Install or upgrade Bun separately, then start or restart the service to detect it again.
+When the service runtime is set to Bun, set `COPILOT_API_BUN_DIR` to the absolute directory containing the native binary, `bun.exe` on Windows or `bun` on macOS and Linux. Restart the desktop app after setting the variable.
+
+If the configured directory is unset or its Bun is unavailable, the app checks `PATH`, `BUN_INSTALL`, the user Bun installation directory, and common desktop installation locations.
 
 Bun installed with `npm install -g bun` under nvm is also supported on Windows, macOS, and Linux. Detection checks the active `NVM_BIN` or `NVM_SYMLINK`, the configured npm global prefix, and installed Node versions under `NVM_DIR`/`NVM_HOME` or common default nvm directories (including XDG locations). Without an active version in the desktop environment, Node version directories are searched newest first for a supported Bun. On Windows, the app runs the npm package's native `bun.exe` directly.
 

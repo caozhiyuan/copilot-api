@@ -9,11 +9,6 @@ import type { BunRuntimeStatus } from '../src/types/ipc'
 const execFileAsync = promisify(execFile)
 
 const MINIMUM_BUN_VERSION = [1, 4, 4] as const
-const NVM2_REGISTRY_KEYS = [
-  'HKCU\\SOFTWARE\\Author Software\\Preferences\\nvm',
-  'HKLM\\SOFTWARE\\Policies\\Author Software\\nvm',
-] as const
-const NVM2_INSTALL_ROOT_VALUE = 'InstallRoot'
 
 export function isSupportedBunVersion(version: string): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:\+[\w.-]+)?$/.exec(version.trim())
@@ -34,78 +29,6 @@ interface BunDetectionOptions {
   getVersion?: (executable: string) => Promise<string>
   readDirectory?: (directory: string) => Promise<string[]>
   resolveDirectory?: (directory: string) => Promise<string>
-  readRegistryValue?: (key: string, name: string) => Promise<string | null>
-}
-
-export function parseWindowsRegistryValue(
-  stdout: string,
-  name: string,
-): string | null {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = new RegExp(
-    `^\\s*${escaped}\\s+REG_(?:EXPAND_)?SZ\\s+(.*)$`,
-    'im',
-  ).exec(stdout)
-  const raw = match?.[1]?.replace(/\r$/, '').trim()
-  return raw ? raw.replace(/^"(.*)"$/, '$1') : null
-}
-
-async function readWindowsRegistryValue(
-  key: string,
-  name: string,
-): Promise<string | null> {
-  const { stdout } = await execFileAsync(
-    'reg.exe',
-    ['query', key, '/v', name],
-    {
-      timeout: 2000,
-      killSignal: 'SIGKILL',
-      windowsHide: true,
-      maxBuffer: 8192,
-    },
-  )
-  return parseWindowsRegistryValue(stdout, name)
-}
-
-function expandWindowsEnvVars(value: string, env: NodeJS.ProcessEnv): string {
-  if (!value.includes('%')) return value
-  const lookup = new Map<string, string>()
-  for (const [key, val] of Object.entries(env)) {
-    if (typeof val === 'string') lookup.set(key.toUpperCase(), val)
-  }
-  return value.replace(/%([^%]+)%/g, (match, name: string) => {
-    return lookup.get(name.toUpperCase()) ?? match
-  })
-}
-
-async function getNvm2ConfiguredInstallRoots(
-  env: NodeJS.ProcessEnv,
-  readRegistryValue?: (key: string, name: string) => Promise<string | null>,
-): Promise<string[]> {
-  const reader =
-    readRegistryValue
-    ?? (process.platform === 'win32' && env === process.env ?
-      readWindowsRegistryValue
-    : undefined)
-  if (!reader) return []
-
-  const roots: string[] = []
-  for (const key of NVM2_REGISTRY_KEYS) {
-    try {
-      const raw = await reader(key, NVM2_INSTALL_ROOT_VALUE)
-      if (!raw) continue
-      const expanded = expandWindowsEnvVars(raw.trim(), env).replace(
-        /^"(.*)"$/,
-        '$1',
-      )
-      if (path.win32.isAbsolute(expanded)) {
-        roots.push(expanded)
-      }
-    } catch {
-      // Missing registry keys or inaccessible reg.exe must not prevent fallback.
-    }
-  }
-  return roots
 }
 
 async function getNvmBinDirectories({
@@ -113,12 +36,9 @@ async function getNvmBinDirectories({
   platform = process.platform,
   homeDir = os.homedir(),
   readDirectory = readdir,
-  readRegistryValue,
 }: BunDetectionOptions): Promise<string[]> {
   const windows = platform === 'win32'
   const paths = windows ? path.win32 : path.posix
-  const configuredInstallRoots =
-    windows ? await getNvm2ConfiguredInstallRoots(env, readRegistryValue) : []
   const roots =
     windows ?
       [
@@ -126,7 +46,6 @@ async function getNvmBinDirectories({
         env.NVM_HOME && paths.isAbsolute(env.NVM_HOME) ?
           paths.join(env.NVM_HOME, 'installs')
         : undefined,
-        ...configuredInstallRoots,
         paths.join(
           env.APPDATA ?? paths.join(homeDir, 'AppData', 'Roaming'),
           'nvm',
@@ -149,17 +68,9 @@ async function getNvmBinDirectories({
         paths.join(homeDir, '.nvm'),
         paths.join(homeDir, '.config', 'nvm'),
       ]
-  const uniqueRoots = [
-    ...new Map(
-      roots
-        .filter((root): root is string =>
-          Boolean(root && paths.isAbsolute(root)),
-        )
-        .map((root) => [windows ? root.toLowerCase() : root, root]),
-    ).values(),
-  ]
   const directories: string[] = []
-  for (const root of uniqueRoots) {
+  for (const root of new Set(roots)) {
+    if (!root || !paths.isAbsolute(root)) continue
     const versionsRoot = windows ? root : paths.join(root, 'versions', 'node')
     try {
       // GUI launches need not inherit nvm's shell initialization or active PATH.
@@ -177,12 +88,21 @@ async function getNvmBinDirectories({
   return directories
 }
 
+function isNvmWindowsShimDirectory(directory: string): boolean {
+  // The NVM2 shim starts the real Bun as a grandchild.
+  const normalized = path.win32.normalize(directory)
+  const parent = path.win32.dirname(normalized)
+  return (
+    path.win32.basename(normalized).toLowerCase() === '.shim'
+    && path.win32.basename(parent).toLowerCase() === 'nvm'
+  )
+}
+
 export async function getBunCandidates({
   env = process.env,
   platform = process.platform,
   homeDir = os.homedir(),
   readDirectory,
-  readRegistryValue,
 }: BunDetectionOptions = {}): Promise<string[]> {
   const windows = platform === 'win32'
   const paths = windows ? path.win32 : path.posix
@@ -196,13 +116,7 @@ export async function getBunCandidates({
   const candidates: string[] = []
   const addBinDirectory = (directory: string | undefined) => {
     if (!directory || !paths.isAbsolute(directory)) return
-    // nvm-windows 2's .shim/bun.exe is a proxy that starts Bun as a grandchild.
-    if (
-      windows
-      && paths.basename(directory).toLowerCase() === '.shim'
-      && paths.basename(paths.dirname(directory)).toLowerCase() === 'nvm'
-    )
-      return
+    if (windows && isNvmWindowsShimDirectory(directory)) return
     candidates.push(paths.join(directory, executable))
     if (windows) {
       // npm exposes bun.cmd here; execFile/spawn need the package's native exe.
@@ -250,7 +164,6 @@ export async function getBunCandidates({
     platform,
     homeDir,
     readDirectory,
-    readRegistryValue,
   })
   nvmDirectories.forEach(addBinDirectory)
   return [
@@ -261,6 +174,22 @@ export async function getBunCandidates({
       ]),
     ).values(),
   ]
+}
+
+async function* getBunRuntimeCandidates(
+  options: BunDetectionOptions,
+): AsyncGenerator<string, void, unknown> {
+  const env = options.env ?? process.env
+  const windows = (options.platform ?? process.platform) === 'win32'
+  const paths = windows ? path.win32 : path.posix
+  const directory = env.COPILOT_API_BUN_DIR?.trim().replace(/^"(.*)"$/, '$1')
+  if (directory && paths.isAbsolute(directory)) {
+    const executable = paths.join(directory, windows ? 'bun.exe' : 'bun')
+    if (!windows || !isNvmWindowsShimDirectory(paths.dirname(executable))) {
+      yield executable
+    }
+  }
+  yield* await getBunCandidates(options)
 }
 
 async function readBunVersion(executable: string): Promise<string> {
@@ -280,7 +209,7 @@ export async function detectBunRuntime(
   const resolveDirectory = options.resolveDirectory ?? realpath
   const windows = (options.platform ?? process.platform) === 'win32'
   let unsupported: BunRuntimeStatus | undefined
-  for (const executable of await getBunCandidates(options)) {
+  for await (const executable of getBunRuntimeCandidates(options)) {
     try {
       // In NVM's shim mode, .nodejs exposes the same proxy as .shim.
       if (windows && executable.toLowerCase().endsWith('\\.nodejs\\bun.exe')) {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, mock, test } from 'bun:test'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -7,7 +7,6 @@ import {
   detectBunRuntime,
   getBunCandidates,
   isSupportedBunVersion,
-  parseWindowsRegistryValue,
 } from '../electron/bun-runtime'
 import { normalizeSettings } from '../electron/settings-store'
 
@@ -92,7 +91,7 @@ describe('Bun runtime detection', () => {
     const checked: string[] = []
     const options = {
       env: {
-        Path: [junction, shimDirectory, 'D:\\tools\\.shim'].join(';'),
+        Path: [junction, shimDirectory + '\\.', 'D:\\tools\\.shim'].join(';'),
         NVM_SYMLINK: junction,
         LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
       },
@@ -137,120 +136,67 @@ describe('Bun runtime detection', () => {
     })
   })
 
-  test('parses Windows registry values for NVM2 InstallRoot', () => {
-    expect(
-      parseWindowsRegistryValue(
-        '\r\nHKEY_CURRENT_USER\\SOFTWARE\\Author Software\\Preferences\\nvm\r\n    InstallRoot    REG_SZ    D:\\Custom NVM\\installs\r\n',
-        'InstallRoot',
-      ),
-    ).toBe('D:\\Custom NVM\\installs')
-    expect(
-      parseWindowsRegistryValue(
-        '\r\nHKEY_CURRENT_USER\\SOFTWARE\\Author Software\\Preferences\\nvm\r\n    InstallRoot    REG_EXPAND_SZ    "%LOCALAPPDATA%\\custom-nvm\\installs"\r\n',
-        'InstallRoot',
-      ),
-    ).toBe('%LOCALAPPDATA%\\custom-nvm\\installs')
-    expect(parseWindowsRegistryValue('', 'InstallRoot')).toBeNull()
-  })
+  test.each([
+    ['win32', 'D:\\工具 目录\\Bun', 'C:\\tools', 'bun.exe'],
+    ['linux', '/custom bun/bin', '/usr/local/bin', 'bun'],
+  ] as const)(
+    'uses COPILOT_API_BUN_DIR before automatic discovery on %s',
+    async (platform, directory, pathDirectory, binary) => {
+      const paths = platform === 'win32' ? path.win32 : path.posix
+      const executable = paths.join(directory, binary)
+      const getVersion = mock(async (_executable: string) => '1.4.4')
+      const readDirectory = mock(async () => [])
 
-  test('detects real Bun in a configured NVM2 custom InstallRoot after skipping .nodejs shim', async () => {
-    const nvmRoot = 'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm'
-    const shimDirectory = path.win32.join(nvmRoot, '.shim')
-    const junction = path.win32.join(nvmRoot, '.nodejs')
-    const junctionBun = path.win32.join(junction, 'bun.exe')
-    const customRoot = 'D:\\Custom NVM\\installs'
-    const real = path.win32.join(
-      customRoot,
-      'v24.22.2',
-      'node_modules',
-      'bun',
-      'bin',
-      'bun.exe',
-    )
+      expect(
+        await detectBunRuntime({
+          env: {
+            COPILOT_API_BUN_DIR: ' "' + directory + '" ',
+            PATH: pathDirectory,
+          },
+          platform,
+          getVersion,
+          readDirectory,
+        }),
+      ).toEqual({ available: true, version: '1.4.4', path: executable })
+      expect(getVersion).toHaveBeenCalledTimes(1)
+      expect(getVersion).toHaveBeenCalledWith(executable)
+      expect(readDirectory).not.toHaveBeenCalled()
+    },
+  )
 
-    const result = await detectBunRuntime({
-      env: {
-        Path: junction,
-        NVM_SYMLINK: junction,
-        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
-        CUSTOM_DRIVE: 'D:\\Custom NVM',
-      },
-      homeDir: 'C:\\Users\\test',
-      platform: 'win32',
-      resolveDirectory: async () => shimDirectory,
-      readRegistryValue: async (key, name) => {
-        if (
-          key === 'HKCU\\SOFTWARE\\Author Software\\Preferences\\nvm'
-          && name === 'InstallRoot'
-        ) {
-          return '"%CUSTOM_DRIVE%\\installs"'
-        }
-        throw new Error('ENOENT')
-      },
-      readDirectory: async (directory) => {
-        if (directory === customRoot) return ['v24.22.2']
-        throw new Error('ENOENT')
-      },
-      getVersion: async (candidate) => {
-        if (candidate === junctionBun || candidate === real) return '1.4.4'
-        throw new Error('ENOENT')
-      },
-    })
+  test.each([
+    ['relative', 'relative\\bin', null, false],
+    ['an NVM shim', 'D:\\nvm\\.shim\\.', '1.4.4', false],
+    ['missing', 'D:\\missing', null, true],
+    ['outdated', 'D:\\old-bun', '1.3.14', true],
+  ] as const)(
+    'falls back to PATH when COPILOT_API_BUN_DIR is %s',
+    async (_label, directory, version, probesConfiguredDirectory) => {
+      const configured = path.win32.join(directory, 'bun.exe')
+      const automatic = 'C:\\tools\\bun.exe'
+      const checked: string[] = []
 
-    expect(result).toEqual({
-      available: true,
-      version: '1.4.4',
-      path: real,
-    })
-  })
-
-  test('falls back to HKLM policy InstallRoot and NVM_HOME\\installs while ignoring relative registry values', async () => {
-    const policyRoot = 'E:\\PolicyNVM\\installs'
-    const policyBun = path.win32.join(
-      policyRoot,
-      'v24.12.0',
-      'node_modules',
-      'bun',
-      'bin',
-      'bun.exe',
-    )
-    const nvmHomeInstalls = 'F:\\nvm2\\installs'
-    const nvmHomeBun = path.win32.join(
-      nvmHomeInstalls,
-      'v24.11.0',
-      'node_modules',
-      'bun',
-      'bin',
-      'bun.exe',
-    )
-
-    const candidates = await getBunCandidates({
-      env: { NVM_HOME: 'F:\\nvm2' },
-      homeDir: 'C:\\Users\\test',
-      platform: 'win32',
-      readRegistryValue: async (key) => {
-        if (key === 'HKCU\\SOFTWARE\\Author Software\\Preferences\\nvm') {
-          return 'relative\\path'
-        }
-        if (key === 'HKLM\\SOFTWARE\\Policies\\Author Software\\nvm') {
-          return policyRoot
-        }
-        return null
-      },
-      readDirectory: async (directory) => {
-        if (directory === policyRoot) return ['v24.12.0']
-        if (directory === nvmHomeInstalls) return ['v24.11.0']
-        throw new Error('ENOENT')
-      },
-    })
-
-    expect(candidates).toContain(nvmHomeBun)
-    expect(candidates).toContain(policyBun)
-    expect(candidates.some((c) => c.includes('relative'))).toBe(false)
-  })
+      expect(
+        await detectBunRuntime({
+          env: { COPILOT_API_BUN_DIR: directory, PATH: 'C:\\tools' },
+          platform: 'win32',
+          readDirectory: async () => [],
+          getVersion: async (candidate) => {
+            checked.push(candidate)
+            if (candidate === automatic) return '1.4.4'
+            if (candidate === configured && version) return version
+            throw new Error('ENOENT')
+          },
+        }),
+      ).toEqual({ available: true, version: '1.4.4', path: automatic })
+      expect(checked).toEqual(
+        probesConfiguredDirectory ? [configured, automatic] : [automatic],
+      )
+    },
+  )
 
   if (process.platform === 'win32') {
-    test('skips a real Windows .nodejs junction to .shim and uses custom InstallRoot Bun', async () => {
+    test('skips a real .nodejs shim junction configured as the Bun directory', async () => {
       const tempRoot = await fs.mkdtemp(
         path.join(os.tmpdir(), 'copilot-nvm2-junction-'),
       )
@@ -276,16 +222,11 @@ describe('Bun runtime detection', () => {
         const checked: string[] = []
         const result = await detectBunRuntime({
           env: {
-            Path: nodejsJunction,
-            NVM_SYMLINK: nodejsJunction,
-            LOCALAPPDATA: tempRoot,
+            COPILOT_API_BUN_DIR: nodejsJunction,
+            Path: path.dirname(realBun),
           },
           homeDir: tempRoot,
           platform: 'win32',
-          readRegistryValue: async (key) =>
-            key === 'HKCU\\SOFTWARE\\Author Software\\Preferences\\nvm' ?
-              customInstalls
-            : null,
           getVersion: async (candidate) => {
             checked.push(candidate)
             if (
@@ -387,6 +328,12 @@ describe('Bun runtime detection', () => {
       'win32',
       { NVM_HOME: 'D:\\custom nvm' },
       'D:\\custom nvm',
+    ],
+    [
+      'Windows NVM_HOME installs',
+      'win32',
+      { NVM_HOME: 'D:\\nvm2' },
+      'D:\\nvm2\\installs',
     ],
     [
       'Windows APPDATA',

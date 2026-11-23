@@ -118,7 +118,9 @@ macOS 会将经过 SHA-512 校验的完整 DMG 保存到系统下载目录。首
 
 ### Bun 检测与更新文件的技术说明
 
-应用会检查 `PATH`、`BUN_INSTALL`、用户 Bun 安装目录和常见桌面安装位置。请自行安装或升级 Bun，之后启动或重启服务即可重新检测。
+服务运行时选为 Bun 时，可以用 `COPILOT_API_BUN_DIR` 优先指定 Bun 的绝对目录。Windows 填原生 `bun.exe` 所在的目录，macOS 和 Linux 填 `bun` 所在的目录。设置环境变量后重新启动桌面应用。
+
+未设置该变量或指定的 Bun 不可用时，应用会继续检查 `PATH`、`BUN_INSTALL`、用户 Bun 安装目录和常见桌面安装位置。
 
 Windows、macOS 和 Linux 均支持通过 nvm 下的 `npm install -g bun` 安装 Bun。检测会检查当前 `NVM_BIN` 或 `NVM_SYMLINK`、显式配置的 npm 全局安装前缀，以及 `NVM_DIR`/`NVM_HOME` 或常见默认 nvm 目录（含 XDG 路径）下的各 Node 版本。桌面环境没有当前版本信息时，按 Node 版本从新到旧查找可用的 Bun；Windows 会直接运行 npm 包内的原生 `bun.exe`。
 
