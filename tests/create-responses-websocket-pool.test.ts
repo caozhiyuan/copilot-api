@@ -1392,7 +1392,7 @@ test("Copilot websocket continues an existing stable pool key and isolates agent
   expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
 })
 
-test("Copilot cancellation drains the old stream while the follow-up uses a separate connection", async () => {
+test("Copilot cancellation drains the old stream, then reuses its socket without the stale parent", async () => {
   await withAffinity("copilot-cancel", async () => {
     await sendContinuationTurn([...continuationInput])
     MockWebSocket.autoComplete = false
@@ -1416,8 +1416,44 @@ test("Copilot cancellation drains the old stream while the follow-up uses a sepa
     socket.completeLatestResponse()
     await cancelled
     await sendContinuationTurn(input)
-    expect(continuationRequest(0, 2).previous_response_id).toBe("resp-1")
+    // The drained response replaced resp-1 as the socket's latest response.
+    expect(continuationRequest(0, 2).previous_response_id).toBeUndefined()
+    expect(continuationRequest(0, 2).input).toEqual(input)
     expect(MockWebSocket.instances).toHaveLength(2)
+  })
+})
+
+test("a response that ends incomplete without an interruption drops the stale parent", async () => {
+  await withAffinity("incomplete", async () => {
+    await sendContinuationTurn([...continuationInput])
+    MockWebSocket.autoComplete = false
+    const socket = MockWebSocket.instances[0]
+    const turn = sendContinuationTurn(continuationHistory())
+    await waitFor(() => socket.sent.length === 2)
+    socket.emitMessage(
+      JSON.stringify({
+        response: {
+          ...createResponsesResult("gpt-continuation", "resp-2"),
+          incomplete_details: { reason: "max_output_tokens" },
+          output: continuationOutput,
+          status: "incomplete",
+        },
+        sequence_number: 1,
+        type: "response.incomplete",
+      }),
+    )
+    await turn
+
+    MockWebSocket.autoComplete = true
+    const input = [
+      ...continuationHistory(),
+      ...continuationOutput,
+      ...continuationInput,
+    ]
+    await sendContinuationTurn(input)
+    expect(continuationRequest(0, 1).previous_response_id).toBe("resp-1")
+    expect(continuationRequest(0, 2).previous_response_id).toBeUndefined()
+    expect(continuationRequest(0, 2).input).toEqual(input)
   })
 })
 

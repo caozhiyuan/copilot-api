@@ -424,7 +424,7 @@ test("retains the latest completed tool turn across an unfinished request", () =
   resent.finish()
 })
 
-test("cancelling after completion leaves the previous checkpoint committed", () => {
+test("cancelling after completion drops the stale checkpoint", () => {
   const connection = seed()
   const full = payload([user, output, result])
   const controller = new AbortController()
@@ -438,11 +438,10 @@ test("cancelling after completion leaves the previous checkpoint committed", () 
   controller.abort()
   next.finish()
 
+  // resp-2 is now the socket's latest response, so resp-1 cannot be continued.
   const resent = prepareResponsesContinuation(full, connection, false)
-  expect(resent.payload).toMatchObject({
-    previous_response_id: "resp-1",
-    input: [result],
-  })
+  expect(resent.usedPrevious).toBe(false)
+  expect(resent.payload).toBe(full)
 })
 
 test.each([
@@ -557,7 +556,7 @@ test("invalidates the old ID when the interrupted request cannot be checkpointed
 })
 
 test.each([undefined, "max_output_tokens", "content_filter"] as const)(
-  "preserves the previous checkpoint for other incomplete reasons (%s)",
+  "drops the previous checkpoint for other incomplete reasons (%s)",
   (reason) => {
     const connection = seed()
     const full = payload([user, output, result])
@@ -573,9 +572,9 @@ test.each([undefined, "max_output_tokens", "content_filter"] as const)(
     event.response.incomplete_details = reason ? { reason } : null
     attempt.observe(event)
     attempt.finish()
-    expect(
-      prepareResponsesContinuation(full, connection, false).payload,
-    ).toMatchObject({ previous_response_id: "resp-1", input: [result] })
+    const next = prepareResponsesContinuation(full, connection, false)
+    expect(next.usedPrevious).toBe(false)
+    expect(next.payload).toBe(full)
   },
 )
 
