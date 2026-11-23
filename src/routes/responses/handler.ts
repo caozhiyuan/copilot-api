@@ -51,12 +51,14 @@ import {
   filterReasoningForTransport,
   getResponsesTransportForModel,
   getResponsesRequestOptions,
+  hasTerminalCompactionTrigger,
   normalizeGuardianAgentMessages,
   normalizeInputImageDetails,
   normalizeResponsesReasoningEffort,
   replayMessagesCompactionForResponses,
   sanitizeOversizedInputImages,
   sanitizeUnsupportedInputFields,
+  RESPONSES_ENDPOINT,
 } from "./utils"
 import consola from "consola"
 
@@ -243,6 +245,9 @@ export const handleResponses = async (c: Context) => {
     sessionId: fallbackSessionId,
     clientSignal: c.req.raw.signal,
     transport: responsesTransport,
+    allowCompactionHttpFallback:
+      selectedModel?.supported_endpoints?.includes(RESPONSES_ENDPOINT)
+      && hasTerminalCompactionTrigger(payload),
   })
 
   if (isStreamingRequested(payload) && isResponsesStream(response)) {

@@ -147,7 +147,7 @@
 
 - **useMessagesApi：** 当为 `true` 时，声明了 Copilot 原生 `/v1/messages` 端点的模型会使用 Messages API。如果所选模型未声明 Messages 端点或关闭了该配置，网关会在模型声明了 Responses 端点时使用 Responses，否则在模型支持时回退到 Chat Completions。设为 `false` 可跳过原生 Messages 路由。默认值为 `true`。
 
-- **useResponsesApiWebSocket：** 当为 `true` 时，Copilot Responses 请求会对声明了 `ws:/responses` 的模型使用 WebSocket；仅声明 `/responses` 的模型使用 HTTP。内置 `codex` provider 的流式 Responses 请求只要启用了该配置就会使用 WebSocket，非流式 Codex 请求始终使用 HTTP。设为 `false` 后，Copilot 会在所选模型声明了 `/responses` 时使用 HTTP，Codex 的流式 Responses 请求也会改走 HTTP。WebSocket 失败后不会自动通过 HTTP 重试。默认值为 `true`。如果代理、VPN 或网络会阻断或干扰 WebSocket 流量，请关闭该配置或切换网络。
+- **useResponsesApiWebSocket：** 当为 `true` 时，Copilot Responses 请求会对声明了 `ws:/responses` 的模型使用 WebSocket；仅声明 `/responses` 的模型使用 HTTP。内置 `codex` provider 的流式 Responses 请求只要启用了该配置就会使用 WebSocket，非流式 Codex 请求始终使用 HTTP。设为 `false` 后，Copilot 会在所选模型声明了 `/responses` 时使用 HTTP，Codex 的流式 Responses 请求也会改走 HTTP。Copilot 请求以 `compaction_trigger` 结尾、待发送的 WebSocket 消息超过 16 MiB、模型支持 HTTP 且全量请求体不超过 32 MiB 时，可在发送 WebSocket 消息前改走 HTTP。默认值为 `true`。如果代理、VPN 或网络会阻断或干扰 WebSocket 流量，请关闭该配置或切换网络。
 
 - **upstreamTransport：** 网关等待上游响应的时间限制，以及 WebSocket 缓冲区上限。Chat Completions、Responses 和 Messages 共用这些设置。数值必须为正整数，无效值、零或负数使用上面的默认值。
 
