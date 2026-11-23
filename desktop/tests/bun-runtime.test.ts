@@ -7,6 +7,7 @@ import {
   detectBunRuntime,
   getBunCandidates,
   isSupportedBunVersion,
+  parseWindowsRegistryValue,
 } from '../electron/bun-runtime'
 import { normalizeSettings } from '../electron/settings-store'
 
@@ -135,6 +136,179 @@ describe('Bun runtime detection', () => {
       path: junctionBun,
     })
   })
+
+  test('parses Windows registry values for NVM2 InstallRoot', () => {
+    expect(
+      parseWindowsRegistryValue(
+        '\r\nHKEY_CURRENT_USER\\SOFTWARE\\Author Software\\Preferences\\nvm\r\n    InstallRoot    REG_SZ    D:\\Custom NVM\\installs\r\n',
+        'InstallRoot',
+      ),
+    ).toBe('D:\\Custom NVM\\installs')
+    expect(
+      parseWindowsRegistryValue(
+        '\r\nHKEY_CURRENT_USER\\SOFTWARE\\Author Software\\Preferences\\nvm\r\n    InstallRoot    REG_EXPAND_SZ    "%LOCALAPPDATA%\\custom-nvm\\installs"\r\n',
+        'InstallRoot',
+      ),
+    ).toBe('%LOCALAPPDATA%\\custom-nvm\\installs')
+    expect(parseWindowsRegistryValue('', 'InstallRoot')).toBeNull()
+  })
+
+  test('detects real Bun in a configured NVM2 custom InstallRoot after skipping .nodejs shim', async () => {
+    const nvmRoot = 'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm'
+    const shimDirectory = path.win32.join(nvmRoot, '.shim')
+    const junction = path.win32.join(nvmRoot, '.nodejs')
+    const junctionBun = path.win32.join(junction, 'bun.exe')
+    const customRoot = 'D:\\Custom NVM\\installs'
+    const real = path.win32.join(
+      customRoot,
+      'v24.22.2',
+      'node_modules',
+      'bun',
+      'bin',
+      'bun.exe',
+    )
+
+    const result = await detectBunRuntime({
+      env: {
+        Path: junction,
+        NVM_SYMLINK: junction,
+        LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
+        CUSTOM_DRIVE: 'D:\\Custom NVM',
+      },
+      homeDir: 'C:\\Users\\test',
+      platform: 'win32',
+      resolveDirectory: async () => shimDirectory,
+      readRegistryValue: async (key, name) => {
+        if (
+          key === 'HKCU\\SOFTWARE\\Author Software\\Preferences\\nvm'
+          && name === 'InstallRoot'
+        ) {
+          return '"%CUSTOM_DRIVE%\\installs"'
+        }
+        throw new Error('ENOENT')
+      },
+      readDirectory: async (directory) => {
+        if (directory === customRoot) return ['v24.22.2']
+        throw new Error('ENOENT')
+      },
+      getVersion: async (candidate) => {
+        if (candidate === junctionBun || candidate === real) return '1.4.4'
+        throw new Error('ENOENT')
+      },
+    })
+
+    expect(result).toEqual({
+      available: true,
+      version: '1.4.4',
+      path: real,
+    })
+  })
+
+  test('falls back to HKLM policy InstallRoot and NVM_HOME\\installs while ignoring relative registry values', async () => {
+    const policyRoot = 'E:\\PolicyNVM\\installs'
+    const policyBun = path.win32.join(
+      policyRoot,
+      'v24.12.0',
+      'node_modules',
+      'bun',
+      'bin',
+      'bun.exe',
+    )
+    const nvmHomeInstalls = 'F:\\nvm2\\installs'
+    const nvmHomeBun = path.win32.join(
+      nvmHomeInstalls,
+      'v24.11.0',
+      'node_modules',
+      'bun',
+      'bin',
+      'bun.exe',
+    )
+
+    const candidates = await getBunCandidates({
+      env: { NVM_HOME: 'F:\\nvm2' },
+      homeDir: 'C:\\Users\\test',
+      platform: 'win32',
+      readRegistryValue: async (key) => {
+        if (key === 'HKCU\\SOFTWARE\\Author Software\\Preferences\\nvm') {
+          return 'relative\\path'
+        }
+        if (key === 'HKLM\\SOFTWARE\\Policies\\Author Software\\nvm') {
+          return policyRoot
+        }
+        return null
+      },
+      readDirectory: async (directory) => {
+        if (directory === policyRoot) return ['v24.12.0']
+        if (directory === nvmHomeInstalls) return ['v24.11.0']
+        throw new Error('ENOENT')
+      },
+    })
+
+    expect(candidates).toContain(nvmHomeBun)
+    expect(candidates).toContain(policyBun)
+    expect(candidates.some((c) => c.includes('relative'))).toBe(false)
+  })
+
+  if (process.platform === 'win32') {
+    test('skips a real Windows .nodejs junction to .shim and uses custom InstallRoot Bun', async () => {
+      const tempRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'copilot-nvm2-junction-'),
+      )
+      try {
+        const nvmRoot = path.join(tempRoot, 'Author Software', 'nvm')
+        const shimDir = path.join(nvmRoot, '.shim')
+        const nodejsJunction = path.join(nvmRoot, '.nodejs')
+        const customInstalls = path.join(tempRoot, 'custom-installs')
+        const realBun = path.join(
+          customInstalls,
+          'v24.22.2',
+          'node_modules',
+          'bun',
+          'bin',
+          'bun.exe',
+        )
+        await fs.mkdir(shimDir, { recursive: true })
+        await fs.mkdir(path.dirname(realBun), { recursive: true })
+        await fs.writeFile(path.join(shimDir, 'bun.exe'), '')
+        await fs.writeFile(realBun, '')
+        await fs.symlink(shimDir, nodejsJunction, 'junction')
+
+        const checked: string[] = []
+        const result = await detectBunRuntime({
+          env: {
+            Path: nodejsJunction,
+            NVM_SYMLINK: nodejsJunction,
+            LOCALAPPDATA: tempRoot,
+          },
+          homeDir: tempRoot,
+          platform: 'win32',
+          readRegistryValue: async (key) =>
+            key === 'HKCU\\SOFTWARE\\Author Software\\Preferences\\nvm' ?
+              customInstalls
+            : null,
+          getVersion: async (candidate) => {
+            checked.push(candidate)
+            if (
+              candidate === realBun
+              || candidate === path.join(nodejsJunction, 'bun.exe')
+            ) {
+              return '1.4.4'
+            }
+            throw new Error('ENOENT')
+          },
+        })
+
+        expect(result).toEqual({
+          available: true,
+          version: '1.4.4',
+          path: realBun,
+        })
+        expect(checked).not.toContain(path.join(nodejsJunction, 'bun.exe'))
+      } finally {
+        await fs.rm(tempRoot, { recursive: true, force: true })
+      }
+    })
+  }
 
   test('ignores relative BUN_INSTALL and handles an absent PATH', async () => {
     expect(
