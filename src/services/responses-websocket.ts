@@ -222,6 +222,24 @@ const runPooledWebSocketRequest = async function* <
   }
   throwIfAborted(request.signal)
   const previousEntry = websocketPool.get(poolKey)
+  const reusableExisting =
+    (
+      getPooledWebSocketActiveRequestCount(poolKey) === 0
+      && previousEntry
+      && !previousEntry.closed
+    ) ?
+      previousEntry
+    : undefined
+  let preflight: { payload: TPayload; message: string } | undefined
+  if (!reusableExisting && options.maxMessageBytes !== undefined) {
+    // A brand-new connection has no continuation state, so check size before opening it.
+    const prepared =
+      request.preparePayload?.(request.payload) ?? request.payload
+    const message = JSON.stringify(prepared)
+    const sizeError = getMessageSizeError(message, options.maxMessageBytes)
+    if (sizeError) throw sizeError
+    preflight = { payload: prepared, message }
+  }
   const { entry, pooled } = getPooledWebSocketRequestTarget(request, options)
   const release = acquirePooledWebSocketEntry(poolKey, entry, pooled)
   let interruption: PooledWebSocketEntry["interruption"]
@@ -243,8 +261,14 @@ const runPooledWebSocketRequest = async function* <
     }
     const payload =
       request.preparePayload?.(request.payload, entry) ?? request.payload
-    const message = JSON.stringify(payload)
-    const sizeError = getMessageSizeError(message, options.maxMessageBytes)
+    const message =
+      preflight && payload === preflight.payload ?
+        preflight.message
+      : JSON.stringify(payload)
+    const sizeError =
+      preflight && payload === preflight.payload ?
+        undefined
+      : getMessageSizeError(message, options.maxMessageBytes)
     if (sizeError) {
       // An unsent request leaves the existing socket and its checkpoint intact.
       reusable = entry === previousEntry
