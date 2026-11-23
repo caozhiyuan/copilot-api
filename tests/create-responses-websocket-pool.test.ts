@@ -1392,7 +1392,7 @@ test("Copilot websocket continues an existing stable pool key and isolates agent
   expect(continuationRequest(1, 0).previous_response_id).toBeUndefined()
 })
 
-test("Copilot cancellation drains the old stream while the follow-up uses a separate connection", async () => {
+test("Copilot drains a cancelled response and sends full input on the reused socket", async () => {
   await withAffinity("copilot-cancel", async () => {
     await sendContinuationTurn([...continuationInput])
     MockWebSocket.autoComplete = false
@@ -1401,6 +1401,7 @@ test("Copilot cancellation drains the old stream while the follow-up uses a sepa
     const input = continuationHistory()
     const cancelled = sendContinuationTurn(input, controller.signal)
     await waitFor(() => socket.sent.length === 2)
+    expect(continuationRequest(0, 1).previous_response_id).toBe("resp-1")
     socket.emitMessage(
       JSON.stringify({ type: "response.created", response: { id: "resp-2" } }),
     )
@@ -1416,7 +1417,15 @@ test("Copilot cancellation drains the old stream while the follow-up uses a sepa
     socket.completeLatestResponse()
     await cancelled
     await sendContinuationTurn(input)
-    expect(continuationRequest(0, 2).previous_response_id).toBe("resp-1")
+    expect(continuationRequest(0, 2).previous_response_id).toBeUndefined()
+    expect(continuationRequest(0, 2).input).toEqual(input)
+
+    const followup = { ...continuationInput[0], content: "another turn" }
+    await sendContinuationTurn([...input, ...continuationOutput, followup])
+    expect(continuationRequest(0, 3)).toMatchObject({
+      previous_response_id: "resp-3",
+      input: [followup],
+    })
     expect(MockWebSocket.instances).toHaveLength(2)
   })
 })
@@ -1840,7 +1849,7 @@ test("Responses websocket applies maxMessageBytes to the prepared payload", asyn
   ])
 })
 
-test("Copilot websocket fails fast with context_length_exceeded above 32 MiB", async () => {
+test("Copilot websocket fails fast with context_length_exceeded above 16 MiB", async () => {
   const chunks = await collectStreamChunks(
     (await createResponses(
       {
@@ -1863,11 +1872,11 @@ test("Copilot websocket fails fast with context_length_exceeded above 32 MiB", a
     code: "context_length_exceeded",
     type: "error",
   })
-  expect(chunks[0]?.data).toContain("exceeds the 32.0 MiB limit")
+  expect(chunks[0]?.data).toContain("exceeds the 16.0 MiB limit")
   expect(MockWebSocket.instances.flatMap((socket) => socket.sent)).toEqual([])
 })
 
-test("Copilot websocket checks the continuation delta, not the full history, against 32 MiB", async () => {
+test("Copilot websocket applies the 16 MiB limit to the prepared continuation delta", async () => {
   const mib = 1024 * 1024
   const firstInput = [
     {

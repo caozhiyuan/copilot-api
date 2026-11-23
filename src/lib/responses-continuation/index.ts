@@ -213,7 +213,6 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
       const completed =
         event.type === "response.completed"
         && event.response?.status === "completed"
-        && !clientSignal?.aborted
       // An interrupted turn advances server history too. Never retry its parent
       // if this response lacks an anchor that the client can replay.
       if (interrupted) states.delete(connection)
@@ -222,6 +221,8 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
       interruptedTerminal = interrupted
       // A terminal response without a replayable anchor invalidates its parent.
       candidate = null
+      // A drained completion advances the upstream ID even after client abort.
+      if (completed && clientSignal?.aborted) return
       if (!eligible || !event.response.id) return
       if (!Array.isArray(event.response.output) && outputItems.size === 0)
         return
@@ -248,12 +249,11 @@ export function prepareResponsesContinuation<T extends ResponsesPayload>(
         }
     },
     finish(): void {
-      if (
-        !connection.closed
-        && (interruptedTerminal || !clientSignal?.aborted)
-      ) {
-        if (candidate) states.set(connection, candidate)
-        else if (candidate === null) states.delete(connection)
+      if (connection.closed || candidate === undefined) return
+      if (candidate && (interruptedTerminal || !clientSignal?.aborted)) {
+        states.set(connection, candidate)
+      } else {
+        states.delete(connection)
       }
     },
   }

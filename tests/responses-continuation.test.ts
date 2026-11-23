@@ -424,26 +424,27 @@ test("retains the latest completed tool turn across an unfinished request", () =
   resent.finish()
 })
 
-test("cancelling after completion leaves the previous checkpoint committed", () => {
-  const connection = seed()
-  const full = payload([user, output, result])
-  const controller = new AbortController()
-  const next = prepareResponsesContinuation(
-    full,
-    connection,
-    false,
-    controller.signal,
-  )
-  next.observe(complete("resp-2"))
-  controller.abort()
-  next.finish()
+test.each(["before", "after"] as const)(
+  "clears the checkpoint when the client cancels %s completion is observed",
+  (timing) => {
+    const connection = seed()
+    const full = payload([user, output, result])
+    const controller = new AbortController()
+    const next = prepareResponsesContinuation(
+      full,
+      connection,
+      false,
+      controller.signal,
+    )
+    if (timing === "before") controller.abort()
+    next.observe(complete("resp-2"))
+    if (timing === "after") controller.abort()
+    next.finish()
 
-  const resent = prepareResponsesContinuation(full, connection, false)
-  expect(resent.payload).toMatchObject({
-    previous_response_id: "resp-1",
-    input: [result],
-  })
-})
+    const resent = prepareResponsesContinuation(full, connection, false)
+    expect(resent.payload).toBe(full)
+  },
+)
 
 test.each([
   { ...thinking, encrypted_content: "interrupted-cipher" },
