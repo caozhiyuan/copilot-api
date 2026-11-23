@@ -424,25 +424,29 @@ test("retains the latest completed tool turn across an unfinished request", () =
   resent.finish()
 })
 
-test("cancelling after completion drops the stale checkpoint", () => {
-  const connection = seed()
-  const full = payload([user, output, result])
-  const controller = new AbortController()
-  const next = prepareResponsesContinuation(
-    full,
-    connection,
-    false,
-    controller.signal,
-  )
-  next.observe(complete("resp-2"))
-  controller.abort()
-  next.finish()
+test.each(["before", "after"] as const)(
+  "clears the checkpoint when the client cancels %s completion is observed",
+  (timing) => {
+    const connection = seed()
+    const full = payload([user, output, result])
+    const controller = new AbortController()
+    const next = prepareResponsesContinuation(
+      full,
+      connection,
+      false,
+      controller.signal,
+    )
+    if (timing === "before") controller.abort()
+    next.observe(complete("resp-2"))
+    if (timing === "after") controller.abort()
+    next.finish()
 
-  // resp-2 is now the socket's latest response, so resp-1 cannot be continued.
-  const resent = prepareResponsesContinuation(full, connection, false)
-  expect(resent.usedPrevious).toBe(false)
-  expect(resent.payload).toBe(full)
-})
+    // resp-2 is now the socket's latest response, so resp-1 cannot be continued.
+    const resent = prepareResponsesContinuation(full, connection, false)
+    expect(resent.usedPrevious).toBe(false)
+    expect(resent.payload).toBe(full)
+  },
+)
 
 test.each([
   { ...thinking, encrypted_content: "interrupted-cipher" },
@@ -555,9 +559,16 @@ test("invalidates the old ID when the interrupted request cannot be checkpointed
   expect(next.usedPrevious).toBe(false)
 })
 
-test.each([undefined, "max_output_tokens", "content_filter"] as const)(
-  "drops the previous checkpoint for other incomplete reasons (%s)",
-  (reason) => {
+test.each(
+  ([undefined, "max_output_tokens", "content_filter"] as const).flatMap(
+    (reason) => [
+      { aborted: false, reason },
+      { aborted: true, reason },
+    ],
+  ),
+)(
+  "drops the previous checkpoint for other incomplete reasons (%o)",
+  ({ aborted, reason }) => {
     const connection = seed()
     const full = payload([user, output, result])
     const controller = new AbortController()
@@ -567,11 +578,12 @@ test.each([undefined, "max_output_tokens", "content_filter"] as const)(
       false,
       controller.signal,
     )
-    controller.abort()
+    if (aborted) controller.abort()
     const event = interrupted("resp-incomplete")
     event.response.incomplete_details = reason ? { reason } : null
     attempt.observe(event)
     attempt.finish()
+    // Copilot rejects resp-1 once resp-incomplete exists on the socket.
     const next = prepareResponsesContinuation(full, connection, false)
     expect(next.usedPrevious).toBe(false)
     expect(next.payload).toBe(full)
