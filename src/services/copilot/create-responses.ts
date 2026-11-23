@@ -44,9 +44,8 @@ import {
 import { createResponsesHttpEventStream } from "~/services/responses-http"
 import { fetchUpstreamWithLifecycle } from "~/services/upstream-http"
 
-// Copilot closes the Responses WebSocket with code 1009 (message too big) and
-// no terminal event for a message above 32 MiB.
-export const COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+// Copilot can return a generic internal_error for messages above 16 MiB.
+export const COPILOT_RESPONSES_WEBSOCKET_MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 const COPILOT_RESPONSES_MIN_OUTPUT_TOKENS = 16
 
 interface ResponsesRequestOptions {

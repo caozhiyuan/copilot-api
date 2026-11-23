@@ -1876,7 +1876,7 @@ test("Responses websocket applies maxMessageBytes to the prepared payload", asyn
   ])
 })
 
-test("Copilot websocket fails fast with context_length_exceeded above 32 MiB", async () => {
+test("Copilot websocket fails fast with context_length_exceeded above 16 MiB", async () => {
   const chunks = await collectStreamChunks(
     (await createResponses(
       {
@@ -1899,11 +1899,11 @@ test("Copilot websocket fails fast with context_length_exceeded above 32 MiB", a
     code: "context_length_exceeded",
     type: "error",
   })
-  expect(chunks[0]?.data).toContain("exceeds the 32.0 MiB limit")
+  expect(chunks[0]?.data).toContain("exceeds the 16.0 MiB limit")
   expect(MockWebSocket.instances.flatMap((socket) => socket.sent)).toEqual([])
 })
 
-test("Copilot websocket checks the continuation delta, not the full history, against 32 MiB", async () => {
+test("Copilot websocket applies the 16 MiB limit to the prepared continuation delta", async () => {
   const mib = 1024 * 1024
   const firstInput = [
     {
