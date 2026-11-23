@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { readdir } from 'node:fs/promises'
+import { readdir, realpath } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -28,6 +28,7 @@ interface BunDetectionOptions {
   homeDir?: string
   getVersion?: (executable: string) => Promise<string>
   readDirectory?: (directory: string) => Promise<string[]>
+  resolveDirectory?: (directory: string) => Promise<string>
 }
 
 async function getNvmBinDirectories({
@@ -182,9 +183,16 @@ export async function detectBunRuntime(
   options: BunDetectionOptions = {},
 ): Promise<BunRuntimeStatus> {
   const getVersion = options.getVersion ?? readBunVersion
+  const resolveDirectory = options.resolveDirectory ?? realpath
+  const windows = (options.platform ?? process.platform) === 'win32'
   let unsupported: BunRuntimeStatus | undefined
   for (const executable of await getBunCandidates(options)) {
     try {
+      // In NVM's shim mode, .nodejs exposes the same proxy as .shim.
+      if (windows && executable.toLowerCase().endsWith('\\.nodejs\\bun.exe')) {
+        const target = await resolveDirectory(path.win32.dirname(executable))
+        if (path.win32.basename(target).toLowerCase() === '.shim') continue
+      }
       const version = (await getVersion(executable)).trim()
       if (isSupportedBunVersion(version)) {
         return { available: true, version, path: executable }

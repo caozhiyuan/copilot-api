@@ -73,13 +73,16 @@ describe('Bun runtime detection', () => {
     ])
   })
 
-  test('skips nvm-windows 2 shim and launches the real Bun', async () => {
+  test('skips nvm-windows 2 Bun shims and preserves link mode', async () => {
     const nvmRoot = 'C:\\Users\\test\\AppData\\Local\\Author Software\\nvm'
     const installs = path.win32.join(nvmRoot, 'installs')
-    const shim = path.win32.join(nvmRoot, '.shim', 'bun.exe')
+    const shimDirectory = path.win32.join(nvmRoot, '.shim')
+    const junction = path.win32.join(nvmRoot, '.nodejs')
+    const shim = path.win32.join(shimDirectory, 'bun.exe')
+    const junctionBun = path.win32.join(junction, 'bun.exe')
+    const activeInstall = path.win32.join(installs, 'v24.22.2')
     const real = path.win32.join(
-      installs,
-      'v24.22.2',
+      activeInstall,
       'node_modules',
       'bun',
       'bin',
@@ -88,8 +91,8 @@ describe('Bun runtime detection', () => {
     const checked: string[] = []
     const options = {
       env: {
-        Path: [path.win32.join(nvmRoot, '.shim'), 'D:\\tools\\.shim'].join(';'),
-        NVM_SYMLINK: path.win32.join(nvmRoot, '.shim'),
+        Path: [junction, shimDirectory, 'D:\\tools\\.shim'].join(';'),
+        NVM_SYMLINK: junction,
         LOCALAPPDATA: 'C:\\Users\\test\\AppData\\Local',
       },
       homeDir: 'C:\\Users\\test',
@@ -98,9 +101,13 @@ describe('Bun runtime detection', () => {
         if (directory === installs) return ['v24.22.2']
         throw new Error('ENOENT')
       },
+      resolveDirectory: async (directory: string) => {
+        expect(directory).toBe(junction)
+        return shimDirectory
+      },
       getVersion: async (candidate: string) => {
         checked.push(candidate)
-        if (candidate === real || candidate === shim) return '1.4.4'
+        if ([real, shim, junctionBun].includes(candidate)) return '1.4.4'
         throw new Error('ENOENT')
       },
     }
@@ -115,6 +122,18 @@ describe('Bun runtime detection', () => {
       path: real,
     })
     expect(checked).not.toContain(shim)
+    expect(checked).not.toContain(junctionBun)
+
+    expect(
+      await detectBunRuntime({
+        ...options,
+        resolveDirectory: async () => activeInstall,
+      }),
+    ).toEqual({
+      available: true,
+      version: '1.4.4',
+      path: junctionBun,
+    })
   })
 
   test('ignores relative BUN_INSTALL and handles an absent PATH', async () => {
