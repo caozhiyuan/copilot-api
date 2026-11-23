@@ -41,7 +41,7 @@
       "headersTimeoutMs": 300000,
       "streamInactivityTimeoutMs": 300000,
       "websocketOpenTimeoutMs": 30000,
-      "websocketPoolIdleTimeoutMs": 60000,
+      "websocketPoolIdleTimeoutMs": 270000,
       "websocketMaxBufferedBytes": 8388608,
       "websocketMaxBufferedMessages": 1024
     },
@@ -161,6 +161,8 @@
   | `websocketMaxBufferedMessages` | 待处理 WebSocket 消息数上限。 |
 
   缓冲区超过任一上限时，会结束当前请求并关闭该连接，不会丢弃部分消息后继续使用。
+
+  升级后，`config.json` 中已保存的 `websocketPoolIdleTimeoutMs` 优先生效。旧配置中的 `60000` 可改为 `270000` 毫秒，将空闲超时设为 4 分 30 秒。
 
 ### 联网搜索
 

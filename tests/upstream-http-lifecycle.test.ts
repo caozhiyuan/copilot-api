@@ -34,6 +34,16 @@ test("upstream transport configuration validates positive integer limits", () =>
   })
 })
 
+test("the websocket pool defaults to 270 seconds and honors an explicit timeout", () => {
+  expect(
+    normalizeUpstreamTransportConfig(undefined).websocketPoolIdleTimeoutMs,
+  ).toBe(270_000)
+  expect(
+    normalizeUpstreamTransportConfig({ websocketPoolIdleTimeoutMs: 60_000 })
+      .websocketPoolIdleTimeoutMs,
+  ).toBe(60_000)
+})
+
 test("a client cancelled before dispatch does not call fetch", async () => {
   const fetchMock = mock(() => Promise.resolve(Response.json({ ok: true })))
   ;(globalThis as unknown as { fetch: typeof fetch }).fetch =

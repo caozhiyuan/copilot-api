@@ -37,7 +37,7 @@ export const defaultUpstreamTransportConfig = {
   websocketMaxBufferedBytes: 8 * 1024 * 1024,
   websocketMaxBufferedMessages: 1024,
   websocketOpenTimeoutMs: 30_000,
-  websocketPoolIdleTimeoutMs: 60_000,
+  websocketPoolIdleTimeoutMs: 270_000,
 } satisfies Required<UpstreamTransportConfig>
 
 export const SUPPORTED_PROVIDER_TYPES = [
