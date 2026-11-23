@@ -1939,3 +1939,121 @@ test("Copilot websocket applies the 16 MiB limit to the prepared continuation de
   expect(MockWebSocket.instances).toHaveLength(2)
   expect(MockWebSocket.instances[1]?.sent).toEqual([])
 })
+
+test.each([
+  { name: "completion", mib: 17, status: 200, code: null },
+  { name: "HTTP 413", mib: 17, status: 413, code: "context_length_exceeded" },
+  {
+    name: "upstream error",
+    mib: 17,
+    status: 400,
+    code: "invalid_request_body",
+  },
+  { name: "size limit", mib: 32, status: 200, code: "context_length_exceeded" },
+])(
+  "Copilot oversized compaction handles $name",
+  async ({ mib, status, code }) => {
+    const input: Array<ResponseInputItem> = [
+      { role: "user", content: "x".repeat(mib * 1024 * 1024) },
+      { type: "compaction_trigger" },
+    ]
+    const fetchBefore = globalThis.fetch
+    const http = mock((url: string, init?: RequestInit) => {
+      expect(url).toBe("https://api.githubcopilot.com/responses")
+      const body = JSON.parse(init?.body as string) as ResponsesPayload
+      expect(body.input).toEqual(input)
+      expect(body.stream).toBe(true)
+      expect(body.previous_response_id).toBeUndefined()
+      if (status === 400) {
+        return Promise.resolve(
+          Response.json(
+            {
+              error: { code: "invalid_request_body", message: "Invalid input" },
+            },
+            { status },
+          ),
+        )
+      }
+      if (status === 413)
+        return Promise.resolve(new Response("Too large", { status }))
+
+      const completion = JSON.stringify({
+        type: "response.completed",
+        response: createResponsesResult("gpt-test"),
+      })
+      return Promise.resolve(
+        new Response(`event: response.completed\ndata: ${completion}\n\n`),
+      )
+    })
+    globalThis.fetch = http as unknown as typeof fetch
+
+    try {
+      const chunks = await collectStreamChunks(
+        (await createResponses(
+          { input, model: "gpt-test", stream: true },
+          {
+            allowCompactionHttpFallback: true,
+            initiator: "agent",
+            requestId: "oversized-compaction",
+            transport: "websocket",
+            vision: false,
+          },
+        )) as AsyncIterable<unknown>,
+      )
+      expect(chunks.map((chunk) => chunk.event)).toEqual([
+        code ? "error" : "response.completed",
+      ])
+      if (code) {
+        expect(JSON.parse(chunks[0]?.data ?? "{}")).toMatchObject({ code })
+      }
+      if (mib === 32) expect(chunks[0]?.data).toContain("32.0 MiB")
+      expect(http).toHaveBeenCalledTimes(mib === 32 ? 0 : 1)
+      expect(MockWebSocket.instances.flatMap((socket) => socket.sent)).toEqual(
+        [],
+      )
+    } finally {
+      globalThis.fetch = fetchBefore
+    }
+  },
+)
+
+test("Copilot preserves the pooled checkpoint after a local oversized delta rejection", async () => {
+  const mib = 1024 * 1024
+  const firstInput: Array<ResponseInputItem> = [
+    { role: "user", content: "x".repeat(15 * mib) },
+  ]
+  const inputWithDelta = (size: number): Array<ResponseInputItem> => [
+    ...firstInput,
+    ...continuationOutput,
+    { role: "user", content: "y".repeat(size * mib) },
+  ]
+
+  await withAffinity("after-size-rejection", async () => {
+    await sendContinuationTurn(firstInput)
+    const rejected = await sendContinuationTurn(inputWithDelta(17))
+    expect(rejected[0]?.data).toContain("context_length_exceeded")
+    expect(MockWebSocket.instances[0].sent).toHaveLength(1)
+
+    const compactInput: Array<ResponseInputItem> = [
+      ...inputWithDelta(2),
+      { type: "compaction_trigger" },
+    ]
+    await collectStreamChunks(
+      (await createResponses(
+        { input: compactInput, model: "gpt-continuation", stream: true },
+        {
+          allowCompactionHttpFallback: true,
+          initiator: "agent",
+          requestId: getContinuationRequestId(),
+          transport: "websocket",
+          vision: false,
+        },
+      )) as AsyncIterable<unknown>,
+    )
+    expect(MockWebSocket.instances).toHaveLength(1)
+    expect(continuationRequest(0, 1)).toMatchObject({
+      previous_response_id: "resp-1",
+      input: compactInput.slice(-2),
+    })
+  })
+})

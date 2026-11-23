@@ -1341,6 +1341,39 @@ describe("responses handler token usage", () => {
     expect(createResponses.mock.calls[0][1]?.transport).toBe("http")
   })
 
+  test.each([
+    [true, true, true],
+    [false, true, false],
+    [true, false, false],
+  ])(
+    "enables compaction HTTP fallback with HTTP support %s and final trigger %s",
+    async (supportsHttp, triggerLast, expected) => {
+      const model = state.models?.data[0]
+      if (!model) throw new Error("Missing test model")
+      model.supported_endpoints =
+        supportsHttp ? ["/responses", "ws:/responses"] : ["ws:/responses"]
+      createResponses.mockImplementation((payload) =>
+        Promise.resolve(createResponsesResult(payload.model)),
+      )
+      const trigger = { type: "compaction_trigger" }
+      const message = { role: "user", content: "hello" }
+      const response = await createApp().request("/v1/responses", {
+        body: JSON.stringify({
+          input: triggerLast ? [message, trigger] : [trigger, message],
+          model: "gpt-test",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+
+      expect(response.status).toBe(200)
+      expect(createResponses.mock.calls[0][1]).toMatchObject({
+        allowCompactionHttpFallback: expected,
+        transport: "websocket",
+      })
+    },
+  )
+
   test("keeps HTTP transport when the selected model only supports /responses", async () => {
     createResponses.mockImplementation((payload) =>
       Promise.resolve(createResponsesResult(payload.model)),

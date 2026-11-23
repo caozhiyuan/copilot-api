@@ -30,7 +30,7 @@ export async function* createContinuableResponsesWebSocketStream<
     sessionId: string | undefined
     clientSignal?: AbortSignal
   },
-): AsyncGenerator<TChunk> {
+): AsyncGenerator<TChunk, void, unknown> {
   const { sessionId, clientSignal } = continuation
   if (!sessionId) {
     yield* createPooledWebSocketStream(request, options)
