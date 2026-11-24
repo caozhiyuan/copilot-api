@@ -1142,4 +1142,1039 @@ describe("translateMessagesStreamToGoogle", () => {
     }
     expect(thrownResults).toEqual([])
   })
+
+  test("preserves multiple Responses reasoning segments in order across SSE stream round-trips", async () => {
+    const sig1 = "enc_1@rs_1"
+    const sig2 = "enc_2@rs_2"
+
+    // 1) Two consecutive reasoning items (with summaries) + text
+    const consecutiveChunks = await collectStream(
+      [
+        {
+          data: JSON.stringify({
+            type: "message_start",
+            message: {
+              id: "msg_multi_1",
+              type: "message",
+              role: "assistant",
+              model: "gpt-5.4",
+              content: [],
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 10, output_tokens: 0 },
+            },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "thinking", thinking: "" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "thinking_delta", thinking: "Step 1" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "signature_delta", signature: sig1 },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 1,
+            content_block: { type: "thinking", thinking: "" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 1,
+            delta: { type: "thinking_delta", thinking: "Step 2" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 1,
+            delta: { type: "signature_delta", signature: sig2 },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 1 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 2,
+            content_block: { type: "text", text: "" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 2,
+            delta: { type: "text_delta", text: "Final answer" },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 2 }) },
+        {
+          data: JSON.stringify({
+            type: "message_delta",
+            delta: { stop_reason: "end_turn", stop_sequence: null },
+            usage: { output_tokens: 12 },
+          }),
+        },
+        { data: JSON.stringify({ type: "message_stop" }) },
+      ],
+      "gpt-5.4",
+    )
+
+    const reassembledParts = consecutiveChunks.flatMap(
+      (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
+    )
+    const roundTripped = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Solve this" }] },
+          { role: "model", parts: reassembledParts },
+          { role: "user", parts: [{ text: "Next" }] },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(roundTripped.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "Step 1", signature: sig1 },
+        { type: "thinking", thinking: "Step 2", signature: sig2 },
+        { type: "text", text: "Final answer" },
+      ],
+    })
+
+    // 2) Two consecutive signature-only reasoning items (no summaries) + tool call
+    const silentChunks = await collectStream(
+      [
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "thinking", thinking: "" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "signature_delta", signature: sig1 },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 1,
+            content_block: { type: "thinking", thinking: "" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 1,
+            delta: { type: "signature_delta", signature: sig2 },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 1 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 2,
+            content_block: {
+              type: "tool_use",
+              id: "call_1",
+              name: "read_file",
+              input: {},
+            },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 2,
+            delta: {
+              type: "input_json_delta",
+              partial_json: '{"path":"a.ts"}',
+            },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 2 }) },
+        {
+          data: JSON.stringify({
+            type: "message_delta",
+            delta: { stop_reason: "tool_use", stop_sequence: null },
+          }),
+        },
+        { data: JSON.stringify({ type: "message_stop" }) },
+      ],
+      "gpt-5.4",
+    )
+
+    const silentParts = silentChunks.flatMap(
+      (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
+    )
+    const silentRoundTrip = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Check file" }] },
+          { role: "model", parts: silentParts },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(silentRoundTrip.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "", signature: sig1 },
+        { type: "thinking", thinking: "", signature: sig2 },
+        {
+          type: "tool_use",
+          id: "call_1",
+          name: "read_file",
+          input: { path: "a.ts" },
+        },
+      ],
+    })
+
+    // 3) Interleaved reasoning -> tool_use -> reasoning -> tool_use
+    const interleavedChunks = await collectStream(
+      [
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "thinking", thinking: "Plan A" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "signature_delta", signature: sig1 },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 1,
+            content_block: {
+              type: "tool_use",
+              id: "call_1",
+              name: "read_file",
+              input: { path: "a.ts" },
+            },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 1 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 2,
+            content_block: { type: "thinking", thinking: "Plan B" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 2,
+            delta: { type: "signature_delta", signature: sig2 },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 2 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 3,
+            content_block: {
+              type: "tool_use",
+              id: "call_2",
+              name: "read_file",
+              input: { path: "b.ts" },
+            },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 3 }) },
+        {
+          data: JSON.stringify({
+            type: "message_delta",
+            delta: { stop_reason: "tool_use", stop_sequence: null },
+          }),
+        },
+        { data: JSON.stringify({ type: "message_stop" }) },
+      ],
+      "gpt-5.4",
+    )
+
+    const interleavedParts = interleavedChunks.flatMap(
+      (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
+    )
+    expect(interleavedParts).toHaveLength(4)
+    expect(interleavedParts[1]?.functionCall?.id).toBe("call_1")
+    expect(interleavedParts[1]?.thoughtSignature).toBeDefined()
+    expect(interleavedParts[3]?.functionCall?.id).toBe("call_2")
+    expect(interleavedParts[3]?.thoughtSignature).toBeDefined()
+
+    const interleavedRoundTrip = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Inspect two files" }] },
+          { role: "model", parts: interleavedParts },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(interleavedRoundTrip.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "Plan A", signature: sig1 },
+        {
+          type: "tool_use",
+          id: "call_1",
+          name: "read_file",
+          input: { path: "a.ts" },
+        },
+        { type: "thinking", thinking: "Plan B", signature: sig2 },
+        {
+          type: "tool_use",
+          id: "call_2",
+          name: "read_file",
+          input: { path: "b.ts" },
+        },
+      ],
+    })
+  })
+
+  test("returns MAX_TOKENS instead of 502 when streaming tool call arguments are truncated by max_tokens", async () => {
+    const sig = Buffer.from("thinking-before-truncation").toString("base64")
+    const truncatedChunks = await collectStream([
+      {
+        data: JSON.stringify({
+          type: "message_start",
+          message: {
+            id: "msg_trunc_1",
+            type: "message",
+            role: "assistant",
+            model: "gemini-4-neon",
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 30, output_tokens: 0 },
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "thinking", thinking: "" },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "signature_delta", signature: sig },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 1,
+          content_block: {
+            type: "tool_use",
+            id: "call_big_write",
+            name: "write_file",
+            input: {},
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 1,
+          delta: {
+            type: "input_json_delta",
+            partial_json: '{"path":"big.ts","content":"unterminated',
+          },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 1 }) },
+      {
+        data: JSON.stringify({
+          type: "message_delta",
+          delta: { stop_reason: "max_tokens", stop_sequence: null },
+          usage: { output_tokens: 4096 },
+        }),
+      },
+      { data: JSON.stringify({ type: "message_stop" }) },
+    ])
+
+    expect(truncatedChunks).toEqual([
+      {
+        responseId: "msg_trunc_1",
+        modelVersion: "gemini-4-neon",
+        candidates: [
+          {
+            index: 0,
+            content: {
+              role: "model",
+              parts: [{ text: "", thoughtSignature: sig }],
+            },
+            finishReason: "MAX_TOKENS",
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 30,
+          candidatesTokenCount: 4096,
+          totalTokenCount: 4126,
+        },
+      },
+    ])
+
+    // Still fails with 502 when stop_reason is NOT max_tokens
+    const brokenNotMaxTokens = await collectStream([
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 0,
+          content_block: {
+            type: "tool_use",
+            id: "call_broken",
+            name: "write_file",
+            input: {},
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "input_json_delta", partial_json: '{"broken":' },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+      {
+        data: JSON.stringify({
+          type: "message_delta",
+          delta: { stop_reason: "tool_use", stop_sequence: null },
+        }),
+      },
+      { data: JSON.stringify({ type: "message_stop" }) },
+    ])
+    expect(brokenNotMaxTokens[0]?.error).toMatchObject({
+      code: 502,
+      status: "INTERNAL",
+    })
+    expect(brokenNotMaxTokens[0]?.error?.message).toContain(
+      "tool call arguments",
+    )
+
+    // Still fails with 502 when a subsequent non-thinking block starts after broken tool args
+    const brokenFollowedByText = await collectStream([
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 0,
+          content_block: {
+            type: "tool_use",
+            id: "call_broken",
+            name: "write_file",
+            input: {},
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "input_json_delta", partial_json: '{"broken":' },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 1,
+          content_block: { type: "text", text: "after" },
+        }),
+      },
+    ])
+    expect(brokenFollowedByText[0]?.error?.code).toBe(502)
+  })
+})
+
+describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning JSON round-trip", () => {
+  test("accepts snake_case Gemini REST fields without renaming user keys in args, responses, or schemas", () => {
+    const sig = Buffer.from("snake-sig").toString("base64")
+    const request: GoogleGenerateContentRequest = {
+      system_instruction: { parts: [{ text: "Use tools carefully." }] },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: "Describe this image" },
+            {
+              inline_data: {
+                mime_type: "image/png",
+                data: "aW1n",
+              },
+            },
+            {
+              inline_data: {
+                mime_type: "application/pdf",
+                data: "cGRm",
+                display_name: "report.pdf",
+              },
+            },
+            {
+              file_data: {
+                file_uri: "gs://bucket/file.txt",
+              },
+            },
+          ],
+        },
+        {
+          role: "model",
+          parts: [
+            { text: "Checking tool", thought: true },
+            {
+              function_call: {
+                id: "call_snake_1",
+                name: "inspect_file",
+                args: { file_path: "src/app.ts", line_number: 10 },
+              },
+              thought_signature: sig,
+            },
+          ],
+        },
+        {
+          role: "user",
+          parts: [
+            {
+              function_response: {
+                id: "call_snake_1",
+                name: "inspect_file",
+                response: { exit_code: 0, raw_text: "ok" },
+                parts: [
+                  {
+                    inline_data: {
+                      mime_type: "image/jpeg",
+                      data: "anBn",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+      tools: [
+        {
+          function_declarations: [
+            {
+              name: "inspect_file",
+              description: "Inspect a file",
+              parameters_json_schema: {
+                type: "object",
+                properties: {
+                  file_path: { type: "string" },
+                  line_number: { type: "integer" },
+                },
+                required: ["file_path"],
+              },
+            },
+          ],
+        },
+      ],
+      tool_config: {
+        function_calling_config: {
+          mode: "VALIDATED",
+          allowed_function_names: ["inspect_file"],
+        },
+      },
+      generation_config: {
+        max_output_tokens: 2048,
+        temperature: 0.3,
+        top_p: 0.85,
+        top_k: 20,
+        stop_sequences: ["DONE"],
+        thinking_config: {
+          thinking_budget: 1024,
+          thinking_level: "HIGH",
+        },
+        response_mime_type: "application/json",
+        response_schema: {
+          type: "OBJECT",
+          properties: {
+            user_id: { type: "STRING" },
+            union_val: { any_of: [{ type: "STRING" }, { type: "NULL" }] },
+          },
+          additional_properties: false,
+        },
+      },
+    }
+
+    const translated = translateGoogleToMessages(request, {
+      model: "gemini-4-neon",
+      stream: false,
+    })
+
+    expect(translated.system).toEqual([
+      { type: "text", text: "Use tools carefully." },
+    ])
+    expect(translated.max_tokens).toBe(2048)
+    expect(translated.temperature).toBe(0.3)
+    expect(translated.top_p).toBe(0.85)
+    expect(translated.top_k).toBe(20)
+    expect(translated.stop_sequences).toEqual(["DONE"])
+    expect(translated.thinking).toEqual({
+      type: "enabled",
+      budget_tokens: 1024,
+    })
+    expect(translated.output_config).toEqual({
+      effort: "high",
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          properties: {
+            user_id: { type: "string" },
+            union_val: { anyOf: [{ type: "string" }, { type: "null" }] },
+          },
+          additionalProperties: false,
+        },
+      },
+    })
+    expect(translated.tools).toEqual([
+      {
+        name: "inspect_file",
+        description: "Inspect a file",
+        input_schema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string" },
+            line_number: { type: "integer" },
+          },
+          required: ["file_path"],
+        },
+      },
+    ])
+    expect(translated.tool_choice).toEqual({ type: "auto" })
+    expect(translated.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Describe this image" },
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "aW1n" },
+          },
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: "cGRm",
+            },
+            title: "report.pdf",
+          },
+          { type: "text", text: "[File reference: gs://bucket/file.txt]" },
+        ],
+      },
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Checking tool", signature: sig },
+          {
+            type: "tool_use",
+            id: "call_snake_1",
+            name: "inspect_file",
+            input: { file_path: "src/app.ts", line_number: 10 },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call_snake_1",
+            content: [
+              { type: "text", text: '{"exit_code":0,"raw_text":"ok"}' },
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: "image/jpeg",
+                  data: "anBn",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
+    expect(() =>
+      translateGoogleToMessages(
+        {
+          contents: [
+            {
+              role: "user",
+              parts: [{ inline_data: { data: "aW1n" } }],
+            },
+          ],
+        },
+        { model: "gemini-4-neon", stream: false },
+      ),
+    ).toThrow(GoogleMessagesTranslationError)
+  })
+
+  test("translates Gemini 4+ generationConfig.responseFormat.text.schema and rejects unsupported formats", () => {
+    const objectFormat = translateGoogleToMessages(
+      {
+        contents: [{ role: "user", parts: [{ text: "Extract verdict" }] }],
+        generationConfig: {
+          responseFormat: {
+            text: {
+              mimeType: "APPLICATION_JSON",
+              schema: {
+                title: "Verdict Result",
+                type: "OBJECT",
+                properties: {
+                  passed: { type: "BOOLEAN" },
+                  score: { type: "INTEGER", nullable: true },
+                },
+                required: ["passed"],
+              },
+            },
+          },
+        },
+      },
+      { model: "gemini-4-neon", stream: false },
+    )
+    expect(objectFormat.output_config).toEqual({
+      format: {
+        type: "json_schema",
+        schema: {
+          title: "Verdict Result",
+          type: "object",
+          properties: {
+            passed: { type: "boolean" },
+            score: { type: ["integer", "null"] },
+          },
+          required: ["passed"],
+        },
+      },
+    })
+
+    const arraySnakeFormat = translateGoogleToMessages(
+      {
+        contents: [{ role: "user", parts: [{ text: "Extract verdict" }] }],
+        generation_config: {
+          response_format: [
+            {
+              text: {
+                mime_type: "application/json",
+                json_schema: {
+                  type: "object",
+                  properties: { ok: { type: "boolean" } },
+                },
+              },
+            },
+          ],
+        },
+      },
+      { model: "gemini-4-neon", stream: false },
+    )
+    expect(arraySnakeFormat.output_config).toEqual({
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+        },
+      },
+    })
+
+    // Plain text responseFormat / responseMimeType passes through without error
+    const plainTextFormat = translateGoogleToMessages(
+      {
+        contents: [{ role: "user", parts: [{ text: "Hello" }] }],
+        generationConfig: {
+          responseFormat: { text: { mimeType: "TEXT_PLAIN" } },
+          responseMimeType: "text/plain",
+        },
+      },
+      { model: "gemini-4-neon", stream: false },
+    )
+    expect(plainTextFormat.output_config).toBeUndefined()
+
+    // Non-text responseFormat modality -> 400
+    expect(() =>
+      translateGoogleToMessages(
+        {
+          contents: [{ role: "user", parts: [{ text: "Draw" }] }],
+          generationConfig: {
+            responseFormat: { image: { aspectRatio: "16:9" } },
+          },
+        },
+        { model: "gemini-4-neon", stream: false },
+      ),
+    ).toThrow(GoogleMessagesTranslationError)
+
+    // Schema paired with non-JSON mimeType -> 400
+    expect(() =>
+      translateGoogleToMessages(
+        {
+          contents: [{ role: "user", parts: [{ text: "Extract" }] }],
+          generationConfig: {
+            responseFormat: {
+              text: {
+                mimeType: "TEXT_PLAIN",
+                schema: { type: "object" },
+              },
+            },
+          },
+        },
+        { model: "gemini-4-neon", stream: false },
+      ),
+    ).toThrow(GoogleMessagesTranslationError)
+
+    // JSON mimeType without schema -> 400 (cannot enforce schema-free JSON via output_config)
+    expect(() =>
+      translateGoogleToMessages(
+        {
+          contents: [{ role: "user", parts: [{ text: "Return JSON" }] }],
+          generationConfig: {
+            responseFormat: { text: { mimeType: "APPLICATION_JSON" } },
+          },
+        },
+        { model: "gemini-4-neon", stream: false },
+      ),
+    ).toThrow(GoogleMessagesTranslationError)
+
+    expect(() =>
+      translateGoogleToMessages(
+        {
+          contents: [{ role: "user", parts: [{ text: "Return JSON" }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+          },
+        },
+        { model: "gemini-4-neon", stream: false },
+      ),
+    ).toThrow(GoogleMessagesTranslationError)
+
+    expect(() =>
+      translateGoogleToMessages(
+        {
+          contents: [{ role: "user", parts: [{ text: "Pick one" }] }],
+          generationConfig: {
+            responseMimeType: "text/x.enum",
+            responseSchema: { type: "STRING", enum: ["A", "B"] },
+          },
+        },
+        { model: "gemini-4-neon", stream: false },
+      ),
+    ).toThrow(GoogleMessagesTranslationError)
+  })
+
+  test("preserves multiple Responses reasoning segments and order across non-stream JSON round-trip", () => {
+    const sig1 = "enc_1@rs_1"
+    const sig2 = "enc_2@rs_2"
+
+    // 1) Consecutive reasoning items + text
+    const consecutive = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_json_1",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.4",
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        content: [
+          { type: "thinking", thinking: "Step 1", signature: sig1 },
+          { type: "thinking", thinking: "Step 2", signature: sig2 },
+          { type: "text", text: "Done" },
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 },
+      },
+      "gpt-5.4",
+    )
+
+    const consecutiveParts = consecutive.candidates?.[0]?.content?.parts ?? []
+    expect(consecutiveParts).toHaveLength(4)
+    expect(consecutiveParts[0]).toEqual({ text: "Step 1", thought: true })
+    expect(consecutiveParts[1]?.text).toBe("")
+    expect(
+      decodeSignatureFromGoogle(consecutiveParts[1]?.thoughtSignature ?? ""),
+    ).toBe(sig1)
+    expect(consecutiveParts[2]).toEqual({ text: "Step 2", thought: true })
+    expect(consecutiveParts[3]?.text).toBe("Done")
+    expect(
+      decodeSignatureFromGoogle(consecutiveParts[3]?.thoughtSignature ?? ""),
+    ).toBe(sig2)
+
+    const restoredFull = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Go" }] },
+          { role: "model", parts: consecutiveParts },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(restoredFull.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "Step 1", signature: sig1 },
+        { type: "thinking", thinking: "Step 2", signature: sig2 },
+        { type: "text", text: "Done" },
+      ],
+    })
+
+    // Even if a client strips thought:true parts, both signatures round-trip in order
+    const restoredWithoutThoughts = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Go" }] },
+          {
+            role: "model",
+            parts: consecutiveParts.filter((part) => !part.thought),
+          },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(restoredWithoutThoughts.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "", signature: sig1 },
+        { type: "thinking", thinking: "", signature: sig2 },
+        { type: "text", text: "Done" },
+      ],
+    })
+
+    // 2) Interleaved reasoning + tool_use + reasoning + tool_use
+    const interleaved = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_json_2",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.4",
+        stop_reason: "tool_use",
+        stop_sequence: null,
+        content: [
+          { type: "thinking", thinking: "First", signature: sig1 },
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "read_file",
+            input: { path: "a.ts" },
+          },
+          { type: "thinking", thinking: "Second", signature: sig2 },
+          {
+            type: "tool_use",
+            id: "call_2",
+            name: "read_file",
+            input: { path: "b.ts" },
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 },
+      },
+      "gpt-5.4",
+    )
+
+    const restoredInterleaved = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Check both" }] },
+          {
+            role: "model",
+            parts: interleaved.candidates?.[0]?.content?.parts ?? [],
+          },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(restoredInterleaved.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "First", signature: sig1 },
+        {
+          type: "tool_use",
+          id: "call_1",
+          name: "read_file",
+          input: { path: "a.ts" },
+        },
+        { type: "thinking", thinking: "Second", signature: sig2 },
+        {
+          type: "tool_use",
+          id: "call_2",
+          name: "read_file",
+          input: { path: "b.ts" },
+        },
+      ],
+    })
+
+    // 3) Interleaved reasoning + text + reasoning + text
+    const interleavedText = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_json_3",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.4",
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        content: [
+          { type: "thinking", thinking: "Draft 1", signature: sig1 },
+          { type: "text", text: "Interim" },
+          { type: "thinking", thinking: "Draft 2", signature: sig2 },
+          { type: "text", text: "Final" },
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 },
+      },
+      "gpt-5.4",
+    )
+
+    const restoredInterleavedText = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Explain" }] },
+          {
+            role: "model",
+            parts: interleavedText.candidates?.[0]?.content?.parts ?? [],
+          },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(restoredInterleavedText.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "Draft 1", signature: sig1 },
+        { type: "text", text: "Interim" },
+        { type: "thinking", thinking: "Draft 2", signature: sig2 },
+        { type: "text", text: "Final" },
+      ],
+    })
+  })
 })

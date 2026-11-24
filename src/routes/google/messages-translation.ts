@@ -16,9 +16,12 @@ import type {
 } from "~/lib/types/anthropic"
 import type {
   GoogleContent,
+  GoogleFileDataInput,
+  GoogleFunctionResponse,
   GoogleGenerateContentRequest,
   GoogleGenerateContentResponse,
   GoogleGenerationConfig,
+  GoogleInlineDataInput,
   GooglePart,
   GoogleTool,
   GoogleToolConfig,
@@ -152,14 +155,24 @@ export function decodeSignatureFromGoogle(thoughtSignature: string): string {
   return thoughtSignature
 }
 
+const GEMINI_SCHEMA_SNAKE_KEY_MAP: Record<string, string> = {
+  additional_properties: "additionalProperties",
+  all_of: "allOf",
+  any_of: "anyOf",
+  one_of: "oneOf",
+  prefix_items: "prefixItems",
+}
+
 export function normalizeGeminiSchema(
   schema: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   const nullable = schema.nullable === true
 
-  for (const [key, value] of Object.entries(schema)) {
-    if (key === "nullable") continue
+  for (const [rawKey, value] of Object.entries(schema)) {
+    if (rawKey === "nullable") continue
+
+    const key = GEMINI_SCHEMA_SNAKE_KEY_MAP[rawKey] ?? rawKey
 
     if (key === "type" && typeof value === "string") {
       if (value === "TYPE_UNSPECIFIED") continue
@@ -206,6 +219,100 @@ export function normalizeGeminiSchema(
   }
 
   return result
+}
+
+function normalizeInlineData(
+  raw: GoogleInlineDataInput | undefined,
+): NonNullable<GooglePart["inlineData"]> | undefined {
+  if (raw === undefined) return undefined
+  if (!isRecord(raw)) {
+    throw new GoogleMessagesTranslationError(
+      "Google inlineData must be an object",
+      400,
+    )
+  }
+
+  const mimeType =
+    typeof raw.mimeType === "string" ? raw.mimeType
+    : typeof raw.mime_type === "string" ? raw.mime_type
+    : undefined
+  const data = typeof raw.data === "string" ? raw.data : undefined
+  if (!mimeType || data === undefined) {
+    throw new GoogleMessagesTranslationError(
+      "Google inlineData requires string 'mimeType' and 'data'",
+      400,
+    )
+  }
+
+  const displayName =
+    typeof raw.displayName === "string" ? raw.displayName
+    : typeof raw.display_name === "string" ? raw.display_name
+    : undefined
+
+  return {
+    mimeType,
+    data,
+    ...(displayName !== undefined ? { displayName } : {}),
+  }
+}
+
+function normalizeFileData(
+  raw: GoogleFileDataInput | undefined,
+): GooglePart["fileData"] | undefined {
+  if (!raw || !isRecord(raw)) return undefined
+  const fileUri =
+    typeof raw.fileUri === "string" ? raw.fileUri
+    : typeof raw.file_uri === "string" ? raw.file_uri
+    : undefined
+  if (!fileUri) return undefined
+  const mimeType =
+    typeof raw.mimeType === "string" ? raw.mimeType
+    : typeof raw.mime_type === "string" ? raw.mime_type
+    : undefined
+  return {
+    fileUri,
+    ...(mimeType !== undefined ? { mimeType } : {}),
+  }
+}
+
+function normalizeGooglePart(part: GooglePart): GooglePart {
+  if (typeof part !== "object" || part === null || Array.isArray(part)) {
+    return {}
+  }
+  const thoughtSignature =
+    typeof part.thoughtSignature === "string" ? part.thoughtSignature
+    : typeof part.thought_signature === "string" ? part.thought_signature
+    : undefined
+  const inlineData = normalizeInlineData(part.inlineData ?? part.inline_data)
+  const fileData = normalizeFileData(part.fileData ?? part.file_data)
+  const functionCall = part.functionCall ?? part.function_call
+  const rawFunctionResponse = part.functionResponse ?? part.function_response
+  const functionResponse: GoogleFunctionResponse | undefined =
+    rawFunctionResponse ?
+      {
+        ...rawFunctionResponse,
+        ...(Array.isArray(rawFunctionResponse.parts) ?
+          {
+            parts: rawFunctionResponse.parts.map((mediaPart) => {
+              const normalizedMedia = normalizeInlineData(
+                mediaPart.inlineData ?? mediaPart.inline_data,
+              )
+              return normalizedMedia ? { inlineData: normalizedMedia } : {}
+            }),
+          }
+        : {}),
+      }
+    : undefined
+
+  return {
+    ...(part.text !== undefined ? { text: part.text } : {}),
+    ...(part.thought !== undefined ? { thought: part.thought } : {}),
+    ...(thoughtSignature !== undefined ? { thoughtSignature } : {}),
+    ...(inlineData !== undefined ? { inlineData } : {}),
+    ...(fileData !== undefined ? { fileData } : {}),
+    ...(functionCall !== undefined ? { functionCall } : {}),
+    ...(functionResponse !== undefined ? { functionResponse } : {}),
+  }
 }
 
 function extractTextParts(content: GoogleContent | undefined): Array<string> {
@@ -305,9 +412,12 @@ function translateFunctionResponse(
   const { text, isError } = serializeFunctionResponseBody(
     functionResponse.response,
   )
-  const mediaParts = (functionResponse.parts ?? []).flatMap((part) =>
-    part.inlineData ? [translateInlineDataPart(part.inlineData)] : [],
-  )
+  const mediaParts = (functionResponse.parts ?? []).flatMap((part) => {
+    const normalizedMedia = normalizeInlineData(
+      part.inlineData ?? part.inline_data,
+    )
+    return normalizedMedia ? [translateInlineDataPart(normalizedMedia)] : []
+  })
 
   if (mediaParts.length === 0) {
     return {
@@ -340,12 +450,15 @@ function translateToolsAndChoice(
 } {
   let tools: Array<AnthropicTool> = []
   for (const toolGroup of rawTools ?? []) {
-    if (!Array.isArray(toolGroup.functionDeclarations)) continue
-    for (const declaration of toolGroup.functionDeclarations) {
+    const declarations =
+      toolGroup.functionDeclarations ?? toolGroup.function_declarations
+    if (!Array.isArray(declarations)) continue
+    for (const declaration of declarations) {
       if (!declaration?.name) continue
+      const parametersJsonSchema =
+        declaration.parametersJsonSchema ?? declaration.parameters_json_schema
       const rawSchema =
-        isRecord(declaration.parametersJsonSchema) ?
-          declaration.parametersJsonSchema
+        isRecord(parametersJsonSchema) ? parametersJsonSchema
         : isRecord(declaration.parameters) ?
           normalizeGeminiSchema(declaration.parameters)
         : { type: "object", properties: {} }
@@ -364,8 +477,11 @@ function translateToolsAndChoice(
     return {}
   }
 
-  const callingConfig = toolConfig?.functionCallingConfig
-  const allowedNames = callingConfig?.allowedFunctionNames?.filter(
+  const callingConfig =
+    toolConfig?.functionCallingConfig ?? toolConfig?.function_calling_config
+  const rawAllowedNames =
+    callingConfig?.allowedFunctionNames ?? callingConfig?.allowed_function_names
+  const allowedNames = rawAllowedNames?.filter(
     (name): name is string => typeof name === "string" && name.length > 0,
   )
   const mode = callingConfig?.mode
@@ -420,6 +536,81 @@ function translateThinkingLevelToEffort(
   }
 }
 
+function isJsonMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase()
+  return normalized === "application/json" || normalized === "application_json"
+}
+
+function isPlainTextMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase()
+  return (
+    normalized === ""
+    || normalized === "text/plain"
+    || normalized === "text_plain"
+    || normalized === "mime_type_unspecified"
+  )
+}
+
+function resolveResponseFormatSchema(
+  responseFormat: GoogleGenerationConfig["responseFormat"],
+): Record<string, unknown> | undefined {
+  if (responseFormat === undefined) return undefined
+  const entries =
+    Array.isArray(responseFormat) ? responseFormat : [responseFormat]
+  let resolvedSchema: Record<string, unknown> | undefined
+
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue
+    for (const [key, value] of Object.entries(entry)) {
+      if (key !== "text" && value !== undefined) {
+        throw new GoogleMessagesTranslationError(
+          `Unsupported generationConfig.responseFormat field '${key}' for translated Google endpoint`,
+          400,
+        )
+      }
+    }
+
+    const textFormat = entry.text
+    if (textFormat === undefined) continue
+    if (!isRecord(textFormat)) {
+      throw new GoogleMessagesTranslationError(
+        "generationConfig.responseFormat.text must be an object",
+        400,
+      )
+    }
+
+    const rawMimeType =
+      typeof textFormat.mimeType === "string" ? textFormat.mimeType
+      : typeof textFormat.mime_type === "string" ? textFormat.mime_type
+      : undefined
+    const rawSchema =
+      isRecord(textFormat.jsonSchema) ? textFormat.jsonSchema
+      : isRecord(textFormat.json_schema) ? textFormat.json_schema
+      : isRecord(textFormat.schema) ? normalizeGeminiSchema(textFormat.schema)
+      : undefined
+
+    if (rawSchema) {
+      if (rawMimeType !== undefined && !isJsonMimeType(rawMimeType)) {
+        throw new GoogleMessagesTranslationError(
+          "generationConfig.responseFormat.text.schema requires a JSON mimeType",
+          400,
+        )
+      }
+      resolvedSchema = rawSchema
+      continue
+    }
+
+    if (rawMimeType !== undefined && !isPlainTextMimeType(rawMimeType)) {
+      throw new GoogleMessagesTranslationError(
+        `Unsupported generationConfig.responseFormat.text.mimeType '${rawMimeType}' without a JSON schema`,
+        400,
+      )
+    }
+  }
+
+  return resolvedSchema
+}
+
 function translateGenerationConfig(
   config: GoogleGenerationConfig | undefined,
   model: string,
@@ -434,22 +625,25 @@ function translateGenerationConfig(
   | "output_config"
 > {
   const defaultMaxTokens = resolveDefaultMaxOutputTokens(model)
+  const rawMaxOutputTokens =
+    config?.maxOutputTokens ?? config?.max_output_tokens
   const requestedMaxTokens =
     (
-      typeof config?.maxOutputTokens === "number"
-      && Number.isFinite(config.maxOutputTokens)
-      && config.maxOutputTokens >= 1
+      typeof rawMaxOutputTokens === "number"
+      && Number.isFinite(rawMaxOutputTokens)
+      && rawMaxOutputTokens >= 1
     ) ?
-      Math.floor(config.maxOutputTokens)
+      Math.floor(rawMaxOutputTokens)
     : undefined
 
   let maxTokens = requestedMaxTokens ?? defaultMaxTokens
   let thinking: AnthropicMessagesPayload["thinking"]
   let outputConfig: AnthropicMessagesPayload["output_config"]
 
-  const thinkingConfig = config?.thinkingConfig
+  const thinkingConfig = config?.thinkingConfig ?? config?.thinking_config
   if (thinkingConfig) {
-    const budget = thinkingConfig.thinkingBudget
+    const budget =
+      thinkingConfig.thinkingBudget ?? thinkingConfig.thinking_budget
     if (typeof budget === "number" && Number.isFinite(budget)) {
       if (budget === 0) {
         thinking = { type: "disabled" }
@@ -462,40 +656,68 @@ function translateGenerationConfig(
       }
     }
 
-    const effort = translateThinkingLevelToEffort(thinkingConfig.thinkingLevel)
+    const effort = translateThinkingLevelToEffort(
+      thinkingConfig.thinkingLevel ?? thinkingConfig.thinking_level,
+    )
     if (effort) {
       outputConfig = { ...outputConfig, effort }
     }
   }
 
-  if (config?.responseMimeType === "application/json") {
-    const rawSchema =
-      isRecord(config.responseJsonSchema) ? config.responseJsonSchema
-      : isRecord(config.responseSchema) ?
-        normalizeGeminiSchema(config.responseSchema)
-      : undefined
-    if (rawSchema) {
-      outputConfig = {
-        ...outputConfig,
-        format: {
-          type: "json_schema",
-          schema: rawSchema,
-        },
-      }
+  const responseFormatSchema = resolveResponseFormatSchema(
+    config?.responseFormat ?? config?.response_format,
+  )
+
+  const legacyMimeType = config?.responseMimeType ?? config?.response_mime_type
+  const rawLegacyJsonSchema =
+    config?.responseJsonSchema ?? config?.response_json_schema
+  const rawLegacySchema = config?.responseSchema ?? config?.response_schema
+  const legacyStructuredSchema =
+    isRecord(rawLegacyJsonSchema) ? rawLegacyJsonSchema
+    : isRecord(rawLegacySchema) ? normalizeGeminiSchema(rawLegacySchema)
+    : undefined
+
+  if (legacyStructuredSchema) {
+    if (legacyMimeType !== undefined && !isJsonMimeType(legacyMimeType)) {
+      throw new GoogleMessagesTranslationError(
+        "Structured output schema requires a JSON responseMimeType",
+        400,
+      )
+    }
+  } else if (
+    legacyMimeType !== undefined
+    && !isPlainTextMimeType(legacyMimeType)
+  ) {
+    throw new GoogleMessagesTranslationError(
+      `Unsupported generationConfig.responseMimeType '${legacyMimeType}' without a JSON schema`,
+      400,
+    )
+  }
+
+  const outputSchema = responseFormatSchema ?? legacyStructuredSchema
+  if (outputSchema) {
+    outputConfig = {
+      ...outputConfig,
+      format: {
+        type: "json_schema",
+        schema: outputSchema,
+      },
     }
   }
+
+  const topP = config?.topP ?? config?.top_p
+  const topK = config?.topK ?? config?.top_k
+  const stopSequences = config?.stopSequences ?? config?.stop_sequences
 
   return {
     max_tokens: Math.max(1, maxTokens),
     ...(typeof config?.temperature === "number" ?
       { temperature: config.temperature }
     : {}),
-    ...(typeof config?.topP === "number" ? { top_p: config.topP } : {}),
-    ...(typeof config?.topK === "number" ? { top_k: config.topK } : {}),
-    ...((
-      Array.isArray(config?.stopSequences) && config.stopSequences.length > 0
-    ) ?
-      { stop_sequences: config.stopSequences }
+    ...(typeof topP === "number" ? { top_p: topP } : {}),
+    ...(typeof topK === "number" ? { top_k: topK } : {}),
+    ...(Array.isArray(stopSequences) && stopSequences.length > 0 ?
+      { stop_sequences: stopSequences }
     : {}),
     ...(thinking ? { thinking } : {}),
     ...(outputConfig ? { output_config: outputConfig } : {}),
@@ -540,28 +762,114 @@ function appendOrMergeUserBlocks(
   messages.push({ role: "user", content: combined })
 }
 
-function appendOrMergeAssistantBlocks(
-  messages: Array<AnthropicInputMessage>,
-  blocks: Array<AnthropicAssistantContentBlock>,
-): void {
-  if (blocks.length === 0) return
+function translateModelParts(
+  parts: Array<GooglePart>,
+  pendingCallIdsByName: Map<string, Array<string>>,
+  nextSyntheticCallId: () => string,
+): Array<AnthropicAssistantContentBlock> {
+  const assistantBlocks: Array<AnthropicAssistantContentBlock> = []
+  let segmentStartIndex = 0
+  let openThinkingBlock: AnthropicThinkingBlock | undefined
 
-  const previous = messages.at(-1)
-  if (previous?.role === "assistant") {
-    const previousBlocks: Array<AnthropicAssistantContentBlock> =
-      typeof previous.content === "string" ?
-        previous.content.length > 0 ?
-          [{ type: "text", text: previous.content }]
-        : []
-      : previous.content
-    const merged = [...previousBlocks, ...blocks]
-    const thinkingBlocks = merged.filter((block) => block.type === "thinking")
-    const otherBlocks = merged.filter((block) => block.type !== "thinking")
-    previous.content = [...thinkingBlocks, ...otherBlocks]
-    return
+  const attachSignatureToSegment = (
+    decodedSignature: string,
+    insertAtIndex: number,
+  ): void => {
+    if (openThinkingBlock) {
+      openThinkingBlock.signature = decodedSignature
+      openThinkingBlock = undefined
+      return
+    }
+    assistantBlocks.splice(insertAtIndex, 0, {
+      type: "thinking",
+      thinking: "",
+      signature: decodedSignature,
+    })
   }
 
-  messages.push({ role: "assistant", content: blocks })
+  for (const part of parts) {
+    const decodedSignature =
+      (
+        typeof part.thoughtSignature === "string"
+        && part.thoughtSignature.length > 0
+      ) ?
+        decodeSignatureFromGoogle(part.thoughtSignature)
+      : undefined
+
+    if (part.thought === true) {
+      const thoughtText = typeof part.text === "string" ? part.text : ""
+      const canAppendToOpen =
+        openThinkingBlock !== undefined
+        && assistantBlocks.at(-1) === openThinkingBlock
+
+      if (!canAppendToOpen) {
+        openThinkingBlock = undefined
+        segmentStartIndex = assistantBlocks.length
+      }
+
+      if (decodedSignature !== undefined) {
+        if (openThinkingBlock) {
+          if (thoughtText.length > 0) {
+            openThinkingBlock.thinking += thoughtText
+          }
+          openThinkingBlock.signature = decodedSignature
+          openThinkingBlock = undefined
+        } else {
+          assistantBlocks.push({
+            type: "thinking",
+            thinking: thoughtText,
+            signature: decodedSignature,
+          })
+        }
+        segmentStartIndex = assistantBlocks.length
+      } else if (thoughtText.length > 0) {
+        if (openThinkingBlock) {
+          openThinkingBlock.thinking += thoughtText
+        } else {
+          openThinkingBlock = {
+            type: "thinking",
+            thinking: thoughtText,
+            signature: "",
+          }
+          assistantBlocks.push(openThinkingBlock)
+        }
+      }
+      continue
+    }
+
+    if (part.functionCall) {
+      if (decodedSignature !== undefined) {
+        attachSignatureToSegment(decodedSignature, segmentStartIndex)
+      }
+
+      const call = part.functionCall
+      const id = call.id?.trim() || nextSyntheticCallId()
+      const queue = pendingCallIdsByName.get(call.name) ?? []
+      queue.push(id)
+      pendingCallIdsByName.set(call.name, queue)
+
+      const toolUseBlock: AnthropicToolUseBlock = {
+        type: "tool_use",
+        id,
+        name: call.name,
+        input: isRecord(call.args) ? call.args : {},
+      }
+      assistantBlocks.push(toolUseBlock)
+      segmentStartIndex = assistantBlocks.length
+      continue
+    }
+
+    if (typeof part.text === "string" && part.text.length > 0) {
+      assistantBlocks.push({ type: "text", text: part.text })
+    }
+
+    if (decodedSignature !== undefined) {
+      attachSignatureToSegment(decodedSignature, segmentStartIndex)
+      segmentStartIndex = assistantBlocks.length
+    }
+  }
+
+  return assistantBlocks
 }
 
 export function translateGoogleToMessages(
@@ -595,9 +903,23 @@ export function translateGoogleToMessages(
 
   const messages: Array<AnthropicInputMessage> = []
   const pendingCallIdsByName = new Map<string, Array<string>>()
+  let pendingModelParts: Array<GooglePart> = []
   let callCounter = 0
 
   const nextSyntheticCallId = (): string => `call_google_${++callCounter}`
+
+  const flushPendingModelParts = (): void => {
+    if (pendingModelParts.length === 0) return
+    const assistantBlocks = translateModelParts(
+      pendingModelParts,
+      pendingCallIdsByName,
+      nextSyntheticCallId,
+    )
+    pendingModelParts = []
+    if (assistantBlocks.length > 0) {
+      messages.push({ role: "assistant", content: assistantBlocks })
+    }
+  }
 
   for (const content of payload.contents) {
     if (!content || !Array.isArray(content.parts)) continue
@@ -609,68 +931,19 @@ export function translateGoogleToMessages(
       continue
     }
 
+    const normalizedParts = content.parts.map(normalizeGooglePart)
+
     if (content.role === "model") {
-      const thoughtTexts: Array<string> = []
-      let thoughtSignature: string | undefined
-      const assistantOtherBlocks: Array<AnthropicAssistantContentBlock> = []
-
-      for (const part of content.parts) {
-        if (
-          typeof part.thoughtSignature === "string"
-          && part.thoughtSignature.length > 0
-        ) {
-          thoughtSignature = decodeSignatureFromGoogle(part.thoughtSignature)
-        }
-
-        if (part.thought === true) {
-          if (typeof part.text === "string" && part.text.length > 0) {
-            thoughtTexts.push(part.text)
-          }
-          continue
-        }
-
-        if (part.functionCall) {
-          const call = part.functionCall
-          const id = call.id?.trim() || nextSyntheticCallId()
-          const queue = pendingCallIdsByName.get(call.name) ?? []
-          queue.push(id)
-          pendingCallIdsByName.set(call.name, queue)
-
-          const toolUseBlock: AnthropicToolUseBlock = {
-            type: "tool_use",
-            id,
-            name: call.name,
-            input: isRecord(call.args) ? call.args : {},
-          }
-          assistantOtherBlocks.push(toolUseBlock)
-          continue
-        }
-
-        if (typeof part.text === "string" && part.text.length > 0) {
-          assistantOtherBlocks.push({ type: "text", text: part.text })
-        }
-      }
-
-      const assistantBlocks: Array<AnthropicAssistantContentBlock> = []
-      const combinedThought = thoughtTexts.join("")
-      if (combinedThought.length > 0 || thoughtSignature !== undefined) {
-        const thinkingBlock: AnthropicThinkingBlock = {
-          type: "thinking",
-          thinking: combinedThought,
-          signature: thoughtSignature ?? "",
-        }
-        assistantBlocks.push(thinkingBlock)
-      }
-      assistantBlocks.push(...assistantOtherBlocks)
-
-      appendOrMergeAssistantBlocks(messages, assistantBlocks)
+      pendingModelParts.push(...normalizedParts)
       continue
     }
+
+    flushPendingModelParts()
 
     const toolResults: Array<AnthropicToolResultBlock> = []
     const userBlocks: Array<AnthropicUserContentBlock> = []
 
-    for (const part of content.parts) {
+    for (const part of normalizedParts) {
       if (part.functionResponse) {
         const resp = part.functionResponse
         const queue = pendingCallIdsByName.get(resp.name)
@@ -708,6 +981,8 @@ export function translateGoogleToMessages(
     appendOrMergeUserBlocks(messages, toolResults, userBlocks)
   }
 
+  flushPendingModelParts()
+
   if (messages.length === 0) {
     throw new GoogleMessagesTranslationError(
       "Google generateContent 'contents' must contain at least one translatable message",
@@ -717,10 +992,10 @@ export function translateGoogleToMessages(
 
   const { tools, toolChoice } = translateToolsAndChoice(
     payload.tools,
-    payload.toolConfig,
+    payload.toolConfig ?? payload.tool_config,
   )
   const generation = translateGenerationConfig(
-    payload.generationConfig,
+    payload.generationConfig ?? payload.generation_config,
     options.model,
   )
 
@@ -779,8 +1054,23 @@ export function translateAnthropicResponseToGoogle(
   fallbackModel: string,
 ): GoogleGenerateContentResponse {
   const parts: Array<GooglePart> = []
-  let pendingSignature: string | undefined
+  const pendingSignatures: Array<string> = []
   const toolSignaturesById = new Map<string, string>()
+
+  const flushPendingSignatures = (attachToLastPart: boolean): void => {
+    while (pendingSignatures.length > 0) {
+      const signature = pendingSignatures.shift()
+      if (!signature) continue
+      if (attachToLastPart && pendingSignatures.length === 0) {
+        const lastPart = parts.at(-1)
+        if (lastPart && !lastPart.thoughtSignature && !lastPart.thought) {
+          lastPart.thoughtSignature = signature
+          continue
+        }
+      }
+      parts.push({ text: "", thoughtSignature: signature })
+    }
+  }
 
   for (const block of response.content) {
     if (block.type === "thinking") {
@@ -788,6 +1078,14 @@ export function translateAnthropicResponseToGoogle(
         block.signature.length > 0 ?
           encodeSignatureForGoogle(block.signature)
         : undefined
+
+      const startsNewThinkingSegment =
+        encoded?.target !== "previous"
+        && !(encoded?.target && typeof encoded.target === "object")
+        && (block.thinking.length > 0 || encoded !== undefined)
+      if (startsNewThinkingSegment && pendingSignatures.length > 0) {
+        flushPendingSignatures(true)
+      }
 
       if (block.thinking.length > 0) {
         const thoughtPart: GooglePart = {
@@ -808,13 +1106,13 @@ export function translateAnthropicResponseToGoogle(
           if (previous && !previous.thoughtSignature) {
             previous.thoughtSignature = encoded.signature
           } else {
-            pendingSignature = encoded.signature
+            pendingSignatures.push(encoded.signature)
           }
         } else if (
           encoded.target !== "thinking"
           || block.thinking.length === 0
         ) {
-          pendingSignature = encoded.signature
+          pendingSignatures.push(encoded.signature)
         }
       }
       continue
@@ -826,35 +1124,31 @@ export function translateAnthropicResponseToGoogle(
     }
 
     if (block.type === "tool_use") {
-      const targetedSignature = toolSignaturesById.get(block.id)
+      let thoughtSignature = toolSignaturesById.get(block.id)
+      if (thoughtSignature) {
+        toolSignaturesById.delete(block.id)
+        flushPendingSignatures(false)
+      } else if (pendingSignatures.length > 0) {
+        while (pendingSignatures.length > 1) {
+          const earlier = pendingSignatures.shift()
+          if (earlier) {
+            parts.push({ text: "", thoughtSignature: earlier })
+          }
+        }
+        thoughtSignature = pendingSignatures.shift()
+      }
       parts.push({
         functionCall: {
           id: block.id,
           name: block.name,
           args: block.input,
         },
-        ...(targetedSignature ? { thoughtSignature: targetedSignature } : {}),
+        ...(thoughtSignature ? { thoughtSignature } : {}),
       })
     }
   }
 
-  if (pendingSignature) {
-    const firstFunctionCall = parts.find(
-      (part) => part.functionCall !== undefined,
-    )
-    if (firstFunctionCall) {
-      if (!firstFunctionCall.thoughtSignature) {
-        firstFunctionCall.thoughtSignature = pendingSignature
-      }
-    } else {
-      const lastPart = parts.at(-1)
-      if (lastPart && !lastPart.thoughtSignature) {
-        lastPart.thoughtSignature = pendingSignature
-      } else {
-        parts.push({ text: "", thoughtSignature: pendingSignature })
-      }
-    }
-  }
+  flushPendingSignatures(true)
 
   const usageMetadata = translateAnthropicUsageToGoogle(response.usage)
 

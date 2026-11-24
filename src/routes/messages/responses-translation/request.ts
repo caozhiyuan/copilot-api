@@ -20,6 +20,7 @@ import {
 import { getPromptCacheKey } from "~/lib/utils"
 import {
   type ResponsesPayload,
+  type ResponsesTextFormat,
   type ResponseInputCompaction,
   type ResponseInputContent,
   type ResponseInputFile,
@@ -54,8 +55,13 @@ import {
   type AnthropicToolUseBlock,
   type AnthropicUserContentBlock,
   type AnthropicUserMessage,
+  type BetaJSONOutputFormat,
 } from "~/lib/types/anthropic"
-import { normalizeToolSchema, THINKING_TEXT } from "../completions-translation"
+import {
+  normalizeToolSchema,
+  resolveJsonSchemaName,
+  THINKING_TEXT,
+} from "../completions-translation"
 
 import {
   decodeCompactionCarrierSignature,
@@ -66,6 +72,27 @@ export const MESSAGE_TYPE = "message"
 
 export const resolveReasoningEffort = (payload: AnthropicMessagesPayload) =>
   payload.output_config?.effort ?? getReasoningEffortForModel(payload.model)
+
+const translateOutputFormatToResponses = (
+  format: BetaJSONOutputFormat | null | undefined,
+): ResponsesTextFormat | undefined => {
+  if (format?.type !== "json_schema") {
+    return undefined
+  }
+
+  const description =
+    typeof format.schema.description === "string" ?
+      format.schema.description.trim()
+    : ""
+
+  return {
+    type: "json_schema",
+    name: resolveJsonSchemaName(format.schema),
+    schema: format.schema,
+    strict: false,
+    ...(description.length > 0 ? { description } : {}),
+  }
+}
 
 export const translateAnthropicMessagesToResponsesPayload = (
   payload: AnthropicMessagesPayload,
@@ -120,10 +147,15 @@ export const translateAnthropicMessagesToResponsesPayload = (
     input.unshift(createMessage(isGrok ? "system" : "developer", systemPrompt))
   }
 
+  const textFormat = translateOutputFormatToResponses(
+    payload.output_config?.format,
+  )
+
   const responsesPayload: ResponsesPayload = {
     model: payload.model,
     input,
     ...(sendSystemPromptInInput ? {} : { instructions: systemPrompt }),
+    ...(textFormat ? { text: { format: textFormat } } : {}),
     temperature: 1, // reasoning high temperature fixed to 1
     top_p: payload.top_p ?? null,
     max_output_tokens: payload.max_tokens,

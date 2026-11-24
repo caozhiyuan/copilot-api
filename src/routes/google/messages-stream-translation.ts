@@ -91,9 +91,19 @@ export async function* translateMessagesStreamToGoogle(
   let hasUsage = false
 
   const blocks = new Map<number, StreamBlockState>()
-  let pendingSignature: string | undefined
+  const pendingSignatures: Array<string> = []
   const toolSignaturesById = new Map<string, string>()
-  let firstFunctionCallEmitted = false
+  let pendingInvalidToolArgsError: GoogleMessagesTranslationError | undefined
+
+  const takePendingSignatureParts = (): Array<GooglePart> => {
+    if (pendingSignatures.length === 0) return []
+    const parts = pendingSignatures.map((thoughtSignature) => ({
+      text: "",
+      thoughtSignature,
+    }))
+    pendingSignatures.length = 0
+    return parts
+  }
 
   const buildChunk = (
     parts: Array<GooglePart>,
@@ -141,12 +151,19 @@ export async function* translateMessagesStreamToGoogle(
       if (event.type === "content_block_start") {
         initialized = true
         const block = event.content_block
+        if (pendingInvalidToolArgsError && block.type !== "thinking") {
+          throw pendingInvalidToolArgsError
+        }
         if (block.type === "thinking") {
           blocks.set(event.index, {
             type: "thinking",
             signature: "",
           })
           if (block.thinking.length > 0) {
+            const flushed = takePendingSignatureParts()
+            if (flushed.length > 0) {
+              yield buildChunk(flushed)
+            }
             yield buildChunk([{ text: block.thinking, thought: true }])
           }
         } else if (block.type === "text") {
@@ -173,6 +190,10 @@ export async function* translateMessagesStreamToGoogle(
 
         if (delta.type === "thinking_delta") {
           if (delta.thinking.length > 0) {
+            const flushed = takePendingSignatureParts()
+            if (flushed.length > 0) {
+              yield buildChunk(flushed)
+            }
             yield buildChunk([{ text: delta.thinking, thought: true }])
           }
         } else if (delta.type === "signature_delta") {
@@ -205,22 +226,47 @@ export async function* translateMessagesStreamToGoogle(
                 encoded.signature,
               )
             } else {
-              pendingSignature = encoded.signature
+              const flushed = takePendingSignatureParts()
+              if (flushed.length > 0) {
+                yield buildChunk(flushed)
+              }
+              pendingSignatures.push(encoded.signature)
             }
           }
         } else if (block.type === "tool_use") {
-          const args = parseToolUseArguments(
-            block.inputJson,
-            block.initialInput,
-          )
+          let args: Record<string, unknown>
+          try {
+            args = parseToolUseArguments(block.inputJson, block.initialInput)
+          } catch (error) {
+            pendingInvalidToolArgsError =
+              error instanceof GoogleMessagesTranslationError ? error : (
+                new GoogleMessagesTranslationError(
+                  `Invalid tool call arguments JSON in Messages stream: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                  502,
+                )
+              )
+            continue
+          }
+
           let thoughtSignature = toolSignaturesById.get(block.id)
+          const precedingParts: Array<GooglePart> = []
           if (thoughtSignature) {
             toolSignaturesById.delete(block.id)
-          } else if (!firstFunctionCallEmitted && pendingSignature) {
-            thoughtSignature = pendingSignature
-            pendingSignature = undefined
+            precedingParts.push(...takePendingSignatureParts())
+          } else if (pendingSignatures.length > 0) {
+            while (pendingSignatures.length > 1) {
+              const earlier = pendingSignatures.shift()
+              if (earlier) {
+                precedingParts.push({ text: "", thoughtSignature: earlier })
+              }
+            }
+            thoughtSignature = pendingSignatures.shift()
           }
-          firstFunctionCallEmitted = true
+          if (precedingParts.length > 0) {
+            yield buildChunk(precedingParts)
+          }
           yield buildChunk([
             {
               functionCall: {
@@ -258,13 +304,15 @@ export async function* translateMessagesStreamToGoogle(
       }
 
       if (event.type === "message_stop") {
+        if (pendingInvalidToolArgsError) {
+          if (stopReason !== "max_tokens") {
+            throw pendingInvalidToolArgsError
+          }
+          pendingInvalidToolArgsError = undefined
+        }
         initialized = true
         messageStopped = true
-        const finalParts: Array<GooglePart> = []
-        if (pendingSignature) {
-          finalParts.push({ text: "", thoughtSignature: pendingSignature })
-          pendingSignature = undefined
-        }
+        const finalParts = takePendingSignatureParts()
         yield buildChunk(
           finalParts,
           mapAnthropicStopReasonToGoogle(stopReason),
@@ -276,6 +324,10 @@ export async function* translateMessagesStreamToGoogle(
 
     if (options.signal?.aborted) {
       return
+    }
+
+    if (pendingInvalidToolArgsError) {
+      throw pendingInvalidToolArgsError
     }
 
     if (!initialized) {

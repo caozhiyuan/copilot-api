@@ -366,8 +366,15 @@ function applyGoogleModelConfigDefaults(
 
   const forwarded: GoogleGenerateContentRequest = { ...payload }
   if (hasSamplingDefaults || hasExtraGenerationConfig) {
+    const usesSnakeGenerationConfig =
+      forwarded.generationConfig === undefined
+      && forwarded.generation_config !== undefined
+    const existingGenerationConfig =
+      usesSnakeGenerationConfig ?
+        forwarded.generation_config
+      : forwarded.generationConfig
     const generationConfig: Record<string, unknown> = {
-      ...(forwarded.generationConfig as Record<string, unknown> | undefined),
+      ...(existingGenerationConfig as Record<string, unknown> | undefined),
     }
     if (
       generationConfig.temperature === undefined
@@ -375,11 +382,21 @@ function applyGoogleModelConfigDefaults(
     ) {
       generationConfig.temperature = modelConfig.temperature
     }
-    if (generationConfig.topP === undefined && modelConfig.topP !== undefined) {
-      generationConfig.topP = modelConfig.topP
+    if (
+      generationConfig.topP === undefined
+      && generationConfig.top_p === undefined
+      && modelConfig.topP !== undefined
+    ) {
+      generationConfig[usesSnakeGenerationConfig ? "top_p" : "topP"] =
+        modelConfig.topP
     }
-    if (generationConfig.topK === undefined && modelConfig.topK !== undefined) {
-      generationConfig.topK = modelConfig.topK
+    if (
+      generationConfig.topK === undefined
+      && generationConfig.top_k === undefined
+      && modelConfig.topK !== undefined
+    ) {
+      generationConfig[usesSnakeGenerationConfig ? "top_k" : "topK"] =
+        modelConfig.topK
     }
     if (hasExtraGenerationConfig) {
       for (const [key, value] of Object.entries(
@@ -390,11 +407,24 @@ function applyGoogleModelConfigDefaults(
         }
       }
     }
-    forwarded.generationConfig = generationConfig
+    if (usesSnakeGenerationConfig) {
+      forwarded.generation_config = generationConfig
+    } else {
+      forwarded.generationConfig = generationConfig
+    }
   }
 
+  const extraBodyWithoutGenerationConfig =
+    modelConfig.extraBody && forwarded.generation_config !== undefined ?
+      Object.fromEntries(
+        Object.entries(modelConfig.extraBody).filter(
+          ([key]) => key !== "generationConfig",
+        ),
+      )
+    : modelConfig.extraBody
+
   applyMissingExtraBody(forwarded as unknown as Record<string, unknown>, {
-    extraBody: modelConfig.extraBody,
+    extraBody: extraBodyWithoutGenerationConfig,
   })
   return forwarded
 }

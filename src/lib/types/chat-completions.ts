@@ -102,6 +102,19 @@ interface ChoiceNonStreaming {
 
 // Payload types
 
+export type ChatCompletionsResponseFormat =
+  | { type: "text" }
+  | { type: "json_object" }
+  | {
+      type: "json_schema"
+      json_schema: {
+        name: string
+        description?: string
+        schema: Record<string, unknown>
+        strict?: boolean | null
+      }
+    }
+
 export interface ChatCompletionsPayload {
   [key: string]: unknown
 
@@ -119,7 +132,7 @@ export interface ChatCompletionsPayload {
   presence_penalty?: number | null
   logit_bias?: Record<string, number> | null
   logprobs?: boolean | null
-  response_format?: { type: "json_object" } | null
+  response_format?: ChatCompletionsResponseFormat | null
   seed?: number | null
   tools?: Array<Tool> | null
   tool_choice?:

@@ -1156,3 +1156,66 @@ describe("compact request detection", () => {
     expect(getCompactType(anthropicPayload)).toBe(COMPACT_REQUEST)
   })
 })
+
+describe("Anthropic output_config.format translation to OpenAI Chat Completions", () => {
+  test("maps output_config.format json_schema into response_format with sanitized name", () => {
+    const schema = {
+      title: "Code Review Verdict!",
+      description: "Structured code review result",
+      type: "object",
+      properties: {
+        decision: { type: "string" },
+      },
+      required: ["decision"],
+    }
+
+    const translated = translateToOpenAI({
+      model: "gemini-4-neon",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: "Review this patch" }],
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema,
+        },
+      },
+    })
+
+    expect(translated.response_format).toEqual({
+      type: "json_schema",
+      json_schema: {
+        name: "Code_Review_Verdict",
+        description: "Structured code review result",
+        schema,
+      },
+    })
+
+    const fallbackNameTranslated = translateToOpenAI({
+      model: "gemini-4-neon",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: "Return JSON" }],
+      output_config: {
+        format: {
+          type: "json_schema",
+          schema: {
+            title: "!!!",
+            type: "object",
+            properties: { ok: { type: "boolean" } },
+          },
+        },
+      },
+    })
+
+    expect(fallbackNameTranslated.response_format).toEqual({
+      type: "json_schema",
+      json_schema: {
+        name: "response",
+        schema: {
+          title: "!!!",
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+        },
+      },
+    })
+  })
+})

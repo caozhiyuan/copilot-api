@@ -8,6 +8,7 @@ import type { SubagentMarker } from "~/lib/http/subagent"
 import type { Model } from "~/lib/types/models"
 
 import { getRawProviderConfig } from "~/lib/config"
+import { HTTPError } from "~/lib/http/error"
 import {
   recordAnthropicFirstToken,
   recordChatCompletionFirstToken,
@@ -109,6 +110,30 @@ interface ChatCompletionsFlowOptions extends FlowBaseOptions {
   selectedModel?: Model
 }
 
+const assertStructuredOutputSupport = (
+  payload: AnthropicMessagesPayload,
+  selectedModel: Model | undefined,
+): void => {
+  if (
+    payload.output_config?.format
+    && selectedModel?.capabilities.supports.structured_outputs === false
+  ) {
+    const message = `Model '${selectedModel.id}' does not support structured JSON schema output`
+    throw new HTTPError(
+      message,
+      Response.json(
+        {
+          error: {
+            type: "invalid_request_error",
+            message,
+          },
+        },
+        { status: 400 },
+      ),
+    )
+  }
+}
+
 export const handleWithChatCompletions = async (
   c: Context,
   anthropicPayload: AnthropicMessagesPayload,
@@ -122,6 +147,7 @@ export const handleWithChatCompletions = async (
     sessionId,
     compactType,
   } = options
+  assertStructuredOutputSupport(anthropicPayload, selectedModel)
   const openAIPayload = translateToOpenAI(anthropicPayload, {
     supportPdf: getProviderModelPdfSupport(
       anthropicPayload.model,
@@ -245,6 +271,7 @@ export const handleWithResponsesApi = async (
   options: ResponsesFlowOptions,
 ) => {
   const { logger, selectedModel, ...requestOptions } = options
+  assertStructuredOutputSupport(anthropicPayload, selectedModel)
 
   const responsesPayload =
     translateAnthropicMessagesToResponsesPayload(anthropicPayload)
@@ -405,6 +432,7 @@ export const handleWithMessagesApi = async (
     compactType,
   } = options
 
+  assertStructuredOutputSupport(anthropicPayload, selectedModel)
   prepareMessagesApiPayload(anthropicPayload, selectedModel)
   const recordUsage = createCopilotUsageRecorder({
     endpoint: options.usageEndpoint ?? "messages",

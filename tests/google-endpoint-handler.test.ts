@@ -11,12 +11,15 @@ import type {
   GoogleModelsResponse,
 } from "~/lib/types/google"
 
+import { createResponsesResult } from "./fixtures/responses"
+
 process.env.COPILOT_API_HOME = mkdtempSync(
   path.join(tmpdir(), "copilot-api-google-endpoint-"),
 )
 process.env.COPILOT_API_SQLITE_DB_PATH = ":memory:"
 
 const { createServer } = await import("~/server")
+const { state } = await import("~/lib/state")
 const { messagesApiFlowDependencies } = await import(
   "~/routes/messages/api-flows"
 )
@@ -29,6 +32,7 @@ const { closeUsageStore, getTokenUsageEventsPage } = await import(
 
 const originalCreateChatCompletions =
   messagesApiFlowDependencies.createChatCompletions
+const originalCreateResponses = messagesApiFlowDependencies.createResponses
 const originalHandleCompletionPayload =
   googleHandlerDependencies.handleCompletionPayload
 const originalGetAggregatedModels =
@@ -38,8 +42,10 @@ const originalResolveAlias =
 const originalResolveProvider = googleHandlerDependencies.resolveProviderConfig
 const originalForwardGoogle =
   googleHandlerDependencies.forwardGoogleGenerateContent
+const originalStateModels = state.models
 
 const createChatCompletions = mock(originalCreateChatCompletions)
+const createResponses = mock(originalCreateResponses)
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
 
 async function* streamEvents(
@@ -94,7 +100,10 @@ beforeEach(async () => {
   process.env[DB_PATH_ENV] = ":memory:"
   await closeUsageStore()
   createChatCompletions.mockReset()
+  createResponses.mockReset()
   messagesApiFlowDependencies.createChatCompletions = createChatCompletions
+  messagesApiFlowDependencies.createResponses = createResponses
+  state.models = originalStateModels
   googleHandlerDependencies.handleCompletionPayload =
     originalHandleCompletionPayload
   googleHandlerDependencies.getAggregatedModels = originalGetAggregatedModels
@@ -107,6 +116,8 @@ beforeEach(async () => {
 afterEach(async () => {
   messagesApiFlowDependencies.createChatCompletions =
     originalCreateChatCompletions
+  messagesApiFlowDependencies.createResponses = originalCreateResponses
+  state.models = originalStateModels
   googleHandlerDependencies.handleCompletionPayload =
     originalHandleCompletionPayload
   googleHandlerDependencies.getAggregatedModels = originalGetAggregatedModels
@@ -1182,5 +1193,590 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         maxOutputTokens: 8192,
       },
     })
+
+    // Snake-case generation_config should not be duplicated with camelCase generationConfig
+    const snakeRes = await app.request(
+      "/v1beta/models/mygoogle/gemini-4-argon:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hello snake" }] }],
+          generation_config: { top_p: 0.6 },
+        }),
+      },
+    )
+    expect(snakeRes.status).toBe(200)
+    expect(capturedPayload).toEqual({
+      contents: [{ role: "user", parts: [{ text: "hello snake" }] }],
+      cachedContent: "cachedContents/default",
+      generation_config: {
+        top_p: 0.6,
+        temperature: 0.4,
+        top_k: 32,
+        maxOutputTokens: 8192,
+      },
+    })
+  })
+
+  test("forwards snake_case inline_data, thought_signature, and structured schemas to Chat Completions and Responses APIs", async () => {
+    const app = createServer()
+    const sig = Buffer.from("snake-opaque-sig").toString("base64")
+
+    createChatCompletions.mockImplementationOnce(() =>
+      Promise.resolve({
+        id: "chatcmpl-so",
+        object: "chat.completion" as const,
+        created: 0,
+        model: "gemini-4-neon",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant" as const, content: '{"ok":true}' },
+            logprobs: null,
+            finish_reason: "stop" as const,
+          },
+        ],
+        usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
+      }),
+    )
+
+    const chatRes = await app.request(
+      "/v1beta/models/gemini-4-neon:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: "Analyze image" },
+                { inline_data: { mime_type: "image/png", data: "aW1n" } },
+              ],
+            },
+            {
+              role: "model",
+              parts: [
+                {
+                  function_call: {
+                    id: "call_1",
+                    name: "inspect",
+                    args: { target_path: "a.png" },
+                  },
+                  thought_signature: sig,
+                },
+              ],
+            },
+            {
+              role: "user",
+              parts: [
+                {
+                  function_response: {
+                    id: "call_1",
+                    name: "inspect",
+                    response: { status: "ok" },
+                  },
+                },
+              ],
+            },
+          ],
+          generation_config: {
+            response_format: {
+              text: {
+                mime_type: "APPLICATION_JSON",
+                schema: {
+                  title: "Image Verdict",
+                  type: "OBJECT",
+                  properties: { ok: { type: "BOOLEAN" } },
+                  required: ["ok"],
+                },
+              },
+            },
+          },
+        }),
+      },
+    )
+
+    expect(chatRes.status).toBe(200)
+    const chatReq = createChatCompletions.mock.calls[0]?.[0]
+    expect(chatReq?.response_format).toEqual({
+      type: "json_schema",
+      json_schema: {
+        name: "Image_Verdict",
+        schema: {
+          title: "Image Verdict",
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+          required: ["ok"],
+        },
+      },
+    })
+    expect(chatReq?.messages[0]?.content).toEqual([
+      { type: "text", text: "Analyze image" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,aW1n" } },
+    ])
+    expect(chatReq?.messages[1]?.reasoning_opaque).toBe(sig)
+
+    // Configure Copilot Responses model with structured_outputs support + another without support
+    state.models = {
+      object: "list",
+      data: [
+        {
+          id: "gpt-5.4",
+          name: "gpt-5.4",
+          object: "model",
+          preview: false,
+          vendor: "openai",
+          version: "1",
+          model_picker_enabled: true,
+          supported_endpoints: ["/responses"],
+          capabilities: {
+            family: "gpt",
+            limits: { max_output_tokens: 16384 },
+            object: "model_capabilities",
+            supports: { structured_outputs: true },
+            tokenizer: "o200k_base",
+            type: "chat",
+          },
+        },
+        {
+          id: "legacy-no-schema",
+          name: "legacy-no-schema",
+          object: "model",
+          preview: false,
+          vendor: "openai",
+          version: "1",
+          model_picker_enabled: true,
+          supported_endpoints: ["/chat/completions"],
+          capabilities: {
+            family: "gpt",
+            limits: { max_output_tokens: 4096 },
+            object: "model_capabilities",
+            supports: { structured_outputs: false },
+            tokenizer: "o200k_base",
+            type: "chat",
+          },
+        },
+      ],
+    }
+
+    createResponses.mockImplementationOnce(() =>
+      Promise.resolve({
+        ...createResponsesResult("gpt-5.4"),
+        id: "resp_so",
+        output: [
+          {
+            id: "msg_out",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: '{"ok":true}' }],
+          },
+        ],
+        output_text: '{"ok":true}',
+        usage: { input_tokens: 10, output_tokens: 4, total_tokens: 14 },
+      }),
+    )
+
+    const respRes = await app.request(
+      "/v1beta/models/gpt-5.4:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Return JSON" }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseJsonSchema: {
+              title: "Check",
+              type: "object",
+              properties: { ok: { type: "boolean" } },
+            },
+          },
+        }),
+      },
+    )
+    expect(respRes.status).toBe(200)
+    const respReq = createResponses.mock.calls[0]?.[0]
+    expect(respReq?.text).toEqual({
+      format: {
+        type: "json_schema",
+        name: "Check",
+        schema: {
+          title: "Check",
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+        },
+        strict: false,
+      },
+    })
+
+    // Model declaring structured_outputs: false returns an explicit 400 error
+    const unsupportedRes = await app.request(
+      "/v1beta/models/legacy-no-schema:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Return JSON" }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseJsonSchema: { type: "object" },
+          },
+        }),
+      },
+    )
+    expect(unsupportedRes.status).toBe(400)
+  })
+
+  test("round-trips multiple Responses reasoning items in order for both JSON and SSE", async () => {
+    const app = createServer()
+    state.models = {
+      object: "list",
+      data: [
+        {
+          id: "gpt-5.4",
+          name: "gpt-5.4",
+          object: "model",
+          preview: false,
+          vendor: "openai",
+          version: "1",
+          model_picker_enabled: true,
+          supported_endpoints: ["/responses"],
+          capabilities: {
+            family: "gpt",
+            limits: { max_output_tokens: 16384 },
+            object: "model_capabilities",
+            supports: { structured_outputs: true },
+            tokenizer: "o200k_base",
+            type: "chat",
+          },
+        },
+      ],
+    }
+
+    // 1) Non-streaming JSON round-trip with 2 reasoning items
+    createResponses.mockImplementationOnce(() =>
+      Promise.resolve({
+        ...createResponsesResult("gpt-5.4"),
+        id: "resp_multi_json_1",
+        output: [
+          {
+            id: "rs_1",
+            type: "reasoning",
+            summary: [{ type: "summary_text", text: "First thought" }],
+            encrypted_content: "enc_1",
+          },
+          {
+            id: "rs_2",
+            type: "reasoning",
+            summary: [{ type: "summary_text", text: "Second thought" }],
+            encrypted_content: "enc_2",
+          },
+          {
+            id: "msg_1",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "Answer 1" }],
+          },
+        ],
+        output_text: "Answer 1",
+        usage: { input_tokens: 10, output_tokens: 10, total_tokens: 20 },
+      }),
+    )
+
+    const jsonTurn1Res = await app.request(
+      "/v1beta/models/gpt-5.4:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Start" }] }],
+        }),
+      },
+    )
+    expect(jsonTurn1Res.status).toBe(200)
+    const jsonTurn1 =
+      (await jsonTurn1Res.json()) as GoogleGenerateContentResponse
+    const jsonTurn1Parts = jsonTurn1.candidates?.[0]?.content?.parts ?? []
+
+    createResponses.mockImplementationOnce(() =>
+      Promise.resolve({
+        ...createResponsesResult("gpt-5.4"),
+        id: "resp_multi_json_2",
+        output: [
+          {
+            id: "msg_2",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "Answer 2" }],
+          },
+        ],
+        output_text: "Answer 2",
+        usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 },
+      }),
+    )
+
+    const jsonTurn2Res = await app.request(
+      "/v1beta/models/gpt-5.4:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            { role: "user", parts: [{ text: "Start" }] },
+            { role: "model", parts: jsonTurn1Parts },
+            { role: "user", parts: [{ text: "Continue" }] },
+          ],
+        }),
+      },
+    )
+    expect(jsonTurn2Res.status).toBe(200)
+    const jsonTurn2Input = createResponses.mock.calls[1]?.[0]?.input
+    const jsonReasonings = (
+      Array.isArray(jsonTurn2Input) ? jsonTurn2Input : []).filter(
+      (item) => item.type === "reasoning",
+    )
+    expect(jsonReasonings).toEqual([
+      {
+        type: "reasoning",
+        id: "rs_1",
+        summary: [{ type: "summary_text", text: "First thought" }],
+        encrypted_content: "enc_1",
+      },
+      {
+        type: "reasoning",
+        id: "rs_2",
+        summary: [{ type: "summary_text", text: "Second thought" }],
+        encrypted_content: "enc_2",
+      },
+    ])
+
+    // 2) Streaming SSE round-trip with 2 reasoning items
+    createResponses.mockImplementationOnce(() =>
+      Promise.resolve(
+        streamEvents([
+          {
+            data: JSON.stringify({
+              type: "response.created",
+              sequence_number: 0,
+              response: {
+                id: "resp_multi_sse_1",
+                object: "response",
+                model: "gpt-5.4",
+                status: "in_progress",
+                output: [],
+                output_text: "",
+                error: null,
+                incomplete_details: null,
+                instructions: null,
+              },
+            }),
+          },
+          {
+            data: JSON.stringify({
+              type: "response.reasoning_summary_text.delta",
+              sequence_number: 1,
+              item_id: "rs_a",
+              output_index: 0,
+              summary_index: 0,
+              delta: "Stream step 1",
+            }),
+          },
+          {
+            data: JSON.stringify({
+              type: "response.output_item.done",
+              sequence_number: 2,
+              output_index: 0,
+              item: {
+                id: "rs_a",
+                type: "reasoning",
+                summary: [{ type: "summary_text", text: "Stream step 1" }],
+                encrypted_content: "enc_a",
+              },
+            }),
+          },
+          {
+            data: JSON.stringify({
+              type: "response.reasoning_summary_text.delta",
+              sequence_number: 3,
+              item_id: "rs_b",
+              output_index: 1,
+              summary_index: 0,
+              delta: "Stream step 2",
+            }),
+          },
+          {
+            data: JSON.stringify({
+              type: "response.output_item.done",
+              sequence_number: 4,
+              output_index: 1,
+              item: {
+                id: "rs_b",
+                type: "reasoning",
+                summary: [{ type: "summary_text", text: "Stream step 2" }],
+                encrypted_content: "enc_b",
+              },
+            }),
+          },
+          {
+            data: JSON.stringify({
+              type: "response.output_text.delta",
+              sequence_number: 5,
+              item_id: "msg_s",
+              output_index: 2,
+              content_index: 0,
+              delta: "Streamed answer",
+            }),
+          },
+          {
+            data: JSON.stringify({
+              type: "response.completed",
+              sequence_number: 6,
+              response: {
+                id: "resp_multi_sse_1",
+                object: "response",
+                model: "gpt-5.4",
+                status: "completed",
+                output: [],
+                output_text: "Streamed answer",
+                usage: {
+                  input_tokens: 10,
+                  output_tokens: 10,
+                  total_tokens: 20,
+                },
+                error: null,
+                incomplete_details: null,
+                instructions: null,
+              },
+            }),
+          },
+        ]),
+      ),
+    )
+
+    const sseTurn1Res = await app.request(
+      "/v1beta/models/gpt-5.4:streamGenerateContent?alt=sse",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Start stream" }] }],
+        }),
+      },
+    )
+    expect(sseTurn1Res.status).toBe(200)
+    const sseTurn1Chunks = parseSseDataEvents(await sseTurn1Res.text())
+    const sseTurn1Parts = sseTurn1Chunks.flatMap(
+      (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
+    )
+
+    createResponses.mockImplementationOnce(() =>
+      Promise.resolve({
+        ...createResponsesResult("gpt-5.4"),
+        id: "resp_multi_sse_2",
+        output: [
+          {
+            id: "msg_s2",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "Done" }],
+          },
+        ],
+        output_text: "Done",
+        usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 },
+      }),
+    )
+
+    const sseTurn2Res = await app.request(
+      "/v1beta/models/gpt-5.4:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            { role: "user", parts: [{ text: "Start stream" }] },
+            { role: "model", parts: sseTurn1Parts },
+            { role: "user", parts: [{ text: "Follow up" }] },
+          ],
+        }),
+      },
+    )
+    expect(sseTurn2Res.status).toBe(200)
+    const sseTurn2Input = createResponses.mock.calls[3]?.[0]?.input
+    const sseReasonings = (
+      Array.isArray(sseTurn2Input) ? sseTurn2Input : []).filter(
+      (item) => item.type === "reasoning",
+    )
+    expect(sseReasonings).toEqual([
+      {
+        type: "reasoning",
+        id: "rs_a",
+        summary: [{ type: "summary_text", text: "Stream step 1" }],
+        encrypted_content: "enc_a",
+      },
+      {
+        type: "reasoning",
+        id: "rs_b",
+        summary: [{ type: "summary_text", text: "Stream step 2" }],
+        encrypted_content: "enc_b",
+      },
+    ])
+  })
+
+  test("returns MAX_TOKENS instead of 502 when streaming tool call hits max output tokens", async () => {
+    const app = createServer()
+
+    createChatCompletions.mockImplementationOnce(() =>
+      Promise.resolve(
+        streamEvents([
+          makeOpenAIChunk({
+            tool_calls: [
+              {
+                index: 0,
+                id: "call_trunc",
+                type: "function",
+                function: {
+                  name: "write_file",
+                  arguments: '{"path":"big.ts","content":"cut off',
+                },
+              },
+            ],
+          }),
+          makeOpenAIChunk(
+            {},
+            {
+              finishReason: "length",
+              usage: {
+                prompt_tokens: 50,
+                completion_tokens: 4096,
+                total_tokens: 4146,
+              },
+            },
+          ),
+          { data: "[DONE]" },
+        ]),
+      ),
+    )
+
+    const res = await app.request(
+      "/v1beta/models/gemini-4-neon:streamGenerateContent?alt=sse",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Write big.ts" }] }],
+        }),
+      },
+    )
+
+    expect(res.status).toBe(200)
+    const chunks = parseSseDataEvents(await res.text())
+    expect(chunks.some((chunk) => chunk.error)).toBe(false)
+    expect(chunks.at(-1)?.candidates?.[0]?.finishReason).toBe("MAX_TOKENS")
   })
 })
