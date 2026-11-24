@@ -125,6 +125,18 @@ describe("request auth middleware", () => {
     expect(await response.json()).toEqual({ ok: true, scope: "default" })
   })
 
+  test("accepts x-goog-api-key header for protected non-admin routes", async () => {
+    const app = createApp()
+    const response = await app.request("/models", {
+      headers: {
+        "x-goog-api-key": "regular-key",
+      },
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, scope: "default" })
+  })
+
   test("accepts admin api key for admin routes", async () => {
     const app = createApp()
     const response = await app.request("/admin/config/model-mappings", {

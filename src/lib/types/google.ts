@@ -5,6 +5,7 @@ export interface GooglePart {
   thought?: boolean
   thoughtSignature?: string
   inlineData?: { mimeType: string; data: string; displayName?: string }
+  fileData?: { mimeType?: string; fileUri: string }
   functionCall?: {
     id?: string
     name: string
@@ -19,8 +20,50 @@ export interface GooglePart {
 }
 
 export interface GoogleContent {
-  role?: "user" | "model"
+  role?: "user" | "model" | "function" | "system"
   parts: Array<GooglePart>
+}
+
+export interface GoogleFunctionDeclaration {
+  name: string
+  description?: string
+  parameters?: Record<string, unknown>
+  parametersJsonSchema?: Record<string, unknown>
+}
+
+export interface GoogleTool {
+  functionDeclarations?: Array<GoogleFunctionDeclaration>
+  [key: string]: unknown
+}
+
+export interface GoogleToolConfig {
+  functionCallingConfig?: {
+    mode?: "AUTO" | "ANY" | "NONE" | "VALIDATED" | "MODE_UNSPECIFIED"
+    allowedFunctionNames?: Array<string>
+  }
+}
+
+export interface GoogleGenerationConfig {
+  candidateCount?: number
+  maxOutputTokens?: number
+  temperature?: number
+  topP?: number
+  topK?: number
+  stopSequences?: Array<string>
+  responseMimeType?: string
+  responseJsonSchema?: Record<string, unknown>
+  responseSchema?: Record<string, unknown>
+  thinkingConfig?: GoogleThinkingConfig
+}
+
+export interface GoogleGenerateContentRequest {
+  contents?: Array<GoogleContent>
+  systemInstruction?: GoogleContent
+  system_instruction?: GoogleContent
+  tools?: Array<GoogleTool>
+  toolConfig?: GoogleToolConfig
+  generationConfig?: GoogleGenerationConfig
+  safetySettings?: Array<unknown>
 }
 
 export interface GoogleGenerateContentPayload {
@@ -52,11 +95,12 @@ export interface GoogleGenerateContentPayload {
   }
 }
 
-export type GoogleThinkingLevel = "LOW" | "MEDIUM" | "HIGH"
+export type GoogleThinkingLevel = "MINIMAL" | "LOW" | "MEDIUM" | "HIGH"
 
 export interface GoogleThinkingConfig {
   includeThoughts?: boolean
-  thinkingLevel?: GoogleThinkingLevel
+  thinkingBudget?: number
+  thinkingLevel?: GoogleThinkingLevel | (string & {})
 }
 
 export interface GoogleUsageMetadata {
@@ -69,6 +113,7 @@ export interface GoogleUsageMetadata {
 
 export interface GoogleGenerateContentResponse {
   responseId?: string
+  modelVersion?: string
   candidates?: Array<{
     index?: number
     content?: GoogleContent

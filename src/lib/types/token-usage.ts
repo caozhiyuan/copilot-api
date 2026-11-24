@@ -16,6 +16,7 @@ export type TokenUsageEndpoint =
   | "alpha_search"
   | "chat_completions"
   | "embeddings"
+  | "generate_content"
   | "images_generations"
   | "images_edits"
   | "messages"
