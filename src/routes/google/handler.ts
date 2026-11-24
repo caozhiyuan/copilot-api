@@ -3,6 +3,7 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 
+import { isAntigravityUserAgent } from "~/lib/cli/antigravity"
 import {
   resolveMappedModel,
   resolveProviderConfigForModel,
@@ -15,6 +16,7 @@ import { stripInternalRequestHeaders } from "~/lib/http/internal-headers"
 import { requestContext } from "~/lib/http/request-context"
 import { setPluginRequestModel } from "~/lib/http/request-events"
 import { writeSSEIfConnected } from "~/lib/http/sse"
+import { resolveSubagentMarker } from "~/lib/http/subagent"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import {
   resolveConfiguredProviderModelAlias,
@@ -53,6 +55,7 @@ const logger = createHandlerLogger("google-handler")
 
 const GOOGLE_MODEL_ACTION_PATH_PATTERN =
   /^(?:\/v1beta|\/v1beta1\/projects\/[^/]+\/locations\/[^/]+\/publishers\/google)\/models\/(.+)$/u
+const SESSION_UUID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu
 
 export const googleHandlerDependencies = {
   forwardGoogleGenerateContent,
@@ -146,6 +149,29 @@ export async function handleGoogleModelsList(c: Context): Promise<Response> {
   return c.json(response)
 }
 
+function readSessionLabel(value: unknown): string | undefined {
+  const id = typeof value === "string" ? value.trim() : ""
+  return SESSION_UUID_PATTERN.test(id) ? id : undefined
+}
+
+function applyAntigravitySessionLabels(
+  labels: GoogleGenerateContentRequest["labels"],
+): void {
+  const context = requestContext.getStore()
+  if (!labels || !context || !isAntigravityUserAgent(context.userAgent)) return
+
+  context.sessionAffinity ??= readSessionLabel(labels.cascade_id)
+  context.rootSessionId ??= readSessionLabel(labels.root_cascade_id)
+  context.parentSessionId ??= readSessionLabel(labels.parent_cascade_id)
+  context.subagent = resolveSubagentMarker(
+    context.rootSessionId,
+    context.sessionAffinity,
+  )
+  if (context.sessionAffinity) {
+    context.pluginRequest?.setSessionId(context.sessionAffinity)
+  }
+}
+
 export async function handleGoogleGenerateContent(
   c: Context,
 ): Promise<Response> {
@@ -186,6 +212,7 @@ export async function handleGoogleGenerateContent(
 
     const stream = parsedPath.action === "streamGenerateContent"
     const useSSE = c.req.query("alt")?.toLowerCase() === "sse"
+    applyAntigravitySessionLabels(requestBody?.labels)
     setPluginRequestModel(parsedPath.model)
 
     const mappedModel = resolveMappedModel(parsedPath.model)

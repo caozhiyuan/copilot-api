@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import type { ResolvedProviderConfig } from "~/lib/config"
+import type { RequestContext } from "~/lib/http/request-context"
 import type { ChatCompletionChunk } from "~/lib/types/chat-completions"
 import type {
   GoogleGenerateContentResponse,
@@ -20,6 +21,8 @@ process.env.COPILOT_API_SQLITE_DB_PATH = ":memory:"
 
 const { createServer } = await import("~/server")
 const { state } = await import("~/lib/state")
+const { requestContext } = await import("~/lib/http/request-context")
+const { GatewayPlugins } = await import("~/lib/plugins/gateway-plugins")
 const { messagesApiFlowDependencies } = await import(
   "~/routes/messages/api-flows"
 )
@@ -177,6 +180,98 @@ describe("parseGoogleModelActionPath", () => {
 })
 
 describe("Google Gemini /v1beta/models integration via Messages API", () => {
+  test("assigns Antigravity session labels before dispatch and publishes the session ID", async () => {
+    const labels = {
+      cascade_id: "5fe81afd-2716-4933-8381-072aed9753d4",
+      root_cascade_id: "0058a47c-39ed-4dca-91ab-f9ad1e68e524",
+      parent_cascade_id: "d7b793bb-3f1d-48cc-a8ee-4d3f44d903fe",
+    }
+    const agyHeaders = {
+      "user-agent":
+        "antigravity/cli/1.5.16 (aidev_client; auth_method=gateway)",
+    }
+    const contexts: Array<RequestContext | undefined> = []
+    googleHandlerDependencies.handleCompletionPayload = mock(() => {
+      contexts.push(requestContext.getStore())
+      return Promise.resolve(new Response(null, { status: 422 }))
+    })
+    const plugins = new GatewayPlugins(4141)
+    const sessionUpdates: Array<string | null> = []
+    await plugins.register("session-observer", ({ on }) => {
+      on("request.session", ({ sessionId }) => {
+        sessionUpdates.push(sessionId)
+      })
+    })
+
+    try {
+      const app = createServer({ plugins })
+      const request = async (
+        sessionLabels: Record<string, unknown>,
+        headers: Record<string, string>,
+      ) => {
+        const response = await app.request(
+          "/v1beta/models/gemini-4-neon:generateContent",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json", ...headers },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: "Hello" }] }],
+              labels: sessionLabels,
+            }),
+          },
+        )
+        expect(response.status).toBe(422)
+      }
+
+      await request(labels, agyHeaders)
+      await request(labels, { "user-agent": "gemini-client/1.0" })
+      await request(
+        {
+          cascade_id: "not-a-uuid",
+          root_cascade_id: "",
+          parent_cascade_id: 42,
+        },
+        agyHeaders,
+      )
+      await request(labels, {
+        ...agyHeaders,
+        "x-session-affinity": "header-session",
+        "x-root-session-id": "header-root",
+        "x-parent-session-id": "header-parent",
+      })
+      await plugins.flush()
+
+      const emptySession = {
+        sessionAffinity: undefined,
+        rootSessionId: undefined,
+        parentSessionId: undefined,
+        subagent: null,
+      }
+      expect(contexts).toMatchObject([
+        {
+          sessionAffinity: labels.cascade_id,
+          rootSessionId: labels.root_cascade_id,
+          parentSessionId: labels.parent_cascade_id,
+          subagent: {
+            session_id: labels.root_cascade_id,
+            agent_id: labels.cascade_id,
+            agent_type: "subagent",
+          },
+        },
+        emptySession,
+        emptySession,
+        {
+          sessionAffinity: "header-session",
+          rootSessionId: "header-root",
+          parentSessionId: "header-parent",
+        },
+      ])
+      expect(sessionUpdates).toEqual([labels.cascade_id])
+    } finally {
+      await plugins.close()
+    }
+  })
+
   test("end-to-end multi-turn SSE round-trip preserves Copilot reasoning_opaque as Gemini thoughtSignature", async () => {
     const app = createServer()
     const opaqueToken = Buffer.from("gemini-4-neon-encrypted-thought").toString(

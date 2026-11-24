@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test"
 import { Hono } from "hono"
 
+import type { ResolvedProviderConfig } from "~/lib/config"
+import type { GoogleContent } from "~/lib/types/google"
 import type { ResponsesPayload, ResponsesResult } from "~/lib/types/responses"
 import { encodeMessagesCompaction } from "~/routes/responses/messages-translation"
 import { COMPACTION_REPLAY_PROMPT } from "~/routes/responses/messages-translation/constants"
@@ -197,6 +199,11 @@ await mock.module("undici", () => ({
 
 const { state } = await import("~/lib/state")
 const { traceIdMiddleware } = await import("~/lib/http/trace")
+const { googleRoutes } = await import("~/routes/google/route")
+const { googleHandlerDependencies } = await import("~/routes/google/handler")
+const { providerMessagesHandlerDependencies } = await import(
+  "~/routes/provider/messages/handler"
+)
 const { codexResponsesDependencies, forwardCodexResponses } = await import(
   "~/services/codex/create-responses"
 )
@@ -616,6 +623,102 @@ test("Codex reuses a thread across client metadata changes and refreshes send me
     expect(clientMetadata["x-codex-ws-stream-request-start-ms"]).toBe("stale")
   } finally {
     now.mockRestore()
+  }
+})
+
+test("Antigravity Gemini turns reuse Codex websockets by cascade ID", async () => {
+  const model = "gpt-5.4"
+  const provider: ResolvedProviderConfig = {
+    name: "codex",
+    type: "openai-responses",
+    baseUrl: "https://chatgpt.example/backend-api",
+    apiKey: "",
+    authType: "oauth2",
+    models: { [model]: {} },
+  }
+  const originalGoogleResolver = googleHandlerDependencies.resolveProviderConfig
+  const originalMessagesResolver =
+    providerMessagesHandlerDependencies.resolveProviderConfig
+  googleHandlerDependencies.resolveProviderConfig = () =>
+    Promise.resolve(provider)
+  providerMessagesHandlerDependencies.resolveProviderConfig = () =>
+    Promise.resolve(provider)
+  MockWebSocket.responseFrames = [
+    JSON.stringify({ type: "response.created" }),
+    JSON.stringify({
+      type: "response.completed",
+      response: {
+        ...createResponsesResult(model, "resp-agy"),
+        output: [
+          {
+            id: "msg-agy",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "answer", annotations: [] }],
+          },
+        ],
+      },
+    }),
+  ]
+  const root = "0058a47c-39ed-4dca-91ab-f9ad1e68e524"
+  const child = "5fe81afd-2716-4933-8381-072aed9753d4"
+  const first: GoogleContent = { role: "user", parts: [{ text: "hello" }] }
+  const next: GoogleContent = { role: "user", parts: [{ text: "continue" }] }
+  const app = new Hono()
+  app.use(traceIdMiddleware)
+  app.route("/v1beta/models", googleRoutes)
+
+  const request = async (
+    cascadeId: string | undefined,
+    contents: Array<GoogleContent> = [first],
+    userAgent = "antigravity/cli/1.5.16 (aidev_client; auth_method=gateway)",
+  ) => {
+    const response = await app.request(
+      `/v1beta/models/codex/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "user-agent": userAgent,
+        },
+        body: JSON.stringify({
+          contents,
+          labels: { cascade_id: cascadeId, root_cascade_id: root },
+          tools: [{ functionDeclarations: [{ name: "inspect" }] }],
+        }),
+      },
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      candidates: [{ content: { parts: [{ text: "answer" }] } }],
+    })
+  }
+
+  try {
+    await request(root)
+    await request(child)
+    await request(
+      root,
+      [first, { role: "model", parts: [{ text: "answer" }] }, next],
+      "Antigravity/1.5.16",
+    )
+    await request(undefined)
+
+    expect(MockWebSocket.instances.map(({ sent }) => sent.length)).toEqual([
+      2, 1, 1,
+    ])
+    const [rootSocket, childSocket] = MockWebSocket.instances
+    const childPayload = JSON.parse(childSocket.sent[0]) as ResponsesPayload
+    expect(childPayload.prompt_cache_key).toBe(root)
+    expect(childPayload.previous_response_id).toBeUndefined()
+    const continued = JSON.parse(rootSocket.sent[1]) as ResponsesPayload
+    expect(continued.previous_response_id).toBe("resp-agy")
+    expect(continued.input).toHaveLength(1)
+  } finally {
+    googleHandlerDependencies.resolveProviderConfig = originalGoogleResolver
+    providerMessagesHandlerDependencies.resolveProviderConfig =
+      originalMessagesResolver
   }
 })
 

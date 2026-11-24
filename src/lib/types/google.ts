@@ -130,6 +130,7 @@ export interface GoogleGenerationConfig {
 
 export interface GoogleGenerateContentRequest {
   contents?: Array<GoogleContent>
+  labels?: Record<string, string>
   systemInstruction?: GoogleContent
   system_instruction?: GoogleContent
   tools?: Array<GoogleTool>
