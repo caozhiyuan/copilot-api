@@ -6,11 +6,13 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 import {
   resolveMappedModel,
   resolveProviderConfigForModel,
+  type ModelConfig,
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import { HTTPError } from "~/lib/http/error"
 import { recordGoogleFirstToken } from "~/lib/http/first-token"
 import { stripInternalRequestHeaders } from "~/lib/http/internal-headers"
+import { requestContext } from "~/lib/http/request-context"
 import { setPluginRequestModel } from "~/lib/http/request-events"
 import { writeSSEIfConnected } from "~/lib/http/sse"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
@@ -35,6 +37,7 @@ import {
   getAggregatedModels,
   type ClientModel,
 } from "~/routes/models/model-discovery"
+import { applyMissingExtraBody } from "~/routes/provider/utils"
 import { forwardGoogleGenerateContent } from "~/services/providers/google"
 import { resolveOpencodeMessagesSession } from "~/services/providers/provider-proxy"
 
@@ -296,6 +299,106 @@ export async function handleGoogleGenerateContent(
   }
 }
 
+function createAbortableResponse(
+  response: Response,
+  signal: AbortSignal,
+): Response {
+  return new Response(
+    response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), {
+      signal,
+    }),
+    { headers: response.headers },
+  )
+}
+
+function createAbortError(reason: unknown): Error {
+  if (reason instanceof Error) return reason
+  const error = new Error("The operation was aborted")
+  error.name = "AbortError"
+  return error
+}
+
+function resolveGoogleErrorStatus(
+  code: number | undefined,
+): ContentfulStatusCode {
+  return (
+    (
+      typeof code === "number"
+      && Number.isInteger(code)
+      && code >= 400
+      && code <= 599
+    ) ?
+      code
+    : 502) as ContentfulStatusCode
+}
+
+function markProtocolFailed(): void {
+  const timing = requestContext.getStore()?.requestTiming
+  if (timing) timing.protocolFailed = true
+}
+
+function applyGoogleModelConfigDefaults(
+  payload: GoogleGenerateContentRequest,
+  modelConfig: ModelConfig | undefined,
+): GoogleGenerateContentRequest {
+  if (
+    !modelConfig
+    || typeof payload !== "object"
+    || payload === null
+    || Array.isArray(payload)
+  ) {
+    return payload
+  }
+
+  const extraGenerationConfig = modelConfig.extraBody?.generationConfig
+  const hasExtraGenerationConfig =
+    Boolean(extraGenerationConfig)
+    && typeof extraGenerationConfig === "object"
+    && !Array.isArray(extraGenerationConfig)
+  const hasSamplingDefaults =
+    modelConfig.temperature !== undefined
+    || modelConfig.topP !== undefined
+    || modelConfig.topK !== undefined
+
+  if (!hasSamplingDefaults && !modelConfig.extraBody) {
+    return payload
+  }
+
+  const forwarded: GoogleGenerateContentRequest = { ...payload }
+  if (hasSamplingDefaults || hasExtraGenerationConfig) {
+    const generationConfig: Record<string, unknown> = {
+      ...(forwarded.generationConfig as Record<string, unknown> | undefined),
+    }
+    if (
+      generationConfig.temperature === undefined
+      && modelConfig.temperature !== undefined
+    ) {
+      generationConfig.temperature = modelConfig.temperature
+    }
+    if (generationConfig.topP === undefined && modelConfig.topP !== undefined) {
+      generationConfig.topP = modelConfig.topP
+    }
+    if (generationConfig.topK === undefined && modelConfig.topK !== undefined) {
+      generationConfig.topK = modelConfig.topK
+    }
+    if (hasExtraGenerationConfig) {
+      for (const [key, value] of Object.entries(
+        extraGenerationConfig as Record<string, unknown>,
+      )) {
+        if (generationConfig[key] === undefined) {
+          generationConfig[key] = value
+        }
+      }
+    }
+    forwarded.generationConfig = generationConfig
+  }
+
+  applyMissingExtraBody(forwarded as unknown as Record<string, unknown>, {
+    extraBody: modelConfig.extraBody,
+  })
+  return forwarded
+}
+
 async function handleNativeGoogleProviderPassthrough(
   c: Context,
   options: {
@@ -308,13 +411,14 @@ async function handleNativeGoogleProviderPassthrough(
 ): Promise<Response> {
   const { model, payload, providerConfig, stream, useSSE } = options
   const modelConfig = providerConfig.models?.[model]
+  const forwardedPayload = applyGoogleModelConfigDefaults(payload, modelConfig)
   const controller = new AbortController()
   const signal = AbortSignal.any([controller.signal, c.req.raw.signal])
 
   const upstream = await googleHandlerDependencies.forwardGoogleGenerateContent(
     providerConfig,
     model,
-    payload,
+    forwardedPayload,
     c.req.raw.headers,
     {
       stream,
@@ -324,7 +428,6 @@ async function handleNativeGoogleProviderPassthrough(
   )
 
   if (!upstream.ok) {
-    controller.abort()
     throw new HTTPError("Failed to create Google response", upstream)
   }
 
@@ -351,8 +454,9 @@ async function handleNativeGoogleProviderPassthrough(
     const chunks: Array<GoogleGenerateContentResponse> = []
     let usageMetadata: GoogleUsageMetadata = {}
     try {
+      const response = createAbortableResponse(upstream, signal)
       if (isUpstreamSSE) {
-        for await (const event of events(upstream, signal)) {
+        for await (const event of events(response, signal)) {
           if (!event.data || event.data === "[DONE]") continue
           const parsed = JSON.parse(event.data) as GoogleGenerateContentResponse
           recordGoogleFirstToken(parsed)
@@ -362,7 +466,7 @@ async function handleNativeGoogleProviderPassthrough(
           chunks.push(parsed)
         }
       } else {
-        const parsed = (await upstream.json()) as
+        const parsed = (await response.json()) as
           | GoogleGenerateContentResponse
           | Array<GoogleGenerateContentResponse>
         const items = Array.isArray(parsed) ? parsed : [parsed]
@@ -374,10 +478,20 @@ async function handleNativeGoogleProviderPassthrough(
           chunks.push(item)
         }
       }
+      if (signal.aborted) {
+        throw createAbortError(signal.reason)
+      }
     } finally {
       controller.abort()
       recordUsage(normalizeAnthropicUsage(translateGoogleUsage(usageMetadata)))
     }
+
+    const errorChunk = chunks.find((chunk) => chunk.error)
+    if (errorChunk?.error) {
+      markProtocolFailed()
+      return c.json(errorChunk, resolveGoogleErrorStatus(errorChunk.error.code))
+    }
+
     return c.json(chunks)
   }
 
@@ -385,13 +499,7 @@ async function handleNativeGoogleProviderPassthrough(
     let usageMetadata: GoogleUsageMetadata = {}
     sseStream.onAbort(() => controller.abort())
     try {
-      const response = new Response(
-        upstream.body?.pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>(),
-          { signal },
-        ),
-        { headers: upstream.headers },
-      )
+      const response = createAbortableResponse(upstream, signal)
       if (isUpstreamSSE) {
         for await (const event of events(response, signal)) {
           if (!event.data || event.data === "[DONE]") continue
@@ -453,9 +561,10 @@ function streamTranslatedGoogleSSE(
     const signal = AbortSignal.any([controller.signal, c.req.raw.signal])
     sseStream.onAbort(() => controller.abort())
     try {
+      const response = createAbortableResponse(messagesResponse, signal)
       for await (const chunk of translateMessagesStreamToGoogle(
-        events(messagesResponse, signal),
-        { fallbackModel },
+        events(response, signal),
+        { fallbackModel, signal },
       )) {
         debugJson(logger, "Translated Google stream chunk:", chunk)
         await writeSSEIfConnected(
@@ -475,17 +584,28 @@ async function collectTranslatedGoogleJsonArray(
   messagesResponse: Response,
   fallbackModel: string,
 ): Promise<Response> {
+  const controller = new AbortController()
+  const signal = AbortSignal.any([controller.signal, c.req.raw.signal])
   const chunks: Array<GoogleGenerateContentResponse> = []
-  for await (const chunk of translateMessagesStreamToGoogle(
-    events(messagesResponse, c.req.raw.signal),
-    { fallbackModel },
-  )) {
-    chunks.push(chunk)
+  try {
+    const response = createAbortableResponse(messagesResponse, signal)
+    for await (const chunk of translateMessagesStreamToGoogle(
+      events(response, signal),
+      { fallbackModel, signal },
+    )) {
+      chunks.push(chunk)
+    }
+    if (c.req.raw.signal.aborted) {
+      throw createAbortError(c.req.raw.signal.reason)
+    }
+  } finally {
+    controller.abort()
   }
 
-  if (chunks.length === 1 && chunks[0]?.error) {
-    const status = (chunks[0].error.code ?? 502) as ContentfulStatusCode
-    return c.json(chunks[0], status)
+  const errorChunk = chunks.find((chunk) => chunk.error)
+  if (errorChunk?.error) {
+    markProtocolFailed()
+    return c.json(errorChunk, resolveGoogleErrorStatus(errorChunk.error.code))
   }
 
   return c.json(chunks)

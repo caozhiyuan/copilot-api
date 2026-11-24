@@ -375,7 +375,7 @@ function translateToolsAndChoice(
   }
 
   if (allowedNames && allowedNames.length > 0) {
-    if ((mode === "ANY" || mode === "VALIDATED") && allowedNames.length === 1) {
+    if (mode === "ANY" && allowedNames.length === 1) {
       return {
         tools,
         toolChoice: { type: "tool", name: allowedNames[0] },
@@ -388,11 +388,11 @@ function translateToolsAndChoice(
     }
   }
 
-  if (mode === "ANY" || mode === "VALIDATED") {
+  if (mode === "ANY") {
     return { tools, toolChoice: { type: "any" } }
   }
 
-  if (mode === "AUTO") {
+  if (mode === "AUTO" || mode === "VALIDATED") {
     return { tools, toolChoice: { type: "auto" } }
   }
 

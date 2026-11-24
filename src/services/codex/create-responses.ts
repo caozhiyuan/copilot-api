@@ -85,6 +85,7 @@ const STRIPPED_CODEX_REQUEST_HEADERS = new Set([
   "x-api-key",
   "x-forwarded-for",
   "x-forwarded-proto",
+  "x-goog-api-key",
 ])
 
 const STRIPPED_CODEX_WEBSOCKET_HEADERS = new Set([

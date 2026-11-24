@@ -119,6 +119,8 @@ describe("codex api helpers", () => {
         "openai-beta": "responses=stable",
         originator: "test-client",
         "user-agent": "test-agent",
+        "x-api-key": "gateway-api-key",
+        "x-goog-api-key": "gateway-goog-api-key",
         "x-trace-id": "trace-123",
       }),
     )
@@ -130,6 +132,29 @@ describe("codex api helpers", () => {
     expect(headers.get("openai-beta")).toBe("responses=stable")
     expect(headers.get("originator")).toBe("test-client")
     expect(headers.get("user-agent")).toBe("test-agent")
+    expect(headers.get("x-api-key")).toBeNull()
+    expect(headers.get("x-goog-api-key")).toBeNull()
+  })
+
+  test("strips x-goog-api-key from codex websocket headers as well", () => {
+    state.codexAccessToken = "codex-token"
+    state.codexAccountId = "codex-account"
+
+    const request = prepareCodexResponsesWebSocketRequest(
+      {
+        input: "hello",
+        model: "gpt-5.4",
+        stream: true,
+      },
+      new Headers({
+        "x-api-key": "gateway-api-key",
+        "x-goog-api-key": "gateway-goog-api-key",
+      }),
+    )
+
+    expect(request.headers.authorization).toBe("Bearer codex-token")
+    expect(request.headers["x-api-key"]).toBeUndefined()
+    expect(request.headers["x-goog-api-key"]).toBeUndefined()
   })
 
   test("fills missing codex headers when the request omits them", () => {

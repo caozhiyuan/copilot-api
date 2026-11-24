@@ -80,7 +80,7 @@ function parseToolUseArguments(
 
 export async function* translateMessagesStreamToGoogle(
   chunks: AsyncIterable<MessagesStreamChunk>,
-  options: { fallbackModel: string },
+  options: { fallbackModel: string; signal?: AbortSignal },
 ): AsyncGenerator<GoogleGenerateContentResponse> {
   let responseId: string | undefined
   let modelVersion = options.fallbackModel
@@ -274,6 +274,10 @@ export async function* translateMessagesStreamToGoogle(
       }
     }
 
+    if (options.signal?.aborted) {
+      return
+    }
+
     if (!initialized) {
       throw new GoogleMessagesTranslationError(
         "Messages API returned an empty stream",
@@ -288,6 +292,9 @@ export async function* translateMessagesStreamToGoogle(
       )
     }
   } catch (error) {
+    if (options.signal?.aborted) {
+      return
+    }
     const status =
       error instanceof GoogleMessagesTranslationError ? error.status : 502
     const message =

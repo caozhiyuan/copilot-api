@@ -821,4 +821,366 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     expect(arrayFromJson.status).toBe(200)
     expect(await arrayFromJson.json()).toEqual([chunk])
   })
+
+  test("returns non-2xx and records error outcome on mid-stream failure in buffered JSON array mode", async () => {
+    const endedEvents: Array<{ status: number; outcome: string }> = []
+    const plugins = {
+      enabled: true,
+      publish: (event: string, payload: unknown) => {
+        if (event === "request.end") {
+          endedEvents.push(payload as { status: number; outcome: string })
+        }
+      },
+    }
+    const app = createServer({
+      plugins: plugins as Parameters<typeof createServer>[0] extends (
+        { plugins?: infer P }
+      ) ?
+        P
+      : never,
+    })
+
+    // 1. Translated Messages stream emits partial text then errors mid-stream
+    googleHandlerDependencies.handleCompletionPayload = mock(() =>
+      Promise.resolve(
+        new Response(
+          [
+            `data: ${JSON.stringify({
+              type: "message_start",
+              message: {
+                id: "msg_partial",
+                type: "message",
+                role: "assistant",
+                model: "gemini-4-neon",
+                content: [],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 5, output_tokens: 0 },
+              },
+            })}\n\n`,
+            `data: ${JSON.stringify({
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "text", text: "partial" },
+            })}\n\n`,
+            `data: ${JSON.stringify({
+              type: "error",
+              error: { type: "api_error", message: "mid-stream boom" },
+            })}\n\n`,
+          ].join(""),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const translatedFailed = await app.request(
+      "/v1beta/models/gemini-4-neon:streamGenerateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+      },
+    )
+    expect(translatedFailed.status).toBe(502)
+    expect(await translatedFailed.json()).toMatchObject({
+      error: { code: 502, message: "mid-stream boom", status: "INTERNAL" },
+    })
+    expect(endedEvents.at(-1)).toMatchObject({ status: 502, outcome: "error" })
+
+    // 2. Native Google provider non-SSE stream emits a chunk then an error chunk
+    const googleProvider: ResolvedProviderConfig = {
+      name: "mygoogle",
+      type: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "upstream-key",
+      authType: "x-goog-api-key",
+    }
+    googleHandlerDependencies.resolveConfiguredProviderModelAlias = mock(() =>
+      Promise.resolve({ provider: "mygoogle", model: "gemini-4-argon" }),
+    )
+    googleHandlerDependencies.resolveProviderConfig = mock(() =>
+      Promise.resolve(googleProvider),
+    )
+    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
+      Promise.resolve(
+        new Response(
+          [
+            `data: ${JSON.stringify({
+              candidates: [
+                {
+                  index: 0,
+                  content: { role: "model", parts: [{ text: "ok" }] },
+                },
+              ],
+            })}\n\n`,
+            `data: ${JSON.stringify({
+              error: {
+                code: 13,
+                message: "upstream internal",
+                status: "INTERNAL",
+              },
+            })}\n\n`,
+          ].join(""),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const nativeFailed = await app.request(
+      "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+      },
+    )
+    expect(nativeFailed.status).toBe(502)
+    expect(await nativeFailed.json()).toMatchObject({
+      error: { code: 13, message: "upstream internal", status: "INTERNAL" },
+    })
+    expect(endedEvents.at(-1)).toMatchObject({ status: 502, outcome: "error" })
+  })
+
+  test("cancels stalled streams promptly on client abort without emitting synthetic 502 errors", async () => {
+    const app = createServer()
+
+    // 1. Translated SSE stream stalls after first text chunk, client aborts
+    let innerSseCancelled = false
+    let resolveSseCancelled!: () => void
+    const sseCancelled = new Promise<void>((resolve) => {
+      resolveSseCancelled = resolve
+    })
+    googleHandlerDependencies.handleCompletionPayload = mock(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              const enc = new TextEncoder()
+              controller.enqueue(
+                enc.encode(
+                  `data: ${JSON.stringify({
+                    type: "content_block_start",
+                    index: 0,
+                    content_block: { type: "text", text: "first" },
+                  })}\n\n`,
+                ),
+              )
+            },
+            cancel() {
+              innerSseCancelled = true
+              resolveSseCancelled()
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const sseAbort = new AbortController()
+    const sseRes = await app.request(
+      "/v1beta/models/gemini-4-neon:streamGenerateContent?alt=sse",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+        signal: sseAbort.signal,
+      },
+    )
+    const reader = (sseRes.body as ReadableStream<Uint8Array>).getReader()
+    const firstChunk = await reader.read()
+    expect(new TextDecoder().decode(firstChunk.value)).toContain("first")
+    sseAbort.abort()
+    await reader.cancel()
+    await sseCancelled
+    expect(innerSseCancelled).toBe(true)
+
+    // 2. Buffered JSON array mode stalls, client aborts -> returns 499 and cancels inner stream
+    let innerArrayCancelled = false
+    let arrayChunkSent = false
+    const arrayAbort = new AbortController()
+    googleHandlerDependencies.handleCompletionPayload = mock(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (!arrayChunkSent) {
+                arrayChunkSent = true
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    `data: ${JSON.stringify({
+                      type: "content_block_start",
+                      index: 0,
+                      content_block: { type: "text", text: "partial" },
+                    })}\n\n`,
+                  ),
+                )
+                return
+              }
+              queueMicrotask(() => arrayAbort.abort())
+            },
+            cancel() {
+              innerArrayCancelled = true
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const abortedArrayRes = await app.request(
+      "/v1beta/models/gemini-4-neon:streamGenerateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+        signal: arrayAbort.signal,
+      },
+    )
+    expect(abortedArrayRes.status).toBe(499)
+    expect(innerArrayCancelled).toBe(true)
+
+    // 3. Native Google non-SSE passthrough stalls, client aborts -> returns 499 and cancels upstream
+    let nativeCancelled = false
+    let nativeChunkSent = false
+    const nativeAbort = new AbortController()
+    const googleProvider: ResolvedProviderConfig = {
+      name: "mygoogle",
+      type: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "upstream-key",
+      authType: "x-goog-api-key",
+    }
+    googleHandlerDependencies.resolveConfiguredProviderModelAlias = mock(() =>
+      Promise.resolve({ provider: "mygoogle", model: "gemini-4-argon" }),
+    )
+    googleHandlerDependencies.resolveProviderConfig = mock(() =>
+      Promise.resolve(googleProvider),
+    )
+    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              if (!nativeChunkSent) {
+                nativeChunkSent = true
+                controller.enqueue(
+                  new TextEncoder().encode(
+                    `data: ${JSON.stringify({
+                      candidates: [
+                        {
+                          index: 0,
+                          content: { role: "model", parts: [{ text: "wait" }] },
+                        },
+                      ],
+                    })}\n\n`,
+                  ),
+                )
+                return
+              }
+              queueMicrotask(() => nativeAbort.abort())
+            },
+            cancel() {
+              nativeCancelled = true
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const abortedNativeRes = await app.request(
+      "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+        signal: nativeAbort.signal,
+      },
+    )
+    expect(abortedNativeRes.status).toBe(499)
+    expect(nativeCancelled).toBe(true)
+  })
+
+  test("applies missing modelConfig defaults and extraBody on native Google provider passthrough", async () => {
+    const app = createServer()
+    const googleProvider: ResolvedProviderConfig = {
+      name: "mygoogle",
+      type: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "upstream-key",
+      authType: "x-goog-api-key",
+      models: {
+        "gemini-4-argon": {
+          temperature: 0.4,
+          topP: 0.9,
+          topK: 32,
+          extraBody: {
+            cachedContent: "cachedContents/default",
+            generationConfig: {
+              maxOutputTokens: 8192,
+              temperature: 0.9,
+            },
+          },
+        },
+      },
+    }
+    googleHandlerDependencies.resolveConfiguredProviderModelAlias = mock(() =>
+      Promise.resolve({ provider: "mygoogle", model: "gemini-4-argon" }),
+    )
+    googleHandlerDependencies.resolveProviderConfig = mock(() =>
+      Promise.resolve(googleProvider),
+    )
+
+    let capturedPayload: unknown
+    googleHandlerDependencies.forwardGoogleGenerateContent = mock(
+      (_provider, _model, payload) => {
+        capturedPayload = payload
+        return Promise.resolve(
+          Response.json({
+            candidates: [
+              {
+                index: 0,
+                content: { role: "model", parts: [{ text: "ok" }] },
+                finishReason: "STOP",
+              },
+            ],
+          }),
+        )
+      },
+    )
+
+    const res = await app.request(
+      "/v1beta/models/mygoogle/gemini-4-argon:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          generationConfig: { topP: 0.7 },
+        }),
+      },
+    )
+
+    expect(res.status).toBe(200)
+    expect(capturedPayload).toEqual({
+      contents: [{ role: "user", parts: [{ text: "hello" }] }],
+      cachedContent: "cachedContents/default",
+      generationConfig: {
+        topP: 0.7,
+        temperature: 0.4,
+        topK: 32,
+        maxOutputTokens: 8192,
+      },
+    })
+  })
 })

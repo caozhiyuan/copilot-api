@@ -544,7 +544,7 @@ describe("translateGoogleToMessages", () => {
         tools: baseTools,
         toolConfig: {
           functionCallingConfig: {
-            mode: "VALIDATED",
+            mode: "ANY",
             allowedFunctionNames: ["alpha", "beta"],
           },
         },
@@ -562,6 +562,41 @@ describe("translateGoogleToMessages", () => {
     })
     expect(forcedMulti.max_tokens).toBeGreaterThan(20000)
     expect(forcedMulti.output_config).toEqual({ effort: "low" })
+
+    const validatedSingle = translateGoogleToMessages(
+      {
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        tools: baseTools,
+        toolConfig: {
+          functionCallingConfig: {
+            mode: "VALIDATED",
+            allowedFunctionNames: ["alpha"],
+          },
+        },
+      },
+      { model: "gemini-4-neon", stream: false },
+    )
+    expect(validatedSingle.tool_choice).toEqual({ type: "auto" })
+    expect(validatedSingle.tools?.map((tool) => tool.name)).toEqual(["alpha"])
+
+    const validatedMulti = translateGoogleToMessages(
+      {
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        tools: baseTools,
+        toolConfig: {
+          functionCallingConfig: {
+            mode: "VALIDATED",
+            allowedFunctionNames: ["alpha", "beta"],
+          },
+        },
+      },
+      { model: "gemini-4-neon", stream: false },
+    )
+    expect(validatedMulti.tool_choice).toEqual({ type: "auto" })
+    expect(validatedMulti.tools?.map((tool) => tool.name)).toEqual([
+      "alpha",
+      "beta",
+    ])
 
     const noneChoice = translateGoogleToMessages(
       {
@@ -1060,5 +1095,51 @@ describe("translateMessagesStreamToGoogle", () => {
       { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
     ])
     expect(invalidToolArgs[0]?.error?.message).toContain("tool call arguments")
+  })
+
+  test("exits cleanly without yielding synthetic 502 errors when signal is aborted", async () => {
+    const controller = new AbortController()
+    const chunks: Array<MessagesStreamChunk> = [
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "text", text: "partial" },
+        }),
+      },
+    ]
+
+    const earlyEofResults = []
+    for await (const chunk of translateMessagesStreamToGoogle(
+      toAsyncIterable(chunks),
+      { fallbackModel: "gemini-4-neon", signal: controller.signal },
+    )) {
+      earlyEofResults.push(chunk)
+      controller.abort()
+    }
+    expect(earlyEofResults).toHaveLength(1)
+    expect(earlyEofResults[0]?.error).toBeUndefined()
+
+    const throwingController = new AbortController()
+    const throwingIterable: AsyncIterable<MessagesStreamChunk> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            throwingController.abort()
+            const error = new Error("Aborted")
+            error.name = "AbortError"
+            return Promise.reject(error)
+          },
+        }
+      },
+    }
+    const thrownResults = []
+    for await (const chunk of translateMessagesStreamToGoogle(
+      throwingIterable,
+      { fallbackModel: "gemini-4-neon", signal: throwingController.signal },
+    )) {
+      thrownResults.push(chunk)
+    }
+    expect(thrownResults).toEqual([])
   })
 })
