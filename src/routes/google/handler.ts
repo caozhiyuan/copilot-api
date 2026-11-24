@@ -159,9 +159,10 @@ function applyAntigravitySessionLabels(
 ): void {
   const context = requestContext.getStore()
   if (!labels || !context || !isAntigravityUserAgent(context.userAgent)) return
+  if (context.sessionAffinity || context.rootSessionId) return
 
-  context.sessionAffinity ??= readSessionLabel(labels.cascade_id)
-  context.rootSessionId ??= readSessionLabel(labels.root_cascade_id)
+  context.sessionAffinity = readSessionLabel(labels.cascade_id)
+  context.rootSessionId = readSessionLabel(labels.root_cascade_id)
   context.parentSessionId ??= readSessionLabel(labels.parent_cascade_id)
   context.subagent = resolveSubagentMarker(
     context.rootSessionId,
@@ -302,6 +303,11 @@ export async function handleGoogleGenerateContent(
     const googleResponse = translateAnthropicResponseToGoogle(
       body,
       parsedPath.model,
+      {
+        preserveAntigravityReasoning: isAntigravityUserAgent(
+          c.req.header("user-agent"),
+        ),
+      },
     )
     debugJson(logger, "Translated Google response:", googleResponse)
 
@@ -655,7 +661,13 @@ async function collectTranslatedGoogleJsonArray(
     const response = createAbortableResponse(messagesResponse, signal)
     for await (const chunk of translateMessagesStreamToGoogle(
       events(response, signal),
-      { fallbackModel, signal },
+      {
+        fallbackModel,
+        signal,
+        preserveAntigravityReasoning: isAntigravityUserAgent(
+          c.req.header("user-agent"),
+        ),
+      },
     )) {
       chunks.push(chunk)
     }

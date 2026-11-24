@@ -65,8 +65,42 @@ function readSignatures(value: string): Array<PositionedSignature> | undefined {
 
 type ReplayPart = GooglePart | AnthropicThinkingBlock
 
+export function hasAntigravitySignature(parts: Array<GooglePart>): boolean {
+  return parts.some((part) => part.thoughtSignature?.startsWith(BASE64_PREFIX))
+}
+
+function unwrapFallbackSpan(parts: Array<GooglePart>): Array<ReplayPart> {
+  const result: Array<ReplayPart> = []
+  for (const part of parts) {
+    const records =
+      part.thoughtSignature ? readSignatures(part.thoughtSignature) : undefined
+    if (!records) {
+      result.push(part)
+      continue
+    }
+    const { thoughtSignature: _dropped, ...rest } = part
+    if (part.thought === true && typeof part.text === "string") {
+      for (const [index, [signature]] of records.entries()) {
+        result.push({
+          type: "thinking",
+          thinking: index === 0 ? part.text : "",
+          signature,
+        })
+      }
+      continue
+    }
+    for (const [signature] of records) {
+      result.push({ type: "thinking", thinking: "", signature })
+    }
+    if (Object.keys(rest).length > 0) {
+      result.push(rest)
+    }
+  }
+  return result
+}
+
 function restoreSpan(parts: Array<GooglePart>): Array<ReplayPart> {
-  if (!parts.some((part) => part.thoughtSignature?.startsWith(BASE64_PREFIX))) {
+  if (!hasAntigravitySignature(parts)) {
     return parts
   }
 
@@ -74,10 +108,12 @@ function restoreSpan(parts: Array<GooglePart>): Array<ReplayPart> {
   let thought = ""
   const signatures: Array<PositionedSignature> = []
   for (const part of parts) {
-    if (part.inlineData || part.fileData || part.functionResponse) return parts
+    if (part.inlineData || part.fileData || part.functionResponse) {
+      return unwrapFallbackSpan(parts)
+    }
     if (part.thoughtSignature) {
       const records = readSignatures(part.thoughtSignature)
-      if (!records) return parts
+      if (!records) return unwrapFallbackSpan(parts)
       for (const record of records) signatures.push(record)
     }
     if (typeof part.text !== "string") continue
@@ -88,7 +124,9 @@ function restoreSpan(parts: Array<GooglePart>): Array<ReplayPart> {
   let textStart = 0
   let thoughtStart = 0
   for (const [signature, textLength, thoughtLength] of signatures) {
-    if (textLength < textStart || thoughtLength < thoughtStart) return parts
+    if (textLength < textStart || thoughtLength < thoughtStart) {
+      return unwrapFallbackSpan(parts)
+    }
     const precedingText = text.slice(textStart, textLength)
     if (precedingText) restored.push({ text: precedingText })
     restored.push({
@@ -111,7 +149,7 @@ function restoreSpan(parts: Array<GooglePart>): Array<ReplayPart> {
 export function restoreAntigravityReasoningParts(
   parts: Array<GooglePart>,
 ): Array<ReplayPart> {
-  if (!parts.some((part) => part.thoughtSignature?.startsWith(BASE64_PREFIX))) {
+  if (!hasAntigravitySignature(parts)) {
     return parts
   }
 

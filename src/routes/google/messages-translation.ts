@@ -31,7 +31,12 @@ import { normalizeToolSchema } from "~/routes/messages/completions-translation"
 import { decodeGoogleSignature } from "~/routes/messages/google-translation"
 import { resolveDefaultMaxOutputTokens } from "~/routes/responses/messages-translation/to-messages"
 
-import { restoreAntigravityReasoningParts } from "./antigravity-signatures"
+import {
+  encodeAntigravitySignature,
+  hasAntigravitySignature,
+  isResponsesThinkingSignature,
+  restoreAntigravityReasoningParts,
+} from "./antigravity-signatures"
 
 const OPAQUE_SIGNATURE_PREFIX = "copilot-api:sig:"
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/u
@@ -911,19 +916,27 @@ export function translateGoogleToMessages(
 
   const messages: Array<AnthropicInputMessage> = []
   const pendingCallIdsByName = new Map<string, Array<string>>()
-  let pendingModelParts: Array<GooglePart> = []
+  let pendingModelContents: Array<Array<GooglePart>> = []
   let callCounter = 0
 
   const nextSyntheticCallId = (): string => `call_google_${++callCounter}`
 
   const flushPendingModelParts = (): void => {
-    if (pendingModelParts.length === 0) return
-    const assistantBlocks = translateModelParts(
-      pendingModelParts,
-      pendingCallIdsByName,
-      nextSyntheticCallId,
-    )
-    pendingModelParts = []
+    if (pendingModelContents.length === 0) return
+    const agyContentCount = pendingModelContents.filter((parts) =>
+      hasAntigravitySignature(parts),
+    ).length
+    const assistantBlocks =
+      agyContentCount > 1 ?
+        pendingModelContents.flatMap((parts) =>
+          translateModelParts(parts, pendingCallIdsByName, nextSyntheticCallId),
+        )
+      : translateModelParts(
+          pendingModelContents.flat(),
+          pendingCallIdsByName,
+          nextSyntheticCallId,
+        )
+    pendingModelContents = []
     if (assistantBlocks.length > 0) {
       messages.push({ role: "assistant", content: assistantBlocks })
     }
@@ -942,7 +955,7 @@ export function translateGoogleToMessages(
     const normalizedParts = content.parts.map(normalizeGooglePart)
 
     if (content.role === "model") {
-      pendingModelParts.push(...normalizedParts)
+      pendingModelContents.push(normalizedParts)
       continue
     }
 
@@ -1060,10 +1073,13 @@ export function translateAnthropicUsageToGoogle(
 export function translateAnthropicResponseToGoogle(
   response: AnthropicResponse,
   fallbackModel: string,
+  options: { preserveAntigravityReasoning?: boolean } = {},
 ): GoogleGenerateContentResponse {
   const parts: Array<GooglePart> = []
   const pendingSignatures: Array<string> = []
   const toolSignaturesById = new Map<string, string>()
+  let textLength = 0
+  let thoughtLength = 0
 
   const flushPendingSignatures = (attachToLastPart: boolean): void => {
     while (pendingSignatures.length > 0) {
@@ -1082,15 +1098,19 @@ export function translateAnthropicResponseToGoogle(
 
   for (const block of response.content) {
     if (block.type === "thinking") {
-      const encoded =
-        block.signature.length > 0 ?
+      const useAntigravitySignature =
+        Boolean(options.preserveAntigravityReasoning)
+        && block.signature.length > 0
+        && isResponsesThinkingSignature(block.signature)
+      const googleEncoded =
+        !useAntigravitySignature && block.signature.length > 0 ?
           encodeSignatureForGoogle(block.signature)
         : undefined
 
       const startsNewThinkingSegment =
-        encoded?.target !== "previous"
-        && !(encoded?.target && typeof encoded.target === "object")
-        && (block.thinking.length > 0 || encoded !== undefined)
+        googleEncoded?.target !== "previous"
+        && !(googleEncoded?.target && typeof googleEncoded.target === "object")
+        && (block.thinking.length > 0 || block.signature.length > 0)
       if (startsNewThinkingSegment && pendingSignatures.length > 0) {
         flushPendingSignatures(true)
       }
@@ -1100,11 +1120,23 @@ export function translateAnthropicResponseToGoogle(
           text: block.thinking,
           thought: true,
         }
-        if (encoded?.target === "thinking") {
-          thoughtPart.thoughtSignature = encoded.signature
+        if (googleEncoded?.target === "thinking") {
+          thoughtPart.thoughtSignature = googleEncoded.signature
         }
         parts.push(thoughtPart)
+        thoughtLength += block.thinking.length
       }
+
+      const encoded: DecodedAnthropicSignature | undefined =
+        useAntigravitySignature ?
+          {
+            signature: encodeAntigravitySignature(
+              block.signature,
+              textLength,
+              thoughtLength,
+            ),
+          }
+        : googleEncoded
 
       if (encoded) {
         if (encoded.target && typeof encoded.target === "object") {
@@ -1128,6 +1160,7 @@ export function translateAnthropicResponseToGoogle(
 
     if (block.type === "text") {
       parts.push({ text: block.text })
+      textLength += block.text.length
       continue
     }
 
@@ -1153,6 +1186,8 @@ export function translateAnthropicResponseToGoogle(
         },
         ...(thoughtSignature ? { thoughtSignature } : {}),
       })
+      textLength = 0
+      thoughtLength = 0
     }
   }
 

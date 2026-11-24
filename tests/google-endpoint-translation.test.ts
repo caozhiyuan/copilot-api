@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import type { AnthropicResponse } from "~/lib/types/anthropic"
 import type { GoogleGenerateContentRequest } from "~/lib/types/google"
 import { encodeGoogleSignature } from "~/routes/messages/google-translation"
+import { encodeAntigravitySignature } from "~/routes/google/antigravity-signatures"
 import {
   translateMessagesStreamToGoogle,
   type MessagesStreamChunk,
@@ -2174,6 +2175,211 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
         { type: "text", text: "Interim" },
         { type: "thinking", thinking: "Draft 2", signature: sig2 },
         { type: "text", text: "Final" },
+      ],
+    })
+  })
+
+  test("preserves per-turn Antigravity offsets across adjacent model contents and unwraps fallback spans", () => {
+    const sig1 = encodeAntigravitySignature("enc_1@rs_1", 5, 0)
+    const sig2 = encodeAntigravitySignature("enc_2@rs_2", 0, 0)
+
+    const adjacent = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Start" }] },
+          {
+            role: "model",
+            parts: [{ text: "Hello", thoughtSignature: sig1 }],
+          },
+          {
+            role: "model",
+            parts: [{ text: "World", thoughtSignature: sig2 }],
+          },
+          { role: "user", parts: [{ text: "Next" }] },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(adjacent.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "text", text: "Hello" },
+        { type: "thinking", thinking: "", signature: "enc_1@rs_1" },
+        { type: "thinking", thinking: "", signature: "enc_2@rs_2" },
+        { type: "text", text: "World" },
+      ],
+    })
+
+    // Mixed agy + native signature in one span must unwrap agy envelopes instead of leaking raw base64
+    const nativeSig = Buffer.from("native-opaque").toString("base64")
+    const mixed = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Start" }] },
+          {
+            role: "model",
+            parts: [
+              { thought: true, text: "First thought", thoughtSignature: sig1 },
+              {
+                text: "Interim",
+                thoughtSignature: encodeAntigravitySignature(
+                  "enc_3@rs_3",
+                  0,
+                  0,
+                ),
+              },
+              {
+                functionCall: { id: "call_1", name: "read_file", args: {} },
+                thoughtSignature: nativeSig,
+              },
+            ],
+          },
+          {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  id: "call_1",
+                  name: "read_file",
+                  response: { output: "ok" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(mixed.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          thinking: "First thought",
+          signature: "enc_1@rs_1",
+        },
+        { type: "thinking", thinking: "", signature: "enc_3@rs_3" },
+        { type: "thinking", thinking: "", signature: nativeSig },
+        { type: "text", text: "Interim" },
+        { type: "tool_use", id: "call_1", name: "read_file", input: {} },
+      ],
+    })
+
+    // Non-monotonic offsets inside a single content or inlineData in the span also unwrap safely
+    const nonMonotonic = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Start" }] },
+          {
+            role: "model",
+            parts: [
+              { text: "Hello", thoughtSignature: sig1 },
+              { text: "Again", thoughtSignature: sig2 },
+            ],
+          },
+          { role: "user", parts: [{ text: "Next" }] },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(nonMonotonic.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "", signature: "enc_1@rs_1" },
+        { type: "text", text: "Hello" },
+        { type: "thinking", thinking: "", signature: "enc_2@rs_2" },
+        { type: "text", text: "Again" },
+      ],
+    })
+
+    const withInlineData = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Start" }] },
+          {
+            role: "model",
+            parts: [
+              { text: "Result", thoughtSignature: sig1 },
+              { inlineData: { mimeType: "image/png", data: "aW1n" } },
+            ],
+          },
+          { role: "user", parts: [{ text: "Next" }] },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(withInlineData.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "", signature: "enc_1@rs_1" },
+        { type: "text", text: "Result" },
+      ],
+    })
+  })
+
+  test("encodes Antigravity offset signatures on non-stream Responses replies when preserveAntigravityReasoning is enabled", () => {
+    const response = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_agy_json",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.4",
+        stop_reason: "end_turn",
+        stop_sequence: null,
+        content: [
+          { type: "thinking", thinking: "Step 1.", signature: "enc_1@rs_1" },
+          { type: "text", text: "Checking. " },
+          { type: "thinking", thinking: "", signature: "enc_2@rs_2" },
+          { type: "text", text: "Done." },
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 },
+      },
+      "gpt-5.4",
+      { preserveAntigravityReasoning: true },
+    )
+
+    const parts = response.candidates?.[0]?.content?.parts ?? []
+    const sigBytes = parts.flatMap((part) =>
+      part.thoughtSignature ?
+        [Buffer.from(part.thoughtSignature, "base64")]
+      : [],
+    )
+    expect(sigBytes).toHaveLength(2)
+
+    const merged = [
+      {
+        thought: true,
+        text: parts
+          .filter((part) => part.thought)
+          .map((part) => part.text)
+          .join(""),
+      },
+      {
+        text: parts
+          .filter((part) => !part.thought)
+          .map((part) => part.text)
+          .join(""),
+        thoughtSignature: Buffer.concat(sigBytes).toString("base64"),
+      },
+    ]
+
+    const restored = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Run" }] },
+          { role: "model", parts: merged },
+          { role: "user", parts: [{ text: "Continue" }] },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+    expect(restored.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "Step 1.", signature: "enc_1@rs_1" },
+        { type: "text", text: "Checking. " },
+        { type: "thinking", thinking: "", signature: "enc_2@rs_2" },
+        { type: "text", text: "Done." },
       ],
     })
   })

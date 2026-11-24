@@ -246,6 +246,10 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         "x-root-session-id": "header-root",
         "x-parent-session-id": "header-parent",
       })
+      await request(labels, {
+        ...agyHeaders,
+        "x-session-affinity": "proxy-only-session",
+      })
       await plugins.flush()
 
       const emptySession = {
@@ -271,6 +275,12 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
           sessionAffinity: "header-session",
           rootSessionId: "header-root",
           parentSessionId: "header-parent",
+        },
+        {
+          sessionAffinity: "proxy-only-session",
+          rootSessionId: undefined,
+          parentSessionId: undefined,
+          subagent: null,
         },
       ])
       expect(sessionUpdates).toEqual([labels.cascade_id])
@@ -2101,4 +2111,207 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     expect(chunks.some((chunk) => chunk.error)).toBe(false)
     expect(chunks.at(-1)?.candidates?.[0]?.finishReason).toBe("MAX_TOKENS")
   })
+
+  test.each(["generateContent", "streamGenerateContent"] as const)(
+    "preserves Antigravity interleaved Responses reasoning over non-SSE %s",
+    async (action) => {
+      const model = "gpt-5.4"
+      state.models = {
+        object: "list",
+        data: [
+          {
+            id: model,
+            name: model,
+            object: "model",
+            preview: false,
+            vendor: "openai",
+            version: "1",
+            model_picker_enabled: true,
+            supported_endpoints: ["/responses"],
+            capabilities: {
+              family: "gpt",
+              limits: { max_output_tokens: 16384 },
+              object: "model_capabilities",
+              supports: {},
+              tokenizer: "o200k_base",
+              type: "chat",
+            },
+          },
+        ],
+      }
+      const first: ResponseOutputReasoning = {
+        id: "rs_non_sse_1",
+        type: "reasoning",
+        encrypted_content: "cipher-1",
+        summary: [{ type: "summary_text", text: "Step one." }],
+      }
+      const second: ResponseOutputReasoning = {
+        id: "rs_non_sse_2",
+        type: "reasoning",
+        encrypted_content: "cipher-2",
+        summary: [],
+      }
+      const progress = "Working. "
+      const answer = "Finished."
+      const result = createResponsesResult(model)
+
+      if (action === "generateContent") {
+        createResponses.mockResolvedValueOnce({
+          ...result,
+          output: [
+            first,
+            {
+              id: "msg_1",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [{ type: "output_text", text: progress }],
+            },
+            second,
+            {
+              id: "msg_2",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [{ type: "output_text", text: answer }],
+            },
+          ],
+          output_text: `${progress}${answer}`,
+        })
+      } else {
+        const upstream: Array<ResponseStreamEvent> = [
+          {
+            type: "response.created",
+            sequence_number: 0,
+            response: { ...result, status: "in_progress" },
+          },
+          {
+            type: "response.reasoning_summary_text.delta",
+            sequence_number: 1,
+            output_index: 0,
+            item_id: first.id,
+            summary_index: 0,
+            delta: "Step one.",
+          },
+          {
+            type: "response.output_item.done",
+            sequence_number: 2,
+            output_index: 0,
+            item: first,
+          },
+          {
+            type: "response.output_text.delta",
+            sequence_number: 3,
+            output_index: 1,
+            content_index: 0,
+            item_id: "msg_1",
+            delta: progress,
+          },
+          {
+            type: "response.output_item.done",
+            sequence_number: 4,
+            output_index: 2,
+            item: second,
+          },
+          {
+            type: "response.output_text.delta",
+            sequence_number: 5,
+            output_index: 3,
+            content_index: 0,
+            item_id: "msg_2",
+            delta: answer,
+          },
+          {
+            type: "response.completed",
+            sequence_number: 6,
+            response: { ...result, output: [first, second] },
+          },
+        ]
+        createResponses.mockImplementationOnce(() =>
+          Promise.resolve(
+            streamEvents(
+              upstream.map((event) => ({ data: JSON.stringify(event) })),
+            ),
+          ),
+        )
+      }
+      createResponses.mockResolvedValueOnce(result)
+
+      const app = createServer()
+      const headers = {
+        "content-type": "application/json",
+        "user-agent":
+          "antigravity/cli/1.5.16 (aidev_client; auth_method=gateway)",
+      }
+      const initial = { role: "user", parts: [{ text: "Start" }] }
+      const turn1 = await app.request(`/v1beta/models/${model}:${action}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ contents: [initial] }),
+      })
+      expect(turn1.status).toBe(200)
+      const turn1Body = (await turn1.json()) as
+        | GoogleGenerateContentResponse
+        | Array<GoogleGenerateContentResponse>
+      const responseItems = Array.isArray(turn1Body) ? turn1Body : [turn1Body]
+      const parts = responseItems.flatMap(
+        (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
+      )
+      const sigBytes = parts.flatMap((part) =>
+        part.thoughtSignature ?
+          [Buffer.from(part.thoughtSignature, "base64")]
+        : [],
+      )
+      expect(sigBytes).toHaveLength(2)
+
+      const merged: Array<GooglePart> = [
+        {
+          thought: true,
+          text: parts
+            .filter((part) => part.thought)
+            .map((part) => part.text)
+            .join(""),
+        },
+        {
+          text: parts
+            .filter((part) => !part.thought)
+            .map((part) => part.text)
+            .join(""),
+          thoughtSignature: Buffer.concat(sigBytes).toString("base64"),
+        },
+      ]
+
+      const turn2 = await app.request(
+        `/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            contents: [
+              initial,
+              { role: "model", parts: merged },
+              { role: "user", parts: [{ text: "Continue" }] },
+            ],
+          }),
+        },
+      )
+      expect(turn2.status).toBe(200)
+      const input = createResponses.mock.calls[1]?.[0]?.input
+      expect(Array.isArray(input)).toBe(true)
+      expect((input as Array<ResponseInputItem>).slice(1, 5)).toMatchObject([
+        first,
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: progress }],
+        },
+        second,
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: answer }],
+        },
+      ])
+    },
+  )
 })
