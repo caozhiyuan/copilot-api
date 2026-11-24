@@ -304,7 +304,9 @@ async function isMessagesBackedModel(model: string): Promise<boolean> {
         providerAlias.model,
       )
     return (
-      effectiveType === "anthropic" || effectiveType === "openai-compatible"
+      effectiveType === "anthropic"
+      || effectiveType === "openai-compatible"
+      || effectiveType === "google"
     )
   }
 
