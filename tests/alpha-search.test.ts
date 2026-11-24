@@ -19,6 +19,7 @@ import { requestContext } from "~/lib/http/request-context"
 let codexProviderConfig: ResolvedProviderConfig | null = null
 let openrouterProviderConfig: ResolvedProviderConfig | null = null
 let deepseekProviderConfig: ResolvedProviderConfig | null = null
+let googleProviderConfig: ResolvedProviderConfig | null = null
 let alphaSearchCodexPriorityEnabled = true
 let modelMappings: Record<string, string> = {}
 
@@ -235,6 +236,7 @@ const resolveTestProviderConfig = (
   if (provider === "openrouter")
     return Promise.resolve(openrouterProviderConfig)
   if (provider === "deepseek") return Promise.resolve(deepseekProviderConfig)
+  if (provider === "google") return Promise.resolve(googleProviderConfig)
   return Promise.resolve(null)
 }
 
@@ -269,6 +271,13 @@ beforeEach(async () => {
     baseUrl: "https://api.deepseek.com/anthropic",
     name: "deepseek",
     type: "anthropic",
+  }
+  googleProviderConfig = {
+    apiKey: "google-key",
+    authType: "x-goog-api-key",
+    baseUrl: "https://generativelanguage.googleapis.com",
+    name: "google",
+    type: "google",
   }
   state.codexAccessToken = "codex-access-token"
   state.codexAccountId = "account-123"
@@ -337,6 +346,7 @@ afterEach(async () => {
   state.verbose = false
   openrouterProviderConfig = null
   deepseekProviderConfig = null
+  googleProviderConfig = null
   Object.assign(alphaSearchResponsesDependencies, originalResponsesDependencies)
   Object.assign(alphaSearchRouteDependencies, originalRouteDependencies)
   Object.assign(
@@ -1474,6 +1484,120 @@ describe("Alpha search Responses adapter", () => {
     expect(response.status).toBe(200)
     expect(createResponsesMock).toHaveBeenCalledTimes(1)
     expect(createResponsesMock.mock.calls[0]?.[0].model).toBe("gpt-5-mini")
+  })
+
+  test.each([
+    { label: "Codex is unavailable", disableCodexPriority: false },
+    { label: "Codex priority is disabled", disableCodexPriority: true },
+  ])(
+    "redirects Google provider alpha search to alphaSearchModel when $label",
+    async ({ disableCodexPriority }) => {
+      state.models = {
+        object: "list",
+        data: [
+          {
+            capabilities: { limits: {} },
+            id: "gpt-5-mini",
+            supported_endpoints: ["/responses"],
+          },
+        ],
+      } as typeof state.models
+
+      const payload = createFallbackPayload(
+        { search_query: [{ q: "google redirect search" }] },
+        { model: "google/gemini-2.5-pro" },
+      )
+      let response: Response
+      if (disableCodexPriority) {
+        alphaSearchCodexPriorityEnabled = false
+        response = await createApp().request("/alpha/search", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      } else {
+        response = await requestFallback(payload)
+      }
+
+      expect(response.status).toBe(200)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(createResponsesMock).toHaveBeenCalledTimes(1)
+      expect(createResponsesMock.mock.calls[0]?.[0].model).toBe("gpt-5-mini")
+    },
+  )
+
+  test("redirects per-model google type override alpha search to alphaSearchModel", async () => {
+    alphaSearchCodexPriorityEnabled = false
+    openrouterProviderConfig = {
+      ...openrouterProviderConfig!,
+      type: "openai-responses",
+      models: {
+        "gemini-2.5-pro": { type: "google" },
+      },
+    }
+    state.models = {
+      object: "list",
+      data: [
+        {
+          capabilities: { limits: {} },
+          id: "gpt-5-mini",
+          supported_endpoints: ["/responses"],
+        },
+      ],
+    } as typeof state.models
+
+    const response = await createApp().request("/alpha/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        createFallbackPayload(
+          { search_query: [{ q: "google override search" }] },
+          { model: "openrouter/gemini-2.5-pro" },
+        ),
+      ),
+    })
+
+    expect(response.status).toBe(200)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(createResponsesMock).toHaveBeenCalledTimes(1)
+    expect(createResponsesMock.mock.calls[0]?.[0].model).toBe("gpt-5-mini")
+  })
+
+  test("rejects Google provider alpha search when alphaSearchModel is disabled or non-Responses", async () => {
+    alphaSearchRouteDependencies.getAlphaSearchModel = () => undefined
+    const disabledResponse = await requestFallback(
+      createFallbackPayload(
+        { search_query: [{ q: "disabled search model" }] },
+        { model: "google/gemini-2.5-pro" },
+      ),
+    )
+
+    expect(disabledResponse.status).toBe(400)
+    const disabledBody = (await disabledResponse.json()) as {
+      error: { message: string }
+    }
+    expect(disabledBody.error.message).toContain(
+      "alphaSearchModel is disabled; Messages-backed Codex models require a native Responses search model",
+    )
+
+    alphaSearchRouteDependencies.getAlphaSearchModel = () =>
+      "google/gemini-2.5-flash"
+    const invalidSearchModelResponse = await requestFallback(
+      createFallbackPayload(
+        { search_query: [{ q: "invalid google search model" }] },
+        { model: "google/gemini-2.5-pro" },
+      ),
+    )
+
+    expect(invalidSearchModelResponse.status).toBe(400)
+    const invalidBody = (await invalidSearchModelResponse.json()) as {
+      error: { message: string }
+    }
+    expect(invalidBody.error.message).toContain(
+      "Configured alphaSearchModel 'google/gemini-2.5-flash' does not support the Responses endpoint",
+    )
+    expect(createResponsesMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test("keeps stable deduplicated search references across turns", async () => {
