@@ -9,6 +9,10 @@ import type {
 } from "~/lib/types/google"
 
 import {
+  encodeAntigravitySignature,
+  isResponsesThinkingSignature,
+} from "./antigravity-signatures"
+import {
   createGoogleErrorPayload,
   encodeSignatureForGoogle,
   GoogleMessagesTranslationError,
@@ -80,7 +84,11 @@ function parseToolUseArguments(
 
 export async function* translateMessagesStreamToGoogle(
   chunks: AsyncIterable<MessagesStreamChunk>,
-  options: { fallbackModel: string; signal?: AbortSignal },
+  options: {
+    fallbackModel: string
+    signal?: AbortSignal
+    preserveAntigravityReasoning?: boolean
+  },
 ): AsyncGenerator<GoogleGenerateContentResponse> {
   let responseId: string | undefined
   let modelVersion = options.fallbackModel
@@ -94,6 +102,8 @@ export async function* translateMessagesStreamToGoogle(
   const pendingSignatures: Array<string> = []
   const toolSignaturesById = new Map<string, string>()
   let pendingInvalidToolArgsError: GoogleMessagesTranslationError | undefined
+  let textLength = 0
+  let thoughtLength = 0
 
   const takePendingSignatureParts = (): Array<GooglePart> => {
     if (pendingSignatures.length === 0) return []
@@ -110,6 +120,19 @@ export async function* translateMessagesStreamToGoogle(
     finishReason?: string,
     includeUsage = false,
   ): GoogleGenerateContentResponse => {
+    if (options.preserveAntigravityReasoning) {
+      for (const part of parts) {
+        if (part.functionCall) {
+          textLength = 0
+          thoughtLength = 0
+        } else if (part.thought) {
+          thoughtLength += part.text?.length ?? 0
+        } else {
+          textLength += part.text?.length ?? 0
+        }
+      }
+    }
+
     const usageMetadata =
       includeUsage && hasUsage ?
         translateAnthropicUsageToGoogle(usage)
@@ -219,7 +242,19 @@ export async function* translateMessagesStreamToGoogle(
 
         if (block.type === "thinking") {
           if (block.signature.length > 0) {
-            const encoded = encodeSignatureForGoogle(block.signature)
+            const encoded =
+              (
+                options.preserveAntigravityReasoning
+                && isResponsesThinkingSignature(block.signature)
+              ) ?
+                {
+                  signature: encodeAntigravitySignature(
+                    block.signature,
+                    textLength,
+                    thoughtLength,
+                  ),
+                }
+              : encodeSignatureForGoogle(block.signature)
             if (encoded.target && typeof encoded.target === "object") {
               toolSignaturesById.set(
                 encoded.target.toolUseId,

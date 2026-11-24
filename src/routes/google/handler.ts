@@ -622,7 +622,13 @@ function streamTranslatedGoogleSSE(
       const response = createAbortableResponse(messagesResponse, signal)
       for await (const chunk of translateMessagesStreamToGoogle(
         events(response, signal),
-        { fallbackModel, signal },
+        {
+          fallbackModel,
+          signal,
+          preserveAntigravityReasoning: isAntigravityUserAgent(
+            c.req.header("user-agent"),
+          ),
+        },
       )) {
         debugJson(logger, "Translated Google stream chunk:", chunk)
         await writeSSEIfConnected(

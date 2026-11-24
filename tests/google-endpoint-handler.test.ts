@@ -10,7 +10,14 @@ import type { ChatCompletionChunk } from "~/lib/types/chat-completions"
 import type {
   GoogleGenerateContentResponse,
   GoogleModelsResponse,
+  GooglePart,
 } from "~/lib/types/google"
+import type {
+  ResponseInputItem,
+  ResponseOutputFunctionCall,
+  ResponseOutputReasoning,
+  ResponseStreamEvent,
+} from "~/lib/types/responses"
 
 import { createResponsesResult } from "./fixtures/responses"
 
@@ -1822,6 +1829,226 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       },
     ])
   })
+
+  test.each(["answer", "tool"] as const)(
+    "recovers interleaved Responses reasoning from Antigravity's merged %s history",
+    async (end) => {
+      const model = "gpt-5.4"
+      state.models = {
+        object: "list",
+        data: [
+          {
+            id: model,
+            name: model,
+            object: "model",
+            preview: false,
+            vendor: "openai",
+            version: "1",
+            model_picker_enabled: true,
+            supported_endpoints: ["/responses"],
+            capabilities: {
+              family: "gpt",
+              limits: { max_output_tokens: 16384 },
+              object: "model_capabilities",
+              supports: {},
+              tokenizer: "o200k_base",
+              type: "chat",
+            },
+          },
+        ],
+      }
+      const first: ResponseOutputReasoning = {
+        id: "rs_first",
+        type: "reasoning",
+        encrypted_content: "cipher-first",
+        summary: [{ type: "summary_text", text: "First step 🚀." }],
+      }
+      const second: ResponseOutputReasoning = {
+        id: "rs_second",
+        type: "reasoning",
+        encrypted_content: "cipher-second",
+        summary: [],
+      }
+      const tool: ResponseOutputFunctionCall = {
+        type: "function_call",
+        id: "fc_read",
+        call_id: "call_read",
+        name: "read_file",
+        arguments: '{"path":"README.md"}',
+        status: "completed",
+      }
+      const result = createResponsesResult(model)
+      const progress = "Checking 🚀. "
+      const answer = "Done."
+      const upstream: Array<ResponseStreamEvent> = [
+        {
+          type: "response.created",
+          sequence_number: 0,
+          response: { ...result, status: "in_progress" },
+        },
+        {
+          type: "response.reasoning_summary_text.delta",
+          sequence_number: 1,
+          output_index: 0,
+          item_id: first.id,
+          summary_index: 0,
+          delta: first.summary?.[0]?.text ?? "",
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 2,
+          output_index: 0,
+          item: first,
+        },
+        {
+          type: "response.output_text.delta",
+          sequence_number: 3,
+          output_index: 1,
+          content_index: 0,
+          item_id: "msg_progress",
+          delta: progress,
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 4,
+          output_index: 2,
+          item: second,
+        },
+      ]
+      if (end === "tool") {
+        upstream.push(
+          {
+            type: "response.output_item.added",
+            sequence_number: 5,
+            output_index: 3,
+            item: { ...tool, status: "in_progress" },
+          },
+          {
+            type: "response.output_item.done",
+            sequence_number: 6,
+            output_index: 3,
+            item: tool,
+          },
+        )
+      } else {
+        upstream.push({
+          type: "response.output_text.delta",
+          sequence_number: 5,
+          output_index: 3,
+          content_index: 0,
+          item_id: "msg_answer",
+          delta: answer,
+        })
+      }
+      upstream.push({
+        type: "response.completed",
+        sequence_number: 7,
+        response: {
+          ...result,
+          output: end === "tool" ? [first, second, tool] : [first, second],
+        },
+      })
+      createResponses.mockImplementationOnce(() =>
+        Promise.resolve(
+          streamEvents(
+            upstream.map((event) => ({ data: JSON.stringify(event) })),
+          ),
+        ),
+      )
+      createResponses.mockResolvedValueOnce(result)
+
+      const app = createServer()
+      const headers = {
+        "content-type": "application/json",
+        "user-agent":
+          "antigravity/cli/1.5.16 (aidev_client; auth_method=gateway)",
+      }
+      const initial = { role: "user", parts: [{ text: "Start" }] }
+      const streamed = await app.request(
+        "/v1beta/models/gpt-5.4:streamGenerateContent?alt=sse",
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ contents: [initial] }),
+        },
+      )
+      expect(streamed.status).toBe(200)
+      const parts = parseSseDataEvents(await streamed.text()).flatMap(
+        (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
+      )
+      const toolPart = parts.find((part) => part.functionCall)
+      const signatures = parts.flatMap(({ thoughtSignature, functionCall }) =>
+        thoughtSignature && !functionCall ?
+          [Buffer.from(thoughtSignature, "base64")]
+        : [],
+      )
+      expect(signatures).toHaveLength(end === "tool" ? 1 : 2)
+      const merged: Array<GooglePart> = [
+        {
+          thought: true,
+          text: parts
+            .filter((part) => part.thought)
+            .map((part) => part.text)
+            .join(""),
+        },
+        {
+          text: parts
+            .filter((part) => !part.thought)
+            .map((part) => part.text)
+            .join(""),
+          thoughtSignature: Buffer.concat(signatures).toString("base64"),
+        },
+      ]
+      if (toolPart) merged.push(toolPart)
+      const followUp =
+        end === "tool" ?
+          { functionResponse: { name: tool.name, response: { output: "OK" } } }
+        : { text: "Continue" }
+      const next = await app.request("/v1beta/models/gpt-5.4:generateContent", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          contents: [
+            initial,
+            { role: "model", parts: merged },
+            { role: "user", parts: [followUp] },
+          ],
+        }),
+      })
+      expect(next.status).toBe(200)
+      const input = createResponses.mock.calls[1]?.[0]?.input
+      expect(Array.isArray(input)).toBe(true)
+      const terminalItems: Array<Partial<ResponseInputItem>> =
+        end === "tool" ?
+          [
+            { type: "function_call", name: tool.name, call_id: tool.call_id },
+            {
+              type: "function_call_output",
+              call_id: tool.call_id,
+              output: "OK",
+            },
+          ]
+        : [
+            {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: answer }],
+            },
+          ]
+      expect(
+        (input as Array<ResponseInputItem>).slice(1, 4 + terminalItems.length),
+      ).toMatchObject([
+        first,
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: progress }],
+        },
+        second,
+        ...terminalItems,
+      ])
+    },
+  )
 
   test("returns MAX_TOKENS instead of 502 when streaming tool call hits max output tokens", async () => {
     const app = createServer()

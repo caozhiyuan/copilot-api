@@ -31,6 +31,8 @@ import { normalizeToolSchema } from "~/routes/messages/completions-translation"
 import { decodeGoogleSignature } from "~/routes/messages/google-translation"
 import { resolveDefaultMaxOutputTokens } from "~/routes/responses/messages-translation/to-messages"
 
+import { restoreAntigravityReasoningParts } from "./antigravity-signatures"
+
 const OPAQUE_SIGNATURE_PREFIX = "copilot-api:sig:"
 const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/u
 
@@ -107,7 +109,7 @@ export interface DecodedAnthropicSignature {
  * Converts an Anthropic thinking signature into a Gemini-valid base64
  * `thoughtSignature`. Canonical base64 tokens (such as Gemini `reasoning_opaque`
  * or Claude signatures) pass through unchanged; non-base64 tokens (such as
- * Responses `id@encrypted_content`) are bijectively base64-wrapped so Gemini
+ * Responses `encrypted_content@id`) are bijectively base64-wrapped so Gemini
  * protobuf `bytes` parsers never reject them.
  */
 export function encodeSignatureForGoogle(
@@ -787,7 +789,13 @@ function translateModelParts(
     })
   }
 
-  for (const part of parts) {
+  for (const part of restoreAntigravityReasoningParts(parts)) {
+    if ("type" in part) {
+      assistantBlocks.push(part)
+      openThinkingBlock = undefined
+      segmentStartIndex = assistantBlocks.length
+      continue
+    }
     const decodedSignature =
       (
         typeof part.thoughtSignature === "string"
