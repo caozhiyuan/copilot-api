@@ -141,12 +141,8 @@ export function createServer(options: CreateServerOptions = {}): Hono {
   // Anthropic compatible endpoints
   server.route("/v1/messages", messageRoutes)
 
-  // Google Gemini compatible endpoints (Antigravity Enterprise Gateway / GenAI)
+  // Gemini REST endpoints for Antigravity gateway mode
   server.route("/v1beta/models", googleRoutes)
-  server.route(
-    "/v1beta1/projects/:project/locations/:location/publishers/google/models",
-    googleRoutes,
-  )
   server.post("/:telemetry{v1beta:.+}", (c) => c.json({}))
 
   // Provider scoped endpoints

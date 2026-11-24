@@ -5,21 +5,33 @@ import type { GooglePart } from "~/lib/types/google"
 const PREFIX = "copilot-api:agy:1:"
 const BASE64_PREFIX = Buffer.from(PREFIX).toString("base64")
 
-type PositionedSignature = [
+export type PositionedSignature = [
   signature: string,
   textLength: number,
   thoughtLength: number,
+  fallbackThought?: string,
 ]
 
-// Antigravity concatenates text-part signature bytes between tool calls.
-// A newline separates the records, and offsets partition the merged text.
-export function encodeAntigravitySignature(
-  signature: string,
-  textLength: number,
-  thoughtLength: number,
+// Antigravity drops signatures on empty text parts before a tool call with
+// no visible text. Send the whole span's records on a single part.
+export function encodeAntigravitySignatures(
+  signatures: ReadonlyArray<PositionedSignature>,
 ): string {
-  const frame: PositionedSignature = [signature, textLength, thoughtLength]
-  return Buffer.from(`${PREFIX}${JSON.stringify(frame)}\n`).toString("base64")
+  const records = signatures
+    .map((frame) => `${PREFIX}${JSON.stringify(frame)}\n`)
+    .join("")
+  return Buffer.from(records).toString("base64")
+}
+
+export function flushAntigravitySignatures(
+  signatures: Array<PositionedSignature>,
+  pendingSignatures: Array<string>,
+  fallbackThought?: string,
+): void {
+  if (signatures.length === 0) return
+  if (fallbackThought) signatures[0][3] = fallbackThought
+  pendingSignatures.push(encodeAntigravitySignatures(signatures))
+  signatures.length = 0
 }
 
 // Responses carries its reasoning ID after the last @. Compaction uses the
@@ -40,9 +52,11 @@ function readSignatures(value: string): Array<PositionedSignature> | undefined {
     for (const record of records) {
       if (!record.startsWith(PREFIX)) return undefined
       const frame: unknown = JSON.parse(record.slice(PREFIX.length))
-      if (!Array.isArray(frame) || frame.length !== 3) return undefined
+      if (!Array.isArray(frame) || (frame.length !== 3 && frame.length !== 4)) {
+        return undefined
+      }
       const values: Array<unknown> = frame
-      const [signature, textLength, thoughtLength] = values
+      const [signature, textLength, thoughtLength, fallbackThought] = values
       if (
         typeof signature !== "string"
         || !isResponsesThinkingSignature(signature)
@@ -52,10 +66,12 @@ function readSignatures(value: string): Array<PositionedSignature> | undefined {
         || typeof thoughtLength !== "number"
         || !Number.isSafeInteger(thoughtLength)
         || thoughtLength < 0
+        || (fallbackThought !== undefined
+          && typeof fallbackThought !== "string")
       ) {
         return undefined
       }
-      signatures.push([signature, textLength, thoughtLength])
+      signatures.push([signature, textLength, thoughtLength, fallbackThought])
     }
     return signatures
   } catch {
@@ -120,6 +136,8 @@ function restoreSpan(parts: Array<GooglePart>): Array<ReplayPart> {
     if (part.thought) thought += part.text
     else text += part.text
   }
+  // Antigravity can omit the thought part when replaying a tool call.
+  thought ||= signatures[0]?.[3] ?? ""
   const restored: Array<ReplayPart> = []
   let textStart = 0
   let thoughtStart = 0

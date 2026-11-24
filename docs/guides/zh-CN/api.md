@@ -137,7 +137,6 @@ Token 计数回退到本地估算时，不会把图片的 URL 或 Base64 当作�
 | `GET /v1beta/models` | `GET` | 以 Google `models/<id>` 格式列出可用网关模型。 |
 | `POST /v1beta/models/<model>:generateContent` | `POST` | 生成非流式 Gemini 响应。支持 `provider/model` 别名与模型映射。 |
 | `POST /v1beta/models/<model>:streamGenerateContent` | `POST` | 生成流式 Gemini 响应，支持 SSE（`?alt=sse`）或 JSON 数组格式。 |
-| `POST /v1beta1/projects/:project/locations/:location/publishers/google/models/<model>:generateContent`（及 `:streamGenerateContent`） | `POST` | 与上述接口等价的 Vertex 风格路径别名。 |
 | `POST /v1beta:<action>` | `POST` | 以 `{}` 应答 Antigravity / GenAI 遥测请求。 |
 
 ### 使用量监控端点

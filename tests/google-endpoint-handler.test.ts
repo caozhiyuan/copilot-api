@@ -140,7 +140,7 @@ afterEach(async () => {
 })
 
 describe("parseGoogleModelActionPath", () => {
-  test("parses standard v1beta, Vertex v1beta1, percent-encoded, and namespaced models", () => {
+  test("parses Gemini v1beta paths with percent-encoded and namespaced models", () => {
     expect(
       parseGoogleModelActionPath(
         "http://localhost/v1beta/models/gemini-4-neon:streamGenerateContent?alt=sse",
@@ -151,7 +151,7 @@ describe("parseGoogleModelActionPath", () => {
       parseGoogleModelActionPath(
         "http://localhost/v1beta1/projects/my-proj/locations/global/publishers/google/models/gemini-4-neon:generateContent",
       ),
-    ).toEqual({ model: "gemini-4-neon", action: "generateContent" })
+    ).toBeNull()
 
     expect(
       parseGoogleModelActionPath(
@@ -187,6 +187,14 @@ describe("parseGoogleModelActionPath", () => {
 })
 
 describe("Google Gemini /v1beta/models integration via Messages API", () => {
+  test("returns 404 for a Vertex inference path", async () => {
+    const response = await createServer().request(
+      "/v1beta1/projects/demo/locations/global/publishers/google/models/gemini-4-neon:generateContent",
+      { method: "POST" },
+    )
+    expect(response.status).toBe(404)
+  })
+
   test("assigns Antigravity session labels before dispatch and publishes the session ID", async () => {
     const labels = {
       cascade_id: "5fe81afd-2716-4933-8381-072aed9753d4",
@@ -410,7 +418,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     })
 
     const turn2Res = await app.request(
-      "/v1beta1/projects/demo/locations/global/publishers/google/models/gemini-4-neon:generateContent",
+      "/v1beta/models/gemini-4-neon:generateContent",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1840,9 +1848,14 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     ])
   })
 
-  test.each(["answer", "tool"] as const)(
-    "recovers interleaved Responses reasoning from Antigravity's merged %s history",
-    async (end) => {
+  test.each([
+    { end: "answer", layout: "interleaved" },
+    { end: "tool", layout: "interleaved" },
+    { end: "answer", layout: "consecutive" },
+    { end: "tool", layout: "consecutive" },
+  ] as const)(
+    "recovers $end history with $layout Responses reasoning after Antigravity merges it",
+    async ({ end, layout }) => {
       const model = "gpt-5.4"
       state.models = {
         object: "list",
@@ -1877,7 +1890,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         id: "rs_second",
         type: "reasoning",
         encrypted_content: "cipher-second",
-        summary: [],
+        summary: [{ type: "summary_text", text: "Second step." }],
       }
       const tool: ResponseOutputFunctionCall = {
         type: "function_call",
@@ -1888,6 +1901,8 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         status: "completed",
       }
       const result = createResponsesResult(model)
+      const interleaved = layout === "interleaved"
+      const secondIndex = interleaved ? 2 : 1
       const progress = "Checking 🚀. "
       const answer = "Done."
       const upstream: Array<ResponseStreamEvent> = [
@@ -1910,41 +1925,53 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
           output_index: 0,
           item: first,
         },
-        {
+      ]
+      if (interleaved) {
+        upstream.push({
           type: "response.output_text.delta",
           sequence_number: 3,
           output_index: 1,
           content_index: 0,
           item_id: "msg_progress",
           delta: progress,
+        })
+      }
+      upstream.push(
+        {
+          type: "response.reasoning_summary_text.delta",
+          sequence_number: 4,
+          output_index: secondIndex,
+          item_id: second.id,
+          summary_index: 0,
+          delta: second.summary?.[0]?.text ?? "",
         },
         {
           type: "response.output_item.done",
-          sequence_number: 4,
-          output_index: 2,
+          sequence_number: 5,
+          output_index: secondIndex,
           item: second,
         },
-      ]
+      )
       if (end === "tool") {
         upstream.push(
           {
             type: "response.output_item.added",
-            sequence_number: 5,
-            output_index: 3,
+            sequence_number: 6,
+            output_index: secondIndex + 1,
             item: { ...tool, status: "in_progress" },
           },
           {
             type: "response.output_item.done",
-            sequence_number: 6,
-            output_index: 3,
+            sequence_number: 7,
+            output_index: secondIndex + 1,
             item: tool,
           },
         )
       } else {
         upstream.push({
           type: "response.output_text.delta",
-          sequence_number: 5,
-          output_index: 3,
+          sequence_number: 6,
+          output_index: secondIndex + 1,
           content_index: 0,
           item_id: "msg_answer",
           delta: answer,
@@ -1952,7 +1979,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       }
       upstream.push({
         type: "response.completed",
-        sequence_number: 7,
+        sequence_number: 8,
         response: {
           ...result,
           output: end === "tool" ? [first, second, tool] : [first, second],
@@ -1987,28 +2014,28 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
       )
       const toolPart = parts.find((part) => part.functionCall)
-      const signatures = parts.flatMap(({ thoughtSignature, functionCall }) =>
-        thoughtSignature && !functionCall ?
-          [Buffer.from(thoughtSignature, "base64")]
-        : [],
+      const signatures = parts.filter(
+        (part) => part.thoughtSignature && !part.functionCall,
       )
-      expect(signatures).toHaveLength(end === "tool" ? 1 : 2)
-      const merged: Array<GooglePart> = [
-        {
+      expect(signatures).toHaveLength(end === "tool" ? 0 : 1)
+      const text = parts
+        .filter((part) => !part.thought)
+        .map((part) => part.text)
+        .join("")
+      const merged: Array<GooglePart> = []
+      // The CLI can replay a tool call without the preceding thought part.
+      if (end === "answer") {
+        merged.push({
           thought: true,
           text: parts
             .filter((part) => part.thought)
             .map((part) => part.text)
             .join(""),
-        },
-        {
-          text: parts
-            .filter((part) => !part.thought)
-            .map((part) => part.text)
-            .join(""),
-          thoughtSignature: Buffer.concat(signatures).toString("base64"),
-        },
-      ]
+        })
+      }
+      if (text) {
+        merged.push({ text, thoughtSignature: signatures[0]?.thoughtSignature })
+      }
       if (toolPart) merged.push(toolPart)
       const followUp =
         end === "tool" ?
@@ -2045,18 +2072,20 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
               content: [{ type: "output_text", text: answer }],
             },
           ]
-      expect(
-        (input as Array<ResponseInputItem>).slice(1, 4 + terminalItems.length),
-      ).toMatchObject([
-        first,
-        {
+      const expected: Array<
+        Partial<ResponseInputItem> | ResponseOutputReasoning
+      > = [first]
+      if (interleaved) {
+        expected.push({
           type: "message",
           role: "assistant",
           content: [{ type: "output_text", text: progress }],
-        },
-        second,
-        ...terminalItems,
-      ])
+        })
+      }
+      expected.push(second, ...terminalItems)
+      expect(
+        (input as Array<ResponseInputItem>).slice(1, 1 + expected.length),
+      ).toMatchObject(expected)
     },
   )
 
@@ -2262,7 +2291,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
           [Buffer.from(part.thoughtSignature, "base64")]
         : [],
       )
-      expect(sigBytes).toHaveLength(2)
+      expect(sigBytes).toHaveLength(1)
 
       const merged: Array<GooglePart> = [
         {

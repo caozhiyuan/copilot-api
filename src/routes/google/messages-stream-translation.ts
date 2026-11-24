@@ -9,8 +9,9 @@ import type {
 } from "~/lib/types/google"
 
 import {
-  encodeAntigravitySignature,
+  flushAntigravitySignatures,
   isResponsesThinkingSignature,
+  type PositionedSignature,
 } from "./antigravity-signatures"
 import {
   createGoogleErrorPayload,
@@ -100,10 +101,11 @@ export async function* translateMessagesStreamToGoogle(
 
   const blocks = new Map<number, StreamBlockState>()
   const pendingSignatures: Array<string> = []
+  const antigravitySignatures: Array<PositionedSignature> = []
   const toolSignaturesById = new Map<string, string>()
   let pendingInvalidToolArgsError: GoogleMessagesTranslationError | undefined
   let textLength = 0
-  let thoughtLength = 0
+  let thoughtText = ""
 
   const takePendingSignatureParts = (): Array<GooglePart> => {
     if (pendingSignatures.length === 0) return []
@@ -124,9 +126,9 @@ export async function* translateMessagesStreamToGoogle(
       for (const part of parts) {
         if (part.functionCall) {
           textLength = 0
-          thoughtLength = 0
+          thoughtText = ""
         } else if (part.thought) {
-          thoughtLength += part.text?.length ?? 0
+          thoughtText += part.text ?? ""
         } else {
           textLength += part.text?.length ?? 0
         }
@@ -242,19 +244,18 @@ export async function* translateMessagesStreamToGoogle(
 
         if (block.type === "thinking") {
           if (block.signature.length > 0) {
-            const encoded =
-              (
-                options.preserveAntigravityReasoning
-                && isResponsesThinkingSignature(block.signature)
-              ) ?
-                {
-                  signature: encodeAntigravitySignature(
-                    block.signature,
-                    textLength,
-                    thoughtLength,
-                  ),
-                }
-              : encodeSignatureForGoogle(block.signature)
+            if (
+              options.preserveAntigravityReasoning
+              && isResponsesThinkingSignature(block.signature)
+            ) {
+              antigravitySignatures.push([
+                block.signature,
+                textLength,
+                thoughtText.length,
+              ])
+              continue
+            }
+            const encoded = encodeSignatureForGoogle(block.signature)
             if (encoded.target && typeof encoded.target === "object") {
               toolSignaturesById.set(
                 encoded.target.toolUseId,
@@ -285,6 +286,11 @@ export async function* translateMessagesStreamToGoogle(
             continue
           }
 
+          flushAntigravitySignatures(
+            antigravitySignatures,
+            pendingSignatures,
+            thoughtText,
+          )
           let thoughtSignature = toolSignaturesById.get(block.id)
           const precedingParts: Array<GooglePart> = []
           if (thoughtSignature) {
@@ -347,6 +353,7 @@ export async function* translateMessagesStreamToGoogle(
         }
         initialized = true
         messageStopped = true
+        flushAntigravitySignatures(antigravitySignatures, pendingSignatures)
         const finalParts = takePendingSignatureParts()
         yield buildChunk(
           finalParts,

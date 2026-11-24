@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import type { AnthropicResponse } from "~/lib/types/anthropic"
 import type { GoogleGenerateContentRequest } from "~/lib/types/google"
 import { encodeGoogleSignature } from "~/routes/messages/google-translation"
-import { encodeAntigravitySignature } from "~/routes/google/antigravity-signatures"
+import { encodeAntigravitySignatures } from "~/routes/google/antigravity-signatures"
 import {
   translateMessagesStreamToGoogle,
   type MessagesStreamChunk,
@@ -2180,8 +2180,8 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
   })
 
   test("preserves per-turn Antigravity offsets across adjacent model contents and unwraps fallback spans", () => {
-    const sig1 = encodeAntigravitySignature("enc_1@rs_1", 5, 0)
-    const sig2 = encodeAntigravitySignature("enc_2@rs_2", 0, 0)
+    const sig1 = encodeAntigravitySignatures([["enc_1@rs_1", 5, 0]])
+    const sig2 = encodeAntigravitySignatures([["enc_2@rs_2", 0, 0]])
 
     const adjacent = translateGoogleToMessages(
       {
@@ -2222,11 +2222,9 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
               { thought: true, text: "First thought", thoughtSignature: sig1 },
               {
                 text: "Interim",
-                thoughtSignature: encodeAntigravitySignature(
-                  "enc_3@rs_3",
-                  0,
-                  0,
-                ),
+                thoughtSignature: encodeAntigravitySignatures([
+                  ["enc_3@rs_3", 0, 0],
+                ]),
               },
               {
                 functionCall: { id: "call_1", name: "read_file", args: {} },
@@ -2344,7 +2342,7 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
         [Buffer.from(part.thoughtSignature, "base64")]
       : [],
     )
-    expect(sigBytes).toHaveLength(2)
+    expect(sigBytes).toHaveLength(1)
 
     const merged = [
       {

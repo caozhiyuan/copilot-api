@@ -133,7 +133,6 @@ These endpoints expose the Gemini 4+ / GenAI REST surface. Requests targeting co
 | `GET /v1beta/models` | `GET` | Lists available gateway models in Google `models/<id>` format. |
 | `POST /v1beta/models/<model>:generateContent` | `POST` | Generates a non-streaming Gemini response. Supports `provider/model` aliases and model mappings. |
 | `POST /v1beta/models/<model>:streamGenerateContent` | `POST` | Generates a streaming Gemini response as SSE (`?alt=sse`) or a JSON array. |
-| `POST /v1beta1/projects/:project/locations/:location/publishers/google/models/<model>:generateContent` (and `:streamGenerateContent`) | `POST` | Vertex-style alias for the same Gemini handlers. |
 | `POST /v1beta:<action>` | `POST` | Acknowledges Antigravity / GenAI telemetry pings with `{}`. |
 
 ### Usage Monitoring Endpoints

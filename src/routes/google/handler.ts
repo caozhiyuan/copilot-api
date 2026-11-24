@@ -53,8 +53,7 @@ import {
 
 const logger = createHandlerLogger("google-handler")
 
-const GOOGLE_MODEL_ACTION_PATH_PATTERN =
-  /^(?:\/v1beta|\/v1beta1\/projects\/[^/]+\/locations\/[^/]+\/publishers\/google)\/models\/(.+)$/u
+const GOOGLE_MODEL_ACTION_PATH_PATTERN = /^\/v1beta\/models\/(.+)$/u
 const SESSION_UUID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu
 
 export const googleHandlerDependencies = {

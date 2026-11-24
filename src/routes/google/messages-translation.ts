@@ -32,10 +32,11 @@ import { decodeGoogleSignature } from "~/routes/messages/google-translation"
 import { resolveDefaultMaxOutputTokens } from "~/routes/responses/messages-translation/to-messages"
 
 import {
-  encodeAntigravitySignature,
+  flushAntigravitySignatures,
   hasAntigravitySignature,
   isResponsesThinkingSignature,
   restoreAntigravityReasoningParts,
+  type PositionedSignature,
 } from "./antigravity-signatures"
 
 const OPAQUE_SIGNATURE_PREFIX = "copilot-api:sig:"
@@ -1077,9 +1078,10 @@ export function translateAnthropicResponseToGoogle(
 ): GoogleGenerateContentResponse {
   const parts: Array<GooglePart> = []
   const pendingSignatures: Array<string> = []
+  const antigravitySignatures: Array<PositionedSignature> = []
   const toolSignaturesById = new Map<string, string>()
   let textLength = 0
-  let thoughtLength = 0
+  let thoughtText = ""
 
   const flushPendingSignatures = (attachToLastPart: boolean): void => {
     while (pendingSignatures.length > 0) {
@@ -1102,14 +1104,14 @@ export function translateAnthropicResponseToGoogle(
         Boolean(options.preserveAntigravityReasoning)
         && block.signature.length > 0
         && isResponsesThinkingSignature(block.signature)
-      const googleEncoded =
+      const encoded =
         !useAntigravitySignature && block.signature.length > 0 ?
           encodeSignatureForGoogle(block.signature)
         : undefined
 
       const startsNewThinkingSegment =
-        googleEncoded?.target !== "previous"
-        && !(googleEncoded?.target && typeof googleEncoded.target === "object")
+        encoded?.target !== "previous"
+        && !(encoded?.target && typeof encoded.target === "object")
         && (block.thinking.length > 0 || block.signature.length > 0)
       if (startsNewThinkingSegment && pendingSignatures.length > 0) {
         flushPendingSignatures(true)
@@ -1120,25 +1122,20 @@ export function translateAnthropicResponseToGoogle(
           text: block.thinking,
           thought: true,
         }
-        if (googleEncoded?.target === "thinking") {
-          thoughtPart.thoughtSignature = googleEncoded.signature
+        if (encoded?.target === "thinking") {
+          thoughtPart.thoughtSignature = encoded.signature
         }
         parts.push(thoughtPart)
-        thoughtLength += block.thinking.length
+        if (options.preserveAntigravityReasoning) thoughtText += block.thinking
       }
 
-      const encoded: DecodedAnthropicSignature | undefined =
-        useAntigravitySignature ?
-          {
-            signature: encodeAntigravitySignature(
-              block.signature,
-              textLength,
-              thoughtLength,
-            ),
-          }
-        : googleEncoded
-
-      if (encoded) {
+      if (useAntigravitySignature) {
+        antigravitySignatures.push([
+          block.signature,
+          textLength,
+          thoughtText.length,
+        ])
+      } else if (encoded) {
         if (encoded.target && typeof encoded.target === "object") {
           toolSignaturesById.set(encoded.target.toolUseId, encoded.signature)
         } else if (encoded.target === "previous") {
@@ -1165,6 +1162,11 @@ export function translateAnthropicResponseToGoogle(
     }
 
     if (block.type === "tool_use") {
+      flushAntigravitySignatures(
+        antigravitySignatures,
+        pendingSignatures,
+        thoughtText,
+      )
       let thoughtSignature = toolSignaturesById.get(block.id)
       if (thoughtSignature) {
         toolSignaturesById.delete(block.id)
@@ -1187,10 +1189,11 @@ export function translateAnthropicResponseToGoogle(
         ...(thoughtSignature ? { thoughtSignature } : {}),
       })
       textLength = 0
-      thoughtLength = 0
+      thoughtText = ""
     }
   }
 
+  flushAntigravitySignatures(antigravitySignatures, pendingSignatures)
   flushPendingSignatures(true)
 
   const usageMetadata = translateAnthropicUsageToGoogle(response.usage)
