@@ -2,7 +2,46 @@
 
 [Home](../../../README.md) · [Documentation](README.md) · [简体中文](../zh-CN/agy-cli.md)
 
-Strict AGY model access controls currently prevent copilot-api from proxying these models. Use Antigravity CLI (`agy`) directly from your project directory. For complex coding tasks or full-repository reviews, try `Gemini 4 Neon (XHigh)` when it is available in `/model`. [Install AGY CLI](https://antigravity.google/docs/getting-started?tab=cli) · [Model selection](https://antigravity.google/docs/models)
+Run Antigravity CLI (`agy`) from your project directory. When signed in directly with a Google Account, try `Gemini 4 Neon (XHigh)` for complex coding tasks or full-repository reviews if it is available in `/model`. [Install AGY CLI](https://antigravity.google/docs/getting-started?tab=cli) · [Model selection](https://antigravity.google/docs/models)
+
+## Connect to copilot-api
+
+Start a version of copilot-api with the Gemini REST endpoints and enable at least one upstream provider. Configure a gateway API key in Desktop's **API Keys** tab or through the CLI, then replace `your-gateway-api-key` below. [Installation and startup](getting-started.md) · [Manage gateway API keys](cli.md#manage-gateway-api-keys)
+
+Set the environment variables and run `agy` in the same terminal. Set `AGY_LLM_GATEWAY_URL` to the gateway base URL. AGY appends the model listing and inference paths. The `genai` setting uses the Gemini protocol. [Google gateway protocol reference](https://docs.cloud.google.com/gemini/enterprise/docs/ai-developer-tools/deploy-enterprise-gateway#supported-wire-protocols)
+
+### Windows PowerShell
+
+```powershell
+$env:AGY_LLM_GATEWAY_URL = "http://127.0.0.1:4141"
+$env:AGY_LLM_GATEWAY_API_KEY = "your-gateway-api-key"
+$env:AGY_LLM_GATEWAY_WIRE_PROTOCOL = "genai"
+
+$headers = @{ Authorization = "Bearer $env:AGY_LLM_GATEWAY_API_KEY" }
+(Invoke-RestMethod "$env:AGY_LLM_GATEWAY_URL/v1beta/models" -Headers $headers).models |
+  Select-Object name, displayName
+```
+
+### macOS / Linux
+
+```sh
+export AGY_LLM_GATEWAY_URL="http://127.0.0.1:4141"
+export AGY_LLM_GATEWAY_API_KEY="your-gateway-api-key"
+export AGY_LLM_GATEWAY_WIRE_PROTOCOL="genai"
+
+curl -fsS "$AGY_LLM_GATEWAY_URL/v1beta/models" \
+  -H "Authorization: Bearer $AGY_LLM_GATEWAY_API_KEY"
+```
+
+### Test a model request
+
+Replace `gemini-4-neon` with a model from the list. Use its `name` with the `models/` prefix removed.
+
+```sh
+agy --print "Reply with OK only." --model gemini-4-neon
+```
+
+For an interactive session, run `agy` in your project directory and use `/model` to select a model from the gateway.
 
 ## Disable telemetry
 
