@@ -96,6 +96,7 @@ const translateOutputFormatToResponses = (
 
 export const translateAnthropicMessagesToResponsesPayload = (
   payload: AnthropicMessagesPayload,
+  options: { forwardStructuredOutput?: boolean } = {},
 ): ResponsesPayload => {
   const input: Array<ResponseInputItem> = []
   const applyPhase = shouldApplyPhase(payload.model)
@@ -147,9 +148,10 @@ export const translateAnthropicMessagesToResponsesPayload = (
     input.unshift(createMessage(isGrok ? "system" : "developer", systemPrompt))
   }
 
-  const textFormat = translateOutputFormatToResponses(
-    payload.output_config?.format,
-  )
+  const textFormat =
+    options.forwardStructuredOutput ?
+      translateOutputFormatToResponses(payload.output_config?.format)
+    : undefined
 
   const responsesPayload: ResponsesPayload = {
     model: payload.model,

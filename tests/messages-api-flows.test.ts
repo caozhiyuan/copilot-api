@@ -1603,7 +1603,7 @@ test("messages Responses flow enables vision option for tool_result images", asy
   })
 })
 
-test("messages API flows forward structured output schemas when supported and reject when structured_outputs is false", async () => {
+test("messages API flows only apply schema conversion and capability checks when enabled", async () => {
   const schemaPayload: AnthropicMessagesPayload = {
     model: "gpt-test",
     max_tokens: 128,
@@ -1626,6 +1626,7 @@ test("messages API flows forward structured output schemas when supported and re
       logger,
       requestId: "req-so-chat",
       selectedModel: createModel([], { structuredOutputs: true }),
+      forwardStructuredOutput: true,
     },
   )
   expect(chatRes.status).toBe(200)
@@ -1639,6 +1640,37 @@ test("messages API flows forward structured output schemas when supported and re
       },
     },
   })
+
+  const legacyOptions = {
+    logger,
+    requestId: "req-so-messages",
+    selectedModel: createModel([], { structuredOutputs: false }),
+  }
+  const legacyChat = await handleWithChatCompletions(
+    createContext(),
+    schemaPayload,
+    legacyOptions,
+  )
+  expect(legacyChat.status).toBe(200)
+  expect(capturedPayload?.response_format).toBeUndefined()
+
+  const legacyResponses = await handleWithResponsesApi(
+    createContext(),
+    schemaPayload,
+    legacyOptions,
+  )
+  expect(legacyResponses.status).toBe(200)
+  expect(capturedResponsesPayload?.text).toBeUndefined()
+
+  const legacyMessages = await handleWithMessagesApi(
+    createContext(),
+    schemaPayload,
+    legacyOptions,
+  )
+  expect(legacyMessages.status).toBe(200)
+  expect(capturedMessagesPayload?.output_config?.format).toEqual(
+    schemaPayload.output_config?.format,
+  )
 
   const expectBadRequest = async (run: () => Promise<Response>) => {
     let caught: unknown
@@ -1656,6 +1688,7 @@ test("messages API flows forward structured output schemas when supported and re
       logger,
       requestId: "req-so-chat-unsupported",
       selectedModel: createModel([], { structuredOutputs: false }),
+      forwardStructuredOutput: true,
     }),
   )
 
@@ -1664,6 +1697,7 @@ test("messages API flows forward structured output schemas when supported and re
       logger,
       requestId: "req-so-resp-unsupported",
       selectedModel: createModel(["/responses"], { structuredOutputs: false }),
+      forwardStructuredOutput: true,
     }),
   )
 
@@ -1674,6 +1708,7 @@ test("messages API flows forward structured output schemas when supported and re
       selectedModel: createModel(["/v1/messages"], {
         structuredOutputs: false,
       }),
+      forwardStructuredOutput: true,
     }),
   )
 })

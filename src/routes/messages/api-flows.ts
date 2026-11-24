@@ -94,6 +94,7 @@ export interface FlowBaseOptions {
   requestId: string
   sessionId?: string
   compactType?: CompactType
+  forwardStructuredOutput?: boolean
   usageEndpoint?: TokenUsageEndpoint
 }
 
@@ -113,9 +114,11 @@ interface ChatCompletionsFlowOptions extends FlowBaseOptions {
 const assertStructuredOutputSupport = (
   payload: AnthropicMessagesPayload,
   selectedModel: Model | undefined,
+  forwardStructuredOutput: boolean | undefined,
 ): void => {
   if (
-    payload.output_config?.format
+    forwardStructuredOutput
+    && payload.output_config?.format
     && selectedModel?.capabilities.supports.structured_outputs === false
   ) {
     const message = `Model '${selectedModel.id}' does not support structured JSON schema output`
@@ -146,9 +149,15 @@ export const handleWithChatCompletions = async (
     requestId,
     sessionId,
     compactType,
+    forwardStructuredOutput,
   } = options
-  assertStructuredOutputSupport(anthropicPayload, selectedModel)
+  assertStructuredOutputSupport(
+    anthropicPayload,
+    selectedModel,
+    forwardStructuredOutput,
+  )
   const openAIPayload = translateToOpenAI(anthropicPayload, {
+    forwardStructuredOutput,
     supportPdf: getProviderModelPdfSupport(
       anthropicPayload.model,
       {
@@ -270,11 +279,18 @@ export const handleWithResponsesApi = async (
   anthropicPayload: AnthropicMessagesPayload,
   options: ResponsesFlowOptions,
 ) => {
-  const { logger, selectedModel, ...requestOptions } = options
-  assertStructuredOutputSupport(anthropicPayload, selectedModel)
+  const { logger, selectedModel, forwardStructuredOutput, ...requestOptions } =
+    options
+  assertStructuredOutputSupport(
+    anthropicPayload,
+    selectedModel,
+    forwardStructuredOutput,
+  )
 
-  const responsesPayload =
-    translateAnthropicMessagesToResponsesPayload(anthropicPayload)
+  const responsesPayload = translateAnthropicMessagesToResponsesPayload(
+    anthropicPayload,
+    { forwardStructuredOutput },
+  )
   const recordUsage = createCopilotUsageRecorder({
     endpoint: options.usageEndpoint ?? "responses",
     fallbackSessionId: requestOptions.sessionId,
@@ -430,9 +446,14 @@ export const handleWithMessagesApi = async (
     requestId,
     sessionId,
     compactType,
+    forwardStructuredOutput,
   } = options
 
-  assertStructuredOutputSupport(anthropicPayload, selectedModel)
+  assertStructuredOutputSupport(
+    anthropicPayload,
+    selectedModel,
+    forwardStructuredOutput,
+  )
   prepareMessagesApiPayload(anthropicPayload, selectedModel)
   const recordUsage = createCopilotUsageRecorder({
     endpoint: options.usageEndpoint ?? "messages",

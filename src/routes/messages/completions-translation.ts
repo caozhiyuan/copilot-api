@@ -55,6 +55,7 @@ interface ToolResultMessages {
 }
 
 interface TranslateToOpenAIOptions {
+  forwardStructuredOutput?: boolean
   supportPdf?: boolean
   toolContentSupportType?: Array<ToolContentSupportType>
   validateReasoningEffort?: boolean
@@ -112,9 +113,10 @@ export function translateToOpenAI(
   const model = state.models?.data.find((m) => m.id === modelId)
   const thinkingBudget = getThinkingBudget(payload, model)
   const reasoningEffort = getReasoningEffort(payload, options)
-  const responseFormat = translateOutputFormatToOpenAI(
-    payload.output_config?.format,
-  )
+  const responseFormat =
+    options.forwardStructuredOutput ?
+      translateOutputFormatToOpenAI(payload.output_config?.format)
+    : undefined
   const promptCacheKey = getPromptCacheKey()
   const capabilities = {
     supportPdf: options.supportPdf ?? false,

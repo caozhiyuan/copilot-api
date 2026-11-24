@@ -137,14 +137,14 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result.reasoning?.effort).toBe("xhigh")
   })
 
-  it("maps output_config.format json_schema into Responses text.format", () => {
+  it("maps output_config.format into Responses text.format only when enabled", () => {
     const schema = {
       title: "Review Summary",
       description: "Summary payload",
       type: "object",
       properties: { ok: { type: "boolean" } },
     }
-    const result = translateAnthropicMessagesToResponsesPayload({
+    const payload: AnthropicMessagesPayload = {
       ...samplePayload,
       output_config: {
         effort: "high",
@@ -153,8 +153,15 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
           schema,
         },
       },
-    })
+    }
 
+    const defaultResult = translateAnthropicMessagesToResponsesPayload(payload)
+    expect(defaultResult.text).toBeUndefined()
+    expect(defaultResult.reasoning?.effort).toBe("high")
+
+    const result = translateAnthropicMessagesToResponsesPayload(payload, {
+      forwardStructuredOutput: true,
+    })
     expect(result.text).toEqual({
       format: {
         type: "json_schema",

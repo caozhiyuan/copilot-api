@@ -170,6 +170,7 @@ export const handleOpenAIResponsesProviderWebSearchMessages = async (
 export const handleOpenAIResponsesProviderMessages = async (
   c: Context,
   options: {
+    forwardStructuredOutput?: boolean
     modelConfig: ModelConfig | undefined
     payload: AnthropicMessagesPayload
     provider: string
@@ -177,14 +178,25 @@ export const handleOpenAIResponsesProviderMessages = async (
     usageEndpoint?: TokenUsageEndpoint
   },
 ): Promise<Response> => {
-  const { modelConfig, payload, provider, providerConfig, usageEndpoint } =
-    options
+  const {
+    forwardStructuredOutput,
+    modelConfig,
+    payload,
+    provider,
+    providerConfig,
+    usageEndpoint,
+  } = options
   const selectedModel =
     providerConfig.name === "codex" ?
       getCodexModels().data.find((model) => model.id === payload.model)
     : undefined
   const wantsStream = payload.stream === true
-  const responsesPayload = translateAnthropicMessagesToResponsesPayload(payload)
+  const responsesPayload = translateAnthropicMessagesToResponsesPayload(
+    payload,
+    {
+      forwardStructuredOutput,
+    },
+  )
   const normalizedMessagesReasoningEffort =
     normalizeProviderResponsesReasoningEffort(responsesPayload, providerConfig)
   if (normalizedMessagesReasoningEffort) {

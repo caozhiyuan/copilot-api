@@ -234,6 +234,7 @@ export async function handleGoogleGenerateContent(
         c,
         messagesPayload,
         {
+          forwardStructuredOutput: true,
           skipClaudeAutoModel: true,
           skipModelMapping: true,
           skipWebSearch: true,

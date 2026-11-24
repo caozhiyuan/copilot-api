@@ -1158,7 +1158,7 @@ describe("compact request detection", () => {
 })
 
 describe("Anthropic output_config.format translation to OpenAI Chat Completions", () => {
-  test("maps output_config.format json_schema into response_format with sanitized name", () => {
+  test("maps output_config.format into response_format only when enabled", () => {
     const schema = {
       title: "Code Review Verdict!",
       description: "Structured code review result",
@@ -1169,7 +1169,7 @@ describe("Anthropic output_config.format translation to OpenAI Chat Completions"
       required: ["decision"],
     }
 
-    const translated = translateToOpenAI({
+    const payload: AnthropicMessagesPayload = {
       model: "gemini-4-neon",
       max_tokens: 1024,
       messages: [{ role: "user", content: "Review this patch" }],
@@ -1179,6 +1179,11 @@ describe("Anthropic output_config.format translation to OpenAI Chat Completions"
           schema,
         },
       },
+    }
+
+    expect(translateToOpenAI(payload).response_format).toBeUndefined()
+    const translated = translateToOpenAI(payload, {
+      forwardStructuredOutput: true,
     })
 
     expect(translated.response_format).toEqual({
@@ -1190,21 +1195,22 @@ describe("Anthropic output_config.format translation to OpenAI Chat Completions"
       },
     })
 
-    const fallbackNameTranslated = translateToOpenAI({
-      model: "gemini-4-neon",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: "Return JSON" }],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: {
-            title: "!!!",
-            type: "object",
-            properties: { ok: { type: "boolean" } },
+    const fallbackNameTranslated = translateToOpenAI(
+      {
+        ...payload,
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: {
+              title: "!!!",
+              type: "object",
+              properties: { ok: { type: "boolean" } },
+            },
           },
         },
       },
-    })
+      { forwardStructuredOutput: true },
+    )
 
     expect(fallbackNameTranslated.response_format).toEqual({
       type: "json_schema",
