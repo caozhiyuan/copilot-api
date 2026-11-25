@@ -45,12 +45,14 @@
 
   <!-- Protocol pills -->
   <g class="mono" font-size="14" font-weight="600">
-    <rect x="528" y="186" width="160" height="30" rx="15" fill="#1f6feb" fill-opacity="0.16" stroke="#1f6feb" stroke-opacity="0.55"/>
-    <text x="608" y="206" text-anchor="middle" fill="#79c0ff">Chat Completions</text>
-    <rect x="706" y="186" width="150" height="30" rx="15" fill="#8957e5" fill-opacity="0.16" stroke="#8957e5" stroke-opacity="0.55"/>
-    <text x="781" y="206" text-anchor="middle" fill="#d2a8ff">OpenAI Responses</text>
-    <rect x="874" y="186" width="158" height="30" rx="15" fill="#3fb950" fill-opacity="0.14" stroke="#3fb950" stroke-opacity="0.5"/>
-    <text x="953" y="206" text-anchor="middle" fill="#56d364">Anthropic Messages</text>
+    <rect x="453" y="186" width="166" height="30" rx="15" fill="#1f6feb" fill-opacity="0.16" stroke="#1f6feb" stroke-opacity="0.55"/>
+    <text x="536" y="206" text-anchor="middle" fill="#79c0ff">Chat Completions</text>
+    <rect x="637" y="186" width="166" height="30" rx="15" fill="#8957e5" fill-opacity="0.16" stroke="#8957e5" stroke-opacity="0.55"/>
+    <text x="720" y="206" text-anchor="middle" fill="#d2a8ff">OpenAI Responses</text>
+    <rect x="821" y="186" width="182" height="30" rx="15" fill="#3fb950" fill-opacity="0.14" stroke="#3fb950" stroke-opacity="0.5"/>
+    <text x="912" y="206" text-anchor="middle" fill="#56d364">Anthropic Messages</text>
+    <rect x="1021" y="186" width="126" height="30" rx="15" fill="#e3b341" fill-opacity="0.14" stroke="#e3b341" stroke-opacity="0.5"/>
+    <text x="1084" y="206" text-anchor="middle" fill="#f2cc60">Gemini REST</text>
   </g>
 
   <!-- Column labels -->
@@ -69,8 +71,11 @@
     <circle cx="118" cy="425" r="5" fill="#f778ba"/>
     <text x="134" y="431" fill="#e6edf3">Codex</text>
     <rect x="90" y="462" width="250" height="46" rx="10" fill="url(#box)" stroke="#30363d"/>
-    <circle cx="118" cy="485" r="5" fill="#8b949e"/>
-    <text x="134" y="491" fill="#e6edf3">Other Clients</text>
+    <circle cx="118" cy="485" r="5" fill="#f2cc60"/>
+    <text x="134" y="491" fill="#e6edf3">Antigravity CLI (agy)</text>
+    <rect x="90" y="522" width="250" height="46" rx="10" fill="url(#box)" stroke="#30363d"/>
+    <circle cx="118" cy="545" r="5" fill="#8b949e"/>
+    <text x="134" y="551" fill="#e6edf3">Other Clients</text>
   </g>
 
   <!-- Provider chips -->
@@ -107,10 +112,11 @@
 
   <!-- Flow arrows: clients -> gateway -->
   <g fill="none" stroke="#1f6feb" stroke-width="1.6" stroke-opacity="0.8">
-    <path class="flow" marker-end="url(#arrow-in)" d="M 340 305 C 470 305, 504 372, 642 385"/>
-    <path class="flow" marker-end="url(#arrow-in)" d="M 340 365 C 470 365, 524 385, 642 392"/>
-    <path class="flow" marker-end="url(#arrow-in)" d="M 340 425 C 470 425, 524 408, 642 402"/>
-    <path class="flow" marker-end="url(#arrow-in)" d="M 340 485 C 470 485, 504 422, 642 410"/>
+    <path class="flow" marker-end="url(#arrow-in)" d="M 340 305 C 470 305, 510 353, 642 365"/>
+    <path class="flow" marker-end="url(#arrow-in)" d="M 340 365 C 470 365, 518 374, 642 382"/>
+    <path class="flow" marker-end="url(#arrow-in)" d="M 340 425 C 470 425, 518 403, 642 399"/>
+    <path class="flow" marker-end="url(#arrow-in)" d="M 340 485 C 470 485, 510 419, 642 416"/>
+    <path class="flow" marker-end="url(#arrow-in)" d="M 340 545 C 470 545, 504 449, 642 433"/>
   </g>
 
   <!-- Flow arrows: gateway -> providers -->

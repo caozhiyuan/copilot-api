@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Universal AI Gateway</strong><br />
   One Gateway. Any Client. Multiple AI Providers.<br />
-  Chat Completions &middot; OpenAI Responses &middot; Anthropic Messages
+  Chat Completions &middot; OpenAI Responses &middot; Anthropic Messages &middot; Gemini REST
 </p>
 
 <p align="center">
@@ -22,16 +22,16 @@
   <a href="README.md">English</a> | 简体中文
 </p>
 
-Copilot API 是一个本地 AI 网关。你可以把 Claude Code、OpenCode、Codex 等客户端连接到它，再通过同一个地址使用 GitHub Copilot、Codex、xAI 或其他模型服务。
+Copilot API 是一个本地 AI 网关。你可以把 Claude Code、OpenCode、Codex、Antigravity CLI（`agy`）等客户端连接到它，再通过同一个地址使用 GitHub Copilot、Codex、xAI 或其他模型服务。
 
 <a id="highlights"></a>
 
 ## 功能亮点
 
-- **一个地址，三种接口**：提供 OpenAI 兼容的 Chat Completions（`/v1/chat/completions`）、OpenAI Responses（`/v1/responses`）和 Anthropic 兼容的 Messages（`/v1/messages`），方便不同客户端接入。
+- **一个地址，四种接口**，支持 OpenAI 兼容的 Chat Completions（`/v1/chat/completions`）、OpenAI Responses（`/v1/responses`）、Anthropic 兼容的 Messages（`/v1/messages`）和 Gemini REST（`/v1beta/models` 下的接口）。
 - **支持多家模型服务**：可使用 GitHub Copilot、内置 Codex 和 xAI，也可接入 Kimi、DeepSeek、阿里云百炼（DashScope）、OpenRouter、OpenCode Go、Google Gemini 等服务。先登录账号或填写 API Key，再启动网关。不使用 GitHub Copilot 也可以运行，只需配置并启用至少一个模型服务（provider）。
-- **方便接入编程助手**：提供 Claude Code、OpenCode 和 Codex 的配置指南，支持在客户端自动显示网关提供的模型。
-- **支持流式输出**：三种接口都支持 SSE，可以边生成边返回内容。网关连接 Copilot 时会根据模型能力使用 WebSocket 或 HTTP；连接 Codex 时，流式请求默认使用 WebSocket，也可通过 `useResponsesApiWebSocket` 切换为 HTTP。
+- **方便接入编程助手**，提供 Claude Code、OpenCode、Codex 和 Antigravity CLI 的配置指南，支持在客户端自动显示网关提供的模型。
+- **支持 SSE 流式输出**，四种接口都可以边生成边返回内容。网关连接 Copilot 时会根据模型能力使用 WebSocket 或 HTTP。连接 Codex 时，流式请求默认使用 WebSocket，也可通过 `useResponsesApiWebSocket` 切换为 HTTP。
 - **提供桌面应用**：可在界面中登录 GitHub Copilot、Codex 和 xAI，配置模型服务，查看 Token 用量和日志，并一键启动或停止网关。
 
 <a id="quick-start"></a>
@@ -74,7 +74,7 @@ curl http://localhost:4141/v1/models
 > [!NOTE]
 > 保存 Token 用量历史需要 Bun >= 1.4.4，或带内置 `node:sqlite` 的 Node.js（22.13.0 起可用）。请使用上方安全公告中的已修补 Node.js 版本。详见[通过 npx 使用](docs/guides/zh-CN/getting-started.md#using-with-npx)。
 
-接下来可按你的客户端选择指南：[与 Claude Code 一起使用](docs/guides/zh-CN/claude-code.md#using-with-claude-code)、[与 OpenCode 一起使用](docs/guides/zh-CN/opencode.md#using-with-opencode)、[与 Codex 一起使用](docs/guides/zh-CN/codex.md#using-with-codex)、[与 DeepSeek Harness 一起使用](docs/guides/zh-CN/dsh.md#using-with-deepseek-harness)，或通过 [Docker](docs/guides/zh-CN/docker.md#using-with-docker) 运行。
+接下来可选择 [Claude Code](docs/guides/zh-CN/claude-code.md#using-with-claude-code)、[OpenCode](docs/guides/zh-CN/opencode.md#using-with-opencode)、[Codex](docs/guides/zh-CN/codex.md#using-with-codex)、[Antigravity CLI](docs/guides/zh-CN/agy-cli.md#接入-copilot-api) 或 [DeepSeek Harness](docs/guides/zh-CN/dsh.md#using-with-deepseek-harness) 的接入指南，也可通过 [Docker](docs/guides/zh-CN/docker.md#using-with-docker) 运行。
 
 **Codex 多 Agent 兼容性：** 可通过 [`codexMultiAgentV1`](docs/guides/zh-CN/configuration.md#codex-多-agent-兼容性) 在目录中声明 V1，默认仍为 V2。应用网关配置后需**新建 Codex 会话**。运行中刷新目录不会切换会话已确定的版本，恢复旧会话也会沿用已记录的版本；CLI 显式配置可能优先。
 
@@ -84,18 +84,19 @@ curl http://localhost:4141/v1/models
 
 客户端统一连接网关的本地地址。网关根据所选模型，将请求发给 GitHub Copilot、Codex、xAI 或其他已配置的模型服务；双方协议不同时，由网关负责转换。
 
-**客户端 / 协议矩阵**
+**客户端 / 协议矩阵**（文档提供的接入方式）
 
-| 客户端 | Chat Completions | Responses | Anthropic Messages | 推荐 |
-|---|:---:|:---:|:---:|---|
-| Claude Code | — | — | ✅ 原生 / 适配 | Anthropic Messages |
-| OpenCode | ✅ 原生 | ✅ 原生 / 适配 | ✅ 原生 / 适配 | v2：Responses；v1：Messages |
-| Codex | — | ✅ 原生 / 适配 | — | Responses |
-| DeepSeek Harness | — | ✅ 原生 / 适配 | ✅ 原生 / 适配 | Responses |
-| OpenAI 兼容客户端 | ✅ 原生 | ✅ 原生 / 适配 | — | Chat Completions |
-| Anthropic 兼容客户端 | — | — | ✅ 原生 / 适配 | Anthropic Messages |
+| 客户端 | Chat Completions | Responses | Anthropic Messages | Gemini REST | 推荐 |
+|---|:---:|:---:|:---:|:---:|---|
+| Claude Code | — | — | ✅ 原生 / 适配 | — | Anthropic Messages |
+| OpenCode | ✅ 原生 | ✅ 原生 / 适配 | ✅ 原生 / 适配 | — | v2：Responses；v1：Messages |
+| Codex | — | ✅ 原生 / 适配 | — | — | Responses |
+| [Antigravity CLI（agy）](docs/guides/zh-CN/agy-cli.md#接入-copilot-api) | — | — | — | ✅ 原生 / 适配 | Gemini REST |
+| DeepSeek Harness | — | ✅ 原生 / 适配 | ✅ 原生 / 适配 | — | Responses |
+| OpenAI 兼容客户端 | ✅ 原生 | ✅ 原生 / 适配 | — | — | Chat Completions |
+| Anthropic 兼容客户端 | — | — | ✅ 原生 / 适配 | — | Anthropic Messages |
 
-**模型服务与接口。** 能用哪些接口，取决于具体模型。Chat Completions 需要模型服务原生支持；Responses 和 Messages 在网关支持转换时，也能连接使用其他协议的模型。内置 `codex` provider 原生使用 Responses；第三方 provider 可选择 `anthropic`、`openai-compatible` 或 `openai-responses`，也可按模型覆盖。
+**模型服务与接口。** 能用哪些接口，取决于具体模型。Chat Completions 需要模型服务原生支持。Responses、Messages 和 Gemini REST 可以通过网关适配其他协议。内置 `codex` provider 原生使用 Responses。第三方 provider 可选择 `anthropic`、`openai-compatible`、`openai-responses` 或 `google`（原生 Gemini REST），也可按模型覆盖。
 
 <a id="desktop-app"></a>
 
