@@ -51,6 +51,7 @@ import {
   createAntigravityModelCatalog,
   mayUseAntigravityModelAlias,
 } from "./antigravity-models"
+import { stripAntigravitySignatures } from "./antigravity-signatures"
 import { translateMessagesStreamToGoogle } from "./messages-stream-translation"
 import {
   createGoogleErrorPayload,
@@ -279,6 +280,7 @@ export async function handleGoogleGenerateContent(
       mappedModel,
       model: parsedPath.model,
       useSSE,
+      requestBody,
     })
 
     const providerAlias =
@@ -530,7 +532,10 @@ async function handleNativeGoogleProviderPassthrough(
 ): Promise<Response> {
   const { model, payload, providerConfig, stream, useSSE } = options
   const modelConfig = providerConfig.models?.[model]
-  const forwardedPayload = applyGoogleModelConfigDefaults(payload, modelConfig)
+  const forwardedPayload = applyGoogleModelConfigDefaults(
+    stripAntigravitySignatures(payload),
+    modelConfig,
+  )
   const controller = new AbortController()
   const signal = AbortSignal.any([controller.signal, c.req.raw.signal])
 

@@ -4,7 +4,11 @@ import type { AnthropicResponse } from "~/lib/types/anthropic"
 import type { GoogleGenerateContentRequest } from "~/lib/types/google"
 import { encodeGoogleSignature } from "~/routes/messages/google-translation"
 import { translateAnthropicMessagesToResponsesPayload } from "~/routes/messages/responses-translation"
-import { encodeAntigravitySignatures } from "~/routes/google/antigravity-signatures"
+import {
+  encodeAntigravitySignatures,
+  encodeAntigravityToolCallSignature,
+  stripAntigravitySignatures,
+} from "~/routes/google/antigravity-signatures"
 import {
   translateMessagesStreamToGoogle,
   type MessagesStreamChunk,
@@ -2421,6 +2425,618 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
         { type: "text", text: "Checking. " },
         { type: "thinking", thinking: "", signature: "enc_2@rs_2" },
         { type: "text", text: "Done." },
+      ],
+    })
+  })
+
+  test("preserves parallel tool call IDs across Antigravity replay when client strips functionCall.id and functionResponse.id", async () => {
+    const callId1 = "call_f04518a904314f7ca40b1d265bec1575"
+    const callId2 = "call_second_parallel_0002"
+    const callId3 = "call_third_parallel_0003"
+
+    // Non-streaming: Responses thinking + 3 parallel tool calls
+    const nonStream = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_parallel_json",
+        type: "message",
+        role: "assistant",
+        model: "gpt-5.4",
+        stop_reason: "tool_use",
+        stop_sequence: null,
+        content: [
+          {
+            type: "thinking",
+            thinking: "Reading three files in parallel.",
+            signature: "enc_parallel@rs_1",
+          },
+          {
+            type: "tool_use",
+            id: callId1,
+            name: "read_file",
+            input: { path: "a.ts" },
+          },
+          {
+            type: "tool_use",
+            id: callId2,
+            name: "read_file",
+            input: { path: "b.ts" },
+          },
+          {
+            type: "tool_use",
+            id: callId3,
+            name: "read_file",
+            input: { path: "c.ts" },
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 },
+      },
+      "gpt-5.4",
+      { preserveAntigravityReasoning: true },
+    )
+
+    const nonStreamToolParts = (
+      nonStream.candidates?.[0]?.content?.parts ?? []
+    ).filter((part) => part.functionCall)
+    expect(nonStreamToolParts).toHaveLength(3)
+    expect(
+      nonStreamToolParts.every(
+        (part) =>
+          typeof part.thoughtSignature === "string"
+          && part.thoughtSignature.length > 0,
+      ),
+    ).toBe(true)
+
+    // Streaming: emits each tool call immediately with its own thoughtSignature
+    const streamEvents: Array<MessagesStreamChunk> = [
+      {
+        data: JSON.stringify({
+          type: "message_start",
+          message: {
+            id: "msg_parallel_stream",
+            type: "message",
+            role: "assistant",
+            model: "gpt-5.4",
+            content: [],
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 10, output_tokens: 0 },
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "thinking", thinking: "" },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 0,
+          delta: {
+            type: "thinking_delta",
+            thinking: "Reading three files in parallel.",
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "signature_delta", signature: "enc_parallel@rs_1" },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 1,
+          content_block: {
+            type: "tool_use",
+            id: callId1,
+            name: "read_file",
+            input: {},
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 1,
+          delta: { type: "input_json_delta", partial_json: '{"path":"a.ts"}' },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 1 }) },
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 2,
+          content_block: {
+            type: "tool_use",
+            id: callId2,
+            name: "read_file",
+            input: {},
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 2,
+          delta: { type: "input_json_delta", partial_json: '{"path":"b.ts"}' },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 2 }) },
+      {
+        data: JSON.stringify({
+          type: "content_block_start",
+          index: 3,
+          content_block: {
+            type: "tool_use",
+            id: callId3,
+            name: "read_file",
+            input: {},
+          },
+        }),
+      },
+      {
+        data: JSON.stringify({
+          type: "content_block_delta",
+          index: 3,
+          delta: { type: "input_json_delta", partial_json: '{"path":"c.ts"}' },
+        }),
+      },
+      { data: JSON.stringify({ type: "content_block_stop", index: 3 }) },
+      {
+        data: JSON.stringify({
+          type: "message_delta",
+          delta: { stop_reason: "tool_use", stop_sequence: null },
+          usage: { output_tokens: 20 },
+        }),
+      },
+      { data: JSON.stringify({ type: "message_stop" }) },
+    ]
+
+    const streamedChunks = []
+    for await (const chunk of translateMessagesStreamToGoogle(
+      toAsyncIterable(streamEvents),
+      { fallbackModel: "gpt-5.4", preserveAntigravityReasoning: true },
+    )) {
+      streamedChunks.push(chunk)
+    }
+
+    const streamedToolParts = streamedChunks
+      .flatMap((chunk) => chunk.candidates?.[0]?.content?.parts ?? [])
+      .filter((part) => part.functionCall)
+    expect(streamedToolParts).toEqual(nonStreamToolParts)
+
+    // Simulate Antigravity CLI replay: omit thought part and strip id on all functionCall/functionResponse parts
+    const replayedToolParts = streamedToolParts.map((part) => ({
+      functionCall: {
+        name: part.functionCall!.name,
+        args: part.functionCall!.args,
+      },
+      thoughtSignature: part.thoughtSignature,
+    }))
+
+    const restored = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Read files" }] },
+          { role: "model", parts: replayedToolParts },
+          {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  name: "read_file",
+                  response: { output: "A" },
+                },
+              },
+              {
+                functionResponse: {
+                  name: "read_file",
+                  response: { output: "B" },
+                },
+              },
+              {
+                functionResponse: {
+                  name: "read_file",
+                  response: { output: "C" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { model: "gpt-5.4", stream: false },
+    )
+
+    expect(restored.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "thinking",
+          thinking: "Reading three files in parallel.",
+          signature: "enc_parallel@rs_1",
+        },
+        {
+          type: "tool_use",
+          id: callId1,
+          name: "read_file",
+          input: { path: "a.ts" },
+        },
+        {
+          type: "tool_use",
+          id: callId2,
+          name: "read_file",
+          input: { path: "b.ts" },
+        },
+        {
+          type: "tool_use",
+          id: callId3,
+          name: "read_file",
+          input: { path: "c.ts" },
+        },
+      ],
+    })
+    expect(restored.messages[2]).toEqual({
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: callId1, content: "A" },
+        { type: "tool_result", tool_use_id: callId2, content: "B" },
+        { type: "tool_result", tool_use_id: callId3, content: "C" },
+      ],
+    })
+  })
+
+  test("preserves tool call IDs for non-thinking and Claude-signed tool calls without changing non-Antigravity output", () => {
+    const claudeSig = Buffer.from("claude-thinking-signature").toString(
+      "base64",
+    )
+
+    // Non-Antigravity output must stay untouched (no copilot-api:agy:c: envelope)
+    const standard = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_std",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4.6",
+        stop_reason: "tool_use",
+        stop_sequence: null,
+        content: [
+          { type: "thinking", thinking: "Plan", signature: claudeSig },
+          {
+            type: "tool_use",
+            id: "toolu_std_1",
+            name: "read_file",
+            input: { path: "x.ts" },
+          },
+          {
+            type: "tool_use",
+            id: "toolu_std_2",
+            name: "read_file",
+            input: { path: "y.ts" },
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 },
+      },
+      "claude-sonnet-4.6",
+    )
+    expect(standard.candidates?.[0]?.content?.parts).toEqual([
+      { text: "Plan", thought: true },
+      {
+        functionCall: {
+          id: "toolu_std_1",
+          name: "read_file",
+          args: { path: "x.ts" },
+        },
+        thoughtSignature: claudeSig,
+      },
+      {
+        functionCall: {
+          id: "toolu_std_2",
+          name: "read_file",
+          args: { path: "y.ts" },
+        },
+      },
+    ])
+
+    // Antigravity output wraps both Claude signature and non-thinking second tool call ID
+    const agyClaude = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_agy_claude",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4.6",
+        stop_reason: "tool_use",
+        stop_sequence: null,
+        content: [
+          { type: "thinking", thinking: "Plan", signature: claudeSig },
+          {
+            type: "tool_use",
+            id: "toolu_01abc",
+            name: "read_file",
+            input: { path: "x.ts" },
+          },
+          {
+            type: "tool_use",
+            id: "toolu_01def",
+            name: "read_file",
+            input: { path: "y.ts" },
+          },
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 },
+      },
+      "claude-sonnet-4.6",
+      { preserveAntigravityReasoning: true },
+    )
+    const agyParts = agyClaude.candidates?.[0]?.content?.parts ?? []
+    const replayedParts = agyParts.map((part) =>
+      part.functionCall ?
+        {
+          functionCall: {
+            name: part.functionCall.name,
+            args: part.functionCall.args,
+          },
+          thoughtSignature: part.thoughtSignature,
+        }
+      : part,
+    )
+    const restoredClaude = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "Check files" }] },
+          { role: "model", parts: replayedParts },
+          {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  name: "read_file",
+                  response: { output: "X" },
+                },
+              },
+              {
+                functionResponse: {
+                  name: "read_file",
+                  response: { output: "Y" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { model: "claude-sonnet-4.6", stream: false },
+    )
+    expect(restoredClaude.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", thinking: "Plan", signature: claudeSig },
+        {
+          type: "tool_use",
+          id: "toolu_01abc",
+          name: "read_file",
+          input: { path: "x.ts" },
+        },
+        {
+          type: "tool_use",
+          id: "toolu_01def",
+          name: "read_file",
+          input: { path: "y.ts" },
+        },
+      ],
+    })
+    expect(restoredClaude.messages[2]).toEqual({
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: "toolu_01abc", content: "X" },
+        { type: "tool_result", tool_use_id: "toolu_01def", content: "Y" },
+      ],
+    })
+
+    // Non-thinking model with tool calls only emits no thinking blocks on replay
+    const nonThinking = translateAnthropicResponseToGoogle(
+      {
+        id: "msg_no_think",
+        type: "message",
+        role: "assistant",
+        model: "gpt-4.1",
+        stop_reason: "tool_use",
+        stop_sequence: null,
+        content: [
+          {
+            type: "tool_use",
+            id: "call_plain_1",
+            name: "list_dir",
+            input: { path: "." },
+          },
+        ],
+        usage: { input_tokens: 5, output_tokens: 5 },
+      },
+      "gpt-4.1",
+      { preserveAntigravityReasoning: true },
+    )
+    const plainTool = nonThinking.candidates?.[0]?.content?.parts?.[0]
+    expect(plainTool?.thoughtSignature).toBe(
+      encodeAntigravityToolCallSignature("call_plain_1"),
+    )
+    const restoredPlain = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "List" }] },
+          {
+            role: "model",
+            parts: [
+              {
+                functionCall: { name: "list_dir", args: { path: "." } },
+                thoughtSignature: plainTool?.thoughtSignature,
+              },
+            ],
+          },
+        ],
+      },
+      { model: "gpt-4.1", stream: false },
+    )
+    expect(restoredPlain.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call_plain_1",
+          name: "list_dir",
+          input: { path: "." },
+        },
+      ],
+    })
+
+    // Existing client-provided functionCall.id takes precedence over envelope callId
+    const explicitId = translateGoogleToMessages(
+      {
+        contents: [
+          { role: "user", parts: [{ text: "List" }] },
+          {
+            role: "model",
+            parts: [
+              {
+                functionCall: {
+                  id: "client_supplied_id",
+                  name: "list_dir",
+                  args: {},
+                },
+                thoughtSignature:
+                  encodeAntigravityToolCallSignature("call_envelope_id"),
+              },
+            ],
+          },
+        ],
+      },
+      { model: "gpt-4.1", stream: false },
+    )
+    expect(explicitId.messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "client_supplied_id",
+          name: "list_dir",
+          input: {},
+        },
+      ],
+    })
+  })
+
+  test("handles blank call IDs and malformed copilot-api:agy:c: envelopes gracefully", () => {
+    const existingSig = Buffer.from("raw-sig").toString("base64")
+    expect(encodeAntigravityToolCallSignature("   ", existingSig)).toBe(
+      existingSig,
+    )
+
+    const invalidEnvelopes = [
+      Buffer.from("copilot-api:agy:c:not-json\n", "utf8").toString("base64"),
+      Buffer.from('copilot-api:agy:c:["a","b","c"]\n', "utf8").toString(
+        "base64",
+      ),
+      Buffer.from('copilot-api:agy:c:["   "]\n', "utf8").toString("base64"),
+      Buffer.from('copilot-api:agy:c:["call_1",""]\n', "utf8").toString(
+        "base64",
+      ),
+      Buffer.from('copilot-api:agy:c:["call_1",123]\n', "utf8").toString(
+        "base64",
+      ),
+      Buffer.from(
+        'copilot-api:agy:c:["call_1"]\ncopilot-api:agy:c:["call_2"]\n',
+        "utf8",
+      ).toString("base64"),
+      Buffer.from(
+        'copilot-api:agy:c:["call_1"]\nunknown-record\n',
+        "utf8",
+      ).toString("base64"),
+    ]
+
+    for (const badSig of invalidEnvelopes) {
+      const translated = translateGoogleToMessages(
+        {
+          contents: [
+            { role: "user", parts: [{ text: "Go" }] },
+            {
+              role: "model",
+              parts: [
+                {
+                  functionCall: { name: "read_file", args: {} },
+                  thoughtSignature: badSig,
+                },
+              ],
+            },
+          ],
+        },
+        { model: "gpt-5.4", stream: false },
+      )
+      const assistantBlocks = translated.messages[1]?.content
+      expect(Array.isArray(assistantBlocks)).toBe(true)
+      const toolUse = (
+        assistantBlocks as Array<{ type: string; id?: string }>
+      ).find((block) => block.type === "tool_use")
+      expect(toolUse?.id).toBe("call_google_1")
+    }
+  })
+
+  test("stripAntigravitySignatures removes gateway envelopes and empty carrier parts while preserving native signatures", () => {
+    const nativeSig = Buffer.from("native-gemini-signature").toString("base64")
+    const agyTextSig = encodeAntigravitySignatures([["enc_1@rs_1", 5, 0]])
+    const agyCallSig = encodeAntigravityToolCallSignature(
+      "call_1",
+      encodeAntigravitySignatures([["enc_2@rs_2", 0, 0]]),
+    )
+    const agyPlainCallSig = encodeAntigravityToolCallSignature("call_2")
+
+    // No gateway envelopes -> returns original reference unchanged
+    const nativeOnly: GoogleGenerateContentRequest = {
+      contents: [
+        { role: "user", parts: [{ text: "Hi" }] },
+        {
+          role: "model",
+          parts: [{ text: "Hello", thoughtSignature: nativeSig }],
+        },
+      ],
+    }
+    expect(stripAntigravitySignatures(nativeOnly)).toBe(nativeOnly)
+
+    // Mixed history -> strips only gateway envelopes and drops empty text carriers
+    const mixed: GoogleGenerateContentRequest = {
+      contents: [
+        { role: "user", parts: [{ text: "Hi" }] },
+        {
+          role: "model",
+          parts: [
+            { text: "Hello", thoughtSignature: agyTextSig },
+            { text: "", thoughtSignature: agyTextSig },
+            {
+              functionCall: { name: "read_file", args: { path: "a.ts" } },
+              thoughtSignature: agyCallSig,
+            },
+            {
+              functionCall: { name: "read_file", args: { path: "b.ts" } },
+              thoughtSignature: agyPlainCallSig,
+            },
+            { text: "Native", thoughtSignature: nativeSig },
+          ],
+        },
+      ],
+    }
+    expect(stripAntigravitySignatures(mixed)).toEqual({
+      contents: [
+        { role: "user", parts: [{ text: "Hi" }] },
+        {
+          role: "model",
+          parts: [
+            { text: "Hello" },
+            { functionCall: { name: "read_file", args: { path: "a.ts" } } },
+            { functionCall: { name: "read_file", args: { path: "b.ts" } } },
+            { text: "Native", thoughtSignature: nativeSig },
+          ],
+        },
       ],
     })
   })
