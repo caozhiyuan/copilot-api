@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from "bun:test"
 import { Hono } from "hono"
+import { HTTPError } from "~/lib/http/error"
 import { requestContext } from "~/lib/http/request-context"
 
 import type {
@@ -1602,9 +1603,122 @@ test("messages Responses flow enables vision option for tool_result images", asy
   })
 })
 
+test("messages API flows only apply schema conversion and capability checks when enabled", async () => {
+  const schemaPayload: AnthropicMessagesPayload = {
+    model: "gpt-test",
+    max_tokens: 128,
+    messages: [{ role: "user", content: "return json" }],
+    output_config: {
+      format: {
+        type: "json_schema",
+        schema: {
+          type: "object",
+          properties: { ok: { type: "boolean" } },
+        },
+      },
+    },
+  }
+
+  const chatRes = await handleWithChatCompletions(
+    createContext(),
+    schemaPayload,
+    {
+      logger,
+      requestId: "req-so-chat",
+      selectedModel: createModel([], { structuredOutputs: true }),
+      forwardStructuredOutput: true,
+    },
+  )
+  expect(chatRes.status).toBe(200)
+  expect(capturedPayload?.response_format).toEqual({
+    type: "json_schema",
+    json_schema: {
+      name: "response",
+      schema: {
+        type: "object",
+        properties: { ok: { type: "boolean" } },
+      },
+    },
+  })
+
+  const legacyOptions = {
+    logger,
+    requestId: "req-so-messages",
+    selectedModel: createModel([], { structuredOutputs: false }),
+  }
+  const legacyChat = await handleWithChatCompletions(
+    createContext(),
+    schemaPayload,
+    legacyOptions,
+  )
+  expect(legacyChat.status).toBe(200)
+  expect(capturedPayload?.response_format).toBeUndefined()
+
+  const legacyResponses = await handleWithResponsesApi(
+    createContext(),
+    schemaPayload,
+    legacyOptions,
+  )
+  expect(legacyResponses.status).toBe(200)
+  expect(capturedResponsesPayload?.text).toBeUndefined()
+
+  const legacyMessages = await handleWithMessagesApi(
+    createContext(),
+    schemaPayload,
+    legacyOptions,
+  )
+  expect(legacyMessages.status).toBe(200)
+  expect(capturedMessagesPayload?.output_config?.format).toEqual(
+    schemaPayload.output_config?.format,
+  )
+
+  const expectBadRequest = async (run: () => Promise<Response>) => {
+    let caught: unknown
+    try {
+      await run()
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(HTTPError)
+    expect((caught as HTTPError).response.status).toBe(400)
+  }
+
+  await expectBadRequest(() =>
+    handleWithChatCompletions(createContext(), schemaPayload, {
+      logger,
+      requestId: "req-so-chat-unsupported",
+      selectedModel: createModel([], { structuredOutputs: false }),
+      forwardStructuredOutput: true,
+    }),
+  )
+
+  await expectBadRequest(() =>
+    handleWithResponsesApi(createContext(), schemaPayload, {
+      logger,
+      requestId: "req-so-resp-unsupported",
+      selectedModel: createModel(["/responses"], { structuredOutputs: false }),
+      forwardStructuredOutput: true,
+    }),
+  )
+
+  await expectBadRequest(() =>
+    handleWithMessagesApi(createContext(), schemaPayload, {
+      logger,
+      requestId: "req-so-msg-unsupported",
+      selectedModel: createModel(["/v1/messages"], {
+        structuredOutputs: false,
+      }),
+      forwardStructuredOutput: true,
+    }),
+  )
+})
+
 const createModel = (
   supportedEndpoints: Array<string>,
-  options: { reasoningEffort?: Array<string> } = {},
+  options: {
+    reasoningEffort?: Array<string>
+    structuredOutputs?: boolean
+  } = {},
 ): Model => ({
   capabilities: {
     family: "gpt",
@@ -1612,10 +1726,14 @@ const createModel = (
       max_prompt_tokens: 128000,
     },
     object: "model_capabilities",
-    supports:
-      options.reasoningEffort === undefined ?
+    supports: {
+      ...(options.reasoningEffort === undefined ?
         {}
-      : { reasoning_effort: options.reasoningEffort },
+      : { reasoning_effort: options.reasoningEffort }),
+      ...(options.structuredOutputs === undefined ?
+        {}
+      : { structured_outputs: options.structuredOutputs }),
+    },
     tokenizer: "o200k_base",
     type: "chat",
   },

@@ -8,6 +8,7 @@
 - **Admin routes:** All `/admin/*` routes require `auth.adminApiKey`. If it is missing, the server generates one at startup and persists it to `config.json` before serving requests.
 - **Allowed auth headers:**
   - `x-api-key: <your_key>`
+  - `x-goog-api-key: <your_key>`
   - `Authorization: Bearer <your_key>`
 - **CORS preflight:** `OPTIONS` requests are always allowed.
 - **When no regular keys are configured:** Non-admin routes continue to allow requests. This does not apply to `/admin/*`, which only accepts `auth.adminApiKey`.
@@ -122,6 +123,19 @@ These endpoints are designed to be compatible with the Anthropic Messages API.
 | `POST /v1/messages/count_tokens` | `POST` | Calculates the number of tokens for a given set of messages. Supports `provider/model` aliases for configured providers. |
 
 When token counting falls back to local estimation, image URLs and Base64 data are not tokenized as text: each image has a base estimate of 85 tokens for `low` detail, or 765 tokens for `high`, `auto`, or unspecified detail, before any configured model multiplier. Actual usage depends on the upstream model and image dimensions; use the response usage for actual token counts.
+
+### Google Gemini Compatible Endpoints
+
+These endpoints expose the Gemini 4+ / GenAI REST surface. Requests targeting configured `type: "google"` providers (including per-model `type: "google"` overrides) pass through natively; all other Copilot and provider models translate bidirectionally through the Messages API hub while preserving `thoughtSignature` round-trips. Usage is recorded under the `generate_content` endpoint.
+
+Use lowerCamelCase for Gemini request fields such as `generationConfig` and `inlineData`.
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `GET /v1beta/models` | `GET` | Lists available gateway models in Google `models/<id>` format. |
+| `POST /v1beta/models/<model>:generateContent` | `POST` | Generates a non-streaming Gemini response. Supports `provider/model` aliases and model mappings. |
+| `POST /v1beta/models/<model>:streamGenerateContent` | `POST` | Generates a streaming Gemini response as SSE (`?alt=sse`) or a JSON array. |
+| `POST /v1beta:<action>` | `POST` | Acknowledges Antigravity / GenAI telemetry pings with `{}`. |
 
 ### Usage Monitoring Endpoints
 

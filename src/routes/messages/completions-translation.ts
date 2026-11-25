@@ -5,6 +5,7 @@ import { state } from "~/lib/state"
 import {
   type ChatCompletionResponse,
   type ChatCompletionsPayload,
+  type ChatCompletionsResponseFormat,
   type ContentPart,
   type Message,
   type TextPart,
@@ -27,6 +28,7 @@ import {
   type AnthropicToolUseBlock,
   type AnthropicUserContentBlock,
   type AnthropicUserMessage,
+  type BetaJSONOutputFormat,
 } from "~/lib/types/anthropic"
 import { mapOpenAIStopReasonToAnthropic } from "./utils"
 import { getPromptCacheKey } from "~/lib/utils"
@@ -53,6 +55,7 @@ interface ToolResultMessages {
 }
 
 interface TranslateToOpenAIOptions {
+  forwardStructuredOutput?: boolean
   supportPdf?: boolean
   toolContentSupportType?: Array<ToolContentSupportType>
   validateReasoningEffort?: boolean
@@ -64,6 +67,43 @@ type MappableContentBlock =
   | AnthropicAssistantContentBlock
   | AnthropicToolResultContentBlock
 
+export function resolveJsonSchemaName(schema: Record<string, unknown>): string {
+  if (typeof schema.title === "string") {
+    const sanitized = schema.title
+      .trim()
+      .replace(/[^A-Za-z0-9_-]+/gu, "_")
+      .replace(/^_+|_+$/gu, "")
+      .slice(0, 64)
+    if (sanitized.length > 0) {
+      return sanitized
+    }
+  }
+
+  return "response"
+}
+
+function translateOutputFormatToOpenAI(
+  format: BetaJSONOutputFormat | null | undefined,
+): ChatCompletionsResponseFormat | undefined {
+  if (format?.type !== "json_schema") {
+    return undefined
+  }
+
+  const description =
+    typeof format.schema.description === "string" ?
+      format.schema.description.trim()
+    : ""
+
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: resolveJsonSchemaName(format.schema),
+      schema: format.schema,
+      ...(description.length > 0 ? { description } : {}),
+    },
+  }
+}
+
 // Payload translation
 export function translateToOpenAI(
   payload: AnthropicMessagesPayload,
@@ -73,6 +113,10 @@ export function translateToOpenAI(
   const model = state.models?.data.find((m) => m.id === modelId)
   const thinkingBudget = getThinkingBudget(payload, model)
   const reasoningEffort = getReasoningEffort(payload, options)
+  const responseFormat =
+    options.forwardStructuredOutput ?
+      translateOutputFormatToOpenAI(payload.output_config?.format)
+    : undefined
   const promptCacheKey = getPromptCacheKey()
   const capabilities = {
     supportPdf: options.supportPdf ?? false,
@@ -101,6 +145,7 @@ export function translateToOpenAI(
         translateAnthropicToolChoiceToOpenAI(payload.tool_choice)
       : undefined,
     thinking_budget: thinkingBudget,
+    ...(responseFormat ? { response_format: responseFormat } : {}),
     ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
     ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
     ...(parallelToolCalls === undefined ?

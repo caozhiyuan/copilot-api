@@ -87,6 +87,7 @@ export const applyOpenAICompatibleExtraBodyThinkingBudget = (
 export const handleOpenAICompatibleProviderMessages = async (
   c: Context,
   options: {
+    forwardStructuredOutput?: boolean
     modelConfig: ModelConfig | undefined
     payload: AnthropicMessagesPayload
     provider: string
@@ -94,12 +95,19 @@ export const handleOpenAICompatibleProviderMessages = async (
     usageEndpoint?: TokenUsageEndpoint
   },
 ): Promise<Response> => {
-  const { modelConfig, payload, provider, providerConfig, usageEndpoint } =
-    options
+  const {
+    forwardStructuredOutput,
+    modelConfig,
+    payload,
+    provider,
+    providerConfig,
+    usageEndpoint,
+  } = options
   const openAIPayload = createOpenAICompatiblePayload(
     payload,
     modelConfig,
     providerConfig,
+    forwardStructuredOutput,
   )
   debugJson(logger, "provider.messages.openai_compatible.request", {
     payload: openAIPayload,
@@ -155,8 +163,10 @@ export const createOpenAICompatiblePayload = (
   payload: AnthropicMessagesPayload,
   modelConfig: ModelConfig | undefined,
   providerConfig: ResolvedProviderConfig,
+  forwardStructuredOutput?: boolean,
 ): ChatCompletionsPayload => {
   const openAIPayload = translateToOpenAI(payload, {
+    forwardStructuredOutput,
     supportPdf: getProviderModelPdfSupport(payload.model, providerConfig),
     toolContentSupportType: modelConfig?.toolContentSupportType ?? [],
   })

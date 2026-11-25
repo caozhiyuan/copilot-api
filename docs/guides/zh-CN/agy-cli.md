@@ -2,7 +2,46 @@
 
 [项目首页](../../../README.zh-CN.md) · [文档目录](README.md) · [English](../en/agy-cli.md)
 
-AGY 对模型访问的管控较严，copilot-api 目前无法代理 AGY 模型。推荐在项目目录直接运行 Antigravity CLI（`agy`）。复杂编码或全仓审查可以优先试 `Gemini 4 Neon (XHigh)`，模型可用时在 `/model` 中选择。见 [AGY CLI 安装指南](https://antigravity.google/docs/getting-started?tab=cli)和[模型说明](https://antigravity.google/docs/models)。
+在项目目录运行 Antigravity CLI（`agy`）。使用 Google 账号直连时，复杂编码或全仓审查可以在 `/model` 中选择可用的 `Gemini 4 Neon (XHigh)`。[AGY CLI 安装指南](https://antigravity.google/docs/getting-started?tab=cli) · [模型说明](https://antigravity.google/docs/models)
+
+## 接入 copilot-api
+
+启动支持 Gemini REST 接口的 copilot-api，并启用至少一个上游模型服务。在 Desktop 的 **API Keys** 页或通过 CLI 配置一个网关 API Key，替换下方的 `your-gateway-api-key`。[安装与启动](getting-started.md) · [管理网关 API Key](cli.md#管理网关-api-key)
+
+在当前终端设置环境变量，再从同一终端运行 `agy`。`AGY_LLM_GATEWAY_URL` 填网关根地址，`agy` 会自动拼接模型列表和推理路径。`genai` 使用 Gemini 协议。[Google 网关协议说明](https://docs.cloud.google.com/gemini/enterprise/docs/ai-developer-tools/deploy-enterprise-gateway#supported-wire-protocols)
+
+### Windows PowerShell
+
+```powershell
+$env:AGY_LLM_GATEWAY_URL = "http://127.0.0.1:4141"
+$env:AGY_LLM_GATEWAY_API_KEY = "your-gateway-api-key"
+$env:AGY_LLM_GATEWAY_WIRE_PROTOCOL = "genai"
+
+$headers = @{ Authorization = "Bearer $env:AGY_LLM_GATEWAY_API_KEY" }
+(Invoke-RestMethod "$env:AGY_LLM_GATEWAY_URL/v1beta/models" -Headers $headers).models |
+  Select-Object name, displayName
+```
+
+### macOS / Linux
+
+```sh
+export AGY_LLM_GATEWAY_URL="http://127.0.0.1:4141"
+export AGY_LLM_GATEWAY_API_KEY="your-gateway-api-key"
+export AGY_LLM_GATEWAY_WIRE_PROTOCOL="genai"
+
+curl -fsS "$AGY_LLM_GATEWAY_URL/v1beta/models" \
+  -H "Authorization: Bearer $AGY_LLM_GATEWAY_API_KEY"
+```
+
+### 验证模型请求
+
+用模型列表中 `name` 去掉 `models/` 前缀后的值替换示例里的 `gemini-4-neon`。
+
+```sh
+agy --print "只回复 OK" --model gemini-4-neon
+```
+
+正常交互时，在项目目录执行 `agy`，再用 `/model` 选择网关提供的模型。
 
 ## 关闭遥测
 

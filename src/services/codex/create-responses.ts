@@ -12,6 +12,7 @@ import type {
   ResponseStreamEvent,
 } from "~/lib/types/responses"
 
+import { isAntigravityUserAgent } from "~/lib/cli/antigravity"
 import {
   getUpstreamTransportConfig,
   isResponsesApiWebSocketEnabled as isConfiguredResponsesApiWebSocketEnabled,
@@ -85,6 +86,7 @@ const STRIPPED_CODEX_REQUEST_HEADERS = new Set([
   "x-api-key",
   "x-forwarded-for",
   "x-forwarded-proto",
+  "x-goog-api-key",
 ])
 
 const STRIPPED_CODEX_WEBSOCKET_HEADERS = new Set([
@@ -486,16 +488,25 @@ const getTextBlock = (
   return typeof text === "string" ? text : undefined
 }
 
+const resolveCodexResponsesWebSocketAffinity = (
+  headers: Record<string, string>,
+): string | undefined => {
+  const userAgent = headers["user-agent"] ?? ""
+  if (isAntigravityUserAgent(userAgent)) {
+    const sessionId = getResponsesContinuationSession()
+    if (sessionId) return `antigravity:${sessionId}`
+  } else if (/codex/iu.test(userAgent)) {
+    const threadId = headers["thread-id"]?.trim()
+    if (threadId) return `thread:${threadId}`
+  }
+  return undefined
+}
+
 const buildCodexResponsesWebSocketPoolKey = (
   payload: ResponsesPayload,
   headers: Record<string, string>,
   baseUrl: string,
 ): string => {
-  // Only Codex clients use thread affinity; other clients keep the full fingerprint.
-  const codexThreadId =
-    /codex/iu.test(headers["user-agent"] ?? "") ?
-      headers["thread-id"]?.trim()
-    : undefined
   const authFingerprint = createHash("sha256")
     .update(
       `${state.codexAccessToken ?? "missing-token"}:${state.codexAccountId ?? "missing-account"}`,
@@ -503,18 +514,17 @@ const buildCodexResponsesWebSocketPoolKey = (
     .digest("hex")
     .slice(0, 16)
   const affinityKey =
-    codexThreadId ?
-      `thread:${codexThreadId}`
-    : createHash("sha256")
-        .update(
-          JSON.stringify(
-            Object.entries(headers)
-              .filter(([headerName]) => shouldIncludeHeader(headerName))
-              .sort(([left], [right]) => left.localeCompare(right)),
-          ),
-        )
-        .digest("hex")
-        .slice(0, 16)
+    resolveCodexResponsesWebSocketAffinity(headers)
+    ?? createHash("sha256")
+      .update(
+        JSON.stringify(
+          Object.entries(headers)
+            .filter(([headerName]) => shouldIncludeHeader(headerName))
+            .sort(([left], [right]) => left.localeCompare(right)),
+        ),
+      )
+      .digest("hex")
+      .slice(0, 16)
 
   return [
     "codex",

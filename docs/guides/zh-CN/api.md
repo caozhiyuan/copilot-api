@@ -10,6 +10,7 @@
 - **Admin 路由：** 所有 `/admin/*` 路由都要求 `auth.adminApiKey`。如果缺失，服务会在启动时自动生成并在开始提供服务前写回 `config.json`。
 - **允许的认证头：**
   - `x-api-key: <your_key>`
+  - `x-goog-api-key: <your_key>`
   - `Authorization: Bearer <your_key>`
 - **CORS 预检：** `OPTIONS` 请求始终允许。
 - **未配置普通 key 时：** 普通路由仍可直接访问；但这条规则不适用于 `/admin/*`，后者只接受 `auth.adminApiKey`。
@@ -126,6 +127,19 @@ xAI 接受任务后，提交接口立即返回。通过网关 API Key 提交的�
 | `POST /v1/messages/count_tokens`                              | `POST` | 计算一组消息的 token 数。支持已配置 provider 的 `provider/model` 别名。                          |
 
 Token 计数回退到本地估算时，不会把图片的 URL 或 Base64 当作文本计数：`low` 细节的基础估值为每张 85 tokens，`high`、`auto` 或未指定细节为每张 765 tokens，之后应用已配置的模型倍率。实际用量取决于上游模型和图片尺寸，以响应中的 usage 为准。
+
+### Google Gemini 兼容端点
+
+这些端点提供面向 Gemini 4+ / GenAI 客户端的 REST 兼容接口。目标为已配置的 `type: "google"` provider（含模型级 `type: "google"` 覆盖）时原生透传；其余 GitHub Copilot 与第三方 provider 模型通过 Messages API 枢纽双向转换，并保留 `thoughtSignature` 往返透传。用量记录在 `generate_content` 端点下。
+
+Gemini 请求使用小驼峰协议字段，例如 `generationConfig` 和 `inlineData`。
+
+| 端点 | 方法 | 说明 |
+| --- | --- | --- |
+| `GET /v1beta/models` | `GET` | 以 Google `models/<id>` 格式列出可用网关模型。 |
+| `POST /v1beta/models/<model>:generateContent` | `POST` | 生成非流式 Gemini 响应。支持 `provider/model` 别名与模型映射。 |
+| `POST /v1beta/models/<model>:streamGenerateContent` | `POST` | 生成流式 Gemini 响应，支持 SSE（`?alt=sse`）或 JSON 数组格式。 |
+| `POST /v1beta:<action>` | `POST` | 以 `{}` 应答 Antigravity / GenAI 遥测请求。 |
 
 ### 使用量监控端点
 

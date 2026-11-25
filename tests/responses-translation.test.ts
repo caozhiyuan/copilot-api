@@ -137,6 +137,42 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result.reasoning?.effort).toBe("xhigh")
   })
 
+  it("maps output_config.format into Responses text.format only when enabled", () => {
+    const schema = {
+      title: "Review Summary",
+      description: "Summary payload",
+      type: "object",
+      properties: { ok: { type: "boolean" } },
+    }
+    const payload: AnthropicMessagesPayload = {
+      ...samplePayload,
+      output_config: {
+        effort: "high",
+        format: {
+          type: "json_schema",
+          schema,
+        },
+      },
+    }
+
+    const defaultResult = translateAnthropicMessagesToResponsesPayload(payload)
+    expect(defaultResult.text).toBeUndefined()
+    expect(defaultResult.reasoning?.effort).toBe("high")
+
+    const result = translateAnthropicMessagesToResponsesPayload(payload, {
+      forwardStructuredOutput: true,
+    })
+    expect(result.text).toEqual({
+      format: {
+        type: "json_schema",
+        name: "Review_Summary",
+        description: "Summary payload",
+        schema,
+        strict: false,
+      },
+    })
+  })
+
   it("converts anthropic text blocks into response input messages", () => {
     const result = translateAnthropicMessagesToResponsesPayload(samplePayload)
 

@@ -77,10 +77,11 @@ export async function handleProviderMessagesForProvider(
   options: {
     payload: AnthropicMessagesPayload
     provider: string
+    forwardStructuredOutput?: boolean
     usageEndpoint?: TokenUsageEndpoint
   },
 ): Promise<Response> {
-  const { payload, provider, usageEndpoint } = options
+  const { payload, provider, forwardStructuredOutput, usageEndpoint } = options
   const configuredProvider =
     await providerMessagesHandlerDependencies.resolveProviderConfig(provider)
   if (!configuredProvider) {
@@ -135,6 +136,7 @@ export async function handleProviderMessagesForProvider(
       }
 
       return await handleOpenAIResponsesProviderMessages(c, {
+        forwardStructuredOutput,
         modelConfig,
         payload,
         provider,
@@ -147,6 +149,7 @@ export async function handleProviderMessagesForProvider(
       stripWebSearchServerTool(payload)
 
       return await handleOpenAICompatibleProviderMessages(c, {
+        forwardStructuredOutput,
         modelConfig,
         payload,
         provider,

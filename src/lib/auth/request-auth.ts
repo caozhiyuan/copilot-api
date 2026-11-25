@@ -65,6 +65,11 @@ export function extractRequestApiKey(c: Context): string | null {
     return xApiKey
   }
 
+  const xGoogApiKey = c.req.header("x-goog-api-key")?.trim()
+  if (xGoogApiKey) {
+    return xGoogApiKey
+  }
+
   const authorization = c.req.header("authorization")
   if (!authorization) {
     return null

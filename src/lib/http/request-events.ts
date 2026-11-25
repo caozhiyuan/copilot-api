@@ -13,7 +13,8 @@ import {
 } from "./request-context"
 import { enqueueTokenUsageTiming } from "../token-usage/store"
 
-const TRACKED = /\/(chat\/completions|responses|messages|alpha\/search)$/
+const TRACKED =
+  /(?:\/(?:chat\/completions|responses|messages|alpha\/search)|\/models\/.+:(?:streamGenerateContent|generateContent))$/u
 const IMAGE_REQUEST = /\/images\/(generations|edits)$/u
 
 // Called only where the handler already has a parsed payload.

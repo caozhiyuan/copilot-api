@@ -112,7 +112,7 @@ After the initial full-package installation, subsequent updates normally use dif
 | [Claude Code](docs/guides/en/claude-code.md) | settings.json, gateway model discovery, model mappings, auto-compact window, and WebSearch behavior |
 | [OpenCode](docs/guides/en/opencode.md) | v2 Responses plugin and automatic model discovery, native compaction, model capabilities and pricing, context limits, and v1 Anthropic SDK setup |
 | [Codex](docs/guides/en/codex.md) | A full `config.toml` provider block, `GITHUB_COPILOT_API_KEY` environment variable setup, auto-review model mapping, generating `model_catalog.json`, and the merged model picker catalog with protocol adapters |
-| [AGY CLI](docs/guides/en/agy-cli.md) | Recommended model, cross-platform settings, and [AGY CLI Statusline](docs/guides/en/agy-cli.md#agy-cli-statusline) to monitor most runtime metrics. Strict AGY model access controls currently prevent copilot-api from proxying these models. |
+| [AGY CLI](docs/guides/en/agy-cli.md) | Gemini gateway setup, cross-platform settings, and [AGY CLI Statusline](docs/guides/en/agy-cli.md#agy-cli-statusline) |
 | [DeepSeek Harness](docs/guides/en/dsh.md) | Install `dsh-copilot-api`, save the gateway API key, and choose Responses or Messages |
 | [Docker](docs/guides/en/docker.md) | Docker Compose quick start, the `/data` persistent mount and its ownership repair, supported environment variables, and host interface binding |
 | [Desktop App](docs/guides/en/desktop.md) | Copilot sign-in, Codex OAuth account switching, API-key providers, one-click start / stop, shared model mappings, advanced settings, and per-platform installers |
