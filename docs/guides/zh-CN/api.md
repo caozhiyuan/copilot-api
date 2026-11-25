@@ -136,7 +136,7 @@ Gemini 请求使用小驼峰协议字段，例如 `generationConfig` 和 `inline
 
 | 端点 | 方法 | 说明 |
 | --- | --- | --- |
-| `GET /v1beta/models` | `GET` | 以 Google `models/<id>` 格式列出可用网关模型。 |
+| `GET /v1beta/models` | `GET` | 以 Google `models/<id>` 格式列出可用网关模型。支持多个思考档位的模型会列出 `-high` 等变体，用变体 ID 调用时会选择原模型的对应档位。 |
 | `POST /v1beta/models/<model>:generateContent` | `POST` | 生成非流式 Gemini 响应。支持 `provider/model` 别名与模型映射。 |
 | `POST /v1beta/models/<model>:streamGenerateContent` | `POST` | 生成流式 Gemini 响应，支持 SSE（`?alt=sse`）或 JSON 数组格式。 |
 | `POST /v1beta:<action>` | `POST` | 以 `{}` 应答 Antigravity / GenAI 遥测请求。 |

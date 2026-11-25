@@ -583,7 +583,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     })
   })
 
-  test("exposes Antigravity effort variants and resolves them to the original model", async () => {
+  test("lists and resolves model effort variants for every user agent", async () => {
     const base = "gpt-5.4"
     const getModels = mock(() =>
       Promise.resolve([
@@ -615,17 +615,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     googleHandlerDependencies.handleCompletionPayload = handleCompletion
     const app = createServer()
 
-    const standard = await app.request("/v1beta/models")
-    const standardCatalog = (await standard.json()) as GoogleModelsResponse
-    expect(standardCatalog.models?.map(({ name }) => name)).toEqual([
-      `models/${base}`,
-      `models/${base}-high`,
-      "models/fixed-model",
-    ])
-
-    const response = await app.request("/v1beta/models", {
-      headers: antigravityHeaders,
-    })
+    const response = await app.request("/v1beta/models")
     const catalog = (await response.json()) as GoogleModelsResponse
     expect(
       catalog.models?.map(({ name, displayName }) => [name, displayName]),
@@ -636,9 +626,14 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       [`models/${base}-high`, "High preset"],
       ["models/fixed-model", "fixed-model"],
     ])
+    const agyResponse = await app.request("/v1beta/models", {
+      headers: antigravityHeaders,
+    })
+    expect(await agyResponse.json()).toEqual(catalog)
+
     const makeRequest = (
       model: string,
-      clientHeaders: Record<string, string> = antigravityHeaders,
+      clientHeaders: Record<string, string> = {},
     ) =>
       app.request(`/v1beta/models/${model}:generateContent`, {
         method: "POST",
@@ -659,8 +654,14 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     expect(handleCompletion.mock.calls[0]?.[1].thinking).toBeUndefined()
     expect((await makeRequest(`${base}-high`)).status).toBe(200)
     expect(handleCompletion.mock.calls[1]?.[1].model).toBe(`${base}-high`)
-    expect((await makeRequest(`${base}-max`, {})).status).toBe(200)
-    expect(handleCompletion.mock.calls[2]?.[1].model).toBe(`${base}-max`)
+    const otherClient = await makeRequest(`${base}-max`, {
+      "user-agent": "google-genai/test",
+    })
+    expect(otherClient.status).toBe(200)
+    expect(handleCompletion.mock.calls[2]?.[1]).toMatchObject({
+      model: base,
+      output_config: { effort: "max" },
+    })
     expect(getModels).toHaveBeenCalledTimes(2)
 
     state.models = { object: "list", data: [] }
