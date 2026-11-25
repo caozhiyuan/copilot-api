@@ -18,6 +18,7 @@ import {
   isContextManagementEnabledForResponses as isConfiguredContextManagementEnabledForResponses,
   isGpt56OrAbove,
   isResponsesApiWebSocketEnabled as isConfiguredResponsesApiWebSocketEnabled,
+  supportsAllTurnsReasoningContext,
 } from "~/lib/config"
 import {
   resolveSupportedReasoningEffort,
@@ -62,6 +63,21 @@ export const applyDefaultReasoningSummary = (
   if (payload.reasoning?.effort && payload.reasoning.summary === undefined) {
     payload.reasoning.summary = "auto"
   }
+}
+
+export const normalizeResponsesReasoningContext = (
+  payload: ResponsesPayload,
+): { from: "all_turns"; to: "auto" } | undefined => {
+  if (payload.reasoning?.context !== "all_turns") {
+    return undefined
+  }
+
+  if (supportsAllTurnsReasoningContext(payload.model)) {
+    return undefined
+  }
+
+  payload.reasoning.context = "auto"
+  return { from: "all_turns", to: "auto" }
 }
 
 export const responsesUtilsDependencies = {

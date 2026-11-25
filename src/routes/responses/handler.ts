@@ -54,6 +54,7 @@ import {
   hasTerminalCompactionTrigger,
   normalizeGuardianAgentMessages,
   normalizeInputImageDetails,
+  normalizeResponsesReasoningContext,
   normalizeResponsesReasoningEffort,
   replayMessagesCompactionForResponses,
   sanitizeOversizedInputImages,
@@ -171,6 +172,12 @@ export const handleResponses = async (c: Context) => {
 
   filterReasoningForTransport(payload, false)
   applyDefaultReasoningSummary(payload)
+  const normalizedReasoningContext = normalizeResponsesReasoningContext(payload)
+  if (normalizedReasoningContext) {
+    logger.debug(
+      `Normalized reasoning context from ${normalizedReasoningContext.from} to ${normalizedReasoningContext.to} for model ${payload.model}`,
+    )
+  }
 
   const recordUsage = createCopilotTokenUsageRecorder({
     endpoint: "responses",

@@ -30,6 +30,7 @@ import {
   applyResponsesApiContextManagement,
   compactInputByLatestCompaction,
   filterReasoningForTransport,
+  normalizeResponsesReasoningContext,
   replayMessagesCompactionForResponses,
 } from "~/routes/responses/utils"
 import { handleResponsesViaMessages } from "~/routes/responses/messages-handler"
@@ -138,6 +139,12 @@ export async function handleProviderResponsesForProvider(
 
   filterReasoningForTransport(payload, false)
   applyDefaultReasoningSummary(payload)
+  const normalizedReasoningContext = normalizeResponsesReasoningContext(payload)
+  if (normalizedReasoningContext) {
+    logger.debug(
+      `Normalized reasoning context from ${normalizedReasoningContext.from} to ${normalizedReasoningContext.to} for model ${payload.model}`,
+    )
+  }
 
   const model =
     providerConfig.name === "codex" ?

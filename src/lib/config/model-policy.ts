@@ -42,6 +42,13 @@ export function isGpt56OrAbove(model: string): boolean {
   return minorVersion >= 6
 }
 
+export function supportsAllTurnsReasoningContext(model: string): boolean {
+  if (model === "gpt-5.4" || model === "gpt-5.4-mini" || model === "gpt-5.5") {
+    return true
+  }
+  return isGpt56OrAbove(model)
+}
+
 const gpt5CommentaryPrompt = `# Working with the user
 
 You interact with the user through a terminal. You have 2 ways of communicating with the users:  
