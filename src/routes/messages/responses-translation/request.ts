@@ -15,7 +15,7 @@ import { HTTPError } from "~/lib/http/error"
 import {
   getExtraPromptForModel,
   getReasoningEffortForModel,
-  isGpt56OrAbove,
+  supportsAllTurnsReasoningContext,
 } from "~/lib/config"
 import { getPromptCacheKey } from "~/lib/utils"
 import {
@@ -948,15 +948,5 @@ export const convertToolResultContent = (
   return ""
 }
 
-export const isSupportAllTurns = (
-  payload: AnthropicMessagesPayload,
-): boolean => {
-  if (
-    payload.model === "gpt-5.4"
-    || payload.model === "gpt-5.4-mini"
-    || payload.model === "gpt-5.5"
-  ) {
-    return true
-  }
-  return isGpt56OrAbove(payload.model)
-}
+export const isSupportAllTurns = (payload: AnthropicMessagesPayload): boolean =>
+  supportsAllTurnsReasoningContext(payload.model)

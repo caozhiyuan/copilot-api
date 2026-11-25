@@ -14,6 +14,7 @@ import type {
   AnthropicResponse,
 } from "~/lib/types/anthropic"
 import type {
+  ResponsesPayload,
   ResponsesResult,
   ResponseStreamEvent,
 } from "~/lib/types/responses"
@@ -104,7 +105,8 @@ const { responsesMessagesDependencies } = await import(
 )
 const { responsesRoutes } = await import("~/routes/responses/route")
 const { taskTitleDependencies } = await import("~/routes/responses/task-title")
-const { responsesUtilsDependencies } = await import("~/routes/responses/utils")
+const { normalizeResponsesReasoningContext, responsesUtilsDependencies } =
+  await import("~/routes/responses/utils")
 const { generateRequestIdFromPayload, getUUID } = await import("~/lib/utils")
 
 const defaultResponsesHandlerDependencies = {
@@ -218,8 +220,8 @@ describe("Responses reasoning summary defaults", () => {
     for (const [scenario, reasoning, expectedReasoning] of [
       [
         "effort is set",
-        { effort: "high", context: "all_turns" },
-        { effort: "high", context: "all_turns", summary: "auto" },
+        { effort: "high", context: "current_turn" },
+        { effort: "high", context: "current_turn", summary: "auto" },
       ],
       [
         "effort is none",
@@ -282,6 +284,277 @@ describe("Responses reasoning summary defaults", () => {
         expect(createResponses.mock.calls[0][1].transport).toBe(transport)
       })
     }
+  }
+})
+
+describe("Responses reasoning context normalization", () => {
+  test.each([
+    "gpt-5.3-codex",
+    "gpt-5.2-codex",
+    "gpt-5-mini",
+    "gpt-5.4-nano",
+    "mai-code-2",
+    "grok-code-fast-1",
+  ])("downgrades all_turns to auto for unsupported model %s", (model) => {
+    const payload: ResponsesPayload = {
+      input: "hello",
+      model,
+      reasoning: {
+        context: "all_turns",
+        effort: "high",
+      },
+    }
+
+    expect(normalizeResponsesReasoningContext(payload)).toEqual({
+      from: "all_turns",
+      to: "auto",
+    })
+    expect(payload.reasoning).toEqual({
+      context: "auto",
+      effort: "high",
+    })
+  })
+
+  test.each([
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.5",
+    "gpt-5.6",
+    "gpt-5.6-codex",
+    "gpt-5.6-sol",
+    "gpt-5.7",
+    "gpt-6",
+    "gpt-6-luna",
+  ])("preserves all_turns for supported model %s", (model) => {
+    const payload: ResponsesPayload = {
+      input: "hello",
+      model,
+      reasoning: {
+        context: "all_turns",
+        effort: "high",
+      },
+    }
+
+    expect(normalizeResponsesReasoningContext(payload)).toBeUndefined()
+    expect(payload.reasoning).toEqual({
+      context: "all_turns",
+      effort: "high",
+    })
+  })
+
+  test.each<{
+    label: string
+    reasoning: ResponsesPayload["reasoning"]
+  }>([
+    {
+      label: "current_turn",
+      reasoning: { effort: "high", context: "current_turn" },
+    },
+    { label: "auto", reasoning: { effort: "high", context: "auto" } },
+    { label: "null context", reasoning: { effort: "high", context: null } },
+    { label: "omitted context", reasoning: { effort: "high" } },
+    { label: "null reasoning", reasoning: null },
+    { label: "omitted reasoning", reasoning: undefined },
+  ])("leaves $label unchanged on unsupported models", ({ reasoning }) => {
+    const payload: ResponsesPayload = {
+      input: "hello",
+      model: "gpt-5.3-codex",
+      reasoning:
+        reasoning && typeof reasoning === "object" ?
+          { ...reasoning }
+        : reasoning,
+    }
+
+    expect(normalizeResponsesReasoningContext(payload)).toBeUndefined()
+    expect(payload.reasoning).toEqual(reasoning)
+  })
+
+  for (const [transport, supportedEndpoints] of [
+    ["http", ["/responses"]],
+    ["websocket", ["/responses", "ws:/responses"]],
+  ] as const) {
+    test.each([
+      {
+        label: "gpt-5.3-codex downgrades all_turns to auto",
+        requestedModel: "gpt-5.3-codex",
+        mappedModel: "gpt-5.3-codex",
+        endpointModelId: "gpt-5.3-codex",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: { effort: "high", context: "auto", summary: "auto" },
+      },
+      {
+        label:
+          "mapped mai-code-2 -> gpt-5.3-codex downgrades all_turns to auto",
+        requestedModel: "mai-code-2",
+        mappedModel: "gpt-5.3-codex",
+        endpointModelId: "gpt-5.3-codex",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: { effort: "high", context: "auto", summary: "auto" },
+      },
+      {
+        label:
+          "endpoint alias mai-code-2 -> gpt-5.3-codex downgrades all_turns to auto",
+        requestedModel: "mai-code-2",
+        mappedModel: "mai-code-2",
+        endpointModelId: "gpt-5.3-codex",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: { effort: "high", context: "auto", summary: "auto" },
+      },
+      {
+        label:
+          "mapped gpt-5.4 -> gpt-5.3-codex uses final mapped model and downgrades",
+        requestedModel: "gpt-5.4",
+        mappedModel: "gpt-5.3-codex",
+        endpointModelId: "gpt-5.3-codex",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: { effort: "high", context: "auto", summary: "auto" },
+      },
+      {
+        label: "gpt-5.4 preserves all_turns",
+        requestedModel: "gpt-5.4",
+        mappedModel: "gpt-5.4",
+        endpointModelId: "gpt-5.4",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: {
+          effort: "high",
+          context: "all_turns",
+          summary: "auto",
+        },
+      },
+      {
+        label: "gpt-5.4-mini preserves all_turns",
+        requestedModel: "gpt-5.4-mini",
+        mappedModel: "gpt-5.4-mini",
+        endpointModelId: "gpt-5.4-mini",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: {
+          effort: "high",
+          context: "all_turns",
+          summary: "auto",
+        },
+      },
+      {
+        label: "gpt-5.5 preserves all_turns",
+        requestedModel: "gpt-5.5",
+        mappedModel: "gpt-5.5",
+        endpointModelId: "gpt-5.5",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: {
+          effort: "high",
+          context: "all_turns",
+          summary: "auto",
+        },
+      },
+      {
+        label: "gpt-5.6 preserves all_turns",
+        requestedModel: "gpt-5.6",
+        mappedModel: "gpt-5.6",
+        endpointModelId: "gpt-5.6",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: {
+          effort: "high",
+          context: "all_turns",
+          summary: "auto",
+        },
+      },
+      {
+        label: "mapped alias -> gpt-5.6-codex preserves all_turns",
+        requestedModel: "custom-codex",
+        mappedModel: "gpt-5.6-codex",
+        endpointModelId: "gpt-5.6-codex",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: {
+          effort: "high",
+          context: "all_turns",
+          summary: "auto",
+        },
+      },
+      {
+        label: "gpt-6 preserves all_turns",
+        requestedModel: "gpt-6",
+        mappedModel: "gpt-6",
+        endpointModelId: "gpt-6",
+        reasoning: { effort: "high", context: "all_turns" },
+        expectedReasoning: {
+          effort: "high",
+          context: "all_turns",
+          summary: "auto",
+        },
+      },
+      {
+        label: "gpt-5.3-codex preserves current_turn",
+        requestedModel: "gpt-5.3-codex",
+        mappedModel: "gpt-5.3-codex",
+        endpointModelId: "gpt-5.3-codex",
+        reasoning: { effort: "high", context: "current_turn" },
+        expectedReasoning: {
+          effort: "high",
+          context: "current_turn",
+          summary: "auto",
+        },
+      },
+      {
+        label: "gpt-5.3-codex preserves auto",
+        requestedModel: "gpt-5.3-codex",
+        mappedModel: "gpt-5.3-codex",
+        endpointModelId: "gpt-5.3-codex",
+        reasoning: { effort: "high", context: "auto" },
+        expectedReasoning: { effort: "high", context: "auto", summary: "auto" },
+      },
+      {
+        label: "gpt-5.3-codex preserves omitted context",
+        requestedModel: "gpt-5.3-codex",
+        mappedModel: "gpt-5.3-codex",
+        endpointModelId: "gpt-5.3-codex",
+        reasoning: { effort: "high" },
+        expectedReasoning: { effort: "high", summary: "auto" },
+      },
+    ])(`$label over ${transport}`, async (scenario) => {
+      const endpointModel = {
+        capabilities: { limits: { max_prompt_tokens: 128000 } },
+        id: scenario.endpointModelId,
+        supported_endpoints: [...supportedEndpoints],
+      }
+      state.models = {
+        object: "list",
+        data: [endpointModel],
+      } as typeof state.models
+      responsesHandlerDependencies.resolveMappedModel = (model) =>
+        model === scenario.requestedModel ? scenario.mappedModel : model
+      responsesHandlerDependencies.findEndpointModel = (model) =>
+        model === scenario.mappedModel ?
+          (endpointModel as NonNullable<typeof state.models>["data"][number])
+        : undefined
+      createResponses.mockImplementation((payload) =>
+        Promise.resolve(
+          payload.stream ?
+            streamChunks([])
+          : createResponsesResult(payload.model),
+        ),
+      )
+
+      const response = await createApp().request("/v1/responses", {
+        body: JSON.stringify({
+          input: "hello",
+          model: scenario.requestedModel,
+          reasoning: scenario.reasoning,
+          stream: transport === "websocket",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      })
+      await response.text()
+
+      expect(response.status).toBe(200)
+      expect(createResponses).toHaveBeenCalledTimes(1)
+      expect(createResponses.mock.calls[0][0].model).toBe(
+        scenario.endpointModelId,
+      )
+      expect<unknown>(createResponses.mock.calls[0][0].reasoning).toEqual(
+        scenario.expectedReasoning,
+      )
+      expect(createResponses.mock.calls[0][1].transport).toBe(transport)
+    })
   }
 })
 

@@ -323,6 +323,77 @@ describe("provider Responses reasoning summary defaults", () => {
   }
 })
 
+describe("provider Responses reasoning context normalization", () => {
+  test.each<{
+    label: string
+    path: string
+    model: string
+    reasoning: ResponsesPayload["reasoning"]
+    expectedReasoning: ResponsesPayload["reasoning"]
+  }>([
+    {
+      label: "downgrades all_turns to auto for gpt-5.3-codex via /v1/responses",
+      path: "/v1/responses",
+      model: "openai/gpt-5.3-codex",
+      reasoning: { effort: "high", context: "all_turns" },
+      expectedReasoning: { effort: "high", context: "auto", summary: "auto" },
+    },
+    {
+      label:
+        "downgrades all_turns to auto for gpt-5.3-codex via /:provider/v1/responses",
+      path: "/openai/v1/responses",
+      model: "gpt-5.3-codex",
+      reasoning: { effort: "high", context: "all_turns" },
+      expectedReasoning: { effort: "high", context: "auto", summary: "auto" },
+    },
+    {
+      label: "preserves all_turns for gpt-5.6 via /v1/responses",
+      path: "/v1/responses",
+      model: "openai/gpt-5.6",
+      reasoning: { effort: "high", context: "all_turns" },
+      expectedReasoning: {
+        effort: "high",
+        context: "all_turns",
+        summary: "auto",
+      },
+    },
+    {
+      label: "preserves current_turn for gpt-5.3-codex",
+      path: "/openai/v1/responses",
+      model: "gpt-5.3-codex",
+      reasoning: { effort: "high", context: "current_turn" },
+      expectedReasoning: {
+        effort: "high",
+        context: "current_turn",
+        summary: "auto",
+      },
+    },
+  ])("$label", async ({ expectedReasoning, model, path, reasoning }) => {
+    fetchMock.mockImplementation((_url, init) => {
+      const body = parseJsonRequestBody(init?.body) as ResponsesPayload
+      return Promise.resolve(Response.json(createResponsesResult(body.model)))
+    })
+
+    const response = await createApp().request(path, {
+      body: JSON.stringify({
+        input: "hello",
+        model,
+        reasoning,
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+    await response.text()
+
+    expect(response.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const body = parseJsonRequestBody(
+      fetchMock.mock.calls[0][1]?.body,
+    ) as ResponsesPayload
+    expect(body.reasoning).toEqual(expectedReasoning)
+  })
+})
+
 describe("Codex task title model routing on provider Responses", () => {
   const taskTitlePrompt =
     "Generate a concise, single-line task title of at most 36 characters and under five words where possible."
