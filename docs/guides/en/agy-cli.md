@@ -43,6 +43,8 @@ agy --print "Reply with OK only." --model gemini-4-neon
 
 For an interactive session, run `agy` in your project directory and use `/model` to select a model from the gateway.
 
+Use `/effort` to switch reasoning levels when the selected model offers multiple levels. You can set a level at launch with `agy --model gemini-4-neon --effort high` if the gateway lists that model and level.
+
 ## Disable telemetry
 
 With a personal Google Account, run `/config` in AGY and set **Enable Telemetry** to `off`. AGY saves this preference to your account. [AGY settings reference](https://antigravity.google/docs/settings?tab=cli)

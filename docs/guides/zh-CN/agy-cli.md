@@ -43,6 +43,8 @@ agy --print "只回复 OK" --model gemini-4-neon
 
 正常交互时，在项目目录执行 `agy`，再用 `/model` 选择网关提供的模型。
 
+模型提供多个思考档位时，可以用 `/effort` 切换。如果网关列出了 Gemini 4 Neon 的 High 档，也可在启动时指定 `agy --model gemini-4-neon --effort high`。
+
 ## 关闭遥测
 
 使用个人 Google 账号时，在 AGY 中运行 `/config`，将 **Enable Telemetry** 设为 `off`。这项设置保存在账号中。见 [AGY 配置说明](https://antigravity.google/docs/settings?tab=cli)。

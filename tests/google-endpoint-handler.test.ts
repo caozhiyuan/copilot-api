@@ -49,6 +49,7 @@ const originalHandleCompletionPayload =
   googleHandlerDependencies.handleCompletionPayload
 const originalGetAggregatedModels =
   googleHandlerDependencies.getAggregatedModels
+const originalGetProviderConfig = googleHandlerDependencies.getProviderConfig
 const originalResolveAlias =
   googleHandlerDependencies.resolveConfiguredProviderModelAlias
 const originalResolveProvider = googleHandlerDependencies.resolveProviderConfig
@@ -59,6 +60,7 @@ const originalStateModels = state.models
 const createChatCompletions = mock(originalCreateChatCompletions)
 const createResponses = mock(originalCreateResponses)
 const DB_PATH_ENV = "COPILOT_API_SQLITE_DB_PATH"
+const antigravityHeaders = { "user-agent": "antigravity/cli/1.5.16" }
 
 async function* streamEvents(
   items: Array<ServerSentEventMessage>,
@@ -119,6 +121,7 @@ beforeEach(async () => {
   googleHandlerDependencies.handleCompletionPayload =
     originalHandleCompletionPayload
   googleHandlerDependencies.getAggregatedModels = originalGetAggregatedModels
+  googleHandlerDependencies.getProviderConfig = originalGetProviderConfig
   googleHandlerDependencies.resolveConfiguredProviderModelAlias =
     originalResolveAlias
   googleHandlerDependencies.resolveProviderConfig = originalResolveProvider
@@ -133,6 +136,7 @@ afterEach(async () => {
   googleHandlerDependencies.handleCompletionPayload =
     originalHandleCompletionPayload
   googleHandlerDependencies.getAggregatedModels = originalGetAggregatedModels
+  googleHandlerDependencies.getProviderConfig = originalGetProviderConfig
   googleHandlerDependencies.resolveConfiguredProviderModelAlias =
     originalResolveAlias
   googleHandlerDependencies.resolveProviderConfig = originalResolveProvider
@@ -576,6 +580,167 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
           ],
         },
       ],
+    })
+  })
+
+  test("exposes Antigravity effort variants and resolves them to the original model", async () => {
+    const base = "gpt-5.4"
+    const getModels = mock(() =>
+      Promise.resolve([
+        {
+          id: base,
+          object: "model",
+          display_name: "GPT-5.4",
+          reasoning_efforts: ["low", "high", "max", "ultra"],
+        },
+        { id: `${base}-high`, object: "model", display_name: "High preset" },
+        { id: "fixed-model", object: "model", reasoning_efforts: ["high"] },
+      ]),
+    )
+    googleHandlerDependencies.getAggregatedModels = getModels
+    const handleCompletion = mock<typeof originalHandleCompletionPayload>(
+      (_c, payload) =>
+        Promise.resolve(
+          Response.json({
+            id: "msg_effort",
+            type: "message",
+            role: "assistant",
+            model: payload.model,
+            content: [{ type: "text", text: "OK" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 2, output_tokens: 1 },
+          }),
+        ),
+    )
+    googleHandlerDependencies.handleCompletionPayload = handleCompletion
+    const app = createServer()
+
+    const standard = await app.request("/v1beta/models")
+    const standardCatalog = (await standard.json()) as GoogleModelsResponse
+    expect(standardCatalog.models?.map(({ name }) => name)).toEqual([
+      `models/${base}`,
+      `models/${base}-high`,
+      "models/fixed-model",
+    ])
+
+    const response = await app.request("/v1beta/models", {
+      headers: antigravityHeaders,
+    })
+    const catalog = (await response.json()) as GoogleModelsResponse
+    expect(
+      catalog.models?.map(({ name, displayName }) => [name, displayName]),
+    ).toEqual([
+      [`models/${base}`, "GPT-5.4"],
+      [`models/${base}-low`, "GPT-5.4 (Low)"],
+      [`models/${base}-max`, "GPT-5.4 (Max)"],
+      [`models/${base}-high`, "High preset"],
+      ["models/fixed-model", "fixed-model"],
+    ])
+    const makeRequest = (
+      model: string,
+      clientHeaders: Record<string, string> = antigravityHeaders,
+    ) =>
+      app.request(`/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...clientHeaders },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+          generationConfig: {
+            thinkingConfig: { includeThoughts: false, thinkingBudget: 0 },
+          },
+        }),
+      })
+
+    expect((await makeRequest(`${base}-max`)).status).toBe(200)
+    expect(handleCompletion.mock.calls[0]?.[1]).toMatchObject({
+      model: base,
+      output_config: { effort: "max" },
+    })
+    expect(handleCompletion.mock.calls[0]?.[1].thinking).toBeUndefined()
+    expect((await makeRequest(`${base}-high`)).status).toBe(200)
+    expect(handleCompletion.mock.calls[1]?.[1].model).toBe(`${base}-high`)
+    expect((await makeRequest(`${base}-max`, {})).status).toBe(200)
+    expect(handleCompletion.mock.calls[2]?.[1].model).toBe(`${base}-max`)
+    expect(getModels).toHaveBeenCalledTimes(2)
+
+    state.models = { object: "list", data: [] }
+    expect((await makeRequest(`${base}-low`)).status).toBe(200)
+    expect(handleCompletion.mock.calls[3]?.[1]).toMatchObject({
+      model: base,
+      output_config: { effort: "low" },
+    })
+    expect(getModels).toHaveBeenCalledTimes(3)
+  })
+
+  test("forwards the selected Antigravity level to a native Google model", async () => {
+    const provider: ResolvedProviderConfig = {
+      name: "mygoogle",
+      type: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      authType: "x-goog-api-key",
+      apiKey: "upstream-key",
+    }
+    const base = "mygoogle/gemini-4-neon"
+    googleHandlerDependencies.getProviderConfig = mock(() => provider)
+    googleHandlerDependencies.getAggregatedModels = mock(() =>
+      Promise.resolve([
+        { id: base, object: "model", display_name: "Gemini 4 Neon" },
+        {
+          id: "mygoogle/gemini-4-argon",
+          object: "model",
+          display_name: "Gemini 4 Argon",
+        },
+      ]),
+    )
+    const resolveAlias = mock<typeof originalResolveAlias>(() =>
+      Promise.resolve({ provider: provider.name, model: "gemini-4-neon" }),
+    )
+    googleHandlerDependencies.resolveConfiguredProviderModelAlias = resolveAlias
+    googleHandlerDependencies.resolveProviderConfig = mock(() =>
+      Promise.resolve(provider),
+    )
+    const forward = mock<typeof originalForwardGoogle>(() =>
+      Promise.resolve(
+        Response.json({ candidates: [{ finishReason: "STOP" }] }),
+      ),
+    )
+    googleHandlerDependencies.forwardGoogleGenerateContent = forward
+    const app = createServer()
+    const response = await app.request("/v1beta/models", {
+      headers: antigravityHeaders,
+    })
+    const catalog = (await response.json()) as GoogleModelsResponse
+    expect(catalog.models?.map((model) => model.name)).toEqual([
+      `models/${base}`,
+      `models/${base}-low`,
+      `models/${base}-medium`,
+      `models/${base}-high`,
+      `models/${base}-xhigh`,
+      "models/mygoogle/gemini-4-argon",
+      "models/mygoogle/gemini-4-argon-low",
+      "models/mygoogle/gemini-4-argon-medium",
+      "models/mygoogle/gemini-4-argon-high",
+    ])
+    const generation = await app.request(
+      `/v1beta/models/${base}-xhigh:generateContent`,
+      {
+        method: "POST",
+        headers: { ...antigravityHeaders, "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+          generationConfig: {
+            temperature: 0.7,
+            thinkingConfig: { includeThoughts: true, thinkingBudget: 1024 },
+          },
+        }),
+      },
+    )
+    expect(generation.status).toBe(200)
+    expect(resolveAlias.mock.calls[0]?.[0]).toBe(base)
+    expect(forward.mock.calls[0]?.[1]).toBe("gemini-4-neon")
+    expect(forward.mock.calls[0]?.[2].generationConfig).toEqual({
+      temperature: 0.7,
+      thinkingConfig: { includeThoughts: true, thinkingLevel: "XHIGH" },
     })
   })
 

@@ -5,6 +5,8 @@ import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 import { isAntigravityUserAgent } from "~/lib/cli/antigravity"
 import {
+  getConfig,
+  getProviderConfig,
   resolveMappedModel,
   resolveProviderConfigForModel,
   type ModelConfig,
@@ -22,6 +24,7 @@ import {
   resolveConfiguredProviderModelAlias,
   resolveProviderConfig,
 } from "~/lib/providers/provider-resolver"
+import { state } from "~/lib/state"
 import {
   createProviderTokenUsageRecorder,
   normalizeAnthropicUsage,
@@ -43,6 +46,11 @@ import { applyMissingExtraBody } from "~/routes/provider/utils"
 import { forwardGoogleGenerateContent } from "~/services/providers/google"
 import { resolveOpencodeMessagesSession } from "~/services/providers/provider-proxy"
 
+import {
+  applyAntigravityModelEffort,
+  createAntigravityModelCatalog,
+  hasAntigravityEffortSuffix,
+} from "./antigravity-models"
 import { translateMessagesStreamToGoogle } from "./messages-stream-translation"
 import {
   createGoogleErrorPayload,
@@ -59,6 +67,7 @@ const SESSION_UUID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu
 export const googleHandlerDependencies = {
   forwardGoogleGenerateContent,
   getAggregatedModels,
+  getProviderConfig,
   handleCompletionPayload,
   resolveConfiguredProviderModelAlias,
   resolveProviderConfig,
@@ -137,15 +146,54 @@ function toGoogleModelEntry(
   }
 }
 
-export async function handleGoogleModelsList(c: Context): Promise<Response> {
-  const models = await googleHandlerDependencies.getAggregatedModels(
+let antigravityCatalog:
+  | {
+      config: ReturnType<typeof getConfig>
+      copilotModels: typeof state.models
+      variants: ReturnType<typeof createAntigravityModelCatalog>["variants"]
+    }
+  | undefined
+
+function getGoogleModels(c: Context): Promise<Array<ClientModel>> {
+  return googleHandlerDependencies.getAggregatedModels(
     stripInternalRequestHeaders(c.req.raw.headers),
     { includeImageModels: false },
   )
+}
+
+async function refreshAntigravityCatalog(c: Context) {
+  const config = getConfig()
+  const copilotModels = state.models
+  const catalog = createAntigravityModelCatalog(
+    await getGoogleModels(c),
+    googleHandlerDependencies.getProviderConfig,
+  )
+  antigravityCatalog = { config, copilotModels, variants: catalog.variants }
+  return catalog
+}
+
+export async function handleGoogleModelsList(c: Context): Promise<Response> {
+  const models =
+    isAntigravityUserAgent(c.req.header("user-agent")) ?
+      (await refreshAntigravityCatalog(c)).entries
+    : await getGoogleModels(c)
   const response: GoogleModelsResponse = {
     models: models.map(toGoogleModelEntry),
   }
   return c.json(response)
+}
+
+async function resolveAntigravityModel(c: Context, model: string) {
+  // The CLI loads the catalog before inference. Keep its aliases available
+  // for follow-ups, and rebuild them if a running session reconnects.
+  const catalog = antigravityCatalog
+  if (
+    catalog?.config === getConfig()
+    && catalog.copilotModels === state.models
+  ) {
+    return catalog.variants.get(model)
+  }
+  return (await refreshAntigravityCatalog(c)).variants.get(model)
 }
 
 function readSessionLabel(value: unknown): string | undefined {
@@ -215,7 +263,18 @@ export async function handleGoogleGenerateContent(
     applyAntigravitySessionLabels(requestBody?.labels)
     setPluginRequestModel(parsedPath.model)
 
-    const mappedModel = resolveMappedModel(parsedPath.model)
+    let mappedModel = resolveMappedModel(parsedPath.model)
+    if (
+      mappedModel === parsedPath.model
+      && isAntigravityUserAgent(c.req.header("user-agent"))
+      && hasAntigravityEffortSuffix(parsedPath.model)
+    ) {
+      const variant = await resolveAntigravityModel(c, parsedPath.model)
+      if (variant) {
+        mappedModel = resolveMappedModel(variant.model)
+        applyAntigravityModelEffort(requestBody, variant.effort)
+      }
+    }
     debugJson(logger, "Google generateContent request:", {
       action: parsedPath.action,
       mappedModel,
