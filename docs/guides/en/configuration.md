@@ -43,6 +43,10 @@ Most settings can keep their defaults. Change only the fields you need. A provid
       "websocketMaxBufferedBytes": 8388608,
       "websocketMaxBufferedMessages": 1024
     },
+    "copilotImageGeneration": {
+      "enabled": true,
+      "model": "gpt-image-2.5-flare"
+    },
     "useResponsesApiWebSearch": true,
     "alphaSearchCodexPriority": true,
     "alphaSearchModel": "gpt-6-luna",
@@ -136,6 +140,10 @@ Most settings can keep their defaults. Change only the fields you need. A provid
 - **upstreamTransport:** Positive integer lifecycle and buffering limits for the upstream chat completions, responses, and messages transports. Invalid, zero, or negative values fall back to the defaults shown above. `headersTimeoutMs` covers connection setup through receipt of HTTP response headers; it is not a total generation deadline. `streamInactivityTimeoutMs` is reset by every HTTP body chunk or WebSocket message, allowing long generations to continue while they remain active. `websocketOpenTimeoutMs` limits the WebSocket handshake, while `websocketPoolIdleTimeoutMs` controls only completed, reusable pooled sockets. The byte and message limits bound queued WebSocket events; exceeding either limit fails that stream and invalidates its socket rather than dropping or reordering events.
 
   On upgrade, a `websocketPoolIdleTimeoutMs` value already saved in `config.json` takes priority. If your config contains the old default of `60000`, set it to `270000` to keep idle connections for up to 4 minutes 30 seconds.
+
+### Copilot image generation
+
+`copilotImageGeneration` configures the [Responses image generation tool](api.md#copilot-image-generation-tool) on the GitHub Copilot route. `enabled` defaults to `true`; set it to `false` to disable the tool. `model` takes the raw Copilot image model ID and defaults to `gpt-image-2.5-flare`. Standalone Images requests and other providers keep their own model selection.
 
 ### Web search
 

@@ -66,6 +66,25 @@ function fixture(running = true) {
 }
 
 describe('desktop configuration document', () => {
+  test('validates Copilot image tool settings in the JSON editor', () => {
+    const configWith = (value: unknown) =>
+      JSON.stringify({ copilotImageGeneration: value })
+    for (const value of [
+      { enabled: false },
+      { model: 'gpt-image-2.5-flare' },
+    ]) {
+      expect(
+        validateConfigContent(configWith(value)).copilotImageGeneration,
+      ).toEqual(value)
+    }
+    expect(() =>
+      validateConfigContent(configWith({ enabled: 'false' })),
+    ).toThrow('copilotImageGeneration.enabled')
+    expect(() => validateConfigContent(configWith({ model: '  ' }))).toThrow(
+      'copilotImageGeneration.model',
+    )
+  })
+
   test('validates API key quota amounts at the supported boundaries', () => {
     const maxAmount = Number.MAX_SAFE_INTEGER / 1_000_000_000
     const withQuota = (amount: number) =>

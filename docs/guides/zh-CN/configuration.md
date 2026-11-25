@@ -45,6 +45,10 @@
       "websocketMaxBufferedBytes": 8388608,
       "websocketMaxBufferedMessages": 1024
     },
+    "copilotImageGeneration": {
+      "enabled": true,
+      "model": "gpt-image-2.5-flare"
+    },
     "useResponsesApiWebSearch": true,
     "alphaSearchCodexPriority": true,
     "alphaSearchModel": "gpt-6-luna",
@@ -163,6 +167,10 @@
   缓冲区超过任一上限时，会结束当前请求并关闭该连接，不会丢弃部分消息后继续使用。
 
   升级后，`config.json` 中已保存的 `websocketPoolIdleTimeoutMs` 优先生效。旧配置中的 `60000` 可改为 `270000` 毫秒，将空闲超时设为 4 分 30 秒。
+
+### Copilot 生图工具
+
+`copilotImageGeneration` 控制 GitHub Copilot 路由的 [Responses 生图工具](api.md#copilot-image-generation-tool)。`enabled` 默认为 `true`，设为 `false` 即可关闭。`model` 填写 Copilot 图片模型的原始 ID，默认为 `gpt-image-2.5-flare`。独立 Images 接口和其他 provider 仍按各自的规则选择模型。
 
 ### 联网搜索
 

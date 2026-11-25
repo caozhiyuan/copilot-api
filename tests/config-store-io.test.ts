@@ -3,9 +3,11 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
+import { DEFAULT_IMAGE_MODELS } from "~/lib/catalog/image-models"
 import {
   defaultConfig,
   getAlphaSearchModel,
+  getCopilotImageGenerationConfig,
   getMessageApiWebSearchModel,
   getOpencodeModelContextWindow,
   invalidateConfigCache,
@@ -110,6 +112,10 @@ test("reloadConfig creates a default config when it is missing", () => {
     copilot: "gpt-6-luna",
   })
   expect(config.alphaSearchModel).toBe("gpt-6-luna")
+  expect(config.copilotImageGeneration).toEqual({
+    enabled: true,
+    model: DEFAULT_IMAGE_MODELS["github-copilot"],
+  })
   expect(config.messageApiWebSearchModel).toBe("gpt-6-luna")
   expect(config.opencodeModelContextWindow).toBe(400_000)
   expect(config.noEncryptedOutputModels).toEqual([])
@@ -128,6 +134,26 @@ test("reloads Codex Multi-Agent V1 changes saved through the config store", () =
   for (const codexMultiAgentV1 of [true, false]) {
     writeConfigToDisk({ codexMultiAgentV1 })
     expect(reloadConfig().codexMultiAgentV1).toBe(codexMultiAgentV1)
+  }
+})
+
+test("reloads the Copilot image tool switch and model independently", () => {
+  const configPath = useTempConfigPath()
+  const defaultModel = DEFAULT_IMAGE_MODELS["github-copilot"]
+  for (const [configured, enabled, model] of [
+    [undefined, true, defaultModel],
+    [{ enabled: false }, false, defaultModel],
+    [{ model: " custom-image " }, true, "custom-image"],
+    [{ enabled: false, model: "  " }, false, defaultModel],
+    [{ enabled: "false", model: 42 }, true, defaultModel],
+    [null, true, defaultModel],
+  ] as const) {
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ copilotImageGeneration: configured }),
+    )
+    reloadConfig()
+    expect(getCopilotImageGenerationConfig()).toEqual({ enabled, model })
   }
 })
 

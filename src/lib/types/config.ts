@@ -39,6 +39,11 @@ export interface ContextManagementConfig {
   responses?: boolean
 }
 
+export interface CopilotImageGenerationConfig {
+  enabled: boolean
+  model: string
+}
+
 export interface UpstreamTransportConfig {
   headersTimeoutMs?: number
   streamInactivityTimeoutMs?: number
@@ -137,6 +142,7 @@ export interface AppConfig {
   noEncryptedOutputModels?: Array<string>
   upstreamTransport?: UpstreamTransportConfig
   anthropicApiKey?: string
+  copilotImageGeneration?: Partial<CopilotImageGenerationConfig>
   useResponsesApiWebSearch?: boolean
   alphaSearchCodexPriority?: boolean
   alphaSearchModel?: string

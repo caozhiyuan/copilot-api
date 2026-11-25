@@ -149,6 +149,12 @@ export const appConfigSchema = z.looseObject({
     })
     .optional(),
   anthropicApiKey: z.string().optional(),
+  copilotImageGeneration: z
+    .looseObject({
+      enabled: z.boolean().optional(),
+      model: nonEmptyString.optional(),
+    })
+    .optional(),
   useResponsesApiWebSearch: z.boolean().optional(),
   alphaSearchCodexPriority: z.boolean().optional(),
   alphaSearchModel: z.string().optional(),

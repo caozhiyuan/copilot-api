@@ -42,6 +42,22 @@ These endpoints mimic the OpenAI API structure.
 | `GET /v1/models`            | `GET`  | Lists Copilot models plus enabled provider models using `provider/model-id` IDs. Requests from Codex clients (`User-Agent` beginning with `codex`) receive the merged Codex-format catalog, excluding image-only models. |
 | `POST /v1/embeddings`       | `POST` | Creates an embedding vector representing the input text.         |
 
+### Copilot image generation tool
+
+On GitHub Copilot chat turns, the gateway offers the hosted image tool to Codex when its request allows automatic tool use. Other Responses clients can declare it explicitly. Keep the chat model in `model`:
+
+```json
+{
+  "model": "gpt-6-luna",
+  "input": "Generate an icon of a blue paper boat on a white background.",
+  "tools": [{ "type": "image_generation" }]
+}
+```
+
+When the chat model calls the tool, the gateway runs the configured Copilot image model (default: `gpt-image-2.5-flare`) and returns an `image_generation_call` output item with the base64 image in `result`. The gateway setting `copilotImageGeneration.model` takes precedence over the client’s tool-level `model`. Set `copilotImageGeneration.enabled` to `false` to disable this tool. See [configuration](configuration.md#copilot-image-generation).
+
+For a follow-up edit, include the previous `image_generation_call` (with its `result`) or an `input_image` in the next request. The gateway does not store generated images for retrieval by ID.
+
 ### Model Discovery Sources
 
 `GET /models`, `GET /v1/models`, and `GET /:provider/v1/models` read `xai`, `openrouter`, `deepseek`, `kimi`, `dashscope`, and `opencode-go` models from the models.dev cache without querying those providers' model endpoints. Kimi defaults to `kimi-code-plan-cn` and DashScope to `alibaba-cn`; other official URLs select their matching catalogs. Explicit `modelsDevProviderId` takes priority.

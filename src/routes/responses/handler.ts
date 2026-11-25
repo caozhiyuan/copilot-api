@@ -3,6 +3,7 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 
 import {
+  getCopilotImageGenerationConfig,
   isResponsesApiWebSearchEnabled as isConfiguredResponsesApiWebSearchEnabled,
   resolveMappedModel,
 } from "~/lib/config"
@@ -38,6 +39,12 @@ import type {
 import { createResponses as createCopilotResponses } from "~/services/copilot/create-responses"
 
 import { handleResponsesViaMessages } from "./messages-handler"
+import {
+  bridgeImageToolJson,
+  offerCodexImageTool,
+  prepareCopilotImageTool,
+} from "./image-tool"
+import { bridgeImageToolStream } from "./image-tool-stream"
 import { createResponsesStreamTerminalTracker } from "./stream-failure"
 import {
   createCopilotResponsesSseMessage,
@@ -67,6 +74,7 @@ const logger = createHandlerLogger("responses-handler")
 export const responsesHandlerDependencies = {
   createResponses: createCopilotResponses,
   findEndpointModel,
+  getCopilotImageGenerationConfig,
   isResponsesApiWebSearchEnabled: isConfiguredResponsesApiWebSearchEnabled,
   resolveMappedModel,
 }
@@ -95,14 +103,42 @@ export const handleResponses = async (c: Context) => {
     })
   }
 
+  const userAgent = c.req.header("user-agent")
   const taskTitleModel = getCodexTaskTitleModel(
-    c.req.header("user-agent"),
+    userAgent,
     payload.input,
     "copilot",
   )
   if (taskTitleModel) payload.model = taskTitleModel
-  const publicModel = taskTitleModel ?? requestedModel
+  const imageConfig =
+    responsesHandlerDependencies.getCopilotImageGenerationConfig()
+  if (
+    imageConfig.enabled
+    && isCodexUserAgent(userAgent)
+    && !taskTitleModel
+    && payload.generate !== false
+    && !hasTerminalCompactionTrigger(payload)
+  ) {
+    offerCodexImageTool(payload)
+  }
+  const bridge = prepareCopilotImageTool(payload, imageConfig)
+  const response = await handleCopilotResponses(
+    c,
+    payload,
+    taskTitleModel ?? requestedModel,
+  )
+  if (!bridge || !response.ok) return response
+  const signal = c.req.raw.signal
+  return response.headers.get("content-type")?.includes("text/event-stream") ?
+      bridgeImageToolStream(response, bridge, signal)
+    : bridgeImageToolJson(response, bridge, signal)
+}
 
+async function handleCopilotResponses(
+  c: Context,
+  payload: ResponsesPayload,
+  publicModel: string,
+): Promise<Response> {
   debugJson(logger, "Responses request payload:", payload)
 
   const store = requestContext.getStore()

@@ -2,6 +2,7 @@ import consola from "consola"
 import { randomBytes } from "node:crypto"
 import fs from "node:fs"
 
+import { DEFAULT_IMAGE_MODELS } from "../catalog/image-models"
 import { writeFileAtomically } from "../storage/atomic-file"
 import {
   normalizeApiKeyRecord,
@@ -12,6 +13,7 @@ import { PATHS } from "../storage/paths"
 import type {
   AppConfig,
   ContextManagementConfig,
+  CopilotImageGenerationConfig,
   ProviderConfig,
   ProviderType,
   UpstreamTransportConfig,
@@ -21,6 +23,7 @@ export type {
   AppConfig,
   CodexReasoningEffort,
   ContextManagementConfig,
+  CopilotImageGenerationConfig,
   ModelConfig,
   ModelReasoningField,
   ProviderAuthType,
@@ -59,6 +62,11 @@ export const defaultContextManagement = {
 
 export const defaultOpencodeModelContextWindow = 400_000
 
+const defaultCopilotImageGeneration: CopilotImageGenerationConfig = {
+  enabled: true,
+  model: DEFAULT_IMAGE_MODELS["github-copilot"],
+}
+
 export const defaultConfig: AppConfig = {
   auth: {
     apiKeyConfigs: [],
@@ -80,6 +88,7 @@ export const defaultConfig: AppConfig = {
   codexMultiAgentV1: false,
   noEncryptedOutputModels: [],
   upstreamTransport: defaultUpstreamTransportConfig,
+  copilotImageGeneration: defaultCopilotImageGeneration,
   useResponsesApiWebSearch: true,
   alphaSearchCodexPriority: true,
   alphaSearchModel: "gpt-6-luna",
@@ -598,6 +607,18 @@ export function getAnthropicApiKey(): string | undefined {
 export function isResponsesApiWebSearchEnabled(): boolean {
   const config = getConfig()
   return config.useResponsesApiWebSearch ?? true
+}
+
+export function getCopilotImageGenerationConfig(): CopilotImageGenerationConfig {
+  const configured = getConfig().copilotImageGeneration
+  const model = typeof configured?.model === "string" && configured.model.trim()
+  return {
+    enabled:
+      typeof configured?.enabled === "boolean" ?
+        configured.enabled
+      : defaultCopilotImageGeneration.enabled,
+    model: model || defaultCopilotImageGeneration.model,
+  }
 }
 
 export function isAlphaSearchCodexPriorityEnabled(): boolean {

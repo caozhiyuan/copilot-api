@@ -46,6 +46,24 @@ curl http://localhost:4141/admin/config/model-mappings \
 | `GET /v1/models`            | `GET` | 列出 Copilot 模型以及已启用 provider 的 `provider/model-id` 模型。来自 Codex 客户端（`User-Agent` 以 `codex` 开头）的请求返回合并后的 Codex 格式目录，并排除仅输出图片的模型。 |
 | `POST /v1/embeddings`       | `POST` | 创建表示输入文本的向量嵌入。                                                                             |
 
+<a id="copilot-image-generation-tool"></a>
+
+### Copilot 生图工具
+
+Codex 使用 GitHub Copilot 聊天模型并允许自动选择工具时，网关会提供服务端生图工具。其他 Responses 客户端可显式声明此工具，`model` 仍填聊天模型：
+
+```json
+{
+  "model": "gpt-6-luna",
+  "input": "生成一个白底蓝色纸船图标。",
+  "tools": [{ "type": "image_generation" }]
+}
+```
+
+聊天模型调用工具后，网关用配置的 Copilot 图片模型（默认 `gpt-image-2.5-flare`）生成图片，并在 `image_generation_call` 输出项的 `result` 中返回 base64 图片。网关以 `copilotImageGeneration.model` 选择图片模型，优先于客户端工具声明里的 `model`。将 `copilotImageGeneration.enabled` 设为 `false` 即可关闭此工具。详见[配置说明](configuration.md#copilot-生图工具)。
+
+要继续编辑，请在下一次请求的 `input` 中带上上一轮含 `result` 的 `image_generation_call`，或提供 `input_image`。网关不保存可按 ID 检索的图片。
+
 ### 模型发现来源
 
 `GET /models`、`GET /v1/models` 和 `GET /:provider/v1/models` 从 models.dev 缓存读取 `xai`、`openrouter`、`deepseek`、`kimi`、`dashscope`、`opencode-go` 的模型，不查询这些 provider 的远程模型接口。Kimi 默认使用 `kimi-code-plan-cn`，DashScope 默认使用 `alibaba-cn`；其他官方地址匹配对应目录，显式 `modelsDevProviderId` 优先。

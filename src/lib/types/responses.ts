@@ -11,7 +11,16 @@ export interface ResponsesPayload {
   previous_response_id?: string | null
   text?: ResponsesTextConfig | null
   tools?: Array<Tool> | null
-  tool_choice?: ToolChoiceOptions | ToolChoiceFunction | ToolChoiceCustom
+  tool_choice?:
+    | ToolChoiceOptions
+    | ToolChoiceFunction
+    | ToolChoiceCustom
+    | { type: "image_generation" }
+    | {
+        type: "allowed_tools"
+        mode: "auto" | "required"
+        tools: Array<{ type: string; name?: string }>
+      }
   temperature?: number | null
   top_p?: number | null
   max_output_tokens?: number | null
@@ -66,9 +75,41 @@ export interface ToolChoiceCustom {
 export type Tool =
   | FunctionTool
   | CustomTool
+  | ImageGenerationTool
   | ToolSearchTool
   | NamespaceTool
   | Record<string, unknown>
+
+export interface ImageGenerationTool {
+  type: "image_generation"
+  model?: string | null
+  action?: "auto" | "generate" | "edit" | null
+  size?: string | null
+  quality?: string | null
+  background?: string | null
+  output_format?: "png" | "jpeg" | "webp" | null
+  output_compression?: number | null
+  moderation?: string | null
+  input_fidelity?: string | null
+  input_image_mask?: {
+    image_url?: string | null
+    file_id?: string | null
+  } | null
+  partial_images?: number | null
+}
+
+export interface ImageGenerationCall {
+  type: "image_generation_call"
+  id: string
+  status: "in_progress" | "generating" | "completed" | "failed"
+  result: string | null
+  revised_prompt?: string | null
+  action?: "generate" | "edit"
+  output_format?: string
+  size?: string
+  quality?: string
+  background?: string
+}
 
 export interface FunctionTool {
   name: string
@@ -238,6 +279,7 @@ export interface ResponseInputAdditionalTools {
 
 export type ResponseInputItem =
   | ResponseInputMessage
+  | ImageGenerationCall
   | ResponseInputAgentMessage
   | ResponseFunctionToolCallItem
   | ResponseFunctionCallOutputItem
@@ -314,6 +356,7 @@ export interface ResponseError {
 
 export type ResponseOutputItem =
   | ResponseOutputMessage
+  | ImageGenerationCall
   | ResponseOutputReasoning
   | ResponseOutputFunctionCall
   | ResponseOutputCustomToolCall
@@ -447,6 +490,7 @@ export type ResponseStreamEvent =
   | ResponseContentPartAddedEvent
   | ResponseOutputTextAnnotationAddedEvent
   | ResponseContentPartDoneEvent
+  | ResponseImageGenerationEvent
   | ResponseWebSearchCallInProgressEvent
   | ResponseWebSearchCallSearchingEvent
   | ResponseWebSearchCallCompletedEvent
@@ -582,6 +626,24 @@ export interface ResponseContentPartDoneEvent {
   sequence_number: number
   type: "response.content_part.done"
 }
+
+export type ResponseImageGenerationEvent = {
+  item_id: string
+  output_index: number
+  sequence_number: number
+} & (
+  | {
+      type:
+        | "response.image_generation_call.in_progress"
+        | "response.image_generation_call.generating"
+        | "response.image_generation_call.completed"
+    }
+  | {
+      type: "response.image_generation_call.partial_image"
+      partial_image_index: number
+      partial_image_b64: string
+    }
+)
 
 export interface ResponseWebSearchCallInProgressEvent {
   item_id: string
