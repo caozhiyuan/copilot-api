@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import type { ServerSentEventMessage } from "fetch-event-stream"
+import type { Context } from "hono"
+import { streamSSE } from "hono/streaming"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -497,6 +499,10 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
 
     expect(res.status).toBe(200)
     expect(res.headers.get("content-type")).toContain("application/json")
+    expect(res.headers.get("transfer-encoding")).toBeNull()
+    expect(res.headers.get("cache-control")).toBeNull()
+    expect(res.headers.get("connection")).toBeNull()
+    expect(res.headers.get("x-trace-id")).toBeTruthy()
     const chunks = (await res.json()) as Array<GoogleGenerateContentResponse>
     expect(
       chunks.map((c) => c.candidates?.[0]?.content?.parts?.[0]?.text),
@@ -694,12 +700,11 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     )
     expect(emptyContents.status).toBe(400)
 
-    // Non-streaming request receiving SSE stream -> 502
-    googleHandlerDependencies.handleCompletionPayload = mock(() =>
+    // Non-streaming request receiving SSE stream -> 502 without leaked SSE headers
+    googleHandlerDependencies.handleCompletionPayload = mock((c: Context) =>
       Promise.resolve(
-        new Response("data: {}\n\n", {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
+        streamSSE(c, async (stream) => {
+          await stream.writeSSE({ data: "{}" })
         }),
       ),
     )
@@ -714,6 +719,12 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       },
     )
     expect(unexpectedStream.status).toBe(502)
+    expect(unexpectedStream.headers.get("content-type")).toContain(
+      "application/json",
+    )
+    expect(unexpectedStream.headers.get("transfer-encoding")).toBeNull()
+    expect(unexpectedStream.headers.get("cache-control")).toBeNull()
+    expect(unexpectedStream.headers.get("connection")).toBeNull()
 
     // Streaming request receiving non-streaming JSON -> wrapped as SSE or JSON array
     const anthropicJson = {

@@ -276,6 +276,8 @@ export async function handleGoogleGenerateContent(
     const contentType = messagesResponse.headers.get("content-type") ?? ""
     if (contentType.includes("text/event-stream")) {
       if (!stream) {
+        clearStreamSSEHeaders(c)
+        await messagesResponse.body?.cancel()
         throw new GoogleMessagesTranslationError(
           "Messages API returned a stream for a non-streaming generateContent request",
           502,
@@ -284,6 +286,7 @@ export async function handleGoogleGenerateContent(
       if (useSSE) {
         return streamTranslatedGoogleSSE(c, messagesResponse, parsedPath.model)
       }
+      clearStreamSSEHeaders(c)
       return await collectTranslatedGoogleJsonArray(
         c,
         messagesResponse,
@@ -330,6 +333,12 @@ export async function handleGoogleGenerateContent(
     }
     throw error
   }
+}
+
+function clearStreamSSEHeaders(c: Context): void {
+  c.header("Transfer-Encoding", undefined)
+  c.header("Cache-Control", undefined)
+  c.header("Connection", undefined)
 }
 
 function createAbortableResponse(
