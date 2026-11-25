@@ -12,8 +12,9 @@ import {
 import { getModelMetadata } from "~/routes/models/model-metadata"
 
 const EFFORT_LABELS = {
-  low: "Low",
+  // AGY selects the first listed variant when there is no base entry.
   medium: "Medium",
+  low: "Low",
   high: "High",
   xhigh: "XHigh",
   max: "Max",
@@ -43,18 +44,19 @@ export function createAntigravityModelCatalog(
   models: Array<ClientModel>,
   getProviderConfig: (name: string) => ResolvedProviderConfig | null,
 ) {
-  const ids = new Set(models.map(({ id }) => id))
+  const modelsById = new Map(models.map((model) => [model.id, model]))
+  const listedVariantIds = new Set<string>()
   const variants = new Map<string, AntigravityModelVariant>()
-  const entries = models.flatMap((model) => {
-    // Existing variant IDs are already visible to the client.
+  const entriesByModel = models.map((model) => {
+    // A provider-supplied variant belongs to its base model's group.
     if (
       EFFORTS.some(
         (effort) =>
           model.id.endsWith(`-${effort}`)
-          && ids.has(model.id.slice(0, -effort.length - 1)),
+          && modelsById.has(model.id.slice(0, -effort.length - 1)),
       )
     ) {
-      return [model]
+      return model
     }
 
     const alias = parseProviderModelAlias(model.id)
@@ -78,24 +80,27 @@ export function createAntigravityModelCatalog(
         && (!nativeGoogle
           || (nativeLevels?.includes(effort) ?? effort !== "max")),
     )
-    if (efforts.length < 2) return [model]
+    if (efforts.length < 2) return model
 
     const displayName = getStringField(model, "display_name") ?? model.id
-    return [
-      model,
-      ...efforts.flatMap((effort) => {
-        const id = `${model.id}-${effort}`
-        if (ids.has(id)) return []
-        variants.set(id, { model: model.id, effort })
-        return [
-          {
-            ...model,
-            id,
-            display_name: `${displayName} (${EFFORT_LABELS[effort]})`,
-          },
-        ]
-      }),
-    ]
+    return efforts.map((effort) => {
+      const id = `${model.id}-${effort}`
+      const existing = modelsById.get(id)
+      if (existing) {
+        listedVariantIds.add(id)
+        return existing
+      }
+      variants.set(id, { model: model.id, effort })
+      return {
+        ...model,
+        id,
+        display_name: `${displayName} (${EFFORT_LABELS[effort]})`,
+      }
+    })
+  })
+  const entries = entriesByModel.flatMap((entry) => {
+    if (Array.isArray(entry)) return entry
+    return listedVariantIds.has(entry.id) ? [] : [entry]
   })
   return { entries, variants }
 }

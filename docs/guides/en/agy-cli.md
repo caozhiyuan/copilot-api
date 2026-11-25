@@ -35,7 +35,7 @@ curl -fsS "$AGY_LLM_GATEWAY_URL/v1beta/models" \
 
 ### Test a model request
 
-Replace `gemini-4-neon` with a model from the list. Use its `name` with the `models/` prefix removed.
+Use a model's `name` from the list with the `models/` prefix removed. For models with multiple reasoning levels, the list contains IDs such as `gemini-4-neon-high`. AGY also accepts the base ID `gemini-4-neon`.
 
 ```sh
 agy --print "Reply with OK only." --model gemini-4-neon

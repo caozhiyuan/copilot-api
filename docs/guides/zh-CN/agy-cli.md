@@ -35,7 +35,7 @@ curl -fsS "$AGY_LLM_GATEWAY_URL/v1beta/models" \
 
 ### 验证模型请求
 
-用模型列表中 `name` 去掉 `models/` 前缀后的值替换示例里的 `gemini-4-neon`。
+使用模型列表中 `name` 去掉 `models/` 前缀后的 ID。多档位模型在列表里使用 `gemini-4-neon-high` 这样的 ID，AGY 也接受基础 ID `gemini-4-neon`。
 
 ```sh
 agy --print "只回复 OK" --model gemini-4-neon

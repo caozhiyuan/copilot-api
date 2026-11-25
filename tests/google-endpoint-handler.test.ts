@@ -583,17 +583,22 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     })
   })
 
-  test("lists and resolves model effort variants for every user agent", async () => {
+  test("lists models with multiple efforts as variants for every user agent", async () => {
     const base = "gpt-5.4"
     const getModels = mock(() =>
       Promise.resolve([
+        { id: `${base}-high`, object: "model", display_name: "High preset" },
         {
           id: base,
           object: "model",
           display_name: "GPT-5.4",
-          reasoning_efforts: ["low", "high", "max", "ultra"],
+          reasoning_efforts: ["low", "medium", "high", "max", "ultra"],
         },
-        { id: `${base}-high`, object: "model", display_name: "High preset" },
+        {
+          id: `${base}-medium`,
+          object: "model",
+          display_name: "Medium preset",
+        },
         { id: "fixed-model", object: "model", reasoning_efforts: ["high"] },
       ]),
     )
@@ -620,10 +625,10 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     expect(
       catalog.models?.map(({ name, displayName }) => [name, displayName]),
     ).toEqual([
-      [`models/${base}`, "GPT-5.4"],
+      [`models/${base}-medium`, "Medium preset"],
       [`models/${base}-low`, "GPT-5.4 (Low)"],
-      [`models/${base}-max`, "GPT-5.4 (Max)"],
       [`models/${base}-high`, "High preset"],
+      [`models/${base}-max`, "GPT-5.4 (Max)"],
       ["models/fixed-model", "fixed-model"],
     ])
     const agyResponse = await app.request("/v1beta/models", {
@@ -670,6 +675,8 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       model: base,
       output_config: { effort: "low" },
     })
+    expect((await makeRequest(base)).status).toBe(200)
+    expect(handleCompletion.mock.calls[4]?.[1].model).toBe(base)
     expect(getModels).toHaveBeenCalledTimes(3)
   })
 
@@ -712,14 +719,12 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     })
     const catalog = (await response.json()) as GoogleModelsResponse
     expect(catalog.models?.map((model) => model.name)).toEqual([
-      `models/${base}`,
-      `models/${base}-low`,
       `models/${base}-medium`,
+      `models/${base}-low`,
       `models/${base}-high`,
       `models/${base}-xhigh`,
-      "models/mygoogle/gemini-4-argon",
-      "models/mygoogle/gemini-4-argon-low",
       "models/mygoogle/gemini-4-argon-medium",
+      "models/mygoogle/gemini-4-argon-low",
       "models/mygoogle/gemini-4-argon-high",
     ])
     const generation = await app.request(
