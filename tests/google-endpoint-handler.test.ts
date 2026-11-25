@@ -573,103 +573,83 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     })
   })
 
-  test("passes native google provider requests through directly for non-streaming, SSE, and JSON array", async () => {
-    const app = createServer()
-    const googleProvider: ResolvedProviderConfig = {
-      name: "mygoogle",
-      type: "google",
-      baseUrl: "https://generativelanguage.googleapis.com",
-      apiKey: "upstream-key",
-      authType: "x-goog-api-key",
-    }
-    googleHandlerDependencies.resolveConfiguredProviderModelAlias = mock(() =>
-      Promise.resolve({ provider: "mygoogle", model: "gemini-4-argon" }),
-    )
-    googleHandlerDependencies.resolveProviderConfig = mock(() =>
-      Promise.resolve(googleProvider),
-    )
+  test.each([
+    { upstreamFormat: "json", clientFormat: "json" },
+    { upstreamFormat: "sse", clientFormat: "sse" },
+    { upstreamFormat: "sse", clientFormat: "array" },
+    { upstreamFormat: "array", clientFormat: "sse" },
+    { upstreamFormat: "array", clientFormat: "array" },
+  ] as const)(
+    "passes native Google $upstreamFormat through as $clientFormat",
+    async ({ upstreamFormat, clientFormat }) => {
+      const app = createServer()
+      const googleProvider: ResolvedProviderConfig = {
+        name: "mygoogle",
+        type: "google",
+        baseUrl: "https://generativelanguage.googleapis.com",
+        apiKey: "upstream-key",
+        authType: "x-goog-api-key",
+      }
+      googleHandlerDependencies.resolveConfiguredProviderModelAlias = mock(() =>
+        Promise.resolve({ provider: "mygoogle", model: "gemini-4-argon" }),
+      )
+      googleHandlerDependencies.resolveProviderConfig = mock(() =>
+        Promise.resolve(googleProvider),
+      )
 
-    // 1. Non-streaming passthrough
-    const nativeResponse: GoogleGenerateContentResponse = {
-      responseId: "g-1",
-      candidates: [
-        {
-          index: 0,
-          content: {
-            role: "model",
-            parts: [{ text: "Native reply", thoughtSignature: "RAW_SIG" }],
+      const nativeResponse: GoogleGenerateContentResponse = {
+        responseId: "g-1",
+        candidates: [
+          {
+            index: 0,
+            content: {
+              role: "model",
+              parts: [{ text: "Native reply", thoughtSignature: "RAW_SIG" }],
+            },
+            finishReason: "STOP",
           },
-          finishReason: "STOP",
+        ],
+        usageMetadata: {
+          promptTokenCount: 20,
+          candidatesTokenCount: 10,
+          totalTokenCount: 30,
         },
-      ],
-      usageMetadata: {
-        promptTokenCount: 20,
-        candidatesTokenCount: 10,
-        totalTokenCount: 30,
-      },
-    }
-    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
-      Promise.resolve(Response.json(nativeResponse)),
-    )
+      }
+      const upstream =
+        upstreamFormat === "sse" ?
+          new Response(`data: ${JSON.stringify(nativeResponse)}\n\n`, {
+            headers: { "content-type": "text/event-stream" },
+          })
+        : Response.json(
+            upstreamFormat === "array" ? [nativeResponse] : nativeResponse,
+          )
+      googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
+        Promise.resolve(upstream),
+      )
 
-    const unaryRes = await app.request(
-      "/v1beta/models/mygoogle/gemini-4-argon:generateContent",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "Hello" }] }],
-        }),
-      },
-    )
-    expect(unaryRes.status).toBe(200)
-    expect(await unaryRes.json()).toEqual(nativeResponse)
-
-    // 2. SSE streaming passthrough
-    const ssePayload = `data: ${JSON.stringify(nativeResponse)}\n\n`
-    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
-      Promise.resolve(
-        new Response(ssePayload, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        }),
-      ),
-    )
-    const sseRes = await app.request(
-      "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent?alt=sse",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "Stream me" }] }],
-        }),
-      },
-    )
-    expect(sseRes.status).toBe(200)
-    expect(parseSseDataEvents(await sseRes.text())).toEqual([nativeResponse])
-
-    // 3. JSON array streaming passthrough (no alt=sse)
-    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
-      Promise.resolve(
-        new Response(ssePayload, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        }),
-      ),
-    )
-    const arrayRes = await app.request(
-      "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "Array stream" }] }],
-        }),
-      },
-    )
-    expect(arrayRes.status).toBe(200)
-    expect(await arrayRes.json()).toEqual([nativeResponse])
-  })
+      const action =
+        clientFormat === "json" ? "generateContent" : "streamGenerateContent"
+      const query = clientFormat === "sse" ? "?alt=sse" : ""
+      const res = await app.request(
+        `/v1beta/models/mygoogle/gemini-4-argon:${action}${query}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "Hello" }] }],
+          }),
+        },
+      )
+      expect(res.status).toBe(200)
+      const body =
+        clientFormat === "sse" ?
+          parseSseDataEvents(await res.text())
+        : await res.json()
+      expect(body).toEqual(
+        clientFormat === "json" ? nativeResponse : [nativeResponse],
+      )
+    },
+  )
 
   test("returns proper Google error responses for invalid paths, actions, JSON, and mismatched responses", async () => {
     const app = createServer()
@@ -870,7 +850,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     expect(postErr.status).toBe(500)
   })
 
-  test("handles native google provider non-OK errors and non-SSE JSON fallback on streaming", async () => {
+  test("forwards native Google provider HTTP errors", async () => {
     const app = createServer()
     const googleProvider: ResolvedProviderConfig = {
       name: "mygoogle",
@@ -886,7 +866,6 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       Promise.resolve(googleProvider),
     )
 
-    // Upstream 503 forwarded through HTTPError
     googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
       Promise.resolve(
         Response.json(
@@ -908,49 +887,6 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       },
     )
     expect(errRes.status).toBe(503)
-
-    // Upstream returns JSON array for streaming request (both SSE and non-SSE client modes)
-    const chunk: GoogleGenerateContentResponse = {
-      candidates: [
-        {
-          index: 0,
-          content: { role: "model", parts: [{ text: "From JSON array" }] },
-          finishReason: "STOP",
-        },
-      ],
-      usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3 },
-    }
-    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
-      Promise.resolve(Response.json([chunk])),
-    )
-    const sseFromJson = await app.request(
-      "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent?alt=sse",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "hi" }] }],
-        }),
-      },
-    )
-    expect(sseFromJson.status).toBe(200)
-    expect(parseSseDataEvents(await sseFromJson.text())).toEqual([chunk])
-
-    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
-      Promise.resolve(Response.json([chunk])),
-    )
-    const arrayFromJson = await app.request(
-      "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "hi" }] }],
-        }),
-      },
-    )
-    expect(arrayFromJson.status).toBe(200)
-    expect(await arrayFromJson.json()).toEqual([chunk])
   })
 
   test("returns non-2xx and records error outcome on mid-stream failure in buffered JSON array mode", async () => {

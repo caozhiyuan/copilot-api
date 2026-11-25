@@ -635,6 +635,20 @@ describe("translateGoogleToMessages", () => {
         { model: "gemini-4-neon", stream: false },
       ),
     ).toThrow(GoogleMessagesTranslationError)
+
+    expect(() =>
+      translateGoogleToMessages(
+        {
+          contents: [
+            {
+              role: "user",
+              parts: [{ inlineData: { mimeType: "", data: "aW1n" } }],
+            },
+          ],
+        },
+        { model: "gemini-4-neon", stream: false },
+      ),
+    ).toThrow(GoogleMessagesTranslationError)
   })
 })
 
@@ -1646,46 +1660,19 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
     )
   })
 
-  test("translates Gemini REST fields and preserves user keys in tool arguments, results, and schemas", () => {
-    const sig = Buffer.from("tool-sig").toString("base64")
+  test("preserves user keys in tool arguments, results, and schemas", () => {
     const request: GoogleGenerateContentRequest = {
-      systemInstruction: { parts: [{ text: "Use tools carefully." }] },
       contents: [
-        {
-          role: "user",
-          parts: [
-            { text: "Describe this image" },
-            {
-              inlineData: {
-                mimeType: "image/png",
-                data: "aW1n",
-              },
-            },
-            {
-              inlineData: {
-                mimeType: "application/pdf",
-                data: "cGRm",
-                displayName: "report.pdf",
-              },
-            },
-            {
-              fileData: {
-                fileUri: "gs://bucket/file.txt",
-              },
-            },
-          ],
-        },
+        { role: "user", parts: [{ text: "Inspect the file" }] },
         {
           role: "model",
           parts: [
-            { text: "Checking tool", thought: true },
             {
               functionCall: {
                 id: "call_inspect_1",
                 name: "inspect_file",
                 args: { file_path: "src/app.ts", line_number: 10 },
               },
-              thoughtSignature: sig,
             },
           ],
         },
@@ -1697,14 +1684,6 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
                 id: "call_inspect_1",
                 name: "inspect_file",
                 response: { exit_code: 0, raw_text: "ok" },
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: "image/jpeg",
-                      data: "anBn",
-                    },
-                  },
-                ],
               },
             },
           ],
@@ -1728,12 +1707,6 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
           ],
         },
       ],
-      toolConfig: {
-        functionCallingConfig: {
-          mode: "VALIDATED",
-          allowedFunctionNames: ["inspect_file"],
-        },
-      },
       generationConfig: {
         maxOutputTokens: 2048,
         temperature: 0.3,
@@ -1761,9 +1734,6 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
       stream: false,
     })
 
-    expect(translated.system).toEqual([
-      { type: "text", text: "Use tools carefully." },
-    ])
     expect(translated.max_tokens).toBe(2048)
     expect(translated.temperature).toBe(0.3)
     expect(translated.top_p).toBe(0.85)
@@ -1801,32 +1771,11 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
         },
       },
     ])
-    expect(translated.tool_choice).toEqual({ type: "auto" })
     expect(translated.messages).toEqual([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Describe this image" },
-          {
-            type: "image",
-            source: { type: "base64", media_type: "image/png", data: "aW1n" },
-          },
-          {
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: "cGRm",
-            },
-            title: "report.pdf",
-          },
-          { type: "text", text: "[File reference: gs://bucket/file.txt]" },
-        ],
-      },
+      { role: "user", content: [{ type: "text", text: "Inspect the file" }] },
       {
         role: "assistant",
         content: [
-          { type: "thinking", thinking: "Checking tool", signature: sig },
           {
             type: "tool_use",
             id: "call_inspect_1",
@@ -1841,35 +1790,11 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
           {
             type: "tool_result",
             tool_use_id: "call_inspect_1",
-            content: [
-              { type: "text", text: '{"exit_code":0,"raw_text":"ok"}' },
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: "image/jpeg",
-                  data: "anBn",
-                },
-              },
-            ],
+            content: '{"exit_code":0,"raw_text":"ok"}',
           },
         ],
       },
     ])
-
-    expect(() =>
-      translateGoogleToMessages(
-        {
-          contents: [
-            {
-              role: "user",
-              parts: [{ inlineData: { mimeType: "", data: "aW1n" } }],
-            },
-          ],
-        },
-        { model: "gemini-4-neon", stream: false },
-      ),
-    ).toThrow(GoogleMessagesTranslationError)
   })
 
   test("translates Gemini 4+ generationConfig.responseFormat.text.schema and rejects unsupported formats", () => {

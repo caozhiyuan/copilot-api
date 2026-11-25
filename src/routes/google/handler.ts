@@ -432,6 +432,25 @@ function applyGoogleModelConfigDefaults(
   return forwarded
 }
 
+async function* readNativeGoogleStream(
+  upstream: Response,
+  signal: AbortSignal,
+): AsyncGenerator<GoogleGenerateContentResponse> {
+  const response = createAbortableResponse(upstream, signal)
+  if (response.headers.get("content-type")?.includes("text/event-stream")) {
+    for await (const event of events(response, signal)) {
+      if (!event.data || event.data === "[DONE]") continue
+      yield JSON.parse(event.data) as GoogleGenerateContentResponse
+    }
+    return
+  }
+
+  const body = (await response.json()) as
+    | GoogleGenerateContentResponse
+    | Array<GoogleGenerateContentResponse>
+  yield* Array.isArray(body) ? body : [body]
+}
+
 async function handleNativeGoogleProviderPassthrough(
   c: Context,
   options: {
@@ -480,36 +499,20 @@ async function handleNativeGoogleProviderPassthrough(
     return c.json(response)
   }
 
-  const isUpstreamSSE =
-    upstream.headers.get("content-type")?.includes("text/event-stream") ?? false
+  let usageMetadata: GoogleUsageMetadata = {}
+  const recordStreamChunk = (chunk: GoogleGenerateContentResponse): void => {
+    recordGoogleFirstToken(chunk)
+    if (chunk.usageMetadata) {
+      usageMetadata = { ...usageMetadata, ...chunk.usageMetadata }
+    }
+  }
 
   if (!useSSE) {
     const chunks: Array<GoogleGenerateContentResponse> = []
-    let usageMetadata: GoogleUsageMetadata = {}
     try {
-      const response = createAbortableResponse(upstream, signal)
-      if (isUpstreamSSE) {
-        for await (const event of events(response, signal)) {
-          if (!event.data || event.data === "[DONE]") continue
-          const parsed = JSON.parse(event.data) as GoogleGenerateContentResponse
-          recordGoogleFirstToken(parsed)
-          if (parsed.usageMetadata) {
-            usageMetadata = { ...usageMetadata, ...parsed.usageMetadata }
-          }
-          chunks.push(parsed)
-        }
-      } else {
-        const parsed = (await response.json()) as
-          | GoogleGenerateContentResponse
-          | Array<GoogleGenerateContentResponse>
-        const items = Array.isArray(parsed) ? parsed : [parsed]
-        for (const item of items) {
-          recordGoogleFirstToken(item)
-          if (item.usageMetadata) {
-            usageMetadata = { ...usageMetadata, ...item.usageMetadata }
-          }
-          chunks.push(item)
-        }
+      for await (const chunk of readNativeGoogleStream(upstream, signal)) {
+        recordStreamChunk(chunk)
+        chunks.push(chunk)
       }
       if (signal.aborted) {
         throw createAbortError(signal.reason)
@@ -529,40 +532,15 @@ async function handleNativeGoogleProviderPassthrough(
   }
 
   return streamSSE(c, async (sseStream) => {
-    let usageMetadata: GoogleUsageMetadata = {}
     sseStream.onAbort(() => controller.abort())
     try {
-      const response = createAbortableResponse(upstream, signal)
-      if (isUpstreamSSE) {
-        for await (const event of events(response, signal)) {
-          if (!event.data || event.data === "[DONE]") continue
-          const parsed = JSON.parse(event.data) as GoogleGenerateContentResponse
-          recordGoogleFirstToken(parsed)
-          if (parsed.usageMetadata) {
-            usageMetadata = { ...usageMetadata, ...parsed.usageMetadata }
-          }
-          await writeSSEIfConnected(
-            sseStream,
-            { data: JSON.stringify(parsed) },
-            parsed.error ? "error" : undefined,
-          )
-        }
-      } else {
-        const parsed = (await response.json()) as
-          | GoogleGenerateContentResponse
-          | Array<GoogleGenerateContentResponse>
-        const items = Array.isArray(parsed) ? parsed : [parsed]
-        for (const item of items) {
-          recordGoogleFirstToken(item)
-          if (item.usageMetadata) {
-            usageMetadata = { ...usageMetadata, ...item.usageMetadata }
-          }
-          await writeSSEIfConnected(
-            sseStream,
-            { data: JSON.stringify(item) },
-            item.error ? "error" : undefined,
-          )
-        }
+      for await (const chunk of readNativeGoogleStream(upstream, signal)) {
+        recordStreamChunk(chunk)
+        await writeSSEIfConnected(
+          sseStream,
+          { data: JSON.stringify(chunk) },
+          chunk.error ? "error" : undefined,
+        )
       }
     } catch (error) {
       if (!signal.aborted) {
