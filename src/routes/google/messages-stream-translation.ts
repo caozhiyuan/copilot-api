@@ -5,6 +5,7 @@ import type {
 } from "~/lib/types/anthropic"
 import type {
   GoogleGenerateContentResponse,
+  GoogleGroundingMetadata,
   GooglePart,
 } from "~/lib/types/google"
 
@@ -16,9 +17,13 @@ import {
 } from "./antigravity-signatures"
 import {
   createGoogleErrorPayload,
+  createGroundingAccumulator,
   encodeSignatureForGoogle,
+  finalizeGroundingMetadata,
   GoogleMessagesTranslationError,
   mapAnthropicStopReasonToGoogle,
+  recordWebSearchQuery,
+  recordWebSearchResults,
   translateAnthropicUsageToGoogle,
 } from "./messages-translation"
 
@@ -33,6 +38,12 @@ type StreamBlockState =
   | {
       type: "tool_use"
       id: string
+      name: string
+      inputJson: string
+      initialInput: Record<string, unknown>
+    }
+  | {
+      type: "server_tool_use"
       name: string
       inputJson: string
       initialInput: Record<string, unknown>
@@ -104,6 +115,7 @@ export async function* translateMessagesStreamToGoogle(
   const pendingSignatures: Array<string> = []
   const antigravitySignatures: Array<PositionedSignature> = []
   const toolSignaturesById = new Map<string, string>()
+  const grounding = createGroundingAccumulator()
   let pendingInvalidToolArgsError: GoogleMessagesTranslationError | undefined
   let textLength = 0
   let thoughtText = ""
@@ -122,6 +134,7 @@ export async function* translateMessagesStreamToGoogle(
     parts: Array<GooglePart>,
     finishReason?: string,
     includeUsage = false,
+    groundingMetadata?: GoogleGroundingMetadata,
   ): GoogleGenerateContentResponse => {
     if (options.preserveAntigravityReasoning) {
       for (const part of parts) {
@@ -148,6 +161,7 @@ export async function* translateMessagesStreamToGoogle(
           index: 0,
           ...(parts.length > 0 ? { content: { role: "model", parts } } : {}),
           ...(finishReason ? { finishReason } : {}),
+          ...(groundingMetadata ? { groundingMetadata } : {}),
         },
       ],
       ...(usageMetadata ? { usageMetadata } : {}),
@@ -205,6 +219,15 @@ export async function* translateMessagesStreamToGoogle(
             inputJson: "",
             initialInput: isRecord(block.input) ? block.input : {},
           })
+        } else if (block.type === "server_tool_use") {
+          blocks.set(event.index, {
+            type: "server_tool_use",
+            name: block.name,
+            inputJson: "",
+            initialInput: isRecord(block.input) ? block.input : {},
+          })
+        } else if (block.type === "web_search_tool_result") {
+          recordWebSearchResults(grounding, block.content)
         }
         continue
       }
@@ -231,7 +254,7 @@ export async function* translateMessagesStreamToGoogle(
             yield buildChunk([{ text: delta.text }])
           }
         } else if (delta.type === "input_json_delta") {
-          if (block?.type === "tool_use") {
+          if (block?.type === "tool_use" || block?.type === "server_tool_use") {
             block.inputJson += delta.partial_json
           }
         }
@@ -325,6 +348,18 @@ export async function* translateMessagesStreamToGoogle(
               ...(thoughtSignature ? { thoughtSignature } : {}),
             },
           ])
+        } else if (block.type === "server_tool_use") {
+          if (block.name === "web_search") {
+            try {
+              const args = parseToolUseArguments(
+                block.inputJson,
+                block.initialInput,
+              )
+              recordWebSearchQuery(grounding, args)
+            } catch {
+              // Grounding metadata is best-effort for server tool inputs.
+            }
+          }
         }
         continue
       }
@@ -366,6 +401,7 @@ export async function* translateMessagesStreamToGoogle(
           finalParts,
           mapAnthropicStopReasonToGoogle(stopReason),
           true,
+          finalizeGroundingMetadata(grounding),
         )
         break
       }

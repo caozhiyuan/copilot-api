@@ -3041,3 +3041,277 @@ describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-
     })
   })
 })
+
+describe("Gemini googleSearch translation and groundingMetadata", () => {
+  test("translates googleSearch-only tool lists (and snake_case / retrieval variants) to Anthropic web_search", () => {
+    const antigravityRequest = translateGoogleToMessages(
+      {
+        contents: [
+          {
+            parts: [{ text: "Python 3.14 release notes site:docs.python.org" }],
+          },
+        ],
+        tools: [
+          {
+            googleSearch: {
+              enhancedContent: { imageSearch: { maxResultCount: 5 } },
+            },
+          },
+        ],
+      },
+      { model: "gemini-3.8-flash", stream: false },
+    )
+    expect(antigravityRequest.tools).toEqual([
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+      } as unknown as NonNullable<typeof antigravityRequest.tools>[number],
+    ])
+    expect(antigravityRequest.tool_choice).toBeUndefined()
+
+    for (const toolGroup of [
+      { google_search: {} },
+      { googleSearchRetrieval: {} },
+      { google_search_retrieval: {} },
+    ]) {
+      const translated = translateGoogleToMessages(
+        {
+          contents: [{ role: "user", parts: [{ text: "latest news" }] }],
+          tools: [
+            { functionDeclarations: [] },
+            toolGroup,
+            { googleSearch: {} },
+          ],
+        },
+        { model: "gemini-3.8-flash", stream: false },
+      )
+      expect(translated.tools).toHaveLength(1)
+      expect(translated.tools?.[0]).toEqual({
+        type: "web_search_20250305",
+        name: "web_search",
+      } as unknown as NonNullable<typeof translated.tools>[number])
+    }
+  })
+
+  test("maps Anthropic server_tool_use and web_search_tool_result blocks to Gemini groundingMetadata", () => {
+    const response: AnthropicResponse = {
+      id: "msg_web_search_1",
+      type: "message",
+      role: "assistant",
+      model: "gemini-3.8-flash",
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      content: [
+        {
+          type: "server_tool_use",
+          id: "srvtoolu_1",
+          name: "web_search",
+          input: { query: "Python 3.14 release notes" },
+        },
+        {
+          type: "server_tool_use",
+          id: "srvtoolu_dup",
+          name: "web_search",
+          input: { query: "  Python 3.14 release notes  " },
+        },
+        {
+          type: "web_search_tool_result",
+          tool_use_id: "srvtoolu_1",
+          content: [
+            {
+              type: "web_search_result",
+              url: "https://docs.python.org/3.14/whatsnew/3.14.html",
+              title: "What's New In Python 3.14",
+              page_age: null,
+              encrypted_content: "",
+            },
+            {
+              type: "web_search_result",
+              url: "https://docs.python.org/3.14/whatsnew/3.14.html",
+              title: "Duplicate URL",
+            },
+            {
+              type: "web_search_result",
+              url: "https://peps.python.org/pep-0745/",
+              title: "",
+            },
+          ],
+        },
+        {
+          type: "web_search_tool_result",
+          tool_use_id: "srvtoolu_err",
+          content: {
+            type: "web_search_tool_result_error",
+            error_code: "unavailable",
+          },
+        },
+        {
+          type: "text",
+          text: "Python 3.14 introduces template strings and deferred annotations.",
+        },
+      ],
+      usage: {
+        input_tokens: 40,
+        output_tokens: 25,
+        server_tool_use: { web_search_requests: 1 },
+      },
+    }
+
+    const translated = translateAnthropicResponseToGoogle(
+      response,
+      "gemini-3.8-flash",
+    )
+
+    expect(translated.candidates?.[0]?.content).toEqual({
+      role: "model",
+      parts: [
+        {
+          text: "Python 3.14 introduces template strings and deferred annotations.",
+        },
+      ],
+    })
+    expect(translated.candidates?.[0]?.groundingMetadata).toEqual({
+      webSearchQueries: ["Python 3.14 release notes"],
+      groundingChunks: [
+        {
+          web: {
+            uri: "https://docs.python.org/3.14/whatsnew/3.14.html",
+            title: "What's New In Python 3.14",
+          },
+        },
+        {
+          web: {
+            uri: "https://peps.python.org/pep-0745/",
+          },
+        },
+      ],
+    })
+  })
+
+  test("emits groundingMetadata on the final streamed Gemini chunk from web search SSE events", async () => {
+    const chunks = await collectStream(
+      [
+        {
+          data: JSON.stringify({
+            type: "message_start",
+            message: {
+              id: "msg_stream_ws",
+              type: "message",
+              role: "assistant",
+              content: [],
+              model: "gemini-3.8-flash",
+              stop_reason: null,
+              stop_sequence: null,
+              usage: { input_tokens: 20, output_tokens: 0 },
+            },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "server_tool_use",
+              id: "srvtoolu_1",
+              name: "web_search",
+              input: {},
+            },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 0,
+            delta: {
+              type: "input_json_delta",
+              partial_json: '{"query":"Python 3.14"}',
+            },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 0 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 1,
+            content_block: {
+              type: "server_tool_use",
+              id: "srvtoolu_bad",
+              name: "web_search",
+              input: {},
+            },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 1,
+            delta: {
+              type: "input_json_delta",
+              partial_json: "{malformed",
+            },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 1 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 2,
+            content_block: {
+              type: "web_search_tool_result",
+              tool_use_id: "srvtoolu_1",
+              content: [
+                {
+                  type: "web_search_result",
+                  url: "https://docs.python.org/3.14/",
+                  title: "Python 3.14 Docs",
+                },
+              ],
+            },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 2 }) },
+        {
+          data: JSON.stringify({
+            type: "content_block_start",
+            index: 3,
+            content_block: { type: "text", text: "" },
+          }),
+        },
+        {
+          data: JSON.stringify({
+            type: "content_block_delta",
+            index: 3,
+            delta: { type: "text_delta", text: "Summary from search." },
+          }),
+        },
+        { data: JSON.stringify({ type: "content_block_stop", index: 3 }) },
+        {
+          data: JSON.stringify({
+            type: "message_delta",
+            delta: { stop_reason: "end_turn", stop_sequence: null },
+            usage: { output_tokens: 15 },
+          }),
+        },
+        { data: JSON.stringify({ type: "message_stop" }) },
+      ],
+      "gemini-3.8-flash",
+    )
+
+    expect(chunks).toHaveLength(2)
+    expect(chunks[0]?.candidates?.[0]?.content?.parts).toEqual([
+      { text: "Summary from search." },
+    ])
+    expect(chunks[1]?.candidates?.[0]?.finishReason).toBe("STOP")
+    expect(chunks[1]?.candidates?.[0]?.groundingMetadata).toEqual({
+      webSearchQueries: ["Python 3.14"],
+      groundingChunks: [
+        {
+          web: {
+            uri: "https://docs.python.org/3.14/",
+            title: "Python 3.14 Docs",
+          },
+        },
+      ],
+    })
+  })
+})

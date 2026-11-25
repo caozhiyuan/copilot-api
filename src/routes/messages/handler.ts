@@ -98,7 +98,11 @@ export async function handleCompletionPayload(
     const webSearchResult = await tryHandleWebSearch(c, anthropicPayload, {
       logger,
       forwardToProvider: (ctx, payload, provider) =>
-        handleProviderMessagesForProvider(ctx, { payload, provider }),
+        handleProviderMessagesForProvider(ctx, {
+          payload,
+          provider,
+          usageEndpoint: dispatchOptions.usageEndpoint,
+        }),
     })
     if (webSearchResult) return webSearchResult
   }

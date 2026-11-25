@@ -13,12 +13,15 @@ import type {
   AnthropicToolUseBlock,
   AnthropicUsage,
   AnthropicUserContentBlock,
+  AnthropicWebSearchToolResultBlock,
 } from "~/lib/types/anthropic"
 import type {
   GoogleContent,
   GoogleGenerateContentRequest,
   GoogleGenerateContentResponse,
   GoogleGenerationConfig,
+  GoogleGroundingChunk,
+  GoogleGroundingMetadata,
   GoogleInlineData,
   GooglePart,
   GoogleTool,
@@ -435,6 +438,23 @@ function translateFunctionResponse(
   }
 }
 
+function isGoogleSearchToolGroup(toolGroup: GoogleTool): boolean {
+  return (
+    isRecord(toolGroup.googleSearch)
+    || isRecord(toolGroup.google_search)
+    || isRecord(toolGroup.googleSearchRetrieval)
+    || isRecord(toolGroup.google_search_retrieval)
+  )
+}
+
+function createAnthropicWebSearchTool(): AnthropicTool {
+  // Server tools carry `type` and intentionally omit `input_schema`.
+  return {
+    type: "web_search_20250305",
+    name: "web_search",
+  } as unknown as AnthropicTool
+}
+
 function translateToolsAndChoice(
   rawTools: Array<GoogleTool> | undefined,
   toolConfig: GoogleToolConfig | undefined,
@@ -443,7 +463,11 @@ function translateToolsAndChoice(
   toolChoice?: AnthropicMessagesPayload["tool_choice"]
 } {
   let tools: Array<AnthropicTool> = []
+  let hasGoogleSearch = false
   for (const toolGroup of rawTools ?? []) {
+    if (isGoogleSearchToolGroup(toolGroup)) {
+      hasGoogleSearch = true
+    }
     const declarations = toolGroup.functionDeclarations
     if (!Array.isArray(declarations)) continue
     for (const declaration of declarations) {
@@ -465,6 +489,9 @@ function translateToolsAndChoice(
   }
 
   if (tools.length === 0) {
+    if (hasGoogleSearch) {
+      return { tools: [createAnthropicWebSearchTool()] }
+    }
     return {}
   }
 
@@ -1039,6 +1066,69 @@ export function translateAnthropicUsageToGoogle(
   }
 }
 
+export interface GroundingAccumulator {
+  webSearchQueries: Array<string>
+  seenQueries: Set<string>
+  groundingChunks: Array<GoogleGroundingChunk>
+  seenUrls: Set<string>
+}
+
+export function createGroundingAccumulator(): GroundingAccumulator {
+  return {
+    webSearchQueries: [],
+    seenQueries: new Set(),
+    groundingChunks: [],
+    seenUrls: new Set(),
+  }
+}
+
+export function recordWebSearchQuery(
+  acc: GroundingAccumulator,
+  input: unknown,
+): void {
+  if (!isRecord(input) || typeof input.query !== "string") return
+  const query = input.query.trim()
+  if (!query || acc.seenQueries.has(query)) return
+  acc.seenQueries.add(query)
+  acc.webSearchQueries.push(query)
+}
+
+export function recordWebSearchResults(
+  acc: GroundingAccumulator,
+  content: AnthropicWebSearchToolResultBlock["content"],
+): void {
+  if (!Array.isArray(content)) return
+  for (const item of content) {
+    if (item.type !== "web_search_result") continue
+    const uri = typeof item.url === "string" ? item.url.trim() : ""
+    if (!uri || acc.seenUrls.has(uri)) continue
+    acc.seenUrls.add(uri)
+    const title = typeof item.title === "string" ? item.title.trim() : ""
+    acc.groundingChunks.push({
+      web: {
+        uri,
+        ...(title ? { title } : {}),
+      },
+    })
+  }
+}
+
+export function finalizeGroundingMetadata(
+  acc: GroundingAccumulator,
+): GoogleGroundingMetadata | undefined {
+  if (acc.webSearchQueries.length === 0 && acc.groundingChunks.length === 0) {
+    return undefined
+  }
+  return {
+    ...(acc.webSearchQueries.length > 0 ?
+      { webSearchQueries: acc.webSearchQueries }
+    : {}),
+    ...(acc.groundingChunks.length > 0 ?
+      { groundingChunks: acc.groundingChunks }
+    : {}),
+  }
+}
+
 export function translateAnthropicResponseToGoogle(
   response: AnthropicResponse,
   fallbackModel: string,
@@ -1048,6 +1138,7 @@ export function translateAnthropicResponseToGoogle(
   const pendingSignatures: Array<string> = []
   const antigravitySignatures: Array<PositionedSignature> = []
   const toolSignaturesById = new Map<string, string>()
+  const grounding = createGroundingAccumulator()
   let textLength = 0
   let thoughtText = ""
 
@@ -1129,6 +1220,18 @@ export function translateAnthropicResponseToGoogle(
       continue
     }
 
+    if (block.type === "server_tool_use") {
+      if (block.name === "web_search") {
+        recordWebSearchQuery(grounding, block.input)
+      }
+      continue
+    }
+
+    if (block.type === "web_search_tool_result") {
+      recordWebSearchResults(grounding, block.content)
+      continue
+    }
+
     if (block.type === "tool_use") {
       flushAntigravitySignatures(
         antigravitySignatures,
@@ -1171,6 +1274,7 @@ export function translateAnthropicResponseToGoogle(
   flushPendingSignatures(true)
 
   const usageMetadata = translateAnthropicUsageToGoogle(response.usage)
+  const groundingMetadata = finalizeGroundingMetadata(grounding)
 
   return {
     responseId: response.id,
@@ -1183,6 +1287,7 @@ export function translateAnthropicResponseToGoogle(
           parts,
         },
         finishReason: mapAnthropicStopReasonToGoogle(response.stop_reason),
+        ...(groundingMetadata ? { groundingMetadata } : {}),
       },
     ],
     ...(usageMetadata ? { usageMetadata } : {}),

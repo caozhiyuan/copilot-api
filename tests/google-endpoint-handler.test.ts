@@ -35,6 +35,9 @@ const { GatewayPlugins } = await import("~/lib/plugins/gateway-plugins")
 const { messagesApiFlowDependencies } = await import(
   "~/routes/messages/api-flows"
 )
+const { webSearchFlowDependencies } = await import(
+  "~/routes/messages/web-search/fulfill"
+)
 const { encodeAntigravitySignatures, encodeAntigravityToolCallSignature } =
   await import("~/routes/google/antigravity-signatures")
 const { googleHandlerDependencies, parseGoogleModelActionPath } = await import(
@@ -51,12 +54,22 @@ const originalHandleCompletionPayload =
   googleHandlerDependencies.handleCompletionPayload
 const originalGetAggregatedModels =
   googleHandlerDependencies.getAggregatedModels
+const originalGetMessageApiWebSearchModel =
+  googleHandlerDependencies.getMessageApiWebSearchModel
 const originalGetProviderConfig = googleHandlerDependencies.getProviderConfig
+const originalIsResponsesApiWebSearchEnabled =
+  googleHandlerDependencies.isResponsesApiWebSearchEnabled
 const originalResolveAlias =
   googleHandlerDependencies.resolveConfiguredProviderModelAlias
 const originalResolveProvider = googleHandlerDependencies.resolveProviderConfig
 const originalForwardGoogle =
   googleHandlerDependencies.forwardGoogleGenerateContent
+const originalWebSearchCreateResponses =
+  webSearchFlowDependencies.createResponses
+const originalWebSearchModelGetter =
+  webSearchFlowDependencies.getMessageApiWebSearchModel
+const originalWebSearchResolveProvider =
+  webSearchFlowDependencies.resolveProviderConfig
 const originalStateModels = state.models
 
 const createChatCompletions = mock(originalCreateChatCompletions)
@@ -123,11 +136,20 @@ beforeEach(async () => {
   googleHandlerDependencies.handleCompletionPayload =
     originalHandleCompletionPayload
   googleHandlerDependencies.getAggregatedModels = originalGetAggregatedModels
+  googleHandlerDependencies.getMessageApiWebSearchModel =
+    originalGetMessageApiWebSearchModel
   googleHandlerDependencies.getProviderConfig = originalGetProviderConfig
+  googleHandlerDependencies.isResponsesApiWebSearchEnabled =
+    originalIsResponsesApiWebSearchEnabled
   googleHandlerDependencies.resolveConfiguredProviderModelAlias =
     originalResolveAlias
   googleHandlerDependencies.resolveProviderConfig = originalResolveProvider
   googleHandlerDependencies.forwardGoogleGenerateContent = originalForwardGoogle
+  webSearchFlowDependencies.createResponses = originalWebSearchCreateResponses
+  webSearchFlowDependencies.getMessageApiWebSearchModel =
+    originalWebSearchModelGetter
+  webSearchFlowDependencies.resolveProviderConfig =
+    originalWebSearchResolveProvider
 })
 
 afterEach(async () => {
@@ -138,11 +160,20 @@ afterEach(async () => {
   googleHandlerDependencies.handleCompletionPayload =
     originalHandleCompletionPayload
   googleHandlerDependencies.getAggregatedModels = originalGetAggregatedModels
+  googleHandlerDependencies.getMessageApiWebSearchModel =
+    originalGetMessageApiWebSearchModel
   googleHandlerDependencies.getProviderConfig = originalGetProviderConfig
+  googleHandlerDependencies.isResponsesApiWebSearchEnabled =
+    originalIsResponsesApiWebSearchEnabled
   googleHandlerDependencies.resolveConfiguredProviderModelAlias =
     originalResolveAlias
   googleHandlerDependencies.resolveProviderConfig = originalResolveProvider
   googleHandlerDependencies.forwardGoogleGenerateContent = originalForwardGoogle
+  webSearchFlowDependencies.createResponses = originalWebSearchCreateResponses
+  webSearchFlowDependencies.getMessageApiWebSearchModel =
+    originalWebSearchModelGetter
+  webSearchFlowDependencies.resolveProviderConfig =
+    originalWebSearchResolveProvider
   await closeUsageStore()
   Reflect.deleteProperty(process.env, DB_PATH_ENV)
 })
@@ -2872,6 +2903,312 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         { functionCall: { name: "read_file", args: { path: "a.ts" } } },
         { text: "Native", thoughtSignature: nativeSig },
       ],
+    })
+  })
+
+  test("routes googleSearch-only generateContent through Copilot Responses web search and returns groundingMetadata", async () => {
+    googleHandlerDependencies.getMessageApiWebSearchModel = () => "gpt-6-luna"
+    googleHandlerDependencies.isResponsesApiWebSearchEnabled = () => true
+    webSearchFlowDependencies.getMessageApiWebSearchModel = () => "gpt-6-luna"
+    const wsResponses = mock<typeof originalWebSearchCreateResponses>(() =>
+      Promise.resolve({
+        ...createResponsesResult("gpt-6-luna"),
+        id: "resp_google_search_1",
+        output: [
+          {
+            type: "web_search_call",
+            action: {
+              query: "Python 3.14 release notes site:docs.python.org",
+            },
+          } as unknown as NonNullable<
+            ReturnType<typeof createResponsesResult>["output"]
+          >[number],
+          {
+            type: "message",
+            id: "msg_ws_1",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "Python 3.14 adds template string literals and deferred annotations.",
+                annotations: [
+                  {
+                    type: "url_citation",
+                    url: "https://docs.python.org/3.14/whatsnew/3.14.html",
+                    title: "What's New In Python 3.14",
+                  },
+                ],
+              },
+            ],
+          } as unknown as NonNullable<
+            ReturnType<typeof createResponsesResult>["output"]
+          >[number],
+        ],
+        usage: { input_tokens: 30, output_tokens: 20, total_tokens: 50 },
+      }),
+    )
+    webSearchFlowDependencies.createResponses = wsResponses
+
+    const app = createServer()
+    const response = await app.request(
+      "/v1beta/models/gemini-3.8-flash:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...antigravityHeaders,
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: "Python 3.14 release notes site:docs.python.org" },
+              ],
+            },
+          ],
+          tools: [
+            {
+              googleSearch: {
+                enhancedContent: { imageSearch: { maxResultCount: 5 } },
+              },
+            },
+          ],
+        }),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(wsResponses).toHaveBeenCalledTimes(1)
+    expect(wsResponses.mock.calls[0]?.[0]).toMatchObject({
+      model: "gpt-6-luna",
+      tools: [{ type: "web_search", search_context_size: "low" }],
+    })
+
+    const body = (await response.json()) as GoogleGenerateContentResponse
+    expect(body.candidates?.[0]).toEqual({
+      index: 0,
+      content: {
+        role: "model",
+        parts: [
+          {
+            text: "Python 3.14 adds template string literals and deferred annotations.",
+          },
+        ],
+      },
+      finishReason: "STOP",
+      groundingMetadata: {
+        webSearchQueries: ["Python 3.14 release notes site:docs.python.org"],
+        groundingChunks: [
+          {
+            web: {
+              uri: "https://docs.python.org/3.14/whatsnew/3.14.html",
+              title: "What's New In Python 3.14",
+            },
+          },
+        ],
+      },
+    })
+  })
+
+  test("streams googleSearch-only streamGenerateContent?alt=sse with groundingMetadata on the final chunk", async () => {
+    googleHandlerDependencies.getMessageApiWebSearchModel = () => "gpt-6-luna"
+    googleHandlerDependencies.isResponsesApiWebSearchEnabled = () => true
+    webSearchFlowDependencies.getMessageApiWebSearchModel = () => "gpt-6-luna"
+    webSearchFlowDependencies.createResponses = mock<
+      typeof originalWebSearchCreateResponses
+    >(() =>
+      Promise.resolve({
+        ...createResponsesResult("gpt-6-luna"),
+        id: "resp_google_search_sse",
+        output: [
+          {
+            type: "web_search_call",
+            action: { query: "bun latest release" },
+          } as unknown as NonNullable<
+            ReturnType<typeof createResponsesResult>["output"]
+          >[number],
+          {
+            type: "message",
+            id: "msg_ws_sse",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "Bun 1.4 is available.",
+                annotations: [
+                  {
+                    type: "url_citation",
+                    url: "https://bun.sh/blog",
+                    title: "Bun Blog",
+                  },
+                ],
+              },
+            ],
+          } as unknown as NonNullable<
+            ReturnType<typeof createResponsesResult>["output"]
+          >[number],
+        ],
+        usage: { input_tokens: 10, output_tokens: 8, total_tokens: 18 },
+      }),
+    )
+
+    const app = createServer()
+    const response = await app.request(
+      "/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "bun latest release" }] }],
+          tools: [{ googleSearch: {} }],
+        }),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const chunks = parseSseDataEvents(await response.text())
+    const combinedText = chunks
+      .flatMap((chunk) => chunk.candidates?.[0]?.content?.parts ?? [])
+      .map((part) => part.text ?? "")
+      .join("")
+    expect(combinedText).toBe("Bun 1.4 is available.")
+    const finalChunk = chunks.at(-1)
+    expect(finalChunk?.candidates?.[0]?.finishReason).toBe("STOP")
+    expect(finalChunk?.candidates?.[0]?.groundingMetadata).toEqual({
+      webSearchQueries: ["bun latest release"],
+      groundingChunks: [
+        { web: { uri: "https://bun.sh/blog", title: "Bun Blog" } },
+      ],
+    })
+  })
+
+  test("returns 400 when googleSearch is requested without gateway web search configured or enabled", async () => {
+    const completionSpy = mock(originalHandleCompletionPayload)
+    googleHandlerDependencies.handleCompletionPayload = completionSpy
+    const app = createServer()
+
+    const sendSearchRequest = () =>
+      app.request("/v1beta/models/gemini-3.8-flash:generateContent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          tools: [{ googleSearch: {} }],
+        }),
+      })
+
+    // 1. messageApiWebSearchModel unset
+    googleHandlerDependencies.getMessageApiWebSearchModel = () => undefined
+    googleHandlerDependencies.isResponsesApiWebSearchEnabled = () => true
+    const unsetRes = await sendSearchRequest()
+    expect(unsetRes.status).toBe(400)
+    const unsetBody = (await unsetRes.json()) as GoogleGenerateContentResponse
+    expect(unsetBody.error?.code).toBe(400)
+    expect(unsetBody.error?.message).toContain("messageApiWebSearchModel")
+
+    // 2. useResponsesApiWebSearch disabled for a Copilot model
+    googleHandlerDependencies.getMessageApiWebSearchModel = () => "gpt-6-luna"
+    googleHandlerDependencies.isResponsesApiWebSearchEnabled = () => false
+    const disabledRes = await sendSearchRequest()
+    expect(disabledRes.status).toBe(400)
+    const disabledBody =
+      (await disabledRes.json()) as GoogleGenerateContentResponse
+    expect(disabledBody.error?.message).toContain("useResponsesApiWebSearch")
+
+    // 3. provider/model alias does not match an enabled provider
+    googleHandlerDependencies.getMessageApiWebSearchModel = () =>
+      "missing-provider/search-model"
+    googleHandlerDependencies.isResponsesApiWebSearchEnabled = () => true
+    googleHandlerDependencies.resolveProviderConfig = () =>
+      Promise.resolve(null)
+    const missingRes = await sendSearchRequest()
+    expect(missingRes.status).toBe(400)
+    const missingBody =
+      (await missingRes.json()) as GoogleGenerateContentResponse
+    expect(missingBody.error?.message).toContain(
+      "missing-provider/search-model",
+    )
+
+    // 4. provider/model alias uses openai-compatible (no server-side web search)
+    googleHandlerDependencies.getMessageApiWebSearchModel = () =>
+      "compat/search-model"
+    googleHandlerDependencies.resolveProviderConfig = (provider) =>
+      Promise.resolve(
+        provider === "compat" ?
+          ({
+            name: "compat",
+            type: "openai-compatible",
+            baseUrl: "https://compat.example/v1",
+            apiKey: "test-key",
+            authType: "authorization",
+            models: {},
+          } satisfies ResolvedProviderConfig)
+        : null,
+      )
+    const compatRes = await sendSearchRequest()
+    expect(compatRes.status).toBe(400)
+    const compatBody = (await compatRes.json()) as GoogleGenerateContentResponse
+    expect(compatBody.error?.message).toContain("openai-compatible")
+
+    expect(completionSpy).not.toHaveBeenCalled()
+  })
+
+  test("passes googleSearch-only request natively when messageApiWebSearchModel targets a Google provider", async () => {
+    const googleWebSearchProvider: ResolvedProviderConfig = {
+      name: "gemini-search",
+      type: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "test-google-key",
+      authType: "x-goog-api-key",
+      models: {},
+    }
+    googleHandlerDependencies.getMessageApiWebSearchModel = () =>
+      "gemini-search/gemini-2.5-flash"
+    googleHandlerDependencies.resolveProviderConfig = (provider) =>
+      Promise.resolve(
+        provider === "gemini-search" ? googleWebSearchProvider : null,
+      )
+    const forward = mock<typeof originalForwardGoogle>(() =>
+      Promise.resolve(
+        Response.json({
+          candidates: [
+            {
+              index: 0,
+              content: { role: "model", parts: [{ text: "native result" }] },
+              finishReason: "STOP",
+              groundingMetadata: { webSearchQueries: ["native query"] },
+            },
+          ],
+        }),
+      ),
+    )
+    googleHandlerDependencies.forwardGoogleGenerateContent = forward
+
+    const app = createServer()
+    const response = await app.request(
+      "/v1beta/models/gemini-3.8-flash:generateContent",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "native query" }] }],
+          tools: [{ googleSearch: {} }],
+        }),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(forward).toHaveBeenCalledTimes(1)
+    expect(forward.mock.calls[0]?.[1]).toBe("gemini-2.5-flash")
+    expect(forward.mock.calls[0]?.[2].tools).toEqual([{ googleSearch: {} }])
+    const body = (await response.json()) as GoogleGenerateContentResponse
+    expect(body.candidates?.[0]?.content?.parts).toEqual([
+      { text: "native result" },
+    ])
+    expect(body.candidates?.[0]?.groundingMetadata).toEqual({
+      webSearchQueries: ["native query"],
     })
   })
 })

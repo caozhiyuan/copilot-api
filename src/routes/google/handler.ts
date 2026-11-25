@@ -3,10 +3,13 @@ import type { Context } from "hono"
 import { streamSSE } from "hono/streaming"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 
+import { parseProviderModelAlias } from "~/lib/catalog/provider-model"
 import { isAntigravityUserAgent } from "~/lib/cli/antigravity"
 import {
   getConfig,
+  getMessageApiWebSearchModel,
   getProviderConfig,
+  isResponsesApiWebSearchEnabled,
   resolveMappedModel,
   resolveProviderConfigForModel,
   type ModelConfig,
@@ -39,6 +42,10 @@ import type {
 import { translateGoogleUsage } from "~/routes/messages/google-translation"
 import { handleCompletionPayload } from "~/routes/messages/handler"
 import {
+  isWebSearchOnlyRequest,
+  resolveWebSearchRoute,
+} from "~/routes/messages/web-search/fulfill"
+import {
   getAggregatedModels,
   type ClientModel,
 } from "~/routes/models/model-discovery"
@@ -68,8 +75,10 @@ const SESSION_UUID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu
 export const googleHandlerDependencies = {
   forwardGoogleGenerateContent,
   getAggregatedModels,
+  getMessageApiWebSearchModel,
   getProviderConfig,
   handleCompletionPayload,
+  isResponsesApiWebSearchEnabled,
   resolveConfiguredProviderModelAlias,
   resolveProviderConfig,
 }
@@ -316,6 +325,59 @@ export async function handleGoogleGenerateContent(
     })
     debugJson(logger, "Translated Messages payload:", messagesPayload)
 
+    if (isWebSearchOnlyRequest(messagesPayload)) {
+      const webSearchModel =
+        googleHandlerDependencies.getMessageApiWebSearchModel()
+      const responsesWebSearchEnabled =
+        googleHandlerDependencies.isResponsesApiWebSearchEnabled()
+      const webSearchRoute = await resolveWebSearchRoute(messagesPayload, {
+        webSearchModel,
+        responsesWebSearchEnabled,
+        resolveProviderConfig: googleHandlerDependencies.resolveProviderConfig,
+      })
+
+      if (webSearchRoute.kind === "strip") {
+        return c.json(
+          createGoogleErrorPayload(
+            400,
+            buildGoogleWebSearchUnavailableMessage(webSearchModel),
+          ),
+          400,
+        )
+      }
+
+      if (webSearchRoute.kind === "provider") {
+        const configuredWebSearchProvider =
+          await googleHandlerDependencies.resolveProviderConfig(
+            webSearchRoute.alias.provider,
+          )
+        const webSearchProviderConfig =
+          configuredWebSearchProvider
+          && resolveProviderConfigForModel(
+            configuredWebSearchProvider,
+            webSearchRoute.alias.model,
+          )
+        if (webSearchProviderConfig?.type === "google") {
+          return await handleNativeGoogleProviderPassthrough(c, {
+            model: webSearchRoute.alias.model,
+            payload: requestBody,
+            providerConfig: webSearchProviderConfig,
+            stream,
+            useSSE,
+          })
+        }
+        if (webSearchProviderConfig?.type === "openai-compatible") {
+          return c.json(
+            createGoogleErrorPayload(
+              400,
+              `Google Search is not supported by 'messageApiWebSearchModel' ('${webSearchModel}') because provider '${webSearchRoute.alias.provider}' uses type 'openai-compatible'.`,
+            ),
+            400,
+          )
+        }
+      }
+    }
+
     const messagesResponse =
       await googleHandlerDependencies.handleCompletionPayload(
         c,
@@ -324,7 +386,6 @@ export async function handleGoogleGenerateContent(
           forwardStructuredOutput: true,
           skipClaudeAutoModel: true,
           skipModelMapping: true,
-          skipWebSearch: true,
           usageEndpoint: "generate_content",
         },
       )
@@ -393,6 +454,18 @@ export async function handleGoogleGenerateContent(
     }
     throw error
   }
+}
+
+function buildGoogleWebSearchUnavailableMessage(
+  webSearchModel: string | undefined,
+): string {
+  if (!webSearchModel) {
+    return "Google Search is not configured on this gateway. Configure 'messageApiWebSearchModel' (and enable 'useResponsesApiWebSearch' for Copilot models) or route the model to a Google provider."
+  }
+  if (parseProviderModelAlias(webSearchModel)) {
+    return `Google Search is unavailable because 'messageApiWebSearchModel' ('${webSearchModel}') does not match an enabled provider.`
+  }
+  return "Google Search is disabled because 'useResponsesApiWebSearch' is off. Enable 'useResponsesApiWebSearch' or configure 'messageApiWebSearchModel' with a web-search-capable provider."
 }
 
 function clearStreamSSEHeaders(c: Context): void {

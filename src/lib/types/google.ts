@@ -50,6 +50,10 @@ export interface GoogleFunctionDeclaration {
 
 export interface GoogleTool {
   functionDeclarations?: Array<GoogleFunctionDeclaration>
+  googleSearch?: Record<string, unknown>
+  google_search?: Record<string, unknown>
+  googleSearchRetrieval?: Record<string, unknown>
+  google_search_retrieval?: Record<string, unknown>
   [key: string]: unknown
 }
 
@@ -142,6 +146,18 @@ export interface GoogleUsageMetadata {
   totalTokenCount?: number
 }
 
+export interface GoogleGroundingChunk {
+  web?: {
+    uri?: string
+    title?: string
+  }
+}
+
+export interface GoogleGroundingMetadata {
+  webSearchQueries?: Array<string>
+  groundingChunks?: Array<GoogleGroundingChunk>
+}
+
 export interface GoogleGenerateContentResponse {
   responseId?: string
   modelVersion?: string
@@ -149,6 +165,7 @@ export interface GoogleGenerateContentResponse {
     index?: number
     content?: GoogleContent
     finishReason?: string
+    groundingMetadata?: GoogleGroundingMetadata
   }>
   usageMetadata?: GoogleUsageMetadata
   promptFeedback?: { blockReason?: string }
