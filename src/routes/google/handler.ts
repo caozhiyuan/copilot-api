@@ -49,7 +49,7 @@ import { resolveOpencodeMessagesSession } from "~/services/providers/provider-pr
 import {
   applyAntigravityModelEffort,
   createAntigravityModelCatalog,
-  hasAntigravityEffortSuffix,
+  mayUseAntigravityModelAlias,
 } from "./antigravity-models"
 import { translateMessagesStreamToGoogle } from "./messages-stream-translation"
 import {
@@ -146,46 +146,51 @@ function toGoogleModelEntry(
   }
 }
 
-let modelEffortCatalog:
+type ModelAliases = Pick<
+  ReturnType<typeof createAntigravityModelCatalog>,
+  "mediaAliases" | "variants"
+>
+
+let modelAliasCatalog:
   | {
       config: ReturnType<typeof getConfig>
       copilotModels: typeof state.models
-      variants: ReturnType<typeof createAntigravityModelCatalog>["variants"]
+      aliases: ModelAliases
     }
   | undefined
 
-async function refreshModelEffortCatalog(c: Context) {
+async function refreshModelAliasCatalog(c: Context) {
   const config = getConfig()
   const copilotModels = state.models
   const models = await googleHandlerDependencies.getAggregatedModels(
     stripInternalRequestHeaders(c.req.raw.headers),
     { includeImageModels: false },
   )
-  const catalog = createAntigravityModelCatalog(
+  const { entries, ...aliases } = createAntigravityModelCatalog(
     models,
     googleHandlerDependencies.getProviderConfig,
   )
-  modelEffortCatalog = { config, copilotModels, variants: catalog.variants }
-  return catalog
+  modelAliasCatalog = { config, copilotModels, aliases }
+  return { entries, ...aliases }
 }
 
 export async function handleGoogleModelsList(c: Context): Promise<Response> {
-  const { entries } = await refreshModelEffortCatalog(c)
+  const { entries } = await refreshModelAliasCatalog(c)
   const response: GoogleModelsResponse = {
     models: entries.map(toGoogleModelEntry),
   }
   return c.json(response)
 }
 
-async function resolveModelEffortVariant(c: Context, model: string) {
-  const catalog = modelEffortCatalog
+async function getModelAliases(c: Context): Promise<ModelAliases> {
+  const catalog = modelAliasCatalog
   if (
     catalog?.config === getConfig()
     && catalog.copilotModels === state.models
   ) {
-    return catalog.variants.get(model)
+    return catalog.aliases
   }
-  return (await refreshModelEffortCatalog(c)).variants.get(model)
+  return refreshModelAliasCatalog(c)
 }
 
 function readSessionLabel(value: unknown): string | undefined {
@@ -258,9 +263,12 @@ export async function handleGoogleGenerateContent(
     let mappedModel = resolveMappedModel(parsedPath.model)
     if (
       mappedModel === parsedPath.model
-      && hasAntigravityEffortSuffix(parsedPath.model)
+      && mayUseAntigravityModelAlias(parsedPath.model)
     ) {
-      const variant = await resolveModelEffortVariant(c, parsedPath.model)
+      const { mediaAliases, variants } = await getModelAliases(c)
+      const model = mediaAliases.get(parsedPath.model) ?? parsedPath.model
+      mappedModel = resolveMappedModel(model)
+      const variant = mappedModel === model ? variants.get(model) : undefined
       if (variant) {
         mappedModel = resolveMappedModel(variant.model)
         applyAntigravityModelEffort(requestBody, variant.effort)

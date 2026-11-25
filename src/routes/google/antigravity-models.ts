@@ -1,11 +1,16 @@
+import { builtinProviderModelRegistry } from "~/lib/catalog/builtin-provider-models"
+import { resolveModelPdfSupport } from "~/lib/catalog/model-pdf-support"
+import { findEndpointModel } from "~/lib/catalog/models"
 import { parseProviderModelAlias } from "~/lib/catalog/provider-model"
 import {
+  getRawProviderConfig,
   resolveEffectiveProviderType,
   type ResolvedProviderConfig,
 } from "~/lib/config"
 import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
 import type { GoogleGenerateContentRequest } from "~/lib/types/google"
 import {
+  getRecordField,
   getStringField,
   type ClientModel,
 } from "~/routes/models/model-discovery"
@@ -21,6 +26,7 @@ const EFFORT_LABELS = {
 } as const
 type Effort = keyof typeof EFFORT_LABELS
 const EFFORTS = Object.keys(EFFORT_LABELS) as Array<Effort>
+const MEDIA_MODEL_PREFIX = "my-gemini-"
 
 // These native Gemini IDs support level-based thinking on GenerateContent.
 const GOOGLE_THINKING_LEVELS = new Map<string, ReadonlyArray<Effort>>([
@@ -36,8 +42,100 @@ export interface AntigravityModelVariant {
   effort: Effort
 }
 
-export function hasAntigravityEffortSuffix(model: string): boolean {
-  return EFFORTS.some((effort) => model.endsWith(`-${effort}`))
+function getEffortBaseId(model: string): string | undefined {
+  const effort = EFFORTS.find((level) => model.endsWith(`-${level}`))
+  return effort ? model.slice(0, -effort.length - 1) : undefined
+}
+
+function getExistingEffortBaseId(
+  model: string,
+  models: ReadonlyMap<string, ClientModel>,
+): string | undefined {
+  const base = getEffortBaseId(model)
+  return base && models.has(base) ? base : undefined
+}
+
+export function mayUseAntigravityModelAlias(model: string): boolean {
+  return (
+    model.slice(model.lastIndexOf("/") + 1).startsWith(MEDIA_MODEL_PREFIX)
+    || getEffortBaseId(model) !== undefined
+  )
+}
+
+function toMediaModelId(id: string): string {
+  const modelStart = id.lastIndexOf("/") + 1
+  return `${id.slice(0, modelStart)}${MEDIA_MODEL_PREFIX}${id.slice(modelStart)}`
+}
+
+function supportsAttachmentInputs(
+  provider: string,
+  metadata: ReturnType<typeof getModelMetadata>,
+): boolean {
+  const { catalog, defaults, inputModalities, limits, modelConfig } = metadata
+  return (
+    inputModalities.includes("image")
+    && resolveModelPdfSupport(provider, {
+      supportPdf: modelConfig?.supportPdf,
+      catalogInputModalities: catalog?.modalities?.input,
+      supportedMediaTypes: getRecordField(limits, "vision")
+        ?.supported_media_types,
+      builtinSupportPdf:
+        defaults?.supportPdf
+        ?? builtinProviderModelRegistry.getProviderDefaults(provider)
+          ?.supportPdf,
+    })
+  )
+}
+
+function withMediaModelAliases(
+  entries: Array<ClientModel>,
+  modelsById: ReadonlyMap<string, ClientModel>,
+  variants: ReadonlyMap<string, AntigravityModelVariant>,
+  attachmentModels: ReadonlySet<string>,
+) {
+  const families = Map.groupBy(
+    entries,
+    ({ id }) =>
+      variants.get(id)?.model ?? getExistingEffortBaseId(id, modelsById) ?? id,
+  )
+  const publicIds = new Map<string, string>()
+  const mediaAliases = new Map<string, string>()
+  for (const [baseId, family] of families) {
+    if (!attachmentModels.has(baseId)) continue
+
+    // Keep the family grouped in AGY and preserve provider-owned model IDs.
+    const ids = new Set([baseId, ...family.map(({ id }) => id)])
+    const aliases = Array.from(ids, (id) => ({ id, alias: toMediaModelId(id) }))
+    if (
+      aliases.some(
+        ({ id, alias }) =>
+          (!variants.has(id) && !attachmentModels.has(id))
+          || modelsById.has(alias)
+          || variants.has(alias),
+      )
+    ) {
+      continue
+    }
+
+    for (const { id, alias } of aliases) {
+      publicIds.set(id, alias)
+      mediaAliases.set(alias, id)
+    }
+  }
+
+  return {
+    entries: entries.map((model) => {
+      const id = publicIds.get(model.id)
+      return id ?
+          {
+            ...model,
+            id,
+            display_name: getStringField(model, "display_name") ?? model.id,
+          }
+        : model
+    }),
+    mediaAliases,
+  }
 }
 
 export function createAntigravityModelCatalog(
@@ -46,28 +144,34 @@ export function createAntigravityModelCatalog(
 ) {
   const modelsById = new Map(models.map((model) => [model.id, model]))
   const listedVariantIds = new Set<string>()
+  const attachmentModels = new Set<string>()
   const variants = new Map<string, AntigravityModelVariant>()
   const entriesByModel = models.map((model) => {
-    // A provider-supplied variant belongs to its base model's group.
-    if (
-      EFFORTS.some(
-        (effort) =>
-          model.id.endsWith(`-${effort}`)
-          && modelsById.has(model.id.slice(0, -effort.length - 1)),
-      )
-    ) {
-      return model
-    }
-
     const alias = parseProviderModelAlias(model.id)
     const provider = alias ? getProviderConfig(alias.provider) : null
-    const modelId = provider && alias ? alias.model : model.id
-    const { reasoningEfforts } = getModelMetadata(
-      provider?.name ?? GITHUB_COPILOT_PROVIDER,
+    const copilotModel = provider ? undefined : findEndpointModel(model.id)
+    const providerName =
+      provider?.name
+      ?? (copilotModel ? GITHUB_COPILOT_PROVIDER : alias?.provider)
+      ?? GITHUB_COPILOT_PROVIDER
+    const modelId = copilotModel?.id ?? alias?.model ?? model.id
+    const metadata = getModelMetadata(
+      providerName,
       modelId,
       model,
-      provider,
+      provider ?? getRawProviderConfig(providerName),
     )
+    if (
+      !model.id.includes("gemini-")
+      && supportsAttachmentInputs(providerName, metadata)
+    ) {
+      attachmentModels.add(model.id)
+    }
+
+    // A provider-supplied variant belongs to its base model's group.
+    if (getExistingEffortBaseId(model.id, modelsById)) return model
+
+    const { reasoningEfforts } = metadata
     const nativeGoogle =
       provider && resolveEffectiveProviderType(provider, modelId) === "google"
     const nativeLevels =
@@ -102,7 +206,10 @@ export function createAntigravityModelCatalog(
     if (Array.isArray(entry)) return entry
     return listedVariantIds.has(entry.id) ? [] : [entry]
   })
-  return { entries, variants }
+  return {
+    ...withMediaModelAliases(entries, modelsById, variants, attachmentModels),
+    variants,
+  }
 }
 
 export function applyAntigravityModelEffort(

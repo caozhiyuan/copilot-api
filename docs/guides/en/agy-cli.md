@@ -43,6 +43,8 @@ agy --print "Reply with OK only." --model gemini-4-neon
 
 For an interactive session, run `agy` in your project directory and use `/model` to select a model from the gateway.
 
+AGY can attach images and PDFs to models advertised with a `my-gemini-` prefix. For example, use `codex/my-gemini-gpt-6.2-astra` in `agy --model` or in AGY settings. The gateway resolves the alias to the original provider and model.
+
 Use `/effort` to switch reasoning levels when the selected model offers multiple levels. You can set a level at launch with `agy --model gemini-4-neon --effort high` if the gateway lists that model and level.
 
 ## Disable telemetry

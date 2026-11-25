@@ -680,6 +680,129 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     expect(getModels).toHaveBeenCalledTimes(3)
   })
 
+  test("advertises media-capable models with aliases and resolves their original IDs", async () => {
+    const base = "codex/gpt-6.2-astra"
+    const alias = "codex/my-gemini-gpt-6.2-astra"
+    const provider: ResolvedProviderConfig = {
+      name: "codex",
+      type: "openai-responses",
+      baseUrl: "https://example.com",
+      authType: "authorization",
+      apiKey: "upstream-key",
+      models: {
+        "no-pdf": { supportPdf: false },
+      },
+    }
+    googleHandlerDependencies.getProviderConfig = mock((name) =>
+      name === provider.name ? provider : null,
+    )
+    const imageModel = { object: "model", input_modalities: ["text", "image"] }
+    const textModel = { object: "model", input_modalities: ["text"] }
+    const getModels = mock(() =>
+      Promise.resolve([
+        {
+          ...imageModel,
+          id: base,
+          display_name: "GPT-6.2 Astra (codex)",
+          reasoning_efforts: ["low", "medium", "max"],
+        },
+        {
+          ...imageModel,
+          id: "document-model",
+          capabilities: {
+            limits: { vision: { supported_media_types: ["application/pdf"] } },
+          },
+        },
+        { ...imageModel, id: "codex/no-pdf" },
+        { ...textModel, id: "codex/text-only" },
+        { ...imageModel, id: "codex/reserved" },
+        { ...textModel, id: "codex/my-gemini-reserved" },
+        {
+          ...imageModel,
+          id: "codex/mixed",
+          reasoning_efforts: ["low", "high"],
+        },
+        { ...textModel, id: "codex/mixed-high" },
+        { ...imageModel, id: "codex/organic-low" },
+        {
+          ...imageModel,
+          id: "codex/my-gemini-organic",
+          reasoning_efforts: ["low", "high"],
+        },
+      ]),
+    )
+    googleHandlerDependencies.getAggregatedModels = getModels
+    const handleCompletion = mock<typeof originalHandleCompletionPayload>(
+      (_c, payload) =>
+        Promise.resolve(
+          Response.json({
+            id: "msg_alias",
+            type: "message",
+            role: "assistant",
+            model: payload.model,
+            content: [{ type: "text", text: "OK" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 2, output_tokens: 1 },
+          }),
+        ),
+    )
+    googleHandlerDependencies.handleCompletionPayload = handleCompletion
+    const app = createServer()
+    const generate = (model: string, action = "generateContent") =>
+      app.request(`/v1beta/models/${model}:${action}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+          generationConfig: { thinkingConfig: { thinkingBudget: 0 } },
+        }),
+      })
+
+    state.models = { object: "list", data: [] }
+    expect((await generate(`${alias}-max`)).status).toBe(200)
+    expect(handleCompletion.mock.calls[0]?.[1]).toMatchObject({
+      model: base,
+      output_config: { effort: "max" },
+    })
+    expect(getModels).toHaveBeenCalledTimes(1)
+
+    const response = await app.request("/v1beta/models")
+    expect(response.status).toBe(200)
+    const { models } = (await response.json()) as GoogleModelsResponse
+    expect(models?.map(({ name }) => name)).toEqual([
+      `models/${alias}-medium`,
+      `models/${alias}-low`,
+      `models/${alias}-max`,
+      "models/my-gemini-document-model",
+      "models/codex/no-pdf",
+      "models/codex/text-only",
+      "models/codex/reserved",
+      "models/codex/my-gemini-reserved",
+      "models/codex/mixed-low",
+      "models/codex/mixed-high",
+      "models/codex/organic-low",
+      "models/codex/my-gemini-organic-low",
+      "models/codex/my-gemini-organic-high",
+    ])
+    expect(models?.[0]?.displayName).toBe("GPT-6.2 Astra (codex) (Medium)")
+    expect(models?.[3]?.displayName).toBe("document-model")
+
+    expect((await generate(alias, "streamGenerateContent")).status).toBe(200)
+    expect(handleCompletion.mock.calls[1]?.[1].model).toBe(base)
+    expect((await generate(`${base}-max`)).status).toBe(200)
+    expect(handleCompletion.mock.calls[2]?.[1]).toMatchObject({
+      model: base,
+      output_config: { effort: "max" },
+    })
+    expect((await generate("my-gemini-document-model")).status).toBe(200)
+    expect(handleCompletion.mock.calls[3]?.[1].model).toBe("document-model")
+    expect((await generate("codex/my-gemini-reserved")).status).toBe(200)
+    expect(handleCompletion.mock.calls[4]?.[1].model).toBe(
+      "codex/my-gemini-reserved",
+    )
+    expect(getModels).toHaveBeenCalledTimes(2)
+  })
+
   test("forwards the selected Antigravity level to a native Google model", async () => {
     const provider: ResolvedProviderConfig = {
       name: "mygoogle",
