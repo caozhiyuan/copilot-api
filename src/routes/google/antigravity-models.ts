@@ -7,6 +7,7 @@ import {
   resolveEffectiveProviderType,
   type ResolvedProviderConfig,
 } from "~/lib/config"
+import { getProviderAgentModels } from "~/lib/config/provider-management"
 import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
 import type { GoogleGenerateContentRequest } from "~/lib/types/google"
 import {
@@ -144,6 +145,7 @@ export function createAntigravityModelCatalog(
 ) {
   const modelsById = new Map(models.map((model) => [model.id, model]))
   const listedVariantIds = new Set<string>()
+  const visibleModelIds = new Set<string>()
   const attachmentModels = new Set<string>()
   const variants = new Map<string, AntigravityModelVariant>()
   const entriesByModel = models.map((model) => {
@@ -155,12 +157,18 @@ export function createAntigravityModelCatalog(
       ?? (copilotModel ? GITHUB_COPILOT_PROVIDER : alias?.provider)
       ?? GITHUB_COPILOT_PROVIDER
     const modelId = copilotModel?.id ?? alias?.model ?? model.id
-    const metadata = getModelMetadata(
-      providerName,
-      modelId,
-      model,
-      provider ?? getRawProviderConfig(providerName),
-    )
+    const config = provider ?? getRawProviderConfig(providerName)
+    const agentModels = getProviderAgentModels(config)
+    if (
+      agentModels === undefined
+      || agentModels.includes(modelId)
+      || (providerName === GITHUB_COPILOT_PROVIDER
+        && agentModels.includes(model.id))
+    ) {
+      visibleModelIds.add(model.id)
+    }
+
+    const metadata = getModelMetadata(providerName, modelId, model, config)
     if (
       !model.id.includes("gemini-")
       && supportsAttachmentInputs(providerName, metadata)
@@ -206,8 +214,20 @@ export function createAntigravityModelCatalog(
     if (Array.isArray(entry)) return entry
     return listedVariantIds.has(entry.id) ? [] : [entry]
   })
+  const catalog = withMediaModelAliases(
+    entries,
+    modelsById,
+    variants,
+    attachmentModels,
+  )
+  // Keep all aliases routable. The provider selection controls discovery.
+  const visibleEntries = catalog.entries.filter(({ id }) => {
+    const originalId = catalog.mediaAliases.get(id) ?? id
+    return visibleModelIds.has(variants.get(originalId)?.model ?? originalId)
+  })
   return {
-    ...withMediaModelAliases(entries, modelsById, variants, attachmentModels),
+    entries: visibleEntries,
+    mediaAliases: catalog.mediaAliases,
     variants,
   }
 }

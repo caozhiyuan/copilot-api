@@ -141,7 +141,7 @@ Gemini 请求使用小驼峰协议字段，例如 `generationConfig` 和 `inline
 | `POST /v1beta/models/<model>:streamGenerateContent` | `POST` | 生成流式 Gemini 响应，支持 SSE（`?alt=sse`）或 JSON 数组格式。 |
 | `POST /v1beta:<action>` | `POST` | 以 `{}` 应答 Antigravity / GenAI 遥测请求。 |
 
-Gemini 目录可为同时接受图片和 PDF 的模型生成 `my-gemini-` 别名。推理时，网关会将别名还原为原模型，并应用 ID 中选定的思考档位。
+Gemini 目录遵循各 provider 的 `agentsModels` 设置，并可为入选且同时接受图片和 PDF 的模型生成 `my-gemini-` 别名。推理时，网关会将别名还原为原模型，并应用 ID 中选定的思考档位。
 
 ### 使用量监控端点
 

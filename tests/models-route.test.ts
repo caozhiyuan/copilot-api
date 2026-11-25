@@ -91,6 +91,7 @@ await mock.module("~/lib/auth/token", () => ({
 }))
 
 const { state } = await import("~/lib/state")
+const { googleRoutes } = await import("~/routes/google/route")
 const { modelRoutes } = await import("~/routes/models/route")
 const { providerModelRoutes } = await import("~/routes/provider/models/route")
 
@@ -345,6 +346,37 @@ afterEach(() => {
 })
 
 describe("model routes", () => {
+  test("filters Gemini discovery using Copilot's upstream and client model IDs", async () => {
+    state.models = createCopilotModels([
+      "claude-haiku-8.5",
+      "claude-sonnet-8.6",
+      "enterprise/chat",
+      "gpt-unselected",
+    ])
+    providerConfigs["github-copilot"] = {
+      ...createProviderConfig("github-copilot", "https://unused.test"),
+      agentsModels: [
+        "claude-haiku-8.5",
+        "claude-sonnet-8-6",
+        "enterprise/chat",
+      ],
+    }
+    const app = new Hono().route("/v1beta/models", googleRoutes)
+    const response = await app.request("/v1beta/models")
+    expect(response.status).toBe(200)
+    const { models } = (await response.json()) as {
+      models: Array<{ name: string }>
+    }
+    expect(models.map(({ name }) => name)).toEqual([
+      "models/claude-haiku-8-5",
+      "models/claude-sonnet-8-6",
+      "models/enterprise/chat",
+    ])
+    expect(await getDiscoveredModelIds("/v1/models", "curl/8.0")).toContain(
+      "gpt-unselected",
+    )
+  })
+
   test.each(["curl/8.0", "opencode/2.0"])(
     "adds the missing Copilot image model for %s without querying upstream",
     async (userAgent) => {

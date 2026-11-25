@@ -706,6 +706,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
           display_name: "GPT-6.2 Astra (codex)",
           reasoning_efforts: ["low", "medium", "max"],
         },
+        { ...imageModel, id: `${base}-low` },
         {
           ...imageModel,
           id: "document-model",
@@ -801,6 +802,31 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       "codex/my-gemini-reserved",
     )
     expect(getModels).toHaveBeenCalledTimes(2)
+
+    provider.agentsModels = ["gpt-6.2-astra"]
+    const selected = await app.request("/v1beta/models", {
+      headers: antigravityHeaders,
+    })
+    const selectedCatalog = (await selected.json()) as GoogleModelsResponse
+    expect(selectedCatalog.models?.map(({ name }) => name)).toEqual([
+      `models/${alias}-medium`,
+      `models/${alias}-max`,
+      "models/my-gemini-document-model",
+    ])
+    expect((await generate(`${alias}-low`)).status).toBe(200)
+    expect(handleCompletion.mock.calls[5]?.[1].model).toBe(`${base}-low`)
+
+    provider.agentsModels = []
+    const hidden = await app.request("/v1beta/models")
+    const hiddenCatalog = (await hidden.json()) as GoogleModelsResponse
+    expect(hiddenCatalog.models?.map(({ name }) => name)).toEqual([
+      "models/my-gemini-document-model",
+    ])
+    expect((await generate(`${alias}-max`)).status).toBe(200)
+    expect(handleCompletion.mock.calls[6]?.[1]).toMatchObject({
+      model: base,
+      output_config: { effort: "max" },
+    })
   })
 
   test("forwards the selected Antigravity level to a native Google model", async () => {

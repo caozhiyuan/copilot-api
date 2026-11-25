@@ -43,6 +43,8 @@ agy --print "只回复 OK" --model gemini-4-neon
 
 正常交互时，在项目目录执行 `agy`，再用 `/model` 选择网关提供的模型。
 
+模型列表遵循各 provider 的 `agentsModels` 设置。名单里填写 `gpt-6.2-astra` 这样的原始模型 ID。设为空数组会隐藏该 provider 的模型。
+
 AGY 可以给目录里带 `my-gemini-` 前缀的模型发送图片和 PDF。例如，在 `agy --model` 或 AGY 设置里填 `codex/my-gemini-gpt-6.2-astra`，网关会将这个别名路由到原来的 provider 和模型。
 
 模型提供多个思考档位时，可以用 `/effort` 切换。如果网关列出了 Gemini 4 Neon 的 High 档，也可在启动时指定 `agy --model gemini-4-neon --effort high`。

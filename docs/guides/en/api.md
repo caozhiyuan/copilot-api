@@ -137,7 +137,7 @@ Use lowerCamelCase for Gemini request fields such as `generationConfig` and `inl
 | `POST /v1beta/models/<model>:streamGenerateContent` | `POST` | Generates a streaming Gemini response as SSE (`?alt=sse`) or a JSON array. |
 | `POST /v1beta:<action>` | `POST` | Acknowledges Antigravity / GenAI telemetry pings with `{}`. |
 
-The Gemini catalog can advertise a `my-gemini-` alias for a model that accepts both images and PDF files. Generation resolves that alias to the original model and applies any reasoning level selected in the ID.
+The Gemini catalog follows each provider's `agentsModels` selection. It can advertise a `my-gemini-` alias for a selected model that accepts both images and PDF files. Generation resolves that alias to the original model and applies any reasoning level selected in the ID.
 
 ### Usage Monitoring Endpoints
 
