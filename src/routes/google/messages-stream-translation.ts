@@ -9,6 +9,7 @@ import type {
 } from "~/lib/types/google"
 
 import {
+  encodeAntigravityToolCallSignature,
   flushAntigravitySignatures,
   isResponsesThinkingSignature,
   type PositionedSignature,
@@ -304,6 +305,12 @@ export async function* translateMessagesStreamToGoogle(
               }
             }
             thoughtSignature = pendingSignatures.shift()
+          }
+          if (options.preserveAntigravityReasoning && block.id) {
+            thoughtSignature = encodeAntigravityToolCallSignature(
+              block.id,
+              thoughtSignature,
+            )
           }
           if (precedingParts.length > 0) {
             yield buildChunk(precedingParts)

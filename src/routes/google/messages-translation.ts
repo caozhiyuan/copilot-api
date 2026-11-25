@@ -30,6 +30,7 @@ import { decodeGoogleSignature } from "~/routes/messages/google-translation"
 import { resolveDefaultMaxOutputTokens } from "~/routes/responses/messages-translation/to-messages"
 
 import {
+  encodeAntigravityToolCallSignature,
   flushAntigravitySignatures,
   hasAntigravitySignature,
   isResponsesThinkingSignature,
@@ -1146,6 +1147,12 @@ export function translateAnthropicResponseToGoogle(
           }
         }
         thoughtSignature = pendingSignatures.shift()
+      }
+      if (options.preserveAntigravityReasoning && block.id) {
+        thoughtSignature = encodeAntigravityToolCallSignature(
+          block.id,
+          thoughtSignature,
+        )
       }
       parts.push({
         functionCall: {

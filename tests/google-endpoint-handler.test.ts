@@ -35,6 +35,8 @@ const { GatewayPlugins } = await import("~/lib/plugins/gateway-plugins")
 const { messagesApiFlowDependencies } = await import(
   "~/routes/messages/api-flows"
 )
+const { encodeAntigravitySignatures, encodeAntigravityToolCallSignature } =
+  await import("~/routes/google/antigravity-signatures")
 const { googleHandlerDependencies, parseGoogleModelActionPath } = await import(
   "~/routes/google/handler"
 )
@@ -388,11 +390,14 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         name: "read_file",
         args: { path: "README.md" },
       },
-      thoughtSignature: opaqueToken,
+      thoughtSignature: encodeAntigravityToolCallSignature(
+        "call_read_1",
+        opaqueToken,
+      ),
     })
     expect(turn1Events[2]?.candidates?.[0]?.finishReason).toBe("STOP")
 
-    // Turn 2: Client sends back the functionCall + thoughtSignature + functionResponse
+    // Turn 2: Antigravity CLI replays functionCall + thoughtSignature + functionResponse without id fields
     createChatCompletions.mockImplementationOnce((payload) => {
       const assistantMsg = payload.messages.find((m) => m.role === "assistant")
       expect(assistantMsg?.reasoning_opaque).toBe(opaqueToken)
@@ -423,6 +428,13 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       })
     })
 
+    const replayedCallPart = {
+      functionCall: {
+        name: callPart!.functionCall!.name,
+        args: callPart!.functionCall!.args,
+      },
+      thoughtSignature: callPart!.thoughtSignature,
+    }
     const turn2Res = await app.request(
       "/v1beta/models/gemini-4-neon:generateContent",
       {
@@ -431,13 +443,12 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         body: JSON.stringify({
           contents: [
             { role: "user", parts: [{ text: "Read README.md" }] },
-            { role: "model", parts: [thoughtPart, callPart] },
+            { role: "model", parts: [thoughtPart, replayedCallPart] },
             {
               role: "user",
               parts: [
                 {
                   functionResponse: {
-                    id: "call_read_1",
                     name: "read_file",
                     response: { output: "# Copilot API" },
                   },
@@ -2279,7 +2290,10 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       if (text) {
         merged.push({ text, thoughtSignature: signatures[0]?.thoughtSignature })
       }
-      if (toolPart) merged.push(toolPart)
+      if (toolPart?.functionCall) {
+        const { id: _strippedId, ...functionCall } = toolPart.functionCall
+        merged.push({ ...toolPart, functionCall })
+      }
       const followUp =
         end === "tool" ?
           { functionResponse: { name: tool.name, response: { output: "OK" } } }
@@ -2586,4 +2600,278 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
       ])
     },
   )
+
+  test("preserves original parallel Responses tool call IDs when Antigravity CLI strips id on replay", async () => {
+    const model = "gpt-5.4"
+    state.models = {
+      object: "list",
+      data: [
+        {
+          id: model,
+          name: model,
+          object: "model",
+          preview: false,
+          vendor: "openai",
+          version: "1",
+          model_picker_enabled: true,
+          supported_endpoints: ["/responses"],
+          capabilities: {
+            family: "gpt",
+            limits: { max_output_tokens: 16384 },
+            object: "model_capabilities",
+            supports: {},
+            tokenizer: "o200k_base",
+            type: "chat",
+          },
+        },
+      ],
+    }
+
+    const reasoning: ResponseOutputReasoning = {
+      id: "rs_parallel_1",
+      type: "reasoning",
+      encrypted_content: "cipher-parallel-1",
+      summary: [{ type: "summary_text", text: "Reading two files." }],
+    }
+    const tool1: ResponseOutputFunctionCall = {
+      id: "fc_parallel_1",
+      type: "function_call",
+      call_id: "call_f04518a904314f7ca40b1d265bec1575",
+      name: "read_file",
+      arguments: '{"path":"a.ts"}',
+      status: "completed",
+    }
+    const tool2: ResponseOutputFunctionCall = {
+      id: "fc_parallel_2",
+      type: "function_call",
+      call_id: "call_98b2c4d6e8f0123456789abcdef01234",
+      name: "read_file",
+      arguments: '{"path":"b.ts"}',
+      status: "completed",
+    }
+    const result = createResponsesResult(model)
+    const upstream: Array<ResponseStreamEvent> = [
+      {
+        type: "response.created",
+        sequence_number: 0,
+        response: { ...result, status: "in_progress" },
+      },
+      {
+        type: "response.reasoning_summary_text.delta",
+        sequence_number: 1,
+        output_index: 0,
+        item_id: reasoning.id,
+        summary_index: 0,
+        delta: "Reading two files.",
+      },
+      {
+        type: "response.output_item.done",
+        sequence_number: 2,
+        output_index: 0,
+        item: reasoning,
+      },
+      {
+        type: "response.output_item.added",
+        sequence_number: 3,
+        output_index: 1,
+        item: { ...tool1, status: "in_progress" },
+      },
+      {
+        type: "response.output_item.done",
+        sequence_number: 4,
+        output_index: 1,
+        item: tool1,
+      },
+      {
+        type: "response.output_item.added",
+        sequence_number: 5,
+        output_index: 2,
+        item: { ...tool2, status: "in_progress" },
+      },
+      {
+        type: "response.output_item.done",
+        sequence_number: 6,
+        output_index: 2,
+        item: tool2,
+      },
+      {
+        type: "response.completed",
+        sequence_number: 7,
+        response: { ...result, output: [reasoning, tool1, tool2] },
+      },
+    ]
+
+    createResponses.mockImplementationOnce(() =>
+      Promise.resolve(
+        streamEvents(
+          upstream.map((event) => ({ data: JSON.stringify(event) })),
+        ),
+      ),
+    )
+    createResponses.mockResolvedValueOnce(result)
+
+    const app = createServer()
+    const headers = {
+      "content-type": "application/json",
+      "user-agent":
+        "antigravity/cli/1.5.17 (aidev_client; auth_method=gateway)",
+    }
+    const initial = { role: "user", parts: [{ text: "Read both files" }] }
+    const turn1 = await app.request(
+      `/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ contents: [initial] }),
+      },
+    )
+    expect(turn1.status).toBe(200)
+    const parts = parseSseDataEvents(await turn1.text()).flatMap(
+      (chunk) => chunk.candidates?.[0]?.content?.parts ?? [],
+    )
+    const toolParts = parts.filter((part) => part.functionCall)
+    expect(toolParts).toHaveLength(2)
+    expect(toolParts.every((part) => Boolean(part.thoughtSignature))).toBe(true)
+
+    // Replay exactly like Antigravity CLI: strip functionCall.id and functionResponse.id
+    const replayedModelParts: Array<GooglePart> = toolParts.map((part) => ({
+      functionCall: {
+        name: part.functionCall!.name,
+        args: part.functionCall!.args,
+      },
+      thoughtSignature: part.thoughtSignature,
+    }))
+    const turn2 = await app.request(`/v1beta/models/${model}:generateContent`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        contents: [
+          initial,
+          { role: "model", parts: replayedModelParts },
+          {
+            role: "user",
+            parts: [
+              {
+                functionResponse: {
+                  name: "read_file",
+                  response: { output: "file A" },
+                },
+              },
+              {
+                functionResponse: {
+                  name: "read_file",
+                  response: { output: "file B" },
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    })
+    expect(turn2.status).toBe(200)
+
+    const input = createResponses.mock.calls[1]?.[0]?.input
+    expect(Array.isArray(input)).toBe(true)
+    expect((input as Array<ResponseInputItem>).slice(1, 6)).toMatchObject([
+      reasoning,
+      { type: "function_call", name: "read_file", call_id: tool1.call_id },
+      { type: "function_call", name: "read_file", call_id: tool2.call_id },
+      {
+        type: "function_call_output",
+        call_id: tool1.call_id,
+        output: "file A",
+      },
+      {
+        type: "function_call_output",
+        call_id: tool2.call_id,
+        output: "file B",
+      },
+    ])
+  })
+
+  test("strips gateway Antigravity thoughtSignature envelopes before native Google passthrough", async () => {
+    const provider: ResolvedProviderConfig = {
+      name: "mygoogle",
+      type: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "google-test-key",
+      authType: "x-goog-api-key",
+    }
+    googleHandlerDependencies.resolveConfiguredProviderModelAlias = mock(() =>
+      Promise.resolve({ provider: provider.name, model: "gemini-2.5-pro" }),
+    )
+    googleHandlerDependencies.resolveProviderConfig = mock(() =>
+      Promise.resolve(provider),
+    )
+    const forward = mock<typeof originalForwardGoogle>(() =>
+      Promise.resolve(
+        Response.json({
+          candidates: [
+            {
+              index: 0,
+              content: { role: "model", parts: [{ text: "ok" }] },
+              finishReason: "STOP",
+            },
+          ],
+        }),
+      ),
+    )
+    googleHandlerDependencies.forwardGoogleGenerateContent = forward
+
+    const nativeSig = Buffer.from("native-google-signature").toString("base64")
+    const agyTextSig = encodeAntigravitySignatures([["enc_1@rs_1", 4, 0]])
+    const agyCallSig = encodeAntigravityToolCallSignature("call_1234")
+
+    const app = createServer()
+    const res = await app.request(
+      "/v1beta/models/mygoogle/gemini-2.5-pro:generateContent",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "user-agent":
+            "antigravity/cli/1.5.17 (aidev_client; auth_method=gateway)",
+        },
+        body: JSON.stringify({
+          contents: [
+            { role: "user", parts: [{ text: "Start" }] },
+            {
+              role: "model",
+              parts: [
+                { text: "Done", thoughtSignature: agyTextSig },
+                { text: "", thoughtSignature: agyTextSig },
+                {
+                  functionCall: { name: "read_file", args: { path: "a.ts" } },
+                  thoughtSignature: agyCallSig,
+                },
+                { text: "Native", thoughtSignature: nativeSig },
+              ],
+            },
+            {
+              role: "user",
+              parts: [
+                {
+                  functionResponse: {
+                    name: "read_file",
+                    response: { output: "content" },
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    )
+
+    expect(res.status).toBe(200)
+    expect(forward).toHaveBeenCalledTimes(1)
+    expect(forward.mock.calls[0]?.[2].contents?.[1]).toEqual({
+      role: "model",
+      parts: [
+        { text: "Done" },
+        { functionCall: { name: "read_file", args: { path: "a.ts" } } },
+        { text: "Native", thoughtSignature: nativeSig },
+      ],
+    })
+  })
 })
