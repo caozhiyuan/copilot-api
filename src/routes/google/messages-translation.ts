@@ -50,6 +50,17 @@ const GEMINI_SCHEMA_TYPE_MAP: Record<string, string> = {
   STRING: "string",
 }
 
+// Gemini encodes these int64 schema constraints as decimal strings.
+const GEMINI_SCHEMA_COUNT_FIELDS = new Set([
+  "minItems",
+  "maxItems",
+  "minLength",
+  "maxLength",
+  "minProperties",
+  "maxProperties",
+])
+const UNSIGNED_INTEGER_PATTERN = /^\d+$/u
+
 const SUPPORTED_ANTHROPIC_IMAGE_TYPES = new Set<
   AnthropicImageBlock["source"]["media_type"]
 >(["image/jpeg", "image/png", "image/gif", "image/webp"])
@@ -175,6 +186,18 @@ export function normalizeGeminiSchema(
       const mapped = GEMINI_SCHEMA_TYPE_MAP[value] ?? value.toLowerCase()
       result.type = nullable && mapped !== "null" ? [mapped, "null"] : mapped
       continue
+    }
+
+    if (
+      GEMINI_SCHEMA_COUNT_FIELDS.has(key)
+      && typeof value === "string"
+      && UNSIGNED_INTEGER_PATTERN.test(value)
+    ) {
+      const count = Number(value)
+      if (Number.isSafeInteger(count)) {
+        result[key] = count
+        continue
+      }
     }
 
     if (

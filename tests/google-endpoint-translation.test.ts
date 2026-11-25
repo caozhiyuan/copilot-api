@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import type { AnthropicResponse } from "~/lib/types/anthropic"
 import type { GoogleGenerateContentRequest } from "~/lib/types/google"
 import { encodeGoogleSignature } from "~/routes/messages/google-translation"
+import { translateAnthropicMessagesToResponsesPayload } from "~/routes/messages/responses-translation"
 import { encodeAntigravitySignatures } from "~/routes/google/antigravity-signatures"
 import {
   translateMessagesStreamToGoogle,
@@ -132,9 +133,102 @@ describe("normalizeGeminiSchema", () => {
       required: ["path"],
     })
   })
+
+  test("converts decimal count limits without losing precision", () => {
+    expect(
+      normalizeGeminiSchema({
+        minItems: "0",
+        maxItems: 12,
+        minLength: "-1",
+        maxLength: "1.5",
+        minProperties: "",
+        maxProperties: "9007199254740993",
+      }),
+    ).toEqual({
+      minItems: 0,
+      maxItems: 12,
+      minLength: "-1",
+      maxLength: "1.5",
+      minProperties: "",
+      maxProperties: "9007199254740993",
+    })
+  })
 })
 
 describe("translateGoogleToMessages", () => {
+  test("translates AGY update_steps count limits into Responses tool parameters", () => {
+    const translated = translateGoogleToMessages(
+      {
+        contents: [{ role: "user", parts: [{ text: "Plan the task" }] }],
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: "update_steps",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    steps: {
+                      type: "ARRAY",
+                      minItems: "1",
+                      maxItems: "12",
+                      items: {
+                        type: "OBJECT",
+                        minProperties: "1",
+                        maxProperties: "2",
+                        properties: {
+                          title: {
+                            type: "STRING",
+                            minLength: "0",
+                            maxLength: "128",
+                          },
+                          status: {
+                            type: "STRING",
+                            enum: ["12", "pending"],
+                            default: "12",
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      { model: "gpt-6.2-sol", stream: true },
+    )
+    const response = translateAnthropicMessagesToResponsesPayload(translated)
+    expect(response.tools?.[0]).toMatchObject({
+      type: "function",
+      name: "update_steps",
+      parameters: {
+        type: "object",
+        properties: {
+          steps: {
+            type: "array",
+            minItems: 1,
+            maxItems: 12,
+            items: {
+              type: "object",
+              minProperties: 1,
+              maxProperties: 2,
+              properties: {
+                title: { type: "string", minLength: 0, maxLength: 128 },
+                status: {
+                  type: "string",
+                  enum: ["12", "pending"],
+                  default: "12",
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+  })
+
   test("translates system instruction, multi-turn history, thoughts, signatures, and tool calls/results", () => {
     const sig = Buffer.from("sig-step-1").toString("base64")
     const request: GoogleGenerateContentRequest = {
