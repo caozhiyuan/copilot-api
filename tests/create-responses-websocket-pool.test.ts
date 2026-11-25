@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { isResponsesStream } from "~/lib/utils"
 
 import type {
   ResponseInputItem,
@@ -203,6 +204,9 @@ class MockProxyAgent extends MockAgent {
 const setGlobalDispatcherMock = mock((_dispatcher: unknown) => {})
 const actualUndici = await import("undici")
 const originalWebSocket = globalThis.WebSocket
+const { collaborationReplayTools } = await import(
+  "./fixtures/collaboration-replay-tools"
+)
 
 await mock.module("undici", () => ({
   ...actualUndici,
@@ -297,6 +301,54 @@ beforeEach(() => {
   state.copilotToken = "test-token"
   state.vsCodeDeviceId = "device-1"
   state.vsCodeVersion = "1.120.0"
+})
+
+test("Responses websocket dispatches the same disabled-tool encrypted replay repair", async () => {
+  fs.writeFileSync(
+    PATHS.CONFIG_PATH,
+    JSON.stringify({
+      copilotResponsesReplayTools: { "gpt-replay": [collaborationReplayTools] },
+    }),
+  )
+  invalidateConfigCache()
+  const payload: ResponsesPayload = {
+    model: "gpt-replay",
+    stream: true,
+    tools: [],
+    input: [
+      {
+        type: "function_call",
+        name: "followup_task",
+        namespace: "collaboration",
+        call_id: "synthetic-call",
+        arguments: JSON.stringify({
+          target: "synthetic",
+          message: "opaque",
+          _oai_encrypted: true,
+        }),
+      },
+    ],
+  }
+  const original = JSON.stringify(payload)
+  const response = await createResponses(payload, {
+    initiator: "user",
+    requestId: "request-replay-websocket",
+    vision: false,
+    transport: "websocket",
+  })
+  if (!isResponsesStream(response))
+    throw new Error("Expected a Responses stream")
+  for await (const chunk of response) {
+    expect(chunk).toBeDefined()
+  }
+  const sent = JSON.parse(
+    MockWebSocket.instances[0].sent[0],
+  ) as ResponsesPayload
+  expect(sent.tools).toEqual([collaborationReplayTools])
+  expect(sent.tool_choice).toBe("none")
+  expect(sent.parallel_tool_calls).toBe(false)
+  expect(sent.input).toEqual(payload.input)
+  expect(JSON.stringify(payload)).toBe(original)
 })
 
 afterEach(() => {

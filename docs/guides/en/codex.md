@@ -77,6 +77,8 @@ See the [official configuration reference](https://learn.chatgpt.com/docs/config
 >
 > **GitHub Copilot with Multi-Agent V2:** Enable `defer_mailbox_preemption = true` under `[features]` to prevent subagent messages from preempting the current response.
 >
+> **Encrypted-history compaction:** `Portable encrypted function call arguments require their original tool declaration or saved encryption schema` is not a WebSocket disconnect. A tool-less compaction request can still need the original declarations to interpret encrypted history. If the actual original catalog is available, the opt-in [`copilotResponsesReplayTools`](configuration.md#protocols-reasoning-and-connections) setting can attach it without enabling tool calls. It cannot recover unknown catalogs or repair unrelated decryption errors. Test the affected conversation's compaction, not only a fresh short chat, before treating it as resolved.
+>
 > Sign in to Codex with ChatGPT or an API key before use. `requires_openai_auth = true` shows account information in the UI, plus quota usage and subscription details for ChatGPT sign-in; request authentication still prioritizes `env_key`. To bypass account restrictions in the Codex client, try setting it to `false`. Note that `false` also hides Remote (**Control this Mac** under **Settings → Connections**) in the desktop app ([openai/codex#36879](https://github.com/openai/codex/issues/36879)).
 >
 > `GITHUB_COPILOT_API_KEY` authenticates requests to the gateway. Use one of the [gateway API keys](cli.md#auth-command-options), or any non-empty placeholder when none are configured; if it is unset, Codex fails with a `Missing environment variable` error.

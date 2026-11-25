@@ -145,6 +145,8 @@
 
 - **noEncryptedOutputModels：** 不支持 Responses 输出加密内容的 Copilot 模型 ID 名单。仅对名单内的模型移除请求 `include` 中的 `output.encrypted_content`；默认 `[]`，省略或留空时所有模型均原样透传该字段。按模型映射后的最终上游模型 ID 精确匹配，HTTP 和 WebSocket 请求均生效。其他 include 项（包括 `reasoning.encrypted_content`）保持不变。仅作用于 GitHub Copilot，不影响内置 `codex` 或第三方 provider。
 
+- **copilotResponsesReplayTools：** 可选配置，按最终 Copilot 模型 ID 指定原始 Responses function/namespace 声明数组，省略时关闭。仅在请求没有工具且重放加密函数参数或 Agent 消息时补入声明，并设置 `tool_choice: "none"`、`parallel_tool_calls: false`。HTTP 和 WebSocket 使用同一补齐后的请求。不会替换请求已有工具或 `additional_tools`、`tool_search_output` 中的声明；配置无效、声明重名或无法覆盖已识别的加密函数调用时，会在转发前明确报错。必须提供与历史客户端和工具配置匹配的真实声明，保留 `encrypted: true` 标记；此功能不是自动 schema 缓存，也不能凭空恢复缺失 schema。不同历史工具定义的流量不能共用一份模型级配置。不改写密文、推理、压缩检查点或请求输入。仅作用于 Copilot，不会为普通无工具聊天开启工具执行。
+
 - **useMessagesApi：** 当为 `true` 时，声明了 Copilot 原生 `/v1/messages` 端点的模型会使用 Messages API。如果所选模型未声明 Messages 端点或关闭了该配置，网关会在模型声明了 Responses 端点时使用 Responses，否则在模型支持时回退到 Chat Completions。设为 `false` 可跳过原生 Messages 路由。默认值为 `true`。
 
 - **useResponsesApiWebSocket：** 当为 `true` 时，Copilot Responses 请求会对声明了 `ws:/responses` 的模型使用 WebSocket；仅声明 `/responses` 的模型使用 HTTP。内置 `codex` provider 的流式 Responses 请求只要启用了该配置就会使用 WebSocket，非流式 Codex 请求始终使用 HTTP。设为 `false` 后，Copilot 会在所选模型声明了 `/responses` 时使用 HTTP，Codex 的流式 Responses 请求也会改走 HTTP。Copilot 请求以 `compaction_trigger` 结尾、待发送的 WebSocket 消息超过 16 MiB、模型支持 HTTP 且全量请求体不超过 32 MiB 时，可在发送 WebSocket 消息前改走 HTTP。默认值为 `true`。如果代理、VPN 或网络会阻断或干扰 WebSocket 流量，请关闭该配置或切换网络。

@@ -22,9 +22,11 @@ import {
 } from "~/lib/providers/api-config"
 import { COMPACT_REQUEST, type CompactType } from "~/lib/http/compact"
 import {
+  getConfig,
   getUpstreamTransportConfig,
   isOutputEncryptedContentDisabled,
 } from "~/lib/config"
+import { restoreCopilotReplayTools } from "~/lib/copilot-replay-tools"
 import {
   logCopilotQuotaSnapshots,
   logCopilotRateLimits,
@@ -95,7 +97,10 @@ export const createResponses = async (
 
   // service_tier is not supported by github copilot
   payload.service_tier = undefined
-  let upstreamPayload = omitUnsupportedCopilotInclude(payload)
+  let upstreamPayload = restoreCopilotReplayTools(
+    omitUnsupportedCopilotInclude(payload),
+    getConfig().copilotResponsesReplayTools?.[payload.model],
+  )
   const maxOutputTokens = upstreamPayload.max_output_tokens
   if (
     typeof maxOutputTokens === "number"

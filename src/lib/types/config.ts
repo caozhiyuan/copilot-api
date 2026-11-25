@@ -1,5 +1,6 @@
 import type { GatewayApiKeyConfig } from "./api-key"
 import type { TokenUsagePricingConfig } from "./pricing"
+import type { Tool } from "./responses"
 
 export type ModelReasoningField = "reasoning" | "reasoning_content"
 
@@ -135,6 +136,7 @@ export interface AppConfig {
   codexMultiAgentV1?: boolean
   // Copilot model IDs that must not request output.encrypted_content.
   noEncryptedOutputModels?: Array<string>
+  copilotResponsesReplayTools?: Record<string, Array<Tool>>
   upstreamTransport?: UpstreamTransportConfig
   anthropicApiKey?: string
   useResponsesApiWebSearch?: boolean

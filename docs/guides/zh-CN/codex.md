@@ -79,6 +79,8 @@ enabled = false
 >
 > **GitHub Copilot 多 Agent V2：** 在 `[features]` 中启用 `defer_mailbox_preemption = true`，避免子 Agent 消息抢占、提前中断当前响应。
 >
+> **加密历史压缩：** `Portable encrypted function call arguments require their original tool declaration or saved encryption schema` 不是 WebSocket 掉线。没有工具的压缩请求仍可能需要原始声明来解释加密历史。若真实原始声明可取得，可通过 [`copilotResponsesReplayTools`](configuration.md#协议推理与连接) 显式补齐且禁止工具执行。不能恢复未知声明，也不能修复其他解密错误。必须验证出错原对话能完成压缩，不能仅凭新建短对话正常就判断已解决。
+>
 > 使用 Codex 需先通过 ChatGPT 或 API Key 登录。`requires_openai_auth = true` 用于在 UI 中显示登录账号信息，ChatGPT 登录时还可显示额度和订阅信息；请求鉴权仍优先使用 `env_key`。如需绕过 Codex 客户端的账号限制，可尝试设为 `false`。注意：设为 `false` 后，桌面应用会隐藏 Remote（**Settings → Connections** 中的 **Control this Mac**）（[openai/codex#36879](https://github.com/openai/codex/issues/36879)）。
 >
 > `GITHUB_COPILOT_API_KEY` 用于网关鉴权。填写任一[网关 API Key](cli.md#auth-命令选项)；未配置 Key 时，填写任意非空占位值即可。未设置时，Codex 会报 `Missing environment variable` 错误。

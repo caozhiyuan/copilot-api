@@ -25,6 +25,7 @@ import {
 } from "~/services/copilot/create-responses"
 
 import { createResponsesResult } from "./fixtures/responses"
+import { collaborationReplayTools } from "./fixtures/collaboration-replay-tools"
 
 const originalFetch = globalThis.fetch
 const originalOauthApp = process.env.COPILOT_API_OAUTH_APP
@@ -88,6 +89,118 @@ afterEach(() => {
 })
 
 describe("createResponses", () => {
+  test("restores a model-specific original catalog before HTTP dispatch without mutating history", async () => {
+    fs.writeFileSync(
+      PATHS.CONFIG_PATH,
+      JSON.stringify({
+        copilotResponsesReplayTools: {
+          "gpt-test": [collaborationReplayTools],
+        },
+      }),
+    )
+    invalidateConfigCache()
+    const payload: ResponsesPayload = {
+      model: "gpt-test",
+      input: [
+        {
+          type: "function_call",
+          name: "followup_task",
+          namespace: "collaboration",
+          call_id: "synthetic-call",
+          arguments: JSON.stringify({
+            target: "synthetic",
+            message: "opaque",
+            _oai_encrypted: true,
+          }),
+        },
+      ],
+      tools: [],
+    }
+    const original = JSON.stringify(payload)
+    await createResponses(payload, {
+      initiator: "user",
+      requestId: "request-replay",
+      vision: false,
+    })
+    const body = JSON.parse(
+      fetchMock.mock.calls[0][1]?.body as string,
+    ) as ResponsesPayload
+    expect(body.tools).toEqual([collaborationReplayTools])
+    expect(body.tool_choice).toBe("none")
+    expect(body.parallel_tool_calls).toBe(false)
+    expect(body.input).toEqual(payload.input)
+    expect(JSON.stringify(payload)).toBe(original)
+  })
+
+  test("does not apply another model's configured replay catalog", async () => {
+    fs.writeFileSync(
+      PATHS.CONFIG_PATH,
+      JSON.stringify({
+        copilotResponsesReplayTools: {
+          "another-model": [collaborationReplayTools],
+        },
+      }),
+    )
+    invalidateConfigCache()
+    await createResponses(
+      {
+        model: "gpt-test",
+        tools: [],
+        input: [
+          {
+            type: "agent_message",
+            author: "synthetic-parent",
+            recipient: "synthetic-child",
+            content: [
+              { type: "encrypted_content", encrypted_content: "opaque" },
+            ],
+          },
+        ],
+      },
+      {
+        initiator: "user",
+        requestId: "request-unconfigured-replay",
+        vision: false,
+      },
+    )
+    const body = JSON.parse(
+      fetchMock.mock.calls[0][1]?.body as string,
+    ) as ResponsesPayload
+    expect(body.tools).toEqual([])
+    expect(body.tool_choice).toBeUndefined()
+  })
+
+  test("does not dispatch an encrypted replay with an invalid original catalog", async () => {
+    fs.writeFileSync(
+      PATHS.CONFIG_PATH,
+      JSON.stringify({ copilotResponsesReplayTools: { "gpt-test": [] } }),
+    )
+    invalidateConfigCache()
+    const { HTTPError } = await import("~/lib/http/error")
+    const result = await createResponses(
+      {
+        model: "gpt-test",
+        input: [
+          {
+            type: "agent_message",
+            author: "synthetic-parent",
+            recipient: "synthetic-child",
+            content: [
+              { type: "encrypted_content", encrypted_content: "opaque" },
+            ],
+          },
+        ],
+      },
+      {
+        initiator: "user",
+        requestId: "request-invalid-replay",
+        vision: false,
+      },
+    ).catch((error: unknown) => error)
+    expect(result).toBeInstanceOf(HTTPError)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   test("keeps HTTP responses requests using x-initiator header", async () => {
     const payload: ResponsesPayload = {
       input: "hello",
