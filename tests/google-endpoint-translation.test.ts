@@ -352,7 +352,7 @@ describe("translateGoogleToMessages", () => {
   test("preserves empty-text trailing thoughtSignature parts and merges consecutive same-role turns", () => {
     const sig = Buffer.from("trailing-sig").toString("base64")
     const request: GoogleGenerateContentRequest = {
-      system_instruction: { parts: [{ text: "Snake case system" }] },
+      systemInstruction: { parts: [{ text: "System instruction" }] },
       contents: [
         { role: "system", parts: [{ text: "Inline system" }] },
         { parts: [{ text: "Part 1" }] },
@@ -368,7 +368,7 @@ describe("translateGoogleToMessages", () => {
     })
 
     expect(translated.system).toEqual([
-      { type: "text", text: "Snake case system" },
+      { type: "text", text: "System instruction" },
       { type: "text", text: "Inline system" },
     ])
     expect(translated.messages).toEqual([
@@ -1621,32 +1621,56 @@ describe("translateMessagesStreamToGoogle", () => {
   })
 })
 
-describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning JSON round-trip", () => {
-  test("accepts snake_case Gemini REST fields without renaming user keys in args, responses, or schemas", () => {
-    const sig = Buffer.from("snake-sig").toString("base64")
+describe("Gemini request fields, responseFormat, and multi-reasoning JSON round-trip", () => {
+  test("ignores unsupported Gemini request field aliases", () => {
+    const rawRequest = {
+      contents: [
+        {
+          parts: [
+            {
+              text: "Hello",
+              inline_data: { mime_type: "image/png", data: "aW1n" },
+            },
+          ],
+        },
+      ],
+      generation_config: { max_output_tokens: 42 },
+    }
+    const options = { model: "gemini-4-neon", stream: false }
+
+    expect(translateGoogleToMessages(rawRequest, options)).toEqual(
+      translateGoogleToMessages(
+        { contents: [{ parts: [{ text: "Hello" }] }] },
+        options,
+      ),
+    )
+  })
+
+  test("translates Gemini REST fields and preserves user keys in tool arguments, results, and schemas", () => {
+    const sig = Buffer.from("tool-sig").toString("base64")
     const request: GoogleGenerateContentRequest = {
-      system_instruction: { parts: [{ text: "Use tools carefully." }] },
+      systemInstruction: { parts: [{ text: "Use tools carefully." }] },
       contents: [
         {
           role: "user",
           parts: [
             { text: "Describe this image" },
             {
-              inline_data: {
-                mime_type: "image/png",
+              inlineData: {
+                mimeType: "image/png",
                 data: "aW1n",
               },
             },
             {
-              inline_data: {
-                mime_type: "application/pdf",
+              inlineData: {
+                mimeType: "application/pdf",
                 data: "cGRm",
-                display_name: "report.pdf",
+                displayName: "report.pdf",
               },
             },
             {
-              file_data: {
-                file_uri: "gs://bucket/file.txt",
+              fileData: {
+                fileUri: "gs://bucket/file.txt",
               },
             },
           ],
@@ -1656,12 +1680,12 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
           parts: [
             { text: "Checking tool", thought: true },
             {
-              function_call: {
-                id: "call_snake_1",
+              functionCall: {
+                id: "call_inspect_1",
                 name: "inspect_file",
                 args: { file_path: "src/app.ts", line_number: 10 },
               },
-              thought_signature: sig,
+              thoughtSignature: sig,
             },
           ],
         },
@@ -1669,14 +1693,14 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
           role: "user",
           parts: [
             {
-              function_response: {
-                id: "call_snake_1",
+              functionResponse: {
+                id: "call_inspect_1",
                 name: "inspect_file",
                 response: { exit_code: 0, raw_text: "ok" },
                 parts: [
                   {
-                    inline_data: {
-                      mime_type: "image/jpeg",
+                    inlineData: {
+                      mimeType: "image/jpeg",
                       data: "anBn",
                     },
                   },
@@ -1688,11 +1712,11 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
       ],
       tools: [
         {
-          function_declarations: [
+          functionDeclarations: [
             {
               name: "inspect_file",
               description: "Inspect a file",
-              parameters_json_schema: {
+              parametersJsonSchema: {
                 type: "object",
                 properties: {
                   file_path: { type: "string" },
@@ -1704,30 +1728,30 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
           ],
         },
       ],
-      tool_config: {
-        function_calling_config: {
+      toolConfig: {
+        functionCallingConfig: {
           mode: "VALIDATED",
-          allowed_function_names: ["inspect_file"],
+          allowedFunctionNames: ["inspect_file"],
         },
       },
-      generation_config: {
-        max_output_tokens: 2048,
+      generationConfig: {
+        maxOutputTokens: 2048,
         temperature: 0.3,
-        top_p: 0.85,
-        top_k: 20,
-        stop_sequences: ["DONE"],
-        thinking_config: {
-          thinking_budget: 1024,
-          thinking_level: "HIGH",
+        topP: 0.85,
+        topK: 20,
+        stopSequences: ["DONE"],
+        thinkingConfig: {
+          thinkingBudget: 1024,
+          thinkingLevel: "HIGH",
         },
-        response_mime_type: "application/json",
-        response_schema: {
+        responseMimeType: "application/json",
+        responseSchema: {
           type: "OBJECT",
           properties: {
             user_id: { type: "STRING" },
-            union_val: { any_of: [{ type: "STRING" }, { type: "NULL" }] },
+            union_val: { anyOf: [{ type: "STRING" }, { type: "NULL" }] },
           },
-          additional_properties: false,
+          additionalProperties: false,
         },
       },
     }
@@ -1805,7 +1829,7 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
           { type: "thinking", thinking: "Checking tool", signature: sig },
           {
             type: "tool_use",
-            id: "call_snake_1",
+            id: "call_inspect_1",
             name: "inspect_file",
             input: { file_path: "src/app.ts", line_number: 10 },
           },
@@ -1816,7 +1840,7 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
         content: [
           {
             type: "tool_result",
-            tool_use_id: "call_snake_1",
+            tool_use_id: "call_inspect_1",
             content: [
               { type: "text", text: '{"exit_code":0,"raw_text":"ok"}' },
               {
@@ -1839,7 +1863,7 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
           contents: [
             {
               role: "user",
-              parts: [{ inline_data: { data: "aW1n" } }],
+              parts: [{ inlineData: { mimeType: "", data: "aW1n" } }],
             },
           ],
         },
@@ -1886,15 +1910,15 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
       },
     })
 
-    const arraySnakeFormat = translateGoogleToMessages(
+    const arrayFormat = translateGoogleToMessages(
       {
         contents: [{ role: "user", parts: [{ text: "Extract verdict" }] }],
-        generation_config: {
-          response_format: [
+        generationConfig: {
+          responseFormat: [
             {
               text: {
-                mime_type: "application/json",
-                json_schema: {
+                mimeType: "application/json",
+                jsonSchema: {
                   type: "object",
                   properties: { ok: { type: "boolean" } },
                 },
@@ -1905,7 +1929,7 @@ describe("snake_case REST fields, Gemini 4+ responseFormat, and multi-reasoning 
       },
       { model: "gemini-4-neon", stream: false },
     )
-    expect(arraySnakeFormat.output_config).toEqual({
+    expect(arrayFormat.output_config).toEqual({
       format: {
         type: "json_schema",
         schema: {

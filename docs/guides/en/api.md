@@ -128,6 +128,8 @@ When token counting falls back to local estimation, image URLs and Base64 data a
 
 These endpoints expose the Gemini 4+ / GenAI REST surface. Requests targeting configured `type: "google"` providers (including per-model `type: "google"` overrides) pass through natively; all other Copilot and provider models translate bidirectionally through the Messages API hub while preserving `thoughtSignature` round-trips. Usage is recorded under the `generate_content` endpoint.
 
+Use lowerCamelCase for Gemini request fields such as `generationConfig` and `inlineData`.
+
 | Endpoint | Method | Description |
 | --- | --- | --- |
 | `GET /v1beta/models` | `GET` | Lists available gateway models in Google `models/<id>` format. |

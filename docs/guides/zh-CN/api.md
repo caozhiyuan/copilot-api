@@ -132,6 +132,8 @@ Token 计数回退到本地估算时，不会把图片的 URL 或 Base64 当作�
 
 这些端点提供面向 Gemini 4+ / GenAI 客户端的 REST 兼容接口。目标为已配置的 `type: "google"` provider（含模型级 `type: "google"` 覆盖）时原生透传；其余 GitHub Copilot 与第三方 provider 模型通过 Messages API 枢纽双向转换，并保留 `thoughtSignature` 往返透传。用量记录在 `generate_content` 端点下。
 
+Gemini 请求使用小驼峰协议字段，例如 `generationConfig` 和 `inlineData`。
+
 | 端点 | 方法 | 说明 |
 | --- | --- | --- |
 | `GET /v1beta/models` | `GET` | 以 Google `models/<id>` 格式列出可用网关模型。 |

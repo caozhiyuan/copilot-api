@@ -16,12 +16,10 @@ import type {
 } from "~/lib/types/anthropic"
 import type {
   GoogleContent,
-  GoogleFileDataInput,
-  GoogleFunctionResponse,
   GoogleGenerateContentRequest,
   GoogleGenerateContentResponse,
   GoogleGenerationConfig,
-  GoogleInlineDataInput,
+  GoogleInlineData,
   GooglePart,
   GoogleTool,
   GoogleToolConfig,
@@ -163,24 +161,14 @@ export function decodeSignatureFromGoogle(thoughtSignature: string): string {
   return thoughtSignature
 }
 
-const GEMINI_SCHEMA_SNAKE_KEY_MAP: Record<string, string> = {
-  additional_properties: "additionalProperties",
-  all_of: "allOf",
-  any_of: "anyOf",
-  one_of: "oneOf",
-  prefix_items: "prefixItems",
-}
-
 export function normalizeGeminiSchema(
   schema: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   const nullable = schema.nullable === true
 
-  for (const [rawKey, value] of Object.entries(schema)) {
-    if (rawKey === "nullable") continue
-
-    const key = GEMINI_SCHEMA_SNAKE_KEY_MAP[rawKey] ?? rawKey
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "nullable") continue
 
     if (key === "type" && typeof value === "string") {
       if (value === "TYPE_UNSPECIFIED") continue
@@ -229,10 +217,8 @@ export function normalizeGeminiSchema(
   return result
 }
 
-function normalizeInlineData(
-  raw: GoogleInlineDataInput | undefined,
-): NonNullable<GooglePart["inlineData"]> | undefined {
-  if (raw === undefined) return undefined
+function normalizeInlineData(raw: unknown): GoogleInlineData | undefined {
+  if (raw === undefined || raw === null) return undefined
   if (!isRecord(raw)) {
     throw new GoogleMessagesTranslationError(
       "Google inlineData must be an object",
@@ -240,46 +226,28 @@ function normalizeInlineData(
     )
   }
 
-  const mimeType =
-    typeof raw.mimeType === "string" ? raw.mimeType
-    : typeof raw.mime_type === "string" ? raw.mime_type
-    : undefined
-  const data = typeof raw.data === "string" ? raw.data : undefined
-  if (!mimeType || data === undefined) {
+  const { mimeType, data, displayName } = raw
+  if (typeof mimeType !== "string" || !mimeType || typeof data !== "string") {
     throw new GoogleMessagesTranslationError(
       "Google inlineData requires string 'mimeType' and 'data'",
       400,
     )
   }
 
-  const displayName =
-    typeof raw.displayName === "string" ? raw.displayName
-    : typeof raw.display_name === "string" ? raw.display_name
-    : undefined
-
   return {
     mimeType,
     data,
-    ...(displayName !== undefined ? { displayName } : {}),
+    ...(typeof displayName === "string" ? { displayName } : {}),
   }
 }
 
-function normalizeFileData(
-  raw: GoogleFileDataInput | undefined,
-): GooglePart["fileData"] | undefined {
-  if (!raw || !isRecord(raw)) return undefined
-  const fileUri =
-    typeof raw.fileUri === "string" ? raw.fileUri
-    : typeof raw.file_uri === "string" ? raw.file_uri
-    : undefined
-  if (!fileUri) return undefined
-  const mimeType =
-    typeof raw.mimeType === "string" ? raw.mimeType
-    : typeof raw.mime_type === "string" ? raw.mime_type
-    : undefined
+function normalizeFileData(raw: unknown): GooglePart["fileData"] {
+  if (!isRecord(raw)) return undefined
+  const { fileUri, mimeType } = raw
+  if (typeof fileUri !== "string" || !fileUri) return undefined
   return {
     fileUri,
-    ...(mimeType !== undefined ? { mimeType } : {}),
+    ...(typeof mimeType === "string" ? { mimeType } : {}),
   }
 }
 
@@ -287,25 +255,22 @@ function normalizeGooglePart(part: GooglePart): GooglePart {
   if (typeof part !== "object" || part === null || Array.isArray(part)) {
     return {}
   }
-  const thoughtSignature =
-    typeof part.thoughtSignature === "string" ? part.thoughtSignature
-    : typeof part.thought_signature === "string" ? part.thought_signature
-    : undefined
-  const inlineData = normalizeInlineData(part.inlineData ?? part.inline_data)
-  const fileData = normalizeFileData(part.fileData ?? part.file_data)
-  const functionCall = part.functionCall ?? part.function_call
-  const rawFunctionResponse = part.functionResponse ?? part.function_response
-  const functionResponse: GoogleFunctionResponse | undefined =
+  const {
+    thoughtSignature,
+    functionCall,
+    functionResponse: rawFunctionResponse,
+  } = part
+  const inlineData = normalizeInlineData(part.inlineData)
+  const fileData = normalizeFileData(part.fileData)
+  const functionResponse =
     rawFunctionResponse ?
       {
         ...rawFunctionResponse,
         ...(Array.isArray(rawFunctionResponse.parts) ?
           {
             parts: rawFunctionResponse.parts.map((mediaPart) => {
-              const normalizedMedia = normalizeInlineData(
-                mediaPart.inlineData ?? mediaPart.inline_data,
-              )
-              return normalizedMedia ? { inlineData: normalizedMedia } : {}
+              const inlineData = normalizeInlineData(mediaPart.inlineData)
+              return inlineData ? { inlineData } : {}
             }),
           }
         : {}),
@@ -315,7 +280,7 @@ function normalizeGooglePart(part: GooglePart): GooglePart {
   return {
     ...(part.text !== undefined ? { text: part.text } : {}),
     ...(part.thought !== undefined ? { thought: part.thought } : {}),
-    ...(thoughtSignature !== undefined ? { thoughtSignature } : {}),
+    ...(typeof thoughtSignature === "string" ? { thoughtSignature } : {}),
     ...(inlineData !== undefined ? { inlineData } : {}),
     ...(fileData !== undefined ? { fileData } : {}),
     ...(functionCall !== undefined ? { functionCall } : {}),
@@ -420,12 +385,9 @@ function translateFunctionResponse(
   const { text, isError } = serializeFunctionResponseBody(
     functionResponse.response,
   )
-  const mediaParts = (functionResponse.parts ?? []).flatMap((part) => {
-    const normalizedMedia = normalizeInlineData(
-      part.inlineData ?? part.inline_data,
-    )
-    return normalizedMedia ? [translateInlineDataPart(normalizedMedia)] : []
-  })
+  const mediaParts = (functionResponse.parts ?? []).flatMap(({ inlineData }) =>
+    inlineData ? [translateInlineDataPart(inlineData)] : [],
+  )
 
   if (mediaParts.length === 0) {
     return {
@@ -458,17 +420,14 @@ function translateToolsAndChoice(
 } {
   let tools: Array<AnthropicTool> = []
   for (const toolGroup of rawTools ?? []) {
-    const declarations =
-      toolGroup.functionDeclarations ?? toolGroup.function_declarations
+    const declarations = toolGroup.functionDeclarations
     if (!Array.isArray(declarations)) continue
     for (const declaration of declarations) {
       if (!declaration?.name) continue
-      const parametersJsonSchema =
-        declaration.parametersJsonSchema ?? declaration.parameters_json_schema
+      const { parametersJsonSchema, parameters } = declaration
       const rawSchema =
         isRecord(parametersJsonSchema) ? parametersJsonSchema
-        : isRecord(declaration.parameters) ?
-          normalizeGeminiSchema(declaration.parameters)
+        : isRecord(parameters) ? normalizeGeminiSchema(parameters)
         : { type: "object", properties: {} }
 
       tools.push({
@@ -485,11 +444,8 @@ function translateToolsAndChoice(
     return {}
   }
 
-  const callingConfig =
-    toolConfig?.functionCallingConfig ?? toolConfig?.function_calling_config
-  const rawAllowedNames =
-    callingConfig?.allowedFunctionNames ?? callingConfig?.allowed_function_names
-  const allowedNames = rawAllowedNames?.filter(
+  const callingConfig = toolConfig?.functionCallingConfig
+  const allowedNames = callingConfig?.allowedFunctionNames?.filter(
     (name): name is string => typeof name === "string" && name.length > 0,
   )
   const mode = callingConfig?.mode
@@ -588,12 +544,9 @@ function resolveResponseFormatSchema(
     }
 
     const rawMimeType =
-      typeof textFormat.mimeType === "string" ? textFormat.mimeType
-      : typeof textFormat.mime_type === "string" ? textFormat.mime_type
-      : undefined
+      typeof textFormat.mimeType === "string" ? textFormat.mimeType : undefined
     const rawSchema =
       isRecord(textFormat.jsonSchema) ? textFormat.jsonSchema
-      : isRecord(textFormat.json_schema) ? textFormat.json_schema
       : isRecord(textFormat.schema) ? normalizeGeminiSchema(textFormat.schema)
       : undefined
 
@@ -633,8 +586,7 @@ function translateGenerationConfig(
   | "output_config"
 > {
   const defaultMaxTokens = resolveDefaultMaxOutputTokens(model)
-  const rawMaxOutputTokens =
-    config?.maxOutputTokens ?? config?.max_output_tokens
+  const rawMaxOutputTokens = config?.maxOutputTokens
   const requestedMaxTokens =
     (
       typeof rawMaxOutputTokens === "number"
@@ -648,10 +600,9 @@ function translateGenerationConfig(
   let thinking: AnthropicMessagesPayload["thinking"]
   let outputConfig: AnthropicMessagesPayload["output_config"]
 
-  const thinkingConfig = config?.thinkingConfig ?? config?.thinking_config
+  const thinkingConfig = config?.thinkingConfig
   if (thinkingConfig) {
-    const budget =
-      thinkingConfig.thinkingBudget ?? thinkingConfig.thinking_budget
+    const budget = thinkingConfig.thinkingBudget
     if (typeof budget === "number" && Number.isFinite(budget)) {
       if (budget === 0) {
         thinking = { type: "disabled" }
@@ -664,22 +615,19 @@ function translateGenerationConfig(
       }
     }
 
-    const effort = translateThinkingLevelToEffort(
-      thinkingConfig.thinkingLevel ?? thinkingConfig.thinking_level,
-    )
+    const effort = translateThinkingLevelToEffort(thinkingConfig.thinkingLevel)
     if (effort) {
       outputConfig = { ...outputConfig, effort }
     }
   }
 
   const responseFormatSchema = resolveResponseFormatSchema(
-    config?.responseFormat ?? config?.response_format,
+    config?.responseFormat,
   )
 
-  const legacyMimeType = config?.responseMimeType ?? config?.response_mime_type
-  const rawLegacyJsonSchema =
-    config?.responseJsonSchema ?? config?.response_json_schema
-  const rawLegacySchema = config?.responseSchema ?? config?.response_schema
+  const legacyMimeType = config?.responseMimeType ?? undefined
+  const rawLegacyJsonSchema = config?.responseJsonSchema
+  const rawLegacySchema = config?.responseSchema
   const legacyStructuredSchema =
     isRecord(rawLegacyJsonSchema) ? rawLegacyJsonSchema
     : isRecord(rawLegacySchema) ? normalizeGeminiSchema(rawLegacySchema)
@@ -713,9 +661,7 @@ function translateGenerationConfig(
     }
   }
 
-  const topP = config?.topP ?? config?.top_p
-  const topK = config?.topK ?? config?.top_k
-  const stopSequences = config?.stopSequences ?? config?.stop_sequences
+  const { topP, topK, stopSequences } = config ?? {}
 
   return {
     max_tokens: Math.max(1, maxTokens),
@@ -909,9 +855,7 @@ export function translateGoogleToMessages(
   }
 
   const systemBlocks: Array<AnthropicTextBlock> = []
-  for (const text of extractTextParts(
-    payload.systemInstruction ?? payload.system_instruction,
-  )) {
+  for (const text of extractTextParts(payload.systemInstruction)) {
     systemBlocks.push({ type: "text", text })
   }
 
@@ -1014,10 +958,10 @@ export function translateGoogleToMessages(
 
   const { tools, toolChoice } = translateToolsAndChoice(
     payload.tools,
-    payload.toolConfig ?? payload.tool_config,
+    payload.toolConfig,
   )
   const generation = translateGenerationConfig(
-    payload.generationConfig ?? payload.generation_config,
+    payload.generationConfig,
     options.model,
   )
 

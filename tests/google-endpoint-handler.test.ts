@@ -1313,35 +1313,11 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
         maxOutputTokens: 8192,
       },
     })
-
-    // Snake-case generation_config should not be duplicated with camelCase generationConfig
-    const snakeRes = await app.request(
-      "/v1beta/models/mygoogle/gemini-4-argon:generateContent",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "hello snake" }] }],
-          generation_config: { top_p: 0.6 },
-        }),
-      },
-    )
-    expect(snakeRes.status).toBe(200)
-    expect(capturedPayload).toEqual({
-      contents: [{ role: "user", parts: [{ text: "hello snake" }] }],
-      cachedContent: "cachedContents/default",
-      generation_config: {
-        top_p: 0.6,
-        temperature: 0.4,
-        top_k: 32,
-        maxOutputTokens: 8192,
-      },
-    })
   })
 
-  test("forwards snake_case inline_data, thought_signature, and structured schemas to Chat Completions and Responses APIs", async () => {
+  test("forwards Gemini inlineData, thoughtSignature, and structured schemas to Chat Completions and Responses APIs", async () => {
     const app = createServer()
-    const sig = Buffer.from("snake-opaque-sig").toString("base64")
+    const sig = Buffer.from("opaque-sig").toString("base64")
 
     createChatCompletions.mockImplementationOnce(() =>
       Promise.resolve({
@@ -1372,19 +1348,19 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
               role: "user",
               parts: [
                 { text: "Analyze image" },
-                { inline_data: { mime_type: "image/png", data: "aW1n" } },
+                { inlineData: { mimeType: "image/png", data: "aW1n" } },
               ],
             },
             {
               role: "model",
               parts: [
                 {
-                  function_call: {
+                  functionCall: {
                     id: "call_1",
                     name: "inspect",
                     args: { target_path: "a.png" },
                   },
-                  thought_signature: sig,
+                  thoughtSignature: sig,
                 },
               ],
             },
@@ -1392,7 +1368,7 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
               role: "user",
               parts: [
                 {
-                  function_response: {
+                  functionResponse: {
                     id: "call_1",
                     name: "inspect",
                     response: { status: "ok" },
@@ -1401,10 +1377,10 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
               ],
             },
           ],
-          generation_config: {
-            response_format: {
+          generationConfig: {
+            responseFormat: {
               text: {
-                mime_type: "APPLICATION_JSON",
+                mimeType: "APPLICATION_JSON",
                 schema: {
                   title: "Image Verdict",
                   type: "OBJECT",
