@@ -55,4 +55,8 @@ export default defineConfig(
       "unused-imports/no-unused-imports": "error",
     },
   },
+  {
+    files: [".agents/skills/**/*.mjs"],
+    ...tseslint.configs.disableTypeChecked,
+  },
 )
