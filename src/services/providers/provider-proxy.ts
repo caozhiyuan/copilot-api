@@ -79,11 +79,16 @@ export function resolveProviderEndpointUrl(
       /\/v\d+(?:alpha|beta)?$/u.test(base) ? base : `${base}/v1beta`
     return `${apiBase}/${endpoint}`
   }
-  const apiBaseUrl =
-    providerConfig.modelsDevProviderId ?
-      providerConfig.baseUrl.replace(/\/(?:chat\/completions|responses)$/u, "")
-    : `${providerConfig.baseUrl}/v1`
-  return `${apiBaseUrl}/${endpoint}`
+  if (providerConfig.modelsDevProviderId) {
+    const base = providerConfig.baseUrl.replace(
+      /\/(?:chat\/completions|responses)$/u,
+      "",
+    )
+    return `${base}/${endpoint}`
+  }
+  const base = normalizeProviderBaseUrl(providerConfig.baseUrl)
+  const apiBase = base.endsWith("/v1") ? base : `${base}/v1`
+  return `${apiBase}/${endpoint}`
 }
 
 export function buildProviderUpstreamHeaders(
