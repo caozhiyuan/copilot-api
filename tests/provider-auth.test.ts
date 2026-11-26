@@ -191,12 +191,25 @@ describe("provider endpoint URL", () => {
     ).toBe("https://api.example.com/v1/chat/completions")
   })
 
-  test("preserves the existing manual-provider URL convention", () => {
-    expect(
-      resolveProviderEndpointUrl(
-        createProviderConfig({ baseUrl: "https://api.example.com/api" }),
-        "chat/completions",
-      ),
-    ).toBe("https://api.example.com/api/v1/chat/completions")
-  })
+  test.each([
+    { type: "anthropic", endpoint: "messages" },
+    { type: "openai-compatible", endpoint: "chat/completions" },
+    { type: "openai-responses", endpoint: "responses" },
+  ] as const)(
+    "adds v1 once for manual $type requests",
+    ({ type, endpoint }) => {
+      for (const baseUrl of [
+        "https://api.example.com/api",
+        "https://api.example.com/api/v1",
+        "https://api.example.com/api/v1/",
+      ]) {
+        expect(
+          resolveProviderEndpointUrl(
+            createProviderConfig({ type, baseUrl }),
+            endpoint,
+          ),
+        ).toBe(`https://api.example.com/api/v1/${endpoint}`)
+      }
+    },
+  )
 })
