@@ -61,6 +61,7 @@ Merge these settings into your existing `~/.gemini/antigravity-cli/settings.json
 
 ```json
 {
+  "agentMode": "accept-edits",
   "allowNonWorkspaceAccess": true,
   "altScreenMode": "always",
   "artifactReviewPolicy": "agent-decides",
@@ -80,6 +81,8 @@ Merge these settings into your existing `~/.gemini/antigravity-cli/settings.json
 `code --wait` uses the VS Code `code` command from your `PATH`. When AGY prompts you to trust a folder, confirm the local project directory on each machine. AGY records that path in `trustedWorkspaces`.
 
 This example enables access outside the workspace and adds an allow rule for `git push`. Merge the rule into your existing permissions. If the host lacks terminal sandbox support, `proceed-in-sandbox` falls back to `request-review`. [AGY permissions](https://antigravity.google/docs/permissions/)
+
+For LLM Gateway sessions, `accept-edits` automatically approves workspace file edits. Set `"toolPermission": "always-proceed"` in the same file to skip tool approval prompts. This can also approve requests to run commands outside the terminal sandbox. Explicit `ask` and `deny` rules still apply. [AGY CLI settings](https://antigravity.google/docs/settings?tab=cli)
 
 ## AGY CLI Statusline
 

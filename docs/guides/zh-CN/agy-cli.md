@@ -61,6 +61,7 @@ AGY 可以给目录里带 `my-gemini-` 前缀的模型发送图片和 PDF。例�
 
 ```json
 {
+  "agentMode": "accept-edits",
   "allowNonWorkspaceAccess": true,
   "altScreenMode": "always",
   "artifactReviewPolicy": "agent-decides",
@@ -80,6 +81,8 @@ AGY 可以给目录里带 `my-gemini-` 前缀的模型发送图片和 PDF。例�
 `code --wait` 使用 `PATH` 中的 VS Code `code` 命令。AGY 提示是否信任当前目录时，在各台机器上确认实际项目目录，AGY 会把路径写入 `trustedWorkspaces`。
 
 示例允许访问工作区外的文件，并为 `git push` 添加放行规则。把这条规则合并到已有的权限配置中。系统不支持终端沙箱时，`proceed-in-sandbox` 会回退到 `request-review`。见 [AGY 权限说明](https://antigravity.google/docs/permissions/)。
+
+使用 LLM Gateway 时，`accept-edits` 会自动批准工作区内的文件编辑。如果希望跳过工具审批，可以在同一文件里设置 `"toolPermission": "always-proceed"`。请求在终端沙箱外执行的命令也可能免确认。显式的 `ask` 和 `deny` 规则仍然有效。[AGY CLI 配置说明](https://antigravity.google/docs/settings?tab=cli)
 
 ## AGY CLI Statusline
 
