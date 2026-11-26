@@ -4,10 +4,13 @@ import os from "node:os"
 import path from "node:path"
 
 import {
+  buildDefaultOutputPath,
   CliError,
+  DEFAULT_OUTPUT_SUBDIR,
   isLoopbackUrl,
   normalizeBaseUrl,
   parseVideoStatus,
+  resolveDefaultOutputDir,
   runVideoGen,
   validateMediaUrl,
   validateRequestId,
@@ -97,6 +100,20 @@ describe("copilot-api-videogen helpers", () => {
     expect(() =>
       validateMediaUrl("https://user:pass@vidgen.x.ai/clip.mp4"),
     ).toThrow(CliError)
+
+    expect(resolveDefaultOutputDir({})).toBe(
+      path.join(path.resolve(os.tmpdir()), DEFAULT_OUTPUT_SUBDIR),
+    )
+    const customTmpEnv = { TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir }
+    const expectedDir = path.join(path.resolve(tempDir), DEFAULT_OUTPUT_SUBDIR)
+    expect(resolveDefaultOutputDir(customTmpEnv)).toBe(expectedDir)
+    const defaultVid1 = buildDefaultOutputPath(customTmpEnv)
+    const defaultVid2 = buildDefaultOutputPath(customTmpEnv)
+    expect(path.dirname(defaultVid1)).toBe(expectedDir)
+    expect(path.basename(defaultVid1)).toMatch(
+      /^video-\d{8}-\d{6}-[0-9a-f]{8}\.mp4$/u,
+    )
+    expect(defaultVid1).not.toBe(defaultVid2)
   })
 
   test("parses pending, done, moderated, failed, and expired statuses", () => {
@@ -647,5 +664,108 @@ describe("copilot-api-videogen CLI", () => {
       /ETIMEDOUT/u,
     )
     expect(postAttempts).toBe(1)
+  })
+
+  test("writes default generate and status --download outputs into OS temp dir without colliding", async () => {
+    const spacedTmp = path.join(tempDir, "temp with spaces")
+    fs.mkdirSync(spacedTmp, { recursive: true })
+    const customTmpEnv = {
+      GITHUB_COPILOT_API_KEY: "gw-key",
+      TEMP: spacedTmp,
+      TMP: spacedTmp,
+      TMPDIR: spacedTmp,
+    }
+    const expectedDir = path.join(
+      path.resolve(spacedTmp),
+      DEFAULT_OUTPUT_SUBDIR,
+    )
+
+    let help = ""
+    await runVideoGen(["--help"], {
+      env: customTmpEnv,
+      stdout: (chunk) => {
+        help += chunk
+      },
+    })
+    expect(help).toContain(expectedDir)
+
+    const mockFetch = (input: Parameters<typeof fetch>[0]) => {
+      const url = fetchUrl(input)
+      if (url.endsWith("/v1/videos/generations")) {
+        return Promise.resolve(Response.json({ request_id: "tmp-job-1" }))
+      }
+      if (url.endsWith("/v1/videos/tmp-job-1")) {
+        return Promise.resolve(
+          Response.json({
+            status: "done",
+            video: {
+              url: "https://vidgen.x.ai/tmp-job-1.mp4",
+              duration: 5,
+              respect_moderation: true,
+            },
+          }),
+        )
+      }
+      if (url.endsWith("/v1/videos/pending-space")) {
+        return Promise.resolve(
+          Response.json({ status: "pending", progress: 5 }),
+        )
+      }
+      if (url === "https://vidgen.x.ai/tmp-job-1.mp4") {
+        return Promise.resolve(new Response(FAKE_MP4))
+      }
+      return Promise.resolve(new Response("not found", { status: 404 }))
+    }
+
+    const gen1 = await runVideoGen(["generate", "--prompt", "First clip"], {
+      env: customTmpEnv,
+      fetch: mockFetch,
+      sleep: () => Promise.resolve(),
+      stdout: () => {},
+      stderr: () => {},
+    })
+    const gen2 = await runVideoGen(
+      ["status", "--request-id", "tmp-job-1", "--download"],
+      {
+        env: customTmpEnv,
+        fetch: mockFetch,
+        stdout: () => {},
+        stderr: () => {},
+      },
+    )
+    const out1 = gen1?.outPath ?? ""
+    const out2 = gen2?.outPath ?? ""
+    expect(path.dirname(out1)).toBe(expectedDir)
+    expect(path.dirname(out2)).toBe(expectedDir)
+    expect(out1).not.toBe(out2)
+    expect(fs.readFileSync(out1)).toEqual(FAKE_MP4)
+    expect(fs.readFileSync(out2)).toEqual(FAKE_MP4)
+
+    let clock = 1000
+    await expectReject(
+      runVideoGen(
+        [
+          "wait",
+          "--request-id",
+          "pending-space",
+          "--poll-interval-ms",
+          "50",
+          "--timeout-ms",
+          "100",
+        ],
+        {
+          env: customTmpEnv,
+          fetch: mockFetch,
+          now: () => clock,
+          sleep: (ms) => {
+            clock += ms + 100
+            return Promise.resolve()
+          },
+          stdout: () => {},
+          stderr: () => {},
+        },
+      ),
+      /--out ".*temp with spaces/u,
+    )
   })
 })

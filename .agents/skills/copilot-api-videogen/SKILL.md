@@ -1,6 +1,6 @@
 ---
 name: copilot-api-videogen
-description: Generate videos asynchronously through a running copilot-api gateway (/v1/videos/generations and /v1/videos/{request_id}, backed by xai/grok-imagine-video-1.5) using GITHUB_COPILOT_API_KEY and COPILOT_API_BASE_URL. Supports text-to-video, image-to-video (animating a first frame), pinned first/last frame transitions, reference-to-video (up to 14 reference images), audio toggling, status polling, and automatic MP4 download (also triggers on videogen, generate video, text to video, image to video, 视频生成, 生成视频, 文生视频, 图生视频). Do not use for programmatic UI animations better authored in CSS/Canvas/SVG or lossless trimming/concatenation of existing video files with ffmpeg.
+description: Generate videos asynchronously through a running copilot-api gateway (/v1/videos/generations and /v1/videos/{request_id}, backed by xai/grok-imagine-video-1.5) using GITHUB_COPILOT_API_KEY and COPILOT_API_BASE_URL. Supports text-to-video, image-to-video (animating a first frame), pinned first/last frame transitions, reference-to-video (up to 14 reference images), audio toggling, status polling, and automatic MP4 download (also triggers on videogen, generate video, text to video, image to video). Do not use for programmatic UI animations better authored in CSS/Canvas/SVG or lossless trimming/concatenation of existing video files with ffmpeg.
 ---
 
 # Copilot API Video Generation Skill
@@ -39,7 +39,6 @@ node "$VIDEO_GEN" generate \
   --duration 5 \
   --aspect-ratio 16:9 \
   --resolution 720p \
-  --out output/videogen/paper-boat.mp4 \
   --dry-run
 ```
 
@@ -73,7 +72,8 @@ node "$VIDEO_GEN" generate \
 
 ## Output conventions
 
-- Save final clips under `output/videogen/` (default `output/videogen/output.mp4`) or the user's target workspace path.
+- By default, clips are downloaded to a unique MP4 inside the OS temporary directory (`<os.tmpdir()>/copilot-api-videogen/`) so the current project directory stays clean and consecutive runs do not collide.
+- Pass `--out <path>` only when the user explicitly requests saving the clip to a specific workspace path.
 - Existing files are never overwritten unless `--force` is passed (checked before submitting a paid job in `generate` mode).
 
 ## Environment & security

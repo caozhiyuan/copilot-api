@@ -43,13 +43,13 @@ node "$WEB_SEARCH" search \
   --timezone America/Los_Angeles
 ```
 
-JSON output saved to a file:
+JSON output saved to a file (use the OS temp directory unless saving a workspace artifact):
 
 ```bash
 node "$WEB_SEARCH" search \
   --query "xAI Grok video API pricing" \
   --format json \
-  --out tmp/web-search/xai-video.json
+  --out "${TMPDIR:-/tmp}/copilot-api-web-search/xai-video.json"
 ```
 
 ## Multi-turn open, find, and click

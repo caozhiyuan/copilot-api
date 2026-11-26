@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto"
 import { createWriteStream, existsSync } from "node:fs"
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import path from "node:path"
 import { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
@@ -20,12 +21,47 @@ import { parseArgs } from "node:util"
 
 export const DEFAULT_BASE_URL = "http://localhost:4141"
 export const DEFAULT_MODEL = "xai/grok-imagine-video-1.5"
-export const DEFAULT_OUTPUT_PATH = "output/videogen/output.mp4"
+export const DEFAULT_OUTPUT_SUBDIR = "copilot-api-videogen"
 export const DEFAULT_POLL_INTERVAL_MS = 5_000
 export const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1000
 export const DEFAULT_HTTP_TIMEOUT_MS = 120_000
 export const DEFAULT_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000
 export const DEFAULT_MAX_ATTEMPTS = 3
+
+/**
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {string}
+ */
+export function resolveDefaultOutputDir(env = process.env) {
+  const envTmp =
+    process.platform === "win32" ?
+      env.TEMP || env.TMP
+    : env.TMPDIR || env.TMP || env.TEMP
+  const baseDir =
+    typeof envTmp === "string" && envTmp.trim() ? envTmp.trim() : tmpdir()
+  return path.join(path.resolve(baseDir), DEFAULT_OUTPUT_SUBDIR)
+}
+
+/**
+ * @returns {string}
+ */
+function formatTimestampSlug() {
+  return new Date()
+    .toISOString()
+    .replaceAll(/[-:]/gu, "")
+    .replace("T", "-")
+    .slice(0, 15)
+}
+
+/**
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @param {string} [prefix="video"]
+ * @returns {string}
+ */
+export function buildDefaultOutputPath(env = process.env, prefix = "video") {
+  const fileName = `${prefix}-${formatTimestampSlug()}-${randomUUID().slice(0, 8)}.mp4`
+  return path.join(resolveDefaultOutputDir(env), fileName)
+}
 
 const VIDEO_RATIOS = new Set([
   "16:9",
@@ -606,7 +642,12 @@ async function downloadVideoAtomic(videoUrl, outPath, opts) {
   }
 }
 
-export function usageText() {
+/**
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {string}
+ */
+export function usageText(env = process.env) {
+  const defaultDir = resolveDefaultOutputDir(env)
   return `Usage:
   node video_gen.mjs <generate|submit|status|wait> [options]
 
@@ -618,7 +659,7 @@ Commands:
 
 Common options:
   --base-url <url>           Gateway root URL (default: $COPILOT_API_BASE_URL or ${DEFAULT_BASE_URL})
-  --out <path>               Output MP4 file path (default: ${DEFAULT_OUTPUT_PATH})
+  --out <path>               Output MP4 file path (default: unique file in ${defaultDir})
   --force                    Overwrite existing output file
   --no-download              Do not download MP4; report video.url only
   --poll-interval-ms <ms>    Polling interval (default: ${DEFAULT_POLL_INTERVAL_MS})
@@ -896,8 +937,10 @@ async function pollUntilTerminal(opts) {
     )
 
     if (opts.now() >= deadline) {
+      const formattedOut =
+        /\s/u.test(opts.outPath) ? JSON.stringify(opts.outPath) : opts.outPath
       throw new CliError(
-        `Timed out waiting for video request_id=${opts.requestId} after ${opts.waitTimeoutMs}ms. Resume without resubmitting via: node video_gen.mjs wait --request-id ${opts.requestId} --out ${opts.outPath}`,
+        `Timed out waiting for video request_id=${opts.requestId} after ${opts.waitTimeoutMs}ms. Resume without resubmitting via: node video_gen.mjs wait --request-id ${opts.requestId} --out ${formattedOut}`,
       )
     }
 
@@ -922,7 +965,7 @@ export async function runVideoGen(argv, deps = {}) {
 
   const parsed = parseCliArgs(argv)
   if (parsed.help) {
-    stdout(usageText())
+    stdout(usageText(env))
     return null
   }
 
@@ -944,7 +987,7 @@ export async function runVideoGen(argv, deps = {}) {
   const outPath =
     typeof values.out === "string" && values.out.trim() ?
       values.out.trim()
-    : DEFAULT_OUTPUT_PATH
+    : buildDefaultOutputPath(env)
   const pollIntervalMs =
     values["poll-interval-ms"] !== undefined ?
       parseIntRange(

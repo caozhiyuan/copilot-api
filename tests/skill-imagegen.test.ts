@@ -5,13 +5,17 @@ import path from "node:path"
 
 import {
   buildAugmentedPrompt,
+  buildDefaultBatchOutputDir,
+  buildDefaultOutputPath,
   buildEndpointUrl,
   buildOutputPaths,
   CliError,
+  DEFAULT_OUTPUT_SUBDIR,
   detectImageMime,
   isLoopbackUrl,
   normalizeBaseUrl,
   normalizeOutputFormat,
+  resolveDefaultOutputDir,
   runImageGen,
   validateGptImage2Size,
   validateImageOptions,
@@ -242,7 +246,7 @@ describe("copilot-api-imagegen helpers", () => {
       buildOutputPaths("out/hero", "png", 2, undefined, (msg) => {
         warn += msg
       }),
-    ).toEqual(["out/hero-1.png", "out/hero-2.png"])
+    ).toEqual([path.join("out", "hero-1.png"), path.join("out", "hero-2.png")])
     expect(
       buildOutputPaths("out/ignored.png", "webp", 2, "custom-dir", () => {}),
     ).toEqual([
@@ -256,6 +260,28 @@ describe("copilot-api-imagegen helpers", () => {
       }),
     ).toEqual(["out/hero.jpg"])
     expect(warn).toContain("does not match")
+
+    expect(resolveDefaultOutputDir({})).toBe(
+      path.join(path.resolve(os.tmpdir()), DEFAULT_OUTPUT_SUBDIR),
+    )
+    const customTmpEnv = { TEMP: tempDir, TMP: tempDir, TMPDIR: tempDir }
+    const expectedDir = path.join(path.resolve(tempDir), DEFAULT_OUTPUT_SUBDIR)
+    expect(resolveDefaultOutputDir(customTmpEnv)).toBe(expectedDir)
+    const defaultImg1 = buildDefaultOutputPath("webp", customTmpEnv, "image")
+    const defaultImg2 = buildDefaultOutputPath("webp", customTmpEnv, "image")
+    expect(path.dirname(defaultImg1)).toBe(expectedDir)
+    expect(path.basename(defaultImg1)).toMatch(
+      /^image-\d{8}-\d{6}-[0-9a-f]{8}\.webp$/u,
+    )
+    expect(defaultImg1).not.toBe(defaultImg2)
+
+    const defaultBatch1 = buildDefaultBatchOutputDir(customTmpEnv)
+    const defaultBatch2 = buildDefaultBatchOutputDir(customTmpEnv)
+    expect(path.dirname(defaultBatch1)).toBe(expectedDir)
+    expect(path.basename(defaultBatch1)).toMatch(
+      /^batch-\d{8}-\d{6}-[0-9a-f]{8}$/u,
+    )
+    expect(defaultBatch1).not.toBe(defaultBatch2)
   })
 })
 
@@ -396,10 +422,6 @@ describe("copilot-api-imagegen CLI", () => {
       /--input/u,
     )
     await expectReject(
-      runImageGen(["generate-batch", "--input", "x.jsonl"]),
-      /--out-dir/u,
-    )
-    await expectReject(
       runImageGen(
         [
           "generate",
@@ -411,6 +433,98 @@ describe("copilot-api-imagegen CLI", () => {
         { env: {} },
       ),
       /GITHUB_COPILOT_API_KEY/u,
+    )
+  })
+
+  test("writes default generate, edit, and generate-batch outputs into OS temp dir without colliding", async () => {
+    const customTmpEnv = {
+      GITHUB_COPILOT_API_KEY: "gw-key",
+      TEMP: tempDir,
+      TMP: tempDir,
+      TMPDIR: tempDir,
+    }
+    const expectedDir = path.join(path.resolve(tempDir), DEFAULT_OUTPUT_SUBDIR)
+
+    let help = ""
+    await runImageGen(["--help"], {
+      env: customTmpEnv,
+      stdout: (chunk) => {
+        help += chunk
+      },
+    })
+    expect(help).toContain(expectedDir)
+
+    const mockFetch = () =>
+      Promise.resolve(
+        Response.json({
+          data: [{ b64_json: PNG_BYTES.toString("base64") }],
+        }),
+      )
+
+    const gen1 = await runImageGen(["generate", "--prompt", "First default"], {
+      env: customTmpEnv,
+      fetch: mockFetch,
+      stdout: () => {},
+      stderr: () => {},
+    })
+    const gen2 = await runImageGen(["generate", "--prompt", "Second default"], {
+      env: customTmpEnv,
+      fetch: mockFetch,
+      stdout: () => {},
+      stderr: () => {},
+    })
+    expect(gen1?.outputs).toHaveLength(1)
+    expect(gen2?.outputs).toHaveLength(1)
+    const out1 = gen1?.outputs[0] ?? ""
+    const out2 = gen2?.outputs[0] ?? ""
+    expect(path.dirname(out1)).toBe(expectedDir)
+    expect(path.dirname(out2)).toBe(expectedDir)
+    expect(out1).not.toBe(out2)
+    expect(fs.readFileSync(out1)).toEqual(PNG_BYTES)
+    expect(fs.readFileSync(out2)).toEqual(PNG_BYTES)
+
+    const edited = await runImageGen(
+      ["edit", "--image", out1, "--prompt", "Edit default"],
+      {
+        env: customTmpEnv,
+        fetch: mockFetch,
+        stdout: () => {},
+        stderr: () => {},
+      },
+    )
+    const editOut = edited?.outputs[0] ?? ""
+    expect(path.dirname(editOut)).toBe(expectedDir)
+    expect(path.basename(editOut)).toMatch(/^edit-/u)
+    expect(fs.readFileSync(editOut)).toEqual(PNG_BYTES)
+
+    const jsonlPath = path.join(tempDir, "default-batch.jsonl")
+    fs.writeFileSync(
+      jsonlPath,
+      JSON.stringify({ prompt: "Batch item", out: "item.png" }),
+    )
+    let batchJson = ""
+    const batchRes = await runImageGen(
+      ["generate-batch", "--input", jsonlPath, "--json"],
+      {
+        env: customTmpEnv,
+        fetch: mockFetch,
+        stdout: (chunk) => {
+          batchJson += chunk
+        },
+        stderr: () => {},
+      },
+    )
+    const parsedBatch = JSON.parse(batchJson) as {
+      out_dir: string
+      outputs: string[]
+    }
+    expect(path.dirname(parsedBatch.out_dir)).toBe(expectedDir)
+    expect(path.basename(parsedBatch.out_dir)).toMatch(/^batch-/u)
+    expect(batchRes?.outputs).toEqual([
+      path.join(parsedBatch.out_dir, "item.png"),
+    ])
+    expect(fs.readFileSync(path.join(parsedBatch.out_dir, "item.png"))).toEqual(
+      PNG_BYTES,
     )
   })
 

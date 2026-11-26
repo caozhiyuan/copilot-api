@@ -1,6 +1,6 @@
 ---
 name: copilot-api-web-search
-description: Run grounded web searches, open and inspect web pages, find patterns within pages, follow page links, and query structured data (finance, weather, sports, time) through a running copilot-api gateway (/v1/alpha/search and /:provider/v1/alpha/search) using GITHUB_COPILOT_API_KEY and COPILOT_API_BASE_URL. Use when the user wants live web search, page reading, multi-turn search/open/find sessions, or alpha search via copilot-api (also triggers on web search, alpha search, 网页搜索, 搜索网页, 查资料). Do not use for reading local files, inspecting git history, or calling non-search model APIs.
+description: Run grounded web searches, open and inspect web pages, find patterns within pages, follow page links, and query structured data (finance, weather, sports, time) through a running copilot-api gateway (/v1/alpha/search and /:provider/v1/alpha/search) using GITHUB_COPILOT_API_KEY and COPILOT_API_BASE_URL. Use when the user wants live web search, page reading, multi-turn search/open/find sessions, or alpha search via copilot-api (also triggers on web search, alpha search). Do not use for reading local files, inspecting git history, or calling non-search model APIs.
 ---
 
 # Copilot API Web Search Skill

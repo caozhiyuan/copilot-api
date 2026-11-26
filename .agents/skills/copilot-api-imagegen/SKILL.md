@@ -1,6 +1,6 @@
 ---
 name: copilot-api-imagegen
-description: Generate and edit raster images (plus animated GIFs on Codex) through a running copilot-api gateway (/v1/images/generations, /v1/images/edits, and /:provider/v1/images/*) using GITHUB_COPILOT_API_KEY and COPILOT_API_BASE_URL. Use whenever the user wants a new bitmap visual (photos, illustrations, product shots, UI mockups, infographics, sprites, logos, transparent cutouts), reference-based edits, mask-guided edits, or concurrent JSONL batch generation via copilot-api (also triggers on imagegen, generate image, edit image, 图片生成, 生成图片, 图片编辑, 改图, 修图). Do not use when editing existing repo-native SVG/vector assets or building graphics directly in HTML/CSS/canvas.
+description: Generate and edit raster images (plus animated GIFs on Codex) through a running copilot-api gateway (/v1/images/generations, /v1/images/edits, and /:provider/v1/images/*) using GITHUB_COPILOT_API_KEY and COPILOT_API_BASE_URL. Use whenever the user wants a new bitmap visual (photos, illustrations, product shots, UI mockups, infographics, sprites, logos, transparent cutouts), reference-based edits, mask-guided edits, or concurrent JSONL batch generation via copilot-api (also triggers on imagegen, generate image, edit image). Do not use when editing existing repo-native SVG/vector assets or building graphics directly in HTML/CSS/canvas.
 ---
 
 # Copilot API Image Generation & Editing Skill
@@ -30,13 +30,12 @@ Resolve `<SKILL_DIR>` relative to this `SKILL.md` (in this repository: `.agents/
 export IMAGE_GEN=".agents/skills/copilot-api-imagegen/scripts/image_gen.mjs"
 ```
 
-Dry-run first to inspect the resolved gateway URL, redacted auth status, output path, and payload:
+Dry-run first to inspect the resolved gateway URL, redacted auth status, default temp output path, and payload:
 
 ```bash
 node "$IMAGE_GEN" generate \
   --prompt "A minimal hero image of a matte ceramic coffee mug on warm stone" \
   --size 1536x1024 \
-  --out output/imagegen/mug-hero.png \
   --dry-run
 ```
 
@@ -51,7 +50,7 @@ Evaluate three questions before running:
 2. **Execution strategy (single vs variants vs batch):**
    - One prompt, one output -> `generate` (or `edit`)
    - One prompt, multiple variations -> `--n 2..4`
-   - Many distinct assets/prompts -> `generate-batch --input tmp/imagegen/prompts.jsonl --out-dir output/imagegen/<batch>` (do not misuse `--n` for unrelated assets)
+   - Many distinct assets/prompts -> `generate-batch --input <temp-dir>/prompts.jsonl` (omit `--out-dir` to write to a unique directory under `<os.tmpdir()>/copilot-api-imagegen/`, or pass `--out-dir <path>` when saving into a target workspace directory; do not misuse `--n` for unrelated assets)
 3. **Provider & model selection:**
    - Default (`--model gpt-image-2` or `--auto-model`): `copilot-api` applies `modelMappings` first, then automatically picks the first available provider in order:
      1. **Codex** (`gpt-image-2`)
@@ -62,12 +61,12 @@ Evaluate three questions before running:
 ## Workflow
 
 1. Determine intent (`generate` vs `edit`), strategy (single vs `generate-batch`), and target provider/model.
-2. Collect inputs up front: prompt, exact verbatim text (if any), invariants/avoid list, output path, and input image paths/URLs with explicit per-image roles (`Image 1: base to edit; Image 2: style reference`).
+2. Collect inputs up front: prompt, exact verbatim text (if any), invariants/avoid list, optional destination path (only if the user asked to save into the workspace), and input image paths/URLs with explicit per-image roles (`Image 1: base to edit; Image 2: style reference`).
 3. Shape the prompt using the specificity policy below (normalize detailed prompts without inventing extras; add tasteful concrete detail only when generic).
 4. Run `node "$IMAGE_GEN" ...` (optionally `--dry-run` first for complex edits or batches).
 5. Inspect the generated artifact (view it if an image-viewing tool is available) and check subject, framing, text accuracy, and invariants.
 6. Iterate with single targeted changes (`edit` with explicit invariants) rather than rewriting everything at once.
-7. Save final project deliverables to their workspace path (or `output/imagegen/`), remove temporary `tmp/imagegen/` JSONL files, and report the final saved path(s), prompt, and model/provider used.
+7. Keep default outputs in the OS temporary directory (`<os.tmpdir()>/copilot-api-imagegen/`) unless the user requested a specific workspace path, remove temporary JSONL batch files when finished, and report the final saved path(s), prompt, and model/provider used.
 
 ## Prompt augmentation & specificity policy
 
@@ -122,8 +121,9 @@ You can pass structured hints via CLI flags (`--use-case`, `--scene`, `--subject
 
 ## Temp & output conventions
 
-- Store temporary JSONL batch files under `tmp/imagegen/` and delete them when finished.
-- Write final generated assets under `output/imagegen/` (or the user's target workspace path).
+- Default outputs for `generate`, `edit`, and `generate-batch` go to unique paths inside the OS temporary directory (`<os.tmpdir()>/copilot-api-imagegen/`) so the current project directory stays clean and consecutive runs do not collide.
+- Store temporary JSONL batch files in the OS temporary directory (never inside the current repository) and delete them when finished.
+- Pass `--out <path>` or `--out-dir <dir>` only when the user explicitly wants the generated asset(s) saved to a specific workspace path.
 - Existing files are never overwritten unless `--force` is passed.
 
 ## Environment & security

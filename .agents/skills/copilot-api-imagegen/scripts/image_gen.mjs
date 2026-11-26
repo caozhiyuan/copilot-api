@@ -12,7 +12,7 @@
 import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
-import { machine, release, type as osType } from "node:os"
+import { machine, release, tmpdir, type as osType } from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { parseArgs } from "node:util"
@@ -22,11 +22,60 @@ export const DEFAULT_MODEL = "gpt-image-2"
 export const DEFAULT_SIZE = "auto"
 export const DEFAULT_QUALITY = "medium"
 export const DEFAULT_OUTPUT_FORMAT = "png"
-export const DEFAULT_OUTPUT_PATH = "output/imagegen/output.png"
+export const DEFAULT_OUTPUT_SUBDIR = "copilot-api-imagegen"
 export const DEFAULT_CONCURRENCY = 5
 export const DEFAULT_MAX_ATTEMPTS = 3
 export const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000
 export const CODEX_CLI_VERSION = "0.166.0"
+
+/**
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {string}
+ */
+export function resolveDefaultOutputDir(env = process.env) {
+  const envTmp =
+    process.platform === "win32" ?
+      env.TEMP || env.TMP
+    : env.TMPDIR || env.TMP || env.TEMP
+  const baseDir =
+    typeof envTmp === "string" && envTmp.trim() ? envTmp.trim() : tmpdir()
+  return path.join(path.resolve(baseDir), DEFAULT_OUTPUT_SUBDIR)
+}
+
+/**
+ * @returns {string}
+ */
+function formatTimestampSlug() {
+  return new Date()
+    .toISOString()
+    .replaceAll(/[-:]/gu, "")
+    .replace("T", "-")
+    .slice(0, 15)
+}
+
+/**
+ * @param {string} [outputFormat=DEFAULT_OUTPUT_FORMAT]
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @param {string} [prefix="image"]
+ * @returns {string}
+ */
+export function buildDefaultOutputPath(
+  outputFormat = DEFAULT_OUTPUT_FORMAT,
+  env = process.env,
+  prefix = "image",
+) {
+  const fileName = `${prefix}-${formatTimestampSlug()}-${randomUUID().slice(0, 8)}.${outputFormat}`
+  return path.join(resolveDefaultOutputDir(env), fileName)
+}
+
+/**
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {string}
+ */
+export function buildDefaultBatchOutputDir(env = process.env) {
+  const dirName = `batch-${formatTimestampSlug()}-${randomUUID().slice(0, 8)}`
+  return path.join(resolveDefaultOutputDir(env), dirName)
+}
 
 const GPT_IMAGE_2_MODEL = "gpt-image-2"
 const GPT_IMAGE_2_MIN_PIXELS = 655_360
@@ -1136,7 +1185,12 @@ async function saveImageResponse(response, outputPaths, opts) {
   return { written, revisedPrompts }
 }
 
-export function usageText() {
+/**
+ * @param {Record<string, string | undefined>} [env=process.env]
+ * @returns {string}
+ */
+export function usageText(env = process.env) {
+  const defaultDir = resolveDefaultOutputDir(env)
   return `Usage:
   node image_gen.mjs <generate|edit|generate-batch> [options]
 
@@ -1163,8 +1217,8 @@ Common options:
   --moderation <mode>        auto | low
   --aspect-ratio <ratio>     xAI aspect ratio (e.g. 16:9, 1:1, auto)
   --resolution <res>         xAI resolution: 1k | 2k
-  --out <path>               Output file path (default: ${DEFAULT_OUTPUT_PATH})
-  --out-dir <dir>            Output directory (required for generate-batch)
+  --out <path>               Output file path (default: unique file in ${defaultDir})
+  --out-dir <dir>            Output directory (for generate-batch, default: unique dir in ${defaultDir})
   --force                    Overwrite existing output file(s)
   --timeout-ms <ms>          Per-request timeout (default: ${DEFAULT_TIMEOUT_MS})
   --max-attempts <1-10>      Retry attempts for 429/5xx/network errors (default: ${DEFAULT_MAX_ATTEMPTS})
@@ -1408,7 +1462,7 @@ export async function runImageGen(argv, deps = {}) {
 
   const parsed = parseCliArgs(argv)
   if (parsed.help) {
-    stdout(usageText())
+    stdout(usageText(env))
     return null
   }
 
@@ -1565,7 +1619,7 @@ export async function runImageGen(argv, deps = {}) {
     const outPath =
       typeof values.out === "string" && values.out.trim() ?
         values.out.trim()
-      : `output/imagegen/output.${outputFormat}`
+      : buildDefaultOutputPath(outputFormat, env, "image")
     const outputPaths = buildOutputPaths(
       outPath,
       outputFormat,
@@ -1715,7 +1769,7 @@ export async function runImageGen(argv, deps = {}) {
     const outPath =
       typeof values.out === "string" && values.out.trim() ?
         values.out.trim()
-      : `output/imagegen/output.${outputFormat}`
+      : buildDefaultOutputPath(outputFormat, env, "edit")
     const outputPaths = buildOutputPaths(
       outPath,
       outputFormat,
@@ -1894,12 +1948,9 @@ export async function runImageGen(argv, deps = {}) {
   const outDir =
     typeof values["out-dir"] === "string" && values["out-dir"].trim() ?
       values["out-dir"].trim()
-    : undefined
+    : buildDefaultBatchOutputDir(env)
   if (!inputFile) {
     throw new CliError("generate-batch requires --input <prompts.jsonl>.")
-  }
-  if (!outDir) {
-    throw new CliError("generate-batch requires --out-dir <dir>.")
   }
   const concurrency =
     values.concurrency !== undefined ?
@@ -2062,6 +2113,7 @@ export async function runImageGen(argv, deps = {}) {
         {
           dry_run: true,
           command,
+          out_dir: outDir,
           auth:
             apiKey ?
               "Bearer [REDACTED] (from GITHUB_COPILOT_API_KEY)"
@@ -2165,6 +2217,7 @@ export async function runImageGen(argv, deps = {}) {
         {
           command,
           endpoint: defaultEndpoint,
+          out_dir: outDir,
           total_jobs: preparedJobs.length,
           succeeded_jobs: succeededJobs,
           failed_jobs: failures.length,

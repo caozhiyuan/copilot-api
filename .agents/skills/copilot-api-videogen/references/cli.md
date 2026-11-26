@@ -10,7 +10,7 @@ Run with `node` (Node.js 20+) or `bun`.
 
 ## Dry run
 
-Preview the resolved gateway URL, redacted auth status, output path, and payload without spending credits:
+Preview the resolved gateway URL, redacted auth status, default temp output path, and payload without spending credits:
 
 ```bash
 node "$VIDEO_GEN" generate \
@@ -18,13 +18,12 @@ node "$VIDEO_GEN" generate \
   --duration 5 \
   --aspect-ratio 16:9 \
   --resolution 720p \
-  --out output/videogen/lantern.mp4 \
   --dry-run
 ```
 
 ## Text-to-video (`generate`)
 
-Submits the job, prints `request_id` immediately to stderr, polls until `done`, and downloads the MP4 atomically:
+Submits the job, prints `request_id` immediately to stderr, polls until `done`, and downloads the MP4 atomically to `<os.tmpdir()>/copilot-api-videogen/` by default (pass `--out <path>` only when saving to a specific workspace path):
 
 ```bash
 node "$VIDEO_GEN" generate \
@@ -32,11 +31,10 @@ node "$VIDEO_GEN" generate \
   --duration 6 \
   --aspect-ratio 16:9 \
   --resolution 1080p \
-  --audio \
-  --out output/videogen/steam-train.mp4
+  --audio
 ```
 
-Silent clip (`--no-audio`):
+Silent clip (`--no-audio`) saved to an explicit workspace path:
 
 ```bash
 node "$VIDEO_GEN" generate \
@@ -45,7 +43,7 @@ node "$VIDEO_GEN" generate \
   --aspect-ratio 1:1 \
   --resolution 720p \
   --no-audio \
-  --out output/videogen/mug-turntable.mp4
+  --out ./assets/mug-turntable.mp4
 ```
 
 ## Image-to-video (`--image`)
@@ -54,11 +52,10 @@ Animate a local still image (encoded automatically to a base64 data URL) or an `
 
 ```bash
 node "$VIDEO_GEN" generate \
-  --image output/imagegen/mug-hero.png \
+  --image /path/to/mug-hero.png \
   --prompt "Gentle steam curls upward from the coffee while soft sunlight slowly shifts across the stone surface, locked camera" \
   --duration 5 \
-  --resolution 1080p \
-  --out output/videogen/mug-hero.mp4
+  --resolution 1080p
 ```
 
 ## First & last frame transition / seamless loop
@@ -71,8 +68,7 @@ node "$VIDEO_GEN" generate \
   --last-frame input/night-street.png \
   --prompt "Smooth time-lapse transition from late afternoon into blue hour as streetlights switch on, locked tripod camera" \
   --duration 6 \
-  --resolution 720p \
-  --out output/videogen/day-to-night.mp4
+  --resolution 720p
 ```
 
 ## Reference-to-video (`--ref-image`)
@@ -86,8 +82,7 @@ node "$VIDEO_GEN" generate \
   --prompt "The character from <IMAGE_0> sits by the sunlit window of the cafe in <IMAGE_1>, lifts a ceramic cup, and smiles toward the camera, natural ambient cafe sound" \
   --duration 6 \
   --aspect-ratio 16:9 \
-  --resolution 720p \
-  --out output/videogen/cafe-scene.mp4
+  --resolution 720p
 ```
 
 ## Split async workflow (`submit`, `status`, `wait`)
@@ -103,23 +98,21 @@ node "$VIDEO_GEN" submit \
   --json
 ```
 
-Check status once (optionally add `--download --out <path>` if already `done`):
+Check status once (add `--download` if already `done`; defaults to `<os.tmpdir()>/copilot-api-videogen/`, or add `--out <path>`):
 
 ```bash
 node "$VIDEO_GEN" status \
   --request-id YOUR_REQUEST_ID \
-  --download \
-  --out output/videogen/waves.mp4
+  --download
 ```
 
-Resume polling an existing job and download when finished:
+Resume polling an existing job and download when finished (defaults to `<os.tmpdir()>/copilot-api-videogen/`, or add `--out <path>`):
 
 ```bash
 node "$VIDEO_GEN" wait \
   --request-id YOUR_REQUEST_ID \
   --poll-interval-ms 5000 \
-  --timeout-ms 600000 \
-  --out output/videogen/waves.mp4
+  --timeout-ms 600000
 ```
 
 ## Advanced native fields (`--extra-json`)
