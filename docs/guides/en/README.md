@@ -15,7 +15,7 @@ To run the gateway, follow the [quick start](../../../README.md#quick-start).
 | [Docker](docker.md) | Docker Compose, persistent storage, and networking |
 | [Desktop App](desktop.md) | Installation, accounts, and advanced settings |
 | [Plugins and Tool Search](integrations.md) | Claude Code / OpenCode plugins and the MCP tool search bridge |
-| [Agent Skills](integrations.md#install-agent-skills) | User-level web search, image, and video skills for Codex and AGY CLI |
+| [Agent Skills](integrations.md#install-agent-skills) | User-level web search, image, and video skills |
 | [Gateway event plugins](gateway-plugins.md) | Observe request state, timing, and usage with server-side plugins |
 | [Usage Monitoring](usage.md) | Usage dashboard, token history, and quota monitoring |
 | [CLI Reference](cli.md) | Commands, options, and request examples |

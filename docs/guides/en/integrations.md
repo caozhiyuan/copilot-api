@@ -14,30 +14,9 @@ npx -y skills@latest add "https://github.com/caozhiyuan/copilot-api/tree/dev/.ag
 
 The command installs [web search](../../../.agents/skills/copilot-api-web-search/SKILL.md), [image generation and editing](../../../.agents/skills/copilot-api-imagegen/SKILL.md), and [video generation](../../../.agents/skills/copilot-api-videogen/SKILL.md).
 
-`--agent codex` selects Codex. `--global` installs the skills in your user directory at `~/.agents/skills` (`%USERPROFILE%\.agents\skills` on Windows). `--copy` installs regular files for the bundled Node.js scripts. Run `/skills` in Codex to see the installed skills.
+`--agent codex` with `--global` installs the skills in your user directory at `~/.agents/skills` (`%USERPROFILE%\.agents\skills` on Windows), which works for most agents except Claude Code (use `--agent claude-code` for Claude Code). `--copy` installs regular files for the bundled Node.js scripts. Run `/skills` in your client to see the installed skills (in an open AGY CLI session, run `/skills reload` first).
 
-Start copilot-api before using the skills. They connect to `http://localhost:4141` by default. In the terminal where you start Codex or AGY CLI, set `COPILOT_API_BASE_URL` to use a different address and set `GITHUB_COPILOT_API_KEY` for a remote or API-key-protected gateway.
-
-### Share the User Skills with AGY CLI
-
-To load the same three skills globally in AGY CLI, add the entry below to `~/.gemini/config/skills.json`. If the file exists, append the entry to its `entries` array. The path is relative to `~/.gemini/config/`. [Antigravity skill discovery](https://antigravity.google/docs/customization-discovery?tab=cli#discovery-manifests)
-
-```json
-{
-  "entries": [
-    {
-      "path": "../../.agents/skills",
-      "include_only": [
-        "copilot-api-web-search",
-        "copilot-api-imagegen",
-        "copilot-api-videogen"
-      ]
-    }
-  ]
-}
-```
-
-In AGY CLI, run `/skills reload` and open `/skills` to check the list.
+Start copilot-api before using the skills. They connect to `http://localhost:4141` by default. In the terminal where you start your client, set `COPILOT_API_BASE_URL` to use a different address and set `GITHUB_COPILOT_API_KEY` for a remote or API-key-protected gateway.
 
 ## GPT Tool Search
 

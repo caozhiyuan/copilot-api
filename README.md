@@ -118,7 +118,7 @@ After the initial full-package installation, subsequent updates normally use dif
 | [Docker](docs/guides/en/docker.md) | Docker Compose quick start, the `/data` persistent mount and its ownership repair, supported environment variables, and host interface binding |
 | [Desktop App](docs/guides/en/desktop.md) | Copilot sign-in, Codex OAuth account switching, API-key providers, one-click start / stop, shared model mappings, advanced settings, and per-platform installers |
 | [Plugins and Tool Search](docs/guides/en/integrations.md) | The Responses `tool_search` MCP bridge (not needed on opencode v2, which already defers tools through Code Mode), Claude Code `agent-inject` and `tool-search` marketplace plugins, and the OpenCode session context plugin |
-| [Agent Skills](docs/guides/en/integrations.md#install-agent-skills) | Install web search, image, and video skills in your user directory and share them with AGY CLI |
+| [Agent Skills](docs/guides/en/integrations.md#install-agent-skills) | Install web search, image, and video skills in your user directory |
 | [Gateway event plugins](docs/guides/en/gateway-plugins.md) | Observe request state, timing, and usage with server-side plugins |
 | [Usage Monitoring](docs/guides/en/usage.md) | The usage viewer URL and query parameters, period selectors, Copilot quota progress, token and cost metric cards, trend charts, and paginated request events |
 | [CLI Reference](docs/guides/en/cli.md) | Command structure, global options, and the full option sets for the `start`, `auth`, and `debug` subcommands with example usage |
