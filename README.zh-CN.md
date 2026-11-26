@@ -126,6 +126,7 @@ Windows x64（`.exe`）、macOS Apple Silicon（`.dmg`）和 Linux x64（`.AppIm
 | [Docker](docs/guides/zh-CN/docker.md) | Docker Compose 快速启动、`/data` 持久化挂载与属主修复、支持的环境变量，以及监听所有网卡地址 |
 | [桌面应用](docs/guides/zh-CN/desktop.md) | Copilot 登录、Codex OAuth 账号切换、API Key provider、一键启停、共享模型映射、高级设置与各平台安装包 |
 | [插件与工具搜索](docs/guides/zh-CN/integrations.md) | Responses `tool_search` MCP 桥接（opencode v2 已通过 Code Mode 延迟加载工具，不需要）、Claude Code 的 `agent-inject` 与 `tool-search` 市场插件，以及 OpenCode 会话追踪插件 |
+| [Agent Skills](docs/guides/zh-CN/integrations.md#install-agent-skills) | 将搜索、图片和视频技能安装到用户目录，供 Codex 和 AGY CLI 共用 |
 | [网关事件插件](docs/guides/zh-CN/gateway-plugins.md) | 编写服务端监控插件，获取请求状态、耗时和用量 |
 | [用量监控](docs/guides/zh-CN/usage.md) | 用量面板地址与查询参数、时间范围选择、Copilot 配额进度、Token 与成本指标卡、趋势图，以及分页的请求事件列表 |
 | [命令行参考](docs/guides/zh-CN/cli.md) | 命令结构、全局选项，以及 `start`、`auth`、`debug` 子命令的完整参数与使用示例 |

@@ -4,6 +4,43 @@
 
 [项目首页](../../../README.zh-CN.md) · [文档目录](README.md) · [English](../en/integrations.md)
 
+<a id="install-agent-skills"></a>
+
+## 安装 Agent Skills
+
+准备好 Node.js 和 Git 后，在 Windows PowerShell、macOS 或 Linux 终端运行下面的命令，从 `dev` 分支安装网关技能。
+
+```sh
+npx -y skills@latest add "https://github.com/caozhiyuan/copilot-api/tree/dev/.agents/skills" --global --agent codex --copy --yes --skill copilot-api-web-search copilot-api-imagegen copilot-api-videogen
+```
+
+这条命令安装[网页搜索](../../../.agents/skills/copilot-api-web-search/SKILL.md)、[图片生成与编辑](../../../.agents/skills/copilot-api-imagegen/SKILL.md)和[视频生成](../../../.agents/skills/copilot-api-videogen/SKILL.md)三个技能。
+
+`--agent codex` 选择 Codex。`--global` 将技能安装到用户目录里的 `~/.agents/skills`，Windows 下对应 `%USERPROFILE%\.agents\skills`。`--copy` 直接复制文件，方便执行其中的 Node.js 脚本。在 Codex 里输入 `/skills` 查看已安装的技能。
+
+使用前先启动 copilot-api。技能默认连接 `http://localhost:4141`。如需使用其他地址，请在启动 Codex 或 AGY CLI 的终端设置 `COPILOT_API_BASE_URL`。连接远程网关或网关启用了 API Key 校验时，请设置 `GITHUB_COPILOT_API_KEY`。
+
+### 让 AGY CLI 共用用户目录里的技能
+
+在 `~/.gemini/config/skills.json` 加入下面的配置，AGY CLI 就能在所有项目里读取同一份技能。如果文件已存在，把下面的条目追加到现有的 `entries` 数组。相对路径以 `~/.gemini/config/` 为起点。[Antigravity 技能加载文档](https://antigravity.google/docs/customization-discovery?tab=cli#discovery-manifests)
+
+```json
+{
+  "entries": [
+    {
+      "path": "../../.agents/skills",
+      "include_only": [
+        "copilot-api-web-search",
+        "copilot-api-imagegen",
+        "copilot-api-videogen"
+      ]
+    }
+  ]
+}
+```
+
+在 AGY CLI 里运行 `/skills reload`，再用 `/skills` 查看列表。
+
 <a id="gpt-tool-search"></a>
 
 ## GPT Tool Search

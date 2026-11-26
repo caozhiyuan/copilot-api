@@ -4,6 +4,41 @@ For server-side request lifecycle and usage hooks, see [Gateway event plugins](g
 
 [Home](../../../README.md) · [Documentation](README.md) · [简体中文](../zh-CN/integrations.md)
 
+## Install Agent Skills
+
+Run this command with Node.js and Git available to install the gateway skills from `dev`. It works in Windows PowerShell and macOS or Linux shells.
+
+```sh
+npx -y skills@latest add "https://github.com/caozhiyuan/copilot-api/tree/dev/.agents/skills" --global --agent codex --copy --yes --skill copilot-api-web-search copilot-api-imagegen copilot-api-videogen
+```
+
+The command installs [web search](../../../.agents/skills/copilot-api-web-search/SKILL.md), [image generation and editing](../../../.agents/skills/copilot-api-imagegen/SKILL.md), and [video generation](../../../.agents/skills/copilot-api-videogen/SKILL.md).
+
+`--agent codex` selects Codex. `--global` installs the skills in your user directory at `~/.agents/skills` (`%USERPROFILE%\.agents\skills` on Windows). `--copy` installs regular files for the bundled Node.js scripts. Run `/skills` in Codex to see the installed skills.
+
+Start copilot-api before using the skills. They connect to `http://localhost:4141` by default. In the terminal where you start Codex or AGY CLI, set `COPILOT_API_BASE_URL` to use a different address and set `GITHUB_COPILOT_API_KEY` for a remote or API-key-protected gateway.
+
+### Share the User Skills with AGY CLI
+
+To load the same three skills globally in AGY CLI, add the entry below to `~/.gemini/config/skills.json`. If the file exists, append the entry to its `entries` array. The path is relative to `~/.gemini/config/`. [Antigravity skill discovery](https://antigravity.google/docs/customization-discovery?tab=cli#discovery-manifests)
+
+```json
+{
+  "entries": [
+    {
+      "path": "../../.agents/skills",
+      "include_only": [
+        "copilot-api-web-search",
+        "copilot-api-imagegen",
+        "copilot-api-videogen"
+      ]
+    }
+  ]
+}
+```
+
+In AGY CLI, run `/skills reload` and open `/skills` to check the list.
+
 ## GPT Tool Search
 
 Choose the setup for your client and model; you do not need every plugin:
