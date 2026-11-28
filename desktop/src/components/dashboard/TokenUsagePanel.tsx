@@ -22,6 +22,7 @@ import {
 } from './TokenUsageRows'
 import { TokenUsageSummaryMetrics } from './TokenUsageSummaryMetrics'
 import { TokenUsageTrendChart } from './TokenUsageTrendChart'
+import { InlineLoading, TableSkeleton } from '../ui/LoadingState'
 
 export function TokenUsagePanel({
   keyFilterControl,
@@ -220,9 +221,11 @@ export function TokenUsagePanel({
         >
           {breakdownTab === 'models'
             && (loading && !tokenUsage ?
-              <div className="flex h-[194px] items-start px-2.5 py-2 text-[13px] text-ink-faint animate-pulse">
-                {t('dashboard.loading')}
-              </div>
+              <TableSkeleton
+                heightClass="h-[194px]"
+                rows={4}
+                label={t('dashboard.loading')}
+              />
             : hasModelRows && tokenUsage ?
               <div
                 className={`h-[194px] overflow-auto [scrollbar-gutter:stable] ${loading ? 'opacity-60' : ''}`}
@@ -283,9 +286,11 @@ export function TokenUsagePanel({
               </div>)}
           {breakdownTab === 'sessions'
             && (sessionsLoading && !sessionsPage ?
-              <div className="flex h-[194px] items-start px-2.5 py-2 text-[13px] text-ink-faint animate-pulse">
-                {t('dashboard.loading')}
-              </div>
+              <TableSkeleton
+                heightClass="h-[194px]"
+                rows={4}
+                label={t('dashboard.loading')}
+              />
             : sessionsError ?
               <div
                 role="alert"
@@ -358,7 +363,7 @@ export function TokenUsagePanel({
                 })}
               </span>
               {eventsLoading && (
-                <span className="text-ink-faint">{t('dashboard.loading')}</span>
+                <InlineLoading label={t('dashboard.loading')} />
               )}
               <button
                 onClick={() =>
@@ -387,9 +392,11 @@ export function TokenUsagePanel({
         </div>
         <div className="min-h-64">
           {eventsLoading && !eventsPage ?
-            <div className="flex h-64 items-start px-2.5 py-2 text-[13px] text-ink-faint animate-pulse">
-              {t('dashboard.loading')}
-            </div>
+            <TableSkeleton
+              heightClass="h-64"
+              rows={5}
+              label={t('dashboard.loading')}
+            />
           : hasEventRows && eventsPage ?
             <div
               className={`h-64 overflow-auto ${eventsLoading ? 'opacity-60' : ''}`}

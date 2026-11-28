@@ -19,7 +19,7 @@ function BootScreen({ loadingText }: { loadingText: string }) {
           <p className="text-[13px] text-ink-faint">{loadingText}</p>
         </div>
         <div className="h-1.5 w-28 overflow-hidden rounded-full bg-sunken">
-          <div className="h-full w-1/2 animate-pulse rounded-full bg-accent" />
+          <div className="loading-indeterminate-bar h-full w-2/5 rounded-full bg-accent" />
         </div>
       </div>
     </div>

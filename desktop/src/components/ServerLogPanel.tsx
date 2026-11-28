@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { mergeServerLogs } from '../../shared/server-logs'
 import type { ServerLogRecord } from '../types/ipc'
+import { InlineLoading } from './ui/LoadingState'
 
 function usePinnedLogScroll(logs: ReadonlyArray<unknown>, ready: boolean) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -124,7 +125,7 @@ export default function ServerLogPanel({
         className={`${isPage ? 'flex-1' : 'max-h-60'} overflow-y-auto font-mono text-[13px] text-green-400 space-y-0.5 leading-relaxed`}
       >
         {!ready ?
-          <span className="text-ink-faint">{t('dashboard.loading')}</span>
+          <InlineLoading label={t('dashboard.loading')} />
         : logs.length === 0 ?
           <span className="text-ink-soft">{t('dashboard.noLogs')}</span>
         : logs.map((log) => (

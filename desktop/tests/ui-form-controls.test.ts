@@ -7,6 +7,13 @@ import {
   SettingRow,
   Toggle,
 } from '../src/components/ui/FormControls'
+import {
+  ChartSkeleton,
+  InlineLoading,
+  LoadingSpinner,
+  PageLoadingSkeleton,
+  TableSkeleton,
+} from '../src/components/ui/LoadingState'
 import { createTestDom } from './helpers/dom'
 
 let dom: Awaited<ReturnType<typeof createTestDom>>
@@ -75,5 +82,45 @@ describe('shared UI form controls', () => {
 
     expect(segmentedButtonClass(true, 'extra')).toContain('shadow-sm')
     expect(segmentedButtonClass(false)).toContain('text-ink-soft')
+  })
+
+  test('renders accessible LoadingState spinner and skeletons', async () => {
+    await act(async () => {
+      dom.root.render(
+        createElement(
+          'div',
+          null,
+          createElement(LoadingSpinner, { size: 16 }),
+          createElement(InlineLoading, { label: 'Syncing logs' }),
+          createElement(TableSkeleton, { label: 'Loading rows', rows: 3 }),
+          createElement(ChartSkeleton, { label: 'Loading chart' }),
+          createElement(PageLoadingSkeleton, {
+            delayed: true,
+            label: 'Loading workspace',
+          }),
+          createElement(PageLoadingSkeleton, {
+            compact: true,
+            cards: 2,
+            label: 'Loading split',
+          }),
+          createElement(PageLoadingSkeleton, {
+            compact: true,
+            cards: 4,
+            label: 'Loading grid',
+          }),
+        ),
+      )
+    })
+
+    const statuses = [...dom.container.querySelectorAll('[role="status"]')]
+    expect(statuses).toHaveLength(6)
+    expect(dom.container.textContent).toContain('Syncing logs')
+    expect(dom.container.textContent).toContain('Loading rows')
+    expect(dom.container.textContent).toContain('Loading chart')
+    expect(dom.container.textContent).toContain('Loading workspace')
+    expect(dom.container.querySelector('.loading-delayed-fade')).not.toBeNull()
+    expect(
+      dom.container.querySelectorAll('.skeleton-shimmer').length,
+    ).toBeGreaterThan(20)
   })
 })

@@ -16,6 +16,7 @@ import {
   sampleTrendDays,
   type DashboardTranslateFn,
 } from './dashboard-format'
+import { ChartSkeleton } from '../ui/LoadingState'
 
 type TokenUsageTrendMetricKey =
   | 'cache_creation_input_tokens'
@@ -147,9 +148,7 @@ export function TokenUsageTrendChart({
       </div>
       <div className="min-h-64 px-2.5 py-2">
         {loading && !dailyUsage ?
-          <div className="flex h-56 items-start text-[13px] text-ink-faint animate-pulse">
-            {t('dashboard.loading')}
-          </div>
+          <ChartSkeleton label={t('dashboard.loading')} />
         : !dailyUsage || days.length === 0 || !hasUsage ?
           <div className="text-[13px] text-ink-faint">
             {t('dashboard.noTokenUsage')}

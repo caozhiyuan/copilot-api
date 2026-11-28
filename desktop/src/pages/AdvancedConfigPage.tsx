@@ -4,6 +4,7 @@ import {
   primaryButtonClass,
   secondaryButtonClass,
 } from '../components/ui/FormControls'
+import { TableSkeleton } from '../components/ui/LoadingState'
 import { useLanguage } from '../contexts/LanguageContext'
 import {
   equalConfigValue,
@@ -592,9 +593,13 @@ export default function AdvancedConfigPage({
             </button>
           </div>
           {busy && !document ?
-            <p className="px-4 py-8 text-[13px] text-ink-soft">
-              {t('dashboard.loading')}
-            </p>
+            <div className="px-2 py-2">
+              <TableSkeleton
+                heightClass="h-56"
+                rows={4}
+                label={t('dashboard.loading')}
+              />
+            </div>
           : section === 'mappings' ?
             <ModelMappingsPage
               active={active}

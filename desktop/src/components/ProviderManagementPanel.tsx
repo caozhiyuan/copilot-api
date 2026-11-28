@@ -18,6 +18,7 @@ import {
 import { getProviderTypeLabel } from '../lib/provider-type-labels'
 import ProviderModelPicker from './ProviderModelPicker'
 import { CheckboxSwitch } from './ui/FormControls'
+import { PageLoadingSkeleton } from './ui/LoadingState'
 
 interface Props {
   serverRunning?: boolean
@@ -227,9 +228,7 @@ export default function ProviderManagementPanel({
         </p>
       )}
       {!config && !error && (
-        <p className="py-12 text-center text-sm text-ink-faint">
-          {t('providers.loading')}
-        </p>
+        <PageLoadingSkeleton compact cards={2} label={t('providers.loading')} />
       )}
       {config && drafts.length === 0 && (
         <div className="rounded-2xl border border-dashed border-line bg-surface px-6 py-16 text-center text-sm text-ink-faint">

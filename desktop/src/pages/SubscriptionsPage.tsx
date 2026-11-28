@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import SubscriptionQuotaCard from '../components/SubscriptionQuotaCard'
+import { PageLoadingSkeleton } from '../components/ui/LoadingState'
 import { useLanguage } from '../contexts/LanguageContext'
 import type { SubscriptionProvider } from '../types/ipc'
 
@@ -70,7 +71,7 @@ export default function SubscriptionsPage({
         )}
       </div>
       {loading ?
-        <p className="subscriptions-empty">{t('dashboard.loading')}</p>
+        <PageLoadingSkeleton compact cards={4} label={t('dashboard.loading')} />
       : failed ?
         <div className="subscriptions-empty">
           <h3>{t('dashboard.quotaLoadFailedShort')}</h3>
