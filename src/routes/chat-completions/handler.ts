@@ -18,10 +18,12 @@ import {
   type UsageTokens,
 } from "~/lib/token-usage"
 import { generateRequestIdFromPayload, getUUID, isNullish } from "~/lib/utils"
+import { normalizeToolSchema } from "~/routes/messages/completions-translation"
 import { handleProviderChatCompletionsForProvider } from "~/routes/provider/chat-completions/handler"
 import type {
   ChatCompletionResponse,
   ChatCompletionsPayload,
+  Tool,
 } from "~/lib/types/chat-completions"
 import { createChatCompletions } from "~/services/copilot/create-chat-completions"
 
@@ -54,6 +56,10 @@ export async function handleCompletion(c: Context) {
   }
 
   debugJson(logger, "Request payload:", payload)
+
+  if (payload.tools) {
+    payload.tools = normalizeToolSchemas(payload.tools)
+  }
 
   const selectedModel = findEndpointModel(payload.model)
   payload.model = selectedModel?.id ?? payload.model
@@ -136,3 +142,19 @@ export async function handleCompletion(c: Context) {
 const isNonStreaming = (
   response: Awaited<ReturnType<typeof createChatCompletions>>,
 ): response is ChatCompletionResponse => Object.hasOwn(response, "choices")
+
+// Copilot's Gemini models reject `type: "object"` tool schemas without
+// `properties`, which OpenAI clients may send for argument-less tools.
+// Tools sent without `parameters` are accepted as they are.
+const normalizeToolSchemas = (tools: Array<Tool>): Array<Tool> =>
+  tools.map((tool) =>
+    tool.function.parameters ?
+      {
+        ...tool,
+        function: {
+          ...tool.function,
+          parameters: normalizeToolSchema(tool.function.parameters),
+        },
+      }
+    : tool,
+  )
