@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { equalConfigValue } from '../lib/config-editor'
 import type { ConfigField } from '../lib/config-fields'
+import { CheckboxSwitch, formFieldClass } from './ui/FormControls'
 
-const inputClass =
-  'w-full min-w-0 rounded-lg border border-line bg-canvas px-2.5 py-1.5 text-[13px] text-ink transition-colors hover:border-blue-200 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/15 disabled:opacity-50 dark:hover:border-blue-500/30'
+const inputClass = `${formFieldClass} px-2.5 py-1.5`
 
 export default function ConfigFieldEditor({
   field,
@@ -62,18 +62,13 @@ export default function ConfigFieldEditor({
         {field.type === 'boolean' ?
           <div className="flex items-center justify-between gap-2 sm:justify-end">
             <span className={sourceClass}>{sourceLabel}</span>
-            <label className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center">
-              <input
+            <label className="inline-flex cursor-pointer">
+              <CheckboxSwitch
                 id={id}
-                type="checkbox"
-                role="switch"
                 checked={effective === true}
                 disabled={disabled}
-                onChange={(e) => onChange(e.target.checked)}
-                className="peer sr-only"
+                onChange={(checked) => onChange(checked)}
               />
-              <span className="absolute inset-0 rounded-full bg-line transition-colors peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/25 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface peer-disabled:opacity-50" />
-              <span className="pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4 peer-disabled:opacity-50" />
             </label>
           </div>
         : field.type === 'json' ?

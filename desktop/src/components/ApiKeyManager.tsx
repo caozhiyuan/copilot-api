@@ -6,6 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { resolveLanguage } from '../locales'
 import type { ApiKeyQuotaUsage, GatewayApiKeyConfig } from '../types/ipc'
 import ApiKeyExpiryPicker from './ApiKeyExpiryPicker'
+import { CheckboxSwitch } from './ui/FormControls'
 
 function generateSecret(): string {
   return (
@@ -221,21 +222,12 @@ export default function ApiKeyManager() {
             {t('apiKeys.isolateUsageHint')}
           </p>
         </div>
-        <div className="shrink-0">
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label={t('apiKeys.isolateUsage')}
-            checked={usageIsolation === true}
-            disabled={busy || usageIsolation === null}
-            onChange={(event) => void saveUsageIsolation(event.target.checked)}
-            className="peer sr-only"
-          />
-          <span
-            aria-hidden="true"
-            className="relative block h-5 w-9 rounded-full bg-sunken ring-1 ring-inset ring-line transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-emerald-500 peer-checked:ring-emerald-500 peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400 peer-disabled:opacity-40"
-          />
-        </div>
+        <CheckboxSwitch
+          ariaLabel={t('apiKeys.isolateUsage')}
+          checked={usageIsolation === true}
+          disabled={busy || usageIsolation === null}
+          onChange={(checked) => void saveUsageIsolation(checked)}
+        />
       </label>
       <div className="grid gap-4 lg:grid-cols-2">
         {keys.length === 0 && (

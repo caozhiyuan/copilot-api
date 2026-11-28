@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  formFieldClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '../components/ui/FormControls'
 import { useLanguage } from '../contexts/LanguageContext'
-import { primaryButtonClass } from '../lib/button-styles'
 import type { LocaleKey } from '../locales'
 import type { ClientIntegrationReply } from '../types/ipc'
 import {
@@ -19,12 +23,10 @@ import {
   type ClientPlugin,
 } from '../../shared/client-integrations'
 
-const fieldClass =
-  'mt-1.5 block w-full rounded-lg border border-line bg-canvas px-3 py-2 text-[13px] text-ink outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/15 disabled:opacity-50'
+const fieldClass = `mt-1.5 block ${formFieldClass}`
 const gatewayClass =
   'mt-1.5 flex min-w-0 w-full items-center break-all border-y border-transparent py-2 font-mono text-[13px] text-ink'
-const buttonClass =
-  'rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-soft transition hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-40'
+const buttonClass = `${secondaryButtonClass} px-3 py-2 text-xs`
 const primaryClass = `px-3 py-2 ${primaryButtonClass}`
 const groupClass = 'space-y-4 rounded-lg border border-line-soft p-4'
 const legendClass = 'px-1 text-xs font-medium text-ink-soft'

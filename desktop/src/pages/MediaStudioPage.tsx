@@ -1,13 +1,12 @@
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from 'react'
+  Field,
+  formFieldClass,
+  formSelectClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '../components/ui/FormControls'
 import { useLanguage } from '../contexts/LanguageContext'
-import { primaryButtonClass } from '../lib/button-styles'
 import {
   serializeMediaFile,
   serializeVideoMediaFile,
@@ -31,20 +30,9 @@ type Mode = 'generate' | 'edit' | 'video'
 type StudioResult =
   | { kind: 'images'; images: CreatedImage[]; prompt: string }
   | { kind: 'video'; video: VideoCreationResult; prompt: string }
-const fieldClass =
-  'w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-accent/30 focus:ring-inset disabled:opacity-50'
-const selectClass = `${fieldClass} text-left [text-align-last:left]`
-const buttonClass =
-  'rounded-lg border border-line px-3 py-2 text-[13px] text-ink-soft hover:bg-sunken disabled:opacity-40'
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-ink-soft">
-      {label}
-      {children}
-    </label>
-  )
-}
+const fieldClass = `${formFieldClass} py-1.5`
+const selectClass = `${formSelectClass} py-1.5`
+const buttonClass = `${secondaryButtonClass} px-3 py-2 text-[13px]`
 
 function UploadPreview({
   file,

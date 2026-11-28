@@ -17,6 +17,7 @@ import {
 } from '../lib/provider-model-options'
 import { getProviderTypeLabel } from '../lib/provider-type-labels'
 import ProviderModelPicker from './ProviderModelPicker'
+import { CheckboxSwitch } from './ui/FormControls'
 
 interface Props {
   serverRunning?: boolean
@@ -297,19 +298,13 @@ export default function ProviderManagementPanel({
                 {t(
                   current.enabled ? 'providers.enabled' : 'providers.disabled',
                 )}
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label={`${current.name}: ${t('providers.enabled')}`}
+                <CheckboxSwitch
+                  ariaLabel={`${current.name}: ${t('providers.enabled')}`}
                   checked={current.enabled}
-                  onChange={(event) =>
-                    editProvider(current.name, {
-                      enabled: event.target.checked,
-                    })
+                  onChange={(enabled) =>
+                    editProvider(current.name, { enabled })
                   }
-                  className="peer sr-only"
                 />
-                <span className="relative h-5 w-9 rounded-full bg-sunken ring-1 ring-inset ring-line transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-emerald-500 peer-checked:ring-emerald-500 peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400" />
               </label>
             </div>
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">

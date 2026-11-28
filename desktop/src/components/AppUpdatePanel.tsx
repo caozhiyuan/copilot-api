@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../contexts/LanguageContext'
 import type { AppUpdateStatus } from '../types/ipc'
+import { secondaryButtonClass } from './ui/FormControls'
 
 export default function AppUpdatePanel({
   compact = false,
@@ -64,8 +65,7 @@ export default function AppUpdatePanel({
     status?.phase === 'checking'
     || status?.phase === 'downloading'
     || status?.phase === 'installing'
-  const buttonClass =
-    'shrink-0 rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-sunken disabled:opacity-50'
+  const buttonClass = `shrink-0 ${secondaryButtonClass} px-3 py-1.5 text-[12px] font-medium text-ink`
 
   return (
     <div

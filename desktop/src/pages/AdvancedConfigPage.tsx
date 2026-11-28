@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ConfigFieldEditor from '../components/ConfigFieldEditor'
+import {
+  primaryButtonClass,
+  secondaryButtonClass,
+} from '../components/ui/FormControls'
 import { useLanguage } from '../contexts/LanguageContext'
-import { primaryButtonClass } from '../lib/button-styles'
 import {
   equalConfigValue,
   getConfigChanges,
@@ -33,8 +36,7 @@ import {
 import type { AppConfigDocument, AppConfigSaveResult } from '../types/ipc'
 import ModelMappingsPage from './ModelMappingsPage'
 
-const buttonClass =
-  'rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] text-ink-soft transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40'
+const buttonClass = `${secondaryButtonClass} px-3 py-1.5 text-[13px]`
 
 const sectionIconPaths: Record<ConfigSection, string> = {
   mappings: 'M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4',
