@@ -337,3 +337,12 @@ test('loads persisted isolation and preserves it on a save failure', async () =>
     'refresh failed',
   )
 })
+
+test('does not refetch API keys when switching language', async () => {
+  const getManagedApiKeys = mock(() => Promise.resolve(keys))
+  window.electronAPI.getManagedApiKeys = getManagedApiKeys
+  await render('en')
+  expect(getManagedApiKeys).toHaveBeenCalledTimes(1)
+  await render('zh')
+  expect(getManagedApiKeys).toHaveBeenCalledTimes(1)
+})

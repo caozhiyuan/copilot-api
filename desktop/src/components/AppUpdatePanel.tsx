@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useLanguage } from '../contexts/LanguageContext'
 import type { AppUpdateStatus } from '../types/ipc'
@@ -11,6 +11,8 @@ export default function AppUpdatePanel({
   checkOnMount?: boolean
 }) {
   const { t } = useLanguage()
+  const tRef = useRef(t)
+  tRef.current = t
   const [status, setStatus] = useState<AppUpdateStatus | null>(null)
   const [actionError, setActionError] = useState('')
 
@@ -32,7 +34,7 @@ export default function AppUpdatePanel({
         }
       })
       .catch(() => {
-        if (active) setActionError(t('updates.actionFailed'))
+        if (active) setActionError(tRef.current('updates.actionFailed'))
       })
     return () => {
       active = false

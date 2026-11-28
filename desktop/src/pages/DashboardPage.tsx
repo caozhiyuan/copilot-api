@@ -89,6 +89,8 @@ export default function DashboardPage({
   onChangeAuth,
 }: DashboardPageProps) {
   const { t } = useLanguage()
+  const tRef = useRef(t)
+  tRef.current = t
   const [started, setStarted] = useState(initialServerStatus?.running ?? false)
   const [port, setPort] = useState<string>(
     String(initialServerStatus?.port ?? defaultPort),
@@ -189,6 +191,16 @@ export default function DashboardPage({
   const tokenUsageRequestId = useRef(0)
   const tokenUsageEventsRequestId = useRef(0)
   const tokenUsageSessionsRequestId = useRef(0)
+  const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(
+    () => () => {
+      if (copyFeedbackTimer.current) {
+        clearTimeout(copyFeedbackTimer.current)
+      }
+    },
+    [],
+  )
 
   const portNum = parseInt(port, 10)
   const normalizedHost = host.trim()
@@ -241,7 +253,7 @@ export default function DashboardPage({
           setServerError(
             status.error
               ?? (status.intentional ? '' : (
-                t('dashboard.serverUnexpectedStop')
+                tRef.current('dashboard.serverUnexpectedStop')
               )),
           )
           setStarted(false)
@@ -252,11 +264,16 @@ export default function DashboardPage({
     return unsubscribe
   }, [])
 
+  const refreshOnServerStartRef = useRef(() => {})
+  refreshOnServerStartRef.current = () => {
+    void fetchData()
+    void fetchTokenUsageData(tokenUsagePeriod, tokenUsageEventsPage)
+  }
+
   // Fetch dashboard and token usage data after the server starts.
   useEffect(() => {
     if (started && !restarting) {
-      void fetchData()
-      void fetchTokenUsageData(tokenUsagePeriod, tokenUsageEventsPage)
+      refreshOnServerStartRef.current()
     }
   }, [started, restarting])
 
@@ -603,8 +620,14 @@ export default function DashboardPage({
     void navigator.clipboard
       .writeText(text)
       .then(() => {
+        if (copyFeedbackTimer.current) {
+          clearTimeout(copyFeedbackTimer.current)
+        }
         setCopied(key)
-        setTimeout(() => setCopied(''), 1500)
+        copyFeedbackTimer.current = setTimeout(() => {
+          copyFeedbackTimer.current = undefined
+          setCopied('')
+        }, 1500)
       })
       .catch(() => {})
   }

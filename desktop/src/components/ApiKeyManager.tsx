@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isValidCostAmount } from '../../../src/lib/token-usage/currency'
 import { primaryButtonClass } from '../lib/button-styles'
 import { formatCostAmount } from '../lib/token-usage-format'
@@ -25,6 +25,8 @@ function localExpiry(value?: string): string {
 
 export default function ApiKeyManager() {
   const { langPref, t } = useLanguage()
+  const tRef = useRef(t)
+  tRef.current = t
   const locale = resolveLanguage(langPref, navigator.language)
   const displayDateTime = new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium',
@@ -57,7 +59,7 @@ export default function ApiKeyManager() {
           setUsageIsolation(auth.isolateApiKeyUsage === true)
         }
       } catch {
-        if (active) setError(t('apiKeys.loadError'))
+        if (active) setError(tRef.current('apiKeys.loadError'))
       }
     })()
     const refresh = async () => {
@@ -74,7 +76,7 @@ export default function ApiKeyManager() {
       active = false
       clearInterval(timer)
     }
-  }, [t])
+  }, [])
   const saveUsageIsolation = async (enabled: boolean) => {
     setBusy(true)
     setError('')

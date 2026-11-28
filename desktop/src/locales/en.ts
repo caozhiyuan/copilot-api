@@ -796,6 +796,13 @@ const en: Locale = {
       'Each mapping row must include both a requested model and a target model.',
     validationDuplicate: 'Duplicate requested model: {{model}}',
   },
+  errorBoundary: {
+    title: 'Something went wrong',
+    description:
+      'An unexpected error occurred while rendering this view. You can try again or reload the window.',
+    retry: 'Try again',
+    reload: 'Reload window',
+  },
 }
 
 export default en

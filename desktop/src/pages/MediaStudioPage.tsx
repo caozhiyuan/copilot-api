@@ -84,6 +84,8 @@ export default function MediaStudioPage({
   serverRunning: boolean
 }) {
   const { t } = useLanguage()
+  const tRef = useRef(t)
+  tRef.current = t
   const formId = useId()
   const [mode, setMode] = useState<Mode>('generate')
   const [model, setModel] = useState('gpt-image-2')
@@ -189,7 +191,9 @@ export default function MediaStudioPage({
       } catch (cause) {
         if (active) {
           setPollError(
-            cause instanceof Error ? cause.message : t('studio.failed'),
+            cause instanceof Error ?
+              cause.message
+            : tRef.current('studio.failed'),
           )
           setPolling(false)
         }

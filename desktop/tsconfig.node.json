@@ -54,6 +54,7 @@
     "src/components/auth/**/*",
     "src/components/dashboard/**/*",
     "src/components/ConfigFieldEditor.tsx",
+    "src/components/ErrorBoundary.tsx",
     "src/components/Header.tsx",
     "src/components/ProviderManagementModal.tsx",
     "src/components/ProviderManagementPanel.tsx",

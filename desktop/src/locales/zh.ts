@@ -741,6 +741,12 @@ const zh: Locale = {
     validationIncomplete: '每一行映射都必须同时填写请求模型和目标模型。',
     validationDuplicate: '请求模型重复：{{model}}',
   },
+  errorBoundary: {
+    title: '页面渲染出错了',
+    description: '当前界面发生了意外错误。你可以尝试重试，或重新加载窗口。',
+    retry: '重试',
+    reload: '重新加载窗口',
+  },
 }
 
 export default zh

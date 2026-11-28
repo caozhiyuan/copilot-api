@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   useCallback,
   type ReactNode,
@@ -80,11 +81,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyThemeClass(resolved)
   }, [])
 
-  return (
-    <ThemeContext.Provider value={{ themePref, resolvedTheme, setThemePref }}>
-      {children}
-    </ThemeContext.Provider>
+  const value = useMemo(
+    () => ({ themePref, resolvedTheme, setThemePref }),
+    [themePref, resolvedTheme, setThemePref],
   )
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 
 export function useTheme(): ThemeContextValue {

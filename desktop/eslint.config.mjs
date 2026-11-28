@@ -1,6 +1,7 @@
 import eslint from '@eslint/js'
 import gitignore from 'eslint-config-flat-gitignore'
 import prettier from 'eslint-plugin-prettier/recommended'
+import reactHooks from 'eslint-plugin-react-hooks'
 import unusedImports from 'eslint-plugin-unused-imports'
 import { defineConfig } from 'eslint/config'
 import globals from 'globals'
@@ -40,9 +41,12 @@ export default defineConfig(
       },
     },
     plugins: {
+      'react-hooks': reactHooks,
       'unused-imports': unusedImports,
     },
     rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'error',
       '@typescript-eslint/no-misused-promises': [
         'error',
         { checksVoidReturn: false },

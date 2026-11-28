@@ -586,6 +586,12 @@ export interface Locale {
     validationIncomplete: string
     validationDuplicate: string
   }
+  errorBoundary: {
+    title: string
+    description: string
+    retry: string
+    reload: string
+  }
 }
 
 export type Language = 'en' | 'zh'

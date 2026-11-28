@@ -84,7 +84,7 @@ export default function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [setLangPref])
 
   const handleAuthSuccess = (result: AuthResult) => {
     setAuthMode(result.mode ?? 'provider')

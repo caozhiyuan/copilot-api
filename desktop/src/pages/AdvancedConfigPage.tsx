@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ConfigFieldEditor from '../components/ConfigFieldEditor'
 import { useLanguage } from '../contexts/LanguageContext'
 import { primaryButtonClass } from '../lib/button-styles'
@@ -173,8 +173,13 @@ export default function AdvancedConfigPage({
       setBusy(false)
     }
   }
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  const errorMessageRef = useRef(errorMessage)
+  errorMessageRef.current = errorMessage
+
   useEffect(() => {
-    if (!active || dirty) return
+    if (!active || dirtyRef.current) return
     setSection('mappings')
     setMode('form')
     let current = true
@@ -187,7 +192,7 @@ export default function AdvancedConfigPage({
         if (current) acceptDocument(unwrapConfigEditorReply(next))
       })
       .catch((err: unknown) => {
-        if (current) setError(errorMessage(err, 'readFailed'))
+        if (current) setError(errorMessageRef.current(err, 'readFailed'))
       })
       .finally(() => {
         if (current) setBusy(false)

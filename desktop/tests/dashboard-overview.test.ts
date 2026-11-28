@@ -5,7 +5,8 @@ import type { Root } from 'react-dom/client'
 import { createTestDom } from './helpers/dom'
 
 import App from '../src/App'
-import { LanguageProvider } from '../src/contexts/LanguageContext'
+import { LanguageProvider, useLanguage } from '../src/contexts/LanguageContext'
+import type { LangPreference } from '../src/locales'
 import DashboardPage from '../src/pages/DashboardPage'
 import type {
   AppUpdateStatus,
@@ -773,5 +774,92 @@ describe('usage timing display', () => {
     expect(rows[0].textContent).not.toContain('10.0 tok/s')
     expect(rows[0].textContent).toContain('2.25 s')
     expect(rows[0].querySelectorAll('td')).toHaveLength(12)
+  })
+
+  test('uses latest translation on unexpected server stop after language switch', async () => {
+    let setLang: ((pref: LangPreference) => void) | null = null
+    function CaptureLang() {
+      const { setLangPref } = useLanguage()
+      setLang = setLangPref
+      return null
+    }
+    const onServerStatus = mock((callback: (status: ServerStatus) => void) => {
+      serverStatusListener = callback
+      return () => {}
+    })
+    window.electronAPI.onServerStatus = onServerStatus
+
+    await act(async () => {
+      root.render(
+        createElement(LanguageProvider, {
+          children: [
+            createElement(CaptureLang, { key: 'lang' }),
+            createElement(DashboardPage, {
+              key: 'page',
+              authMode: 'provider',
+              defaultPort: 4141,
+              defaultHost: '',
+              initialServerStatus: { running: true, port: 4141, host: '' },
+              onChangeAuth: openAuthConfig,
+            }),
+          ],
+        }),
+      )
+    })
+
+    await act(async () => {
+      setLang?.('zh')
+    })
+    expect(onServerStatus).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      serverStatusListener?.({ running: false })
+    })
+    expect(container.textContent).toContain('服务已意外停止')
+  })
+
+  test('cancels previous copy feedback timer when copying rapidly and on unmount', async () => {
+    const scheduled: Array<{ fn: () => void; cleared: boolean }> = []
+    const originalSetTimeout = globalThis.setTimeout
+    const originalClearTimeout = globalThis.clearTimeout
+    Object.defineProperty(win.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mock(() => Promise.resolve()) },
+    })
+    globalThis.setTimeout = ((fn: () => void) => {
+      const entry = { fn, cleared: false }
+      scheduled.push(entry)
+      return entry as unknown as ReturnType<typeof setTimeout>
+    }) as typeof setTimeout
+    globalThis.clearTimeout = ((handle: ReturnType<typeof setTimeout>) => {
+      const entry = handle as unknown as { cleared?: boolean }
+      if (entry && 'cleared' in entry) entry.cleared = true
+    }) as typeof clearTimeout
+
+    try {
+      await render()
+      const copyButtons = [...container.querySelectorAll('button')].filter(
+        (button) => button.textContent?.includes('Copy'),
+      )
+      expect(copyButtons.length).toBeGreaterThanOrEqual(2)
+
+      await act(async () => copyButtons[0].click())
+      await act(async () => copyButtons[1].click())
+
+      expect(scheduled).toHaveLength(2)
+      expect(scheduled[0].cleared).toBe(true)
+      expect(scheduled[1].cleared).toBe(false)
+
+      await act(async () => scheduled[1].fn())
+      expect(container.textContent).not.toContain('Copied')
+
+      await act(async () => copyButtons[0].click())
+      expect(scheduled).toHaveLength(3)
+      await act(async () => root.unmount())
+      expect(scheduled[2].cleared).toBe(true)
+    } finally {
+      globalThis.setTimeout = originalSetTimeout
+      globalThis.clearTimeout = originalClearTimeout
+    }
   })
 })
