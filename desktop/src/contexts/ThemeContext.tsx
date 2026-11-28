@@ -82,36 +82,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  useEffect(() => {
-    let active = true
-    window.electronAPI
-      .getSettings()
-      .then((settings) => {
-        if (!active || requestSeqRef.current > 0) return
-        setThemePrefState(settings.theme)
-        writeCachedThemePref(settings.theme)
-        const resolved = resolveTheme(settings.theme)
-        setResolvedTheme(resolved)
-        applyThemeClass(resolved)
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (themePref !== 'auto') return
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = () => {
-      const resolved = getSystemTheme()
-      setResolvedTheme(resolved)
-      applyThemeClass(resolved)
-    }
-    media.addEventListener('change', handler)
-    return () => media.removeEventListener('change', handler)
-  }, [themePref])
-
   const applyThemePref = useCallback(
     (pref: ThemePreference, persist: boolean) => {
       const requestId = ++requestSeqRef.current
@@ -153,6 +123,32 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     },
     [],
   )
+
+  useEffect(() => {
+    let active = true
+    window.electronAPI
+      .getSettings()
+      .then((settings) => {
+        if (!active || requestSeqRef.current > 0) return
+        applyThemePref(settings.theme, true)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [applyThemePref])
+
+  useEffect(() => {
+    if (themePref !== 'auto') return
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = () => {
+      const resolved = getSystemTheme()
+      setResolvedTheme(resolved)
+      applyThemeClass(resolved)
+    }
+    media.addEventListener('change', handler)
+    return () => media.removeEventListener('change', handler)
+  }, [themePref])
 
   const setThemePref = useCallback(
     (pref: ThemePreference) => applyThemePref(pref, true),

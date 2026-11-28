@@ -13,6 +13,7 @@ export async function autoStartServer(
     authMode?: DesktopAuthMode,
     host?: string,
   ) => Promise<ServerStatus>,
+  getServerStatus?: () => Promise<ServerStatus>,
 ): Promise<ServerStatus | undefined> {
   if (
     !settings.autoStartServer
@@ -23,6 +24,8 @@ export async function autoStartServer(
   }
 
   try {
+    const currentStatus = await getServerStatus?.().catch(() => undefined)
+    if (currentStatus?.running) return currentStatus
     return await startServer(settings.lastPort, authStatus.mode, settings.host)
   } catch (error) {
     return {

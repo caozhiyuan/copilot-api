@@ -390,6 +390,43 @@ describe('LanguageContext and ThemeContext stability', () => {
     expect(dom.container.textContent).toBe('auto:light')
   })
 
+  test('ThemeProvider reconciles saved auto theme with main process on mount after a reload', async () => {
+    // Simulate Chromium still reporting dark from a pre-reload preview while OS is light.
+    Object.defineProperty(dom.win, 'matchMedia', {
+      configurable: true,
+      value: () => ({
+        matches: true,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    })
+    const previewTheme = mock(() => Promise.resolve(false))
+    Object.defineProperty(dom.win, 'electronAPI', {
+      configurable: true,
+      value: {
+        getSettings: () => Promise.resolve({ theme: 'auto' }),
+        previewTheme,
+      },
+    })
+
+    function Probe() {
+      const { themePref, resolvedTheme } = useTheme()
+      return createElement('span', null, `${themePref}:${resolvedTheme}`)
+    }
+
+    await act(async () => {
+      dom.root.render(
+        createElement(ThemeProvider, { children: createElement(Probe) }),
+      )
+    })
+
+    expect(previewTheme).toHaveBeenCalledWith('auto')
+    expect(dom.container.textContent).toBe('auto:light')
+    expect(dom.win.document.documentElement.classList.contains('dark')).toBe(
+      false,
+    )
+  })
+
   test('useLanguage and useTheme throw outside their providers', async () => {
     function OutsideLanguage() {
       useLanguage()

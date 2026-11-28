@@ -163,9 +163,18 @@ export default function AdvancedConfigPage({
     if (!config) setMode('json')
   }
   const requestSeqRef = useRef(0)
+  const busyCountRef = useRef(0)
+  const beginBusy = () => {
+    busyCountRef.current += 1
+    setBusy(true)
+  }
+  const endBusy = () => {
+    busyCountRef.current = Math.max(0, busyCountRef.current - 1)
+    if (busyCountRef.current === 0) setBusy(false)
+  }
   const load = async () => {
     const requestId = ++requestSeqRef.current
-    setBusy(true)
+    beginBusy()
     setError('')
     setSaveResult(null)
     try {
@@ -178,7 +187,7 @@ export default function AdvancedConfigPage({
       if (requestId === requestSeqRef.current)
         setError(errorMessage(err, 'readFailed'))
     } finally {
-      if (requestId === requestSeqRef.current) setBusy(false)
+      endBusy()
     }
   }
   const documentRef = useRef(document)
@@ -199,7 +208,7 @@ export default function AdvancedConfigPage({
     let current = true
     const requestId = ++requestSeqRef.current
     const isInitialLoad = documentRef.current === null
-    if (isInitialLoad) setBusy(true)
+    if (isInitialLoad) beginBusy()
     setError('')
     setSaveResult(null)
     void window.electronAPI
@@ -222,8 +231,7 @@ export default function AdvancedConfigPage({
           setError(errorMessageRef.current(err, 'readFailed'))
       })
       .finally(() => {
-        if (current && requestId === requestSeqRef.current && isInitialLoad)
-          setBusy(false)
+        if (isInitialLoad) endBusy()
       })
     return () => {
       current = false
@@ -330,7 +338,7 @@ export default function AdvancedConfigPage({
   const recoverDraft = async () => {
     if (!document || !baseline.config || !draft.config || mappingError) return
     const requestId = ++requestSeqRef.current
-    setBusy(true)
+    beginBusy()
     try {
       const latest = unwrapConfigEditorReply(
         await window.electronAPI.getAppConfig(),
@@ -351,13 +359,13 @@ export default function AdvancedConfigPage({
       if (requestId === requestSeqRef.current)
         setError(errorMessage(err, 'readFailed'))
     } finally {
-      if (requestId === requestSeqRef.current) setBusy(false)
+      endBusy()
     }
   }
   const save = async (applyOnly = false) => {
     if (!document || validationError || pendingMerge) return
     const requestId = ++requestSeqRef.current
-    setBusy(true)
+    beginBusy()
     setError('')
     setShowChanges(false)
     try {
@@ -378,7 +386,7 @@ export default function AdvancedConfigPage({
         setError(errorMessage(err, applyOnly ? 'applyFailed' : 'saveFailed'))
       }
     } finally {
-      if (requestId === requestSeqRef.current) setBusy(false)
+      endBusy()
     }
   }
   const jsonPreview =

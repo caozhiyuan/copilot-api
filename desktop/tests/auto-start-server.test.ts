@@ -61,3 +61,40 @@ test('returns startup errors for the dashboard to display', async () => {
     ),
   ).toEqual({ running: false, error: 'startup failed' })
 })
+
+test('reuses an already-running server without restarting it', async () => {
+  const calls: unknown[] = []
+  const startServer = async (...args: unknown[]) => {
+    calls.push(args)
+    return { running: true, port: 5151 }
+  }
+
+  expect(
+    await autoStartServer(
+      settings,
+      { success: true, mode: 'copilot' },
+      startServer,
+      async () => ({ running: true, port: 6060, host: '127.0.0.1' }),
+    ),
+  ).toEqual({ running: true, port: 6060, host: '127.0.0.1' })
+  expect(calls).toEqual([])
+
+  // Starts normally when the status query reports stopped or fails.
+  expect(
+    await autoStartServer(
+      settings,
+      { success: true, mode: 'copilot' },
+      startServer,
+      async () => ({ running: false }),
+    ),
+  ).toEqual({ running: true, port: 5151 })
+  expect(
+    await autoStartServer(
+      settings,
+      { success: true, mode: 'copilot' },
+      startServer,
+      () => Promise.reject(new Error('status failed')),
+    ),
+  ).toEqual({ running: true, port: 5151 })
+  expect(calls).toHaveLength(2)
+})

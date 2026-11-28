@@ -1288,4 +1288,37 @@ describe('Desktop config editor', () => {
     )
     expect(field('useMessagesApi').checked).toBe(false)
   })
+
+  test('clears busy state when an automatic re-entry refresh supersedes an in-flight manual reload', async () => {
+    await render()
+    const manualReload = Promise.withResolvers<AppConfigDocument>()
+    read.mockImplementationOnce(() => manualReload.promise)
+    await click('Reload')
+    expect(button('Reload').disabled).toBe(true)
+
+    await render(false, false)
+    const silentRefresh = Promise.withResolvers<AppConfigDocument>()
+    read.mockImplementationOnce(() => silentRefresh.promise)
+    await render(false, true)
+
+    await act(async () =>
+      silentRefresh.resolve({
+        ...documentFixture,
+        revision: 'fresh-silent-revision',
+        content: JSON.stringify({ useMessagesApi: false }),
+      }),
+    )
+    await act(async () =>
+      manualReload.resolve({
+        ...documentFixture,
+        revision: 'stale-manual-revision',
+        content: JSON.stringify({ useMessagesApi: true }),
+      }),
+    )
+
+    expect(button('Reload').disabled).toBe(false)
+    await click('Request settings')
+    expect(field('useMessagesApi').disabled).toBe(false)
+    expect(field('useMessagesApi').checked).toBe(false)
+  })
 })

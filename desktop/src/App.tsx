@@ -63,6 +63,7 @@ export default function App() {
             settings,
             authResult,
             window.electronAPI.startServer,
+            window.electronAPI.getServerStatus,
           )
           if (!active) return
 

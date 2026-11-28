@@ -104,6 +104,8 @@ applyElectronProxyCommandLine(getEffectiveProxySettings(initialSettings))
 app.commandLine.appendSwitch('disable-quic')
 bindElectronFetch()
 
+let savedTheme: ThemePreference = initialSettings.theme
+
 function resolveNativeThemeSource(
   theme: ThemePreference,
 ): 'system' | 'light' | 'dark' {
@@ -358,6 +360,12 @@ function createWindow(startHidden = false): BrowserWindow {
     }
   })
 
+  win.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) {
+      applyNativeTheme(savedTheme)
+    }
+  })
+
   win.on('close', async (e) => {
     // Allow the close event to proceed when quitting from the menu or system.
     if (quitLifecycle.isQuitting()) return
@@ -395,7 +403,8 @@ async function initializeApplication(): Promise<void> {
   const { registerIpcHandlers, readSettings, onStatusChange, onLog } =
     await getRuntimeDependencies()
   const settings = await readSettings()
-  nativeTheme.themeSource = resolveNativeThemeSource(settings.theme)
+  savedTheme = settings.theme
+  nativeTheme.themeSource = resolveNativeThemeSource(savedTheme)
   nativeTheme.on('updated', () => {
     getLiveMainWindow()?.setBackgroundColor(resolveNativeBackgroundColor())
   })
@@ -506,7 +515,8 @@ async function initializeApplication(): Promise<void> {
     onPreviewTheme: applyNativeTheme,
     onSettingsChange: async (settings, prevSettings) => {
       const liveWindow = getLiveMainWindow()
-      applyNativeTheme(settings.theme)
+      savedTheme = settings.theme
+      applyNativeTheme(savedTheme)
 
       if (settings.minimizeToTray) {
         await createTray()
