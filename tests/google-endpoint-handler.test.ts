@@ -64,6 +64,8 @@ const originalResolveAlias =
 const originalResolveProvider = googleHandlerDependencies.resolveProviderConfig
 const originalForwardGoogle =
   googleHandlerDependencies.forwardGoogleGenerateContent
+const originalSseKeepaliveIntervalMs =
+  googleHandlerDependencies.sseKeepaliveIntervalMs
 const originalWebSearchCreateResponses =
   webSearchFlowDependencies.createResponses
 const originalWebSearchModelGetter =
@@ -145,6 +147,8 @@ beforeEach(async () => {
     originalResolveAlias
   googleHandlerDependencies.resolveProviderConfig = originalResolveProvider
   googleHandlerDependencies.forwardGoogleGenerateContent = originalForwardGoogle
+  googleHandlerDependencies.sseKeepaliveIntervalMs =
+    originalSseKeepaliveIntervalMs
   webSearchFlowDependencies.createResponses = originalWebSearchCreateResponses
   webSearchFlowDependencies.getMessageApiWebSearchModel =
     originalWebSearchModelGetter
@@ -169,6 +173,8 @@ afterEach(async () => {
     originalResolveAlias
   googleHandlerDependencies.resolveProviderConfig = originalResolveProvider
   googleHandlerDependencies.forwardGoogleGenerateContent = originalForwardGoogle
+  googleHandlerDependencies.sseKeepaliveIntervalMs =
+    originalSseKeepaliveIntervalMs
   webSearchFlowDependencies.createResponses = originalWebSearchCreateResponses
   webSearchFlowDependencies.getMessageApiWebSearchModel =
     originalWebSearchModelGetter
@@ -3210,5 +3216,306 @@ describe("Google Gemini /v1beta/models integration via Messages API", () => {
     expect(body.candidates?.[0]?.groundingMetadata).toEqual({
       webSearchQueries: ["native query"],
     })
+  })
+
+  test("emits empty SSE keepalive frames during silent translated streams without comments or synthetic JSON chunks", async () => {
+    googleHandlerDependencies.sseKeepaliveIntervalMs = 20
+
+    const sleep = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms))
+    const enc = new TextEncoder()
+    const sseLine = (payload: Record<string, unknown>) =>
+      enc.encode(`data: ${JSON.stringify(payload)}\n\n`)
+
+    googleHandlerDependencies.handleCompletionPayload = mock(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              // Silent metadata-only events that yield no Google chunk
+              controller.enqueue(
+                sseLine({
+                  type: "message_start",
+                  message: {
+                    id: "msg-keepalive-1",
+                    type: "message",
+                    role: "assistant",
+                    model: "gemini-4-neon",
+                    content: [],
+                    stop_reason: null,
+                    stop_sequence: null,
+                    usage: { input_tokens: 100, output_tokens: 0 },
+                  },
+                }),
+              )
+              controller.enqueue(sseLine({ type: "ping" }))
+              await sleep(55)
+              controller.enqueue(
+                sseLine({
+                  type: "content_block_start",
+                  index: 0,
+                  content_block: { type: "text", text: "Hello" },
+                }),
+              )
+              controller.enqueue(
+                sseLine({
+                  type: "content_block_stop",
+                  index: 0,
+                }),
+              )
+              // Mid-stream pause while buffering tool_use arguments
+              controller.enqueue(
+                sseLine({
+                  type: "content_block_start",
+                  index: 1,
+                  content_block: {
+                    type: "tool_use",
+                    id: "call_1",
+                    name: "read_file",
+                    input: {},
+                  },
+                }),
+              )
+              controller.enqueue(
+                sseLine({
+                  type: "content_block_delta",
+                  index: 1,
+                  delta: {
+                    type: "input_json_delta",
+                    partial_json: '{"path":"a.ts"}',
+                  },
+                }),
+              )
+              await sleep(55)
+              controller.enqueue(
+                sseLine({
+                  type: "content_block_stop",
+                  index: 1,
+                }),
+              )
+              controller.enqueue(
+                sseLine({
+                  type: "message_delta",
+                  delta: { stop_reason: "tool_use", stop_sequence: null },
+                  usage: { output_tokens: 12 },
+                }),
+              )
+              controller.enqueue(sseLine({ type: "message_stop" }))
+              controller.close()
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const app = createServer()
+    const response = await app.request(
+      "/v1beta/models/gemini-4-neon:streamGenerateContent?alt=sse",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+      },
+    )
+
+    expect(response.status).toBe(200)
+    const rawBody = await response.text()
+
+    // Keepalive frames are emitted before the first chunk and during the mid-stream pause
+    expect(rawBody.startsWith("\n\n")).toBe(true)
+    expect(rawBody).toContain("\n\n\n\n")
+    expect(rawBody).not.toContain(": keep-alive")
+    expect(rawBody).not.toContain("event:")
+
+    // Simulate google.golang.org/genai iterateResponseStream: split on "\n\n",
+    // skip empty frames, and reject any non-"data:" frame.
+    const frames = rawBody.split("\n\n")
+    const emptyFrames = frames.filter((frame) => frame.length === 0)
+    const nonEmptyFrames = frames.filter((frame) => frame.length > 0)
+    expect(emptyFrames.length).toBeGreaterThanOrEqual(2)
+    for (const frame of nonEmptyFrames) {
+      expect(frame.startsWith("data:")).toBe(true)
+    }
+
+    // No synthetic empty JSON chunks are injected
+    const parsedChunks = parseSseDataEvents(rawBody)
+    expect(parsedChunks).toHaveLength(3)
+    expect(parsedChunks[0]?.candidates?.[0]?.content?.parts).toEqual([
+      { text: "Hello" },
+    ])
+    expect(parsedChunks[1]?.candidates?.[0]?.content?.parts).toEqual([
+      {
+        functionCall: {
+          id: "call_1",
+          name: "read_file",
+          args: { path: "a.ts" },
+        },
+      },
+    ])
+    expect(parsedChunks[2]?.candidates?.[0]?.finishReason).toBe("STOP")
+  })
+
+  test("cancels idle translated SSE stream promptly on client abort during keepalive", async () => {
+    googleHandlerDependencies.sseKeepaliveIntervalMs = 15
+
+    let innerCancelled = false
+    let resolveCancelled!: () => void
+    const cancelled = new Promise<void>((resolve) => {
+      resolveCancelled = resolve
+    })
+
+    googleHandlerDependencies.handleCompletionPayload = mock(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start() {
+              // Stay completely silent after headers
+            },
+            cancel() {
+              innerCancelled = true
+              resolveCancelled()
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const abortController = new AbortController()
+    const app = createServer()
+    const response = await app.request(
+      "/v1beta/models/gemini-4-neon:streamGenerateContent?alt=sse",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        }),
+        signal: abortController.signal,
+      },
+    )
+
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader()
+    const firstRead = await reader.read()
+    expect(new TextDecoder().decode(firstRead.value)).toBe("\n\n")
+
+    abortController.abort()
+    await reader.cancel()
+    await cancelled
+    expect(innerCancelled).toBe(true)
+  })
+
+  test("emits empty SSE keepalive frames on native Google passthrough without affecting first-token timing or non-SSE mode", async () => {
+    googleHandlerDependencies.sseKeepaliveIntervalMs = 20
+
+    const sleep = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms))
+    const enc = new TextEncoder()
+
+    const googleProvider: ResolvedProviderConfig = {
+      name: "mygoogle",
+      type: "google",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "test-google-key",
+      authType: "x-goog-api-key",
+      models: {},
+    }
+    googleHandlerDependencies.resolveConfiguredProviderModelAlias = () =>
+      Promise.resolve({ provider: "mygoogle", model: "gemini-4-argon" })
+    googleHandlerDependencies.resolveProviderConfig = (provider) =>
+      Promise.resolve(provider === "mygoogle" ? googleProvider : null)
+
+    let firstTokenMs: number | null = null
+    let keepaliveDelayMs = 0
+    googleHandlerDependencies.forwardGoogleGenerateContent = mock(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              const startedAt = performance.now()
+              await sleep(55)
+              keepaliveDelayMs = performance.now() - startedAt
+              controller.enqueue(
+                enc.encode(
+                  `data: ${JSON.stringify({
+                    modelVersion: "gemini-4-argon",
+                    candidates: [
+                      {
+                        index: 0,
+                        content: { role: "model", parts: [{ text: "ok" }] },
+                        finishReason: "STOP",
+                      },
+                    ],
+                    usageMetadata: {
+                      promptTokenCount: 10,
+                      candidatesTokenCount: 2,
+                      totalTokenCount: 12,
+                    },
+                  })}\n\n`,
+                ),
+              )
+              controller.close()
+            },
+          }),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        ),
+      ),
+    )
+
+    const plugins = new GatewayPlugins(4141)
+    await plugins.register("first-token-observer", ({ on }) => {
+      on("request.first_token", (event) => {
+        firstTokenMs = event.firstTokenMs
+      })
+    })
+    const app = createServer({ plugins })
+
+    try {
+      const sseRes = await app.request(
+        "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent?alt=sse",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          }),
+        },
+      )
+      expect(sseRes.status).toBe(200)
+      const rawBody = await sseRes.text()
+      expect(rawBody.startsWith("\n\n")).toBe(true)
+      const chunks = parseSseDataEvents(rawBody)
+      expect(chunks).toHaveLength(1)
+      expect(chunks[0]?.candidates?.[0]?.content?.parts).toEqual([
+        { text: "ok" },
+      ])
+      // Keepalive frames must not trigger first-token timing prematurely
+      expect(firstTokenMs).not.toBeNull()
+      expect(firstTokenMs ?? 0).toBeGreaterThanOrEqual(keepaliveDelayMs - 10)
+
+      // Non-SSE JSON array mode returns a plain JSON array without keepalive frames
+      const jsonRes = await app.request(
+        "/v1beta/models/mygoogle/gemini-4-argon:streamGenerateContent",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: "hello" }] }],
+          }),
+        },
+      )
+      expect(jsonRes.status).toBe(200)
+      const jsonChunks =
+        (await jsonRes.json()) as Array<GoogleGenerateContentResponse>
+      expect(jsonChunks).toHaveLength(1)
+      expect(jsonChunks[0]?.candidates?.[0]?.content?.parts).toEqual([
+        { text: "ok" },
+      ])
+    } finally {
+      await plugins.close()
+    }
   })
 })
