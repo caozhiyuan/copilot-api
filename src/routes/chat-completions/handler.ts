@@ -57,8 +57,8 @@ export async function handleCompletion(c: Context) {
 
   debugJson(logger, "Request payload:", payload)
 
-  if (payload.tools) {
-    payload.tools = normalizeToolSchemas(payload.tools)
+  if (Array.isArray(payload.tools)) {
+    payload.tools = payload.tools.map(normalizeToolParameters)
   }
 
   const selectedModel = findEndpointModel(payload.model)
@@ -145,16 +145,26 @@ const isNonStreaming = (
 
 // Copilot's Gemini models reject `type: "object"` tool schemas without
 // `properties`, which OpenAI clients may send for argument-less tools.
-// Tools sent without `parameters` are accepted as they are.
-const normalizeToolSchemas = (tools: Array<Tool>): Array<Tool> =>
-  tools.map((tool) =>
-    tool.function.parameters ?
-      {
-        ...tool,
-        function: {
-          ...tool.function,
-          parameters: normalizeToolSchema(tool.function.parameters),
-        },
-      }
-    : tool,
-  )
+// Request bodies are not validated, so tools without an object `parameters`
+// schema (including malformed entries) are forwarded unchanged.
+const normalizeToolParameters = (tool: Tool): Tool => {
+  const value: unknown = tool
+  if (
+    !isRecord(value)
+    || !isRecord(value.function)
+    || !isRecord(value.function.parameters)
+  ) {
+    return tool
+  }
+  return {
+    ...tool,
+    function: {
+      ...tool.function,
+      parameters: normalizeToolSchema(value.function.parameters),
+    },
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}

@@ -259,6 +259,35 @@ test("native chat completions adds properties to object tool schemas without the
   ])
 })
 
+test("native chat completions forwards malformed tools unchanged", async () => {
+  const malformed: Array<unknown> = [
+    "not-an-array",
+    [null, { type: "function" }, { type: "function", function: null }],
+    [{ type: "function", function: { name: "x", parameters: "bad" } }],
+  ]
+  for (const tools of malformed) {
+    createChatCompletions.mockImplementationOnce(() =>
+      Promise.resolve(
+        streamChunks([
+          chunk({
+            content: "ok",
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+          { data: "[DONE]" },
+        ]),
+      ),
+    )
+    const response = await requestCompletion({ tools })
+    expect(response.status).toBe(200)
+    await response.text()
+  }
+
+  const forwarded: Array<unknown> = createChatCompletions.mock.calls.map(
+    ([payload]) => payload.tools,
+  )
+  expect(forwarded).toEqual(malformed)
+})
+
 const requestCompletion = async (
   body: Record<string, unknown> = {},
 ): Promise<Response> => {
