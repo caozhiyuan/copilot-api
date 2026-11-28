@@ -251,6 +251,15 @@ describe('desktop menu shortcuts', () => {
     expect(onSettingsClose).toHaveBeenCalledTimes(1)
 
     await click('Providers')
+    const deadline = Date.now() + 2000
+    while (
+      container.querySelector('[role="dialog"]') === null
+      && Date.now() < deadline
+    ) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+    }
     expect(container.querySelector('[role="dialog"]')).not.toBeNull()
     const closeProviders = container.querySelector<HTMLButtonElement>(
       '[role="dialog"] button[aria-label]',

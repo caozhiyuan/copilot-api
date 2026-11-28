@@ -106,6 +106,22 @@ function button(label: string): HTMLButtonElement {
   if (!result) throw new Error(`Missing button: ${label}`)
   return result
 }
+async function waitForTabReady(predicate?: () => boolean) {
+  const deadline = Date.now() + 2000
+  while (
+    (container.querySelector('[data-tab-loading]') !== null
+      || (predicate && !predicate()))
+    && Date.now() < deadline
+  ) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    })
+  }
+}
+async function clickTab(label: string, predicate?: () => boolean) {
+  await act(async () => button(label).click())
+  await waitForTabReady(predicate)
+}
 async function selectMode(label: string) {
   const mode = [
     ...container.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
@@ -164,7 +180,7 @@ async function renderTokenUsageDashboard(
       }),
     )
   })
-  await act(async () => button('Token usage').click())
+  await clickTab('Token usage')
 }
 
 function createTokenUsageSummary(
@@ -318,7 +334,7 @@ describe('provider management UI', () => {
         }),
       )
     })
-    await act(async () => button('Token usage').click())
+    await clickTab('Token usage')
     const metricLabel = [...container.querySelectorAll('div')].find(
       (node) =>
         node.childElementCount === 0 && node.textContent === 'Cache hit rate',
@@ -479,7 +495,7 @@ describe('provider management UI', () => {
         }),
       )
     })
-    await act(async () => button('Token usage').click())
+    await clickTab('Token usage')
     await selectBreakdownTab('Session breakdown')
 
     expect(fetchTokenUsageSessions).toHaveBeenCalledWith('today', 1, 5)
@@ -698,7 +714,9 @@ describe('provider management UI', () => {
         }),
       )
     })
-    await act(async () => button('Subscriptions').click())
+    await clickTab('Subscriptions', () =>
+      Boolean(container.querySelector('.quota-summary-value')),
+    )
     expect(container.textContent).toContain('1 / 1,500 requests')
     expect(container.textContent).toContain('0.1% used')
     expect(container.querySelector('.quota-summary-value')?.textContent).toBe(
@@ -850,19 +868,16 @@ describe('provider management UI', () => {
           }),
         )
       })
-      await act(async () => button(tabLabel).click())
+      await clickTab(
+        tabLabel,
+        tabLabel === 'Advanced config' ?
+          () =>
+            [...container.querySelectorAll('button')].some(
+              (node) => node.textContent === 'Model mappings',
+            )
+        : undefined,
+      )
       if (tabLabel === 'Advanced config') {
-        const deadline = Date.now() + 2000
-        while (
-          ![...container.querySelectorAll('button')].some(
-            (node) => node.textContent === 'Model mappings',
-          )
-          && Date.now() < deadline
-        ) {
-          await act(async () => {
-            await new Promise((resolve) => setTimeout(resolve, 10))
-          })
-        }
         await act(async () => button('Model mappings').click())
         await act(async () => button('Add mapping').click())
         await changeText(

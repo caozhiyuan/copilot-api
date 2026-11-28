@@ -270,6 +270,7 @@ async function clickButton(label: string) {
   )
   if (!button) throw new Error(`Missing button: ${label}`)
   await act(async () => button.click())
+  await waitFor(() => container.querySelector('[data-tab-loading]') === null)
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
   })

@@ -27,18 +27,12 @@ import {
 import Header from '../components/Header'
 import ServerLogPanel from '../components/ServerLogPanel'
 import { useLanguage } from '../contexts/LanguageContext'
-import { buildServerBaseUrl } from '../lib/server-url'
+import { useServerLifecycle } from '../hooks/useServerLifecycle'
+import { useTokenUsage } from '../hooks/useTokenUsage'
 import type {
   DesktopAuthMode,
-  GatewayApiKeyConfig,
   ProviderManagementConfig,
-  ServerAuthInfo,
   ServerStatus,
-  TokenUsageDailySummary,
-  TokenUsageEventsPage,
-  TokenUsagePeriod,
-  TokenUsageSessionsPage,
-  TokenUsageSummary,
 } from '../types/ipc'
 
 const ApiKeyManager = lazy(() => import('../components/ApiKeyManager'))
@@ -92,9 +86,6 @@ const TABS_REACHABLE_WHILE_STOPPED: ReadonlyArray<DashboardTab> = [
   ...TABS_WITHOUT_START_FORM,
 ]
 
-const TOKEN_USAGE_EVENTS_PAGE_SIZE = 10
-const TOKEN_USAGE_SESSIONS_PAGE_SIZE = 5
-
 export default function DashboardPage({
   defaultPort,
   defaultHost,
@@ -103,35 +94,48 @@ export default function DashboardPage({
   onChangeAuth,
 }: DashboardPageProps) {
   const { t } = useLanguage()
-  const tRef = useRef(t)
-  tRef.current = t
-  const [started, setStarted] = useState(initialServerStatus?.running ?? false)
-  const [port, setPort] = useState<string>(
-    String(initialServerStatus?.port ?? defaultPort),
-  )
-  const [host, setHost] = useState<string>(
-    initialServerStatus?.host ?? defaultHost,
-  )
-  const [starting, setStarting] = useState(false)
-  const [startError, setStartError] = useState(
-    initialServerStatus && !initialServerStatus.running ?
-      (initialServerStatus.error ?? t('dashboard.serverUnexpectedStop'))
-    : '',
-  )
-  const [stopping, setStopping] = useState(false)
-  const [restarting, setRestarting] = useState(false)
-  const [logPanelSession, setLogPanelSession] = useState(0)
-
   const [tab, setTab] = useState<DashboardTab>(initialTab)
   const [advancedConfigOpened, setAdvancedConfigOpened] = useState(false)
   const [studioOpened, setStudioOpened] = useState(false)
   const [subscriptionsOpened, setSubscriptionsOpened] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
+  const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
+  const [models, setModels] = useState<DashboardModel[]>([])
+  const [providerConfig, setProviderConfig] =
+    useState<ProviderManagementConfig | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [lastDashboardRefreshAt, setLastDashboardRefreshAt] = useState<
+    number | null
+  >(null)
+  const [providerConfigSettled, setProviderConfigSettled] = useState(false)
+  const [copied, setCopied] = useState<string>('')
+  const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout>>()
+  const resetTokenUsageRef = useRef(() => {})
+
+  const server = useServerLifecycle({
+    defaultHost,
+    defaultPort,
+    initialServerStatus,
+    onServerStopped: () => {
+      resetTokenUsageRef.current()
+      setModels([])
+      setLastDashboardRefreshAt(null)
+    },
+    t,
+  })
+
+  const usage = useTokenUsage({
+    isTokenUsageTab: tab === 'tokenUsage',
+    serverActive: server.started && !server.restarting,
+  })
+  resetTokenUsageRef.current = usage.resetTokenUsageState
+
   useEffect(() => {
     if (tab === 'advancedConfig') setAdvancedConfigOpened(true)
     if (tab === 'studio') setStudioOpened(true)
     if (tab === 'subscriptions') setSubscriptionsOpened(true)
   }, [tab])
+
   useEffect(() => {
     let active = true
     void window.electronAPI
@@ -144,6 +148,7 @@ export default function DashboardPage({
       active = false
     }
   }, [])
+
   useEffect(() => {
     if (!showCreate) {
       if (tab === 'studio') setTab('dashboard')
@@ -151,61 +156,11 @@ export default function DashboardPage({
     }
   }, [showCreate, tab])
 
-  const [quotaRefreshKey, setQuotaRefreshKey] = useState(0)
-  const [tokenUsage, setTokenUsage] = useState<TokenUsageSummary | null>(null)
-  const [tokenUsageDaily, setTokenUsageDaily] =
-    useState<TokenUsageDailySummary | null>(null)
-  const [tokenUsageEvents, setTokenUsageEvents] =
-    useState<TokenUsageEventsPage | null>(null)
-  const [tokenUsageEventsPage, setTokenUsageEventsPage] = useState(1)
-  const [tokenUsageSessions, setTokenUsageSessions] =
-    useState<TokenUsageSessionsPage | null>(null)
-  const [tokenUsageSessionsPage, setTokenUsageSessionsPage] = useState(1)
-  const [tokenUsagePeriod, setTokenUsagePeriod] =
-    useState<TokenUsagePeriod>('today')
-  const [apiKeyFilter, setApiKeyFilter] = useState('')
-  const apiKeyFilterRef = useRef('')
-  const [managedApiKeys, setManagedApiKeys] = useState<GatewayApiKeyConfig[]>(
-    [],
-  )
-  const [models, setModels] = useState<DashboardModel[]>([])
-  const [providerConfig, setProviderConfig] =
-    useState<ProviderManagementConfig | null>(null)
-  const [serverAuthInfo, setServerAuthInfo] = useState<ServerAuthInfo>({
-    enabled: false,
-  })
-  const [loading, setLoading] = useState(false)
-  const [lastDashboardRefreshAt, setLastDashboardRefreshAt] = useState<
-    number | null
-  >(null)
-  const [tokenUsageLoading, setTokenUsageLoading] = useState(false)
-  const [tokenUsageSettled, setTokenUsageSettled] = useState(false)
-  const [providerConfigSettled, setProviderConfigSettled] = useState(false)
-  const [tokenUsageEventsLoading, setTokenUsageEventsLoading] = useState(false)
-  const [tokenUsageSessionsLoading, setTokenUsageSessionsLoading] =
-    useState(false)
-  const [tokenUsageSessionsError, setTokenUsageSessionsError] = useState(false)
-  const [serverError, setServerError] = useState('')
-  const [copied, setCopied] = useState<string>('')
-
-  const intentionalStop = useRef(false)
-  const wasRestarting = useRef(false)
-  // Keep the live log subscription open while restarting, then load the new
-  // process's history when the restart finishes.
   useEffect(() => {
-    if (wasRestarting.current && !restarting) {
-      setLogPanelSession((session) => session + 1)
-    }
-    wasRestarting.current = restarting
-  }, [restarting])
-  useEffect(() => {
-    if (!started && !TABS_REACHABLE_WHILE_STOPPED.includes(tab))
+    if (!server.started && !TABS_REACHABLE_WHILE_STOPPED.includes(tab)) {
       setTab('dashboard')
-  }, [started, tab])
-  const tokenUsageRequestId = useRef(0)
-  const tokenUsageEventsRequestId = useRef(0)
-  const tokenUsageSessionsRequestId = useRef(0)
-  const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout>>()
+    }
+  }, [server.started, tab])
 
   useEffect(
     () => () => {
@@ -215,210 +170,6 @@ export default function DashboardPage({
     },
     [],
   )
-
-  const portNum = parseInt(port, 10)
-  const normalizedHost = host.trim()
-  const openaiUrl = `${buildServerBaseUrl(host, portNum)}/v1`
-  const anthropicUrl = buildServerBaseUrl(host, portNum)
-
-  useEffect(() => {
-    let active = true
-
-    window.electronAPI
-      .getServerStatus()
-      .then((status) => {
-        if (!active) return
-        // Only a running server reports the host and port it actually bound,
-        // so an idle status must not overwrite the saved settings.
-        if (status.running) {
-          if (status.port) setPort(String(status.port))
-          if (status.host !== undefined) setHost(status.host)
-        }
-        setStarted(status.running)
-      })
-      .catch(() => {})
-
-    return () => {
-      active = false
-    }
-  }, [])
-
-  // Watch server status changes and only surface unexpected stops.
-  useEffect(() => {
-    const unsubscribe = window.electronAPI.onServerStatus((status) => {
-      if (status.restarting) {
-        setRestarting(true)
-        setStartError('')
-        setServerError('')
-        return
-      }
-      if (status.running) {
-        setRestarting(false)
-        if (status.port) setPort(String(status.port))
-        if (status.host !== undefined) setHost(status.host)
-        setStarted(true)
-        setServerError('')
-        intentionalStop.current = false
-        return
-      }
-      if (!status.running) {
-        if (!intentionalStop.current) {
-          setRestarting(false)
-          setServerError(
-            status.error
-              ?? (status.intentional ? '' : (
-                tRef.current('dashboard.serverUnexpectedStop')
-              )),
-          )
-          setStarted(false)
-        }
-        intentionalStop.current = false
-      }
-    })
-    return unsubscribe
-  }, [])
-
-  const refreshOnServerStartRef = useRef(() => {})
-  refreshOnServerStartRef.current = () => {
-    void fetchData()
-    void fetchTokenUsageData(tokenUsagePeriod, tokenUsageEventsPage)
-  }
-
-  // Fetch dashboard and token usage data after the server starts.
-  useEffect(() => {
-    if (started && !restarting) {
-      refreshOnServerStartRef.current()
-    }
-  }, [started, restarting])
-
-  // The provider list can change on the Providers tab, so read it again
-  // whenever the dashboard is shown.
-  useEffect(() => {
-    if (started && !restarting && tab === 'dashboard')
-      void fetchProviderConfig()
-  }, [started, restarting, tab])
-
-  useEffect(() => {
-    if (!started) {
-      setServerAuthInfo({ enabled: false })
-      return
-    }
-    if (restarting) return
-
-    window.electronAPI
-      .getServerAuthInfo()
-      .then(setServerAuthInfo)
-      .catch(() => {
-        setServerAuthInfo({ enabled: false })
-      })
-  }, [started, restarting])
-
-  const resetStoppedState = () => {
-    setTokenUsage(null)
-    setTokenUsageDaily(null)
-    setTokenUsageEvents(null)
-    setTokenUsageEventsPage(1)
-    setTokenUsageSessions(null)
-    setTokenUsageSessionsPage(1)
-    setTokenUsageSessionsError(false)
-    setTokenUsageLoading(false)
-    setTokenUsageSettled(false)
-    setTokenUsageEventsLoading(false)
-    setTokenUsageSessionsLoading(false)
-    setModels([])
-    setLastDashboardRefreshAt(null)
-  }
-
-  const refreshAuthMode = async () => {
-    const status = await window.electronAPI.getAuthStatus()
-    return status.mode
-  }
-
-  const handleStart = async () => {
-    if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      setStartError(t('dashboard.invalidPort'))
-      return
-    }
-    setStarting(true)
-    setStartError('')
-    setServerError('')
-    try {
-      const status = await window.electronAPI.startServer(
-        portNum,
-        await refreshAuthMode(),
-        normalizedHost,
-      )
-      if (status.running) {
-        setStarted(true)
-      } else {
-        setStartError(status.error ?? t('dashboard.serverUnexpectedStop'))
-      }
-    } catch (err) {
-      setStartError((err as Error).message)
-    } finally {
-      setStarting(false)
-    }
-  }
-
-  const handleStop = async () => {
-    intentionalStop.current = true
-    setStopping(true)
-    await window.electronAPI.stopServer()
-    setStopping(false)
-    setStarted(false)
-    resetStoppedState()
-    setServerError('')
-  }
-
-  const handleRestart = async () => {
-    if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      setStartError(t('dashboard.invalidPort'))
-      return
-    }
-
-    intentionalStop.current = true
-    setRestarting(true)
-    setStartError('')
-    setServerError('')
-    try {
-      await window.electronAPI.stopServer()
-      const status = await window.electronAPI.startServer(
-        portNum,
-        await refreshAuthMode(),
-        normalizedHost,
-      )
-      if (status.running) {
-        if (status.port) setPort(String(status.port))
-        if (status.host !== undefined) setHost(status.host)
-        setStarted(true)
-      } else {
-        setStarted(false)
-        resetStoppedState()
-        setStartError(status.error ?? t('dashboard.serverUnexpectedStop'))
-      }
-    } catch (err) {
-      setStarted(false)
-      setStartError((err as Error).message)
-    } finally {
-      setRestarting(false)
-    }
-  }
-
-  const handleChangeAuth = () => {
-    onChangeAuth(tab === 'providers' ? 'providers' : 'dashboard')
-  }
-
-  // The listening host is configured in the settings modal, so reload the
-  // saved value once the modal closes.
-  const handleSettingsClose = () => {
-    void window.electronAPI
-      .getSettings()
-      .then((saved) => {
-        if (saved.host !== undefined) setHost(saved.host)
-        setShowCreate(saved.showCreate === true)
-      })
-      .catch(() => {})
-  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -447,172 +198,44 @@ export default function DashboardPage({
     }
   }
 
-  const apiKeyFilterArgs = (): [] | [string] =>
-    apiKeyFilterRef.current ? [apiKeyFilterRef.current] : []
-
-  const fetchTokenUsageEvents = async (
-    period: TokenUsagePeriod,
-    page: number,
-  ) => {
-    const requestId = ++tokenUsageEventsRequestId.current
-    setTokenUsageEventsLoading(true)
-    try {
-      const tokenUsageEventsData =
-        await window.electronAPI.fetchTokenUsageEvents(
-          period,
-          page,
-          TOKEN_USAGE_EVENTS_PAGE_SIZE,
-          ...apiKeyFilterArgs(),
-        )
-      if (
-        requestId === tokenUsageEventsRequestId.current
-        && tokenUsageEventsData
-      ) {
-        setTokenUsageEvents(tokenUsageEventsData as TokenUsageEventsPage)
-      }
-    } catch {
-      // The server may still be initializing.
-    } finally {
-      if (requestId === tokenUsageEventsRequestId.current) {
-        setTokenUsageEventsLoading(false)
-      }
-    }
+  const refreshOnServerStartRef = useRef(() => {})
+  refreshOnServerStartRef.current = () => {
+    void fetchData()
+    void usage.fetchTokenUsageData(
+      usage.tokenUsagePeriod,
+      usage.tokenUsageEventsPage,
+    )
   }
 
-  const fetchTokenUsageData = async (
-    period: TokenUsagePeriod = tokenUsagePeriod,
-    page: number = tokenUsageEventsPage,
-    sessionsPage: number = tokenUsageSessionsPage,
-  ) => {
-    const requestId = ++tokenUsageRequestId.current
-    const eventsRequestId = ++tokenUsageEventsRequestId.current
-    setTokenUsageLoading(true)
-    setTokenUsageEventsLoading(true)
-    try {
-      const [tokenUsageData, tokenUsageDailyData, tokenUsageEventsData] =
-        await Promise.all([
-          window.electronAPI.fetchTokenUsage(period, ...apiKeyFilterArgs()),
-          window.electronAPI.fetchTokenUsageDaily(
-            period,
-            ...apiKeyFilterArgs(),
-          ),
-          window.electronAPI.fetchTokenUsageEvents(
-            period,
-            page,
-            TOKEN_USAGE_EVENTS_PAGE_SIZE,
-            ...apiKeyFilterArgs(),
-          ),
-          fetchTokenUsageSessions(period, sessionsPage),
-        ])
-      if (requestId === tokenUsageRequestId.current && tokenUsageData) {
-        setTokenUsage(tokenUsageData as TokenUsageSummary)
-      }
-      if (requestId === tokenUsageRequestId.current && tokenUsageDailyData) {
-        setTokenUsageDaily(tokenUsageDailyData as TokenUsageDailySummary)
-      }
-      if (
-        eventsRequestId === tokenUsageEventsRequestId.current
-        && tokenUsageEventsData
-      ) {
-        setTokenUsageEvents(tokenUsageEventsData as TokenUsageEventsPage)
-      }
-    } catch {
-      // The server may still be initializing.
-    } finally {
-      if (requestId === tokenUsageRequestId.current) {
-        setTokenUsageLoading(false)
-        setTokenUsageSettled(true)
-      }
-      if (eventsRequestId === tokenUsageEventsRequestId.current) {
-        setTokenUsageEventsLoading(false)
-      }
-    }
-  }
-
-  const fetchTokenUsageSessions = async (
-    period: TokenUsagePeriod,
-    page: number,
-  ) => {
-    const requestId = ++tokenUsageSessionsRequestId.current
-    setTokenUsageSessionsLoading(true)
-    setTokenUsageSessionsError(false)
-    try {
-      const tokenUsageSessionsData =
-        await window.electronAPI.fetchTokenUsageSessions(
-          period,
-          page,
-          TOKEN_USAGE_SESSIONS_PAGE_SIZE,
-          ...apiKeyFilterArgs(),
-        )
-      if (requestId === tokenUsageSessionsRequestId.current) {
-        setTokenUsageSessions(
-          tokenUsageSessionsData ?
-            (tokenUsageSessionsData as TokenUsageSessionsPage)
-          : null,
-        )
-        setTokenUsageSessionsError(!tokenUsageSessionsData)
-      }
-    } catch {
-      if (requestId === tokenUsageSessionsRequestId.current) {
-        setTokenUsageSessions(null)
-        setTokenUsageSessionsError(true)
-      }
-    } finally {
-      if (requestId === tokenUsageSessionsRequestId.current) {
-        setTokenUsageSessionsLoading(false)
-      }
-    }
-  }
-
+  // Fetch dashboard and token usage data after the server starts.
   useEffect(() => {
-    if (tab !== 'tokenUsage') return
-    let active = true
-    void (async () => {
-      try {
-        const keys = await window.electronAPI.getManagedApiKeys()
-        if (active) setManagedApiKeys(keys)
-      } catch {
-        /* Global and unattributed views remain available. */
-      }
-    })()
-    return () => {
-      active = false
+    if (server.started && !server.restarting) {
+      refreshOnServerStartRef.current()
     }
-  }, [tab])
+  }, [server.started, server.restarting])
 
-  const handleApiKeyFilterChange = (value: string) => {
-    apiKeyFilterRef.current = value
-    setApiKeyFilter(value)
-    setTokenUsageEventsPage(1)
-    setTokenUsageSessionsPage(1)
-    setTokenUsage(null)
-    setTokenUsageDaily(null)
-    setTokenUsageEvents(null)
-    setTokenUsageSessions(null)
-    if (started && !restarting) void fetchTokenUsageData(tokenUsagePeriod, 1, 1)
+  // The provider list can change on the Providers tab, so read it again
+  // whenever the dashboard is shown.
+  useEffect(() => {
+    if (server.started && !server.restarting && tab === 'dashboard') {
+      void fetchProviderConfig()
+    }
+  }, [server.started, server.restarting, tab])
+
+  const handleChangeAuth = () => {
+    onChangeAuth(tab === 'providers' ? 'providers' : 'dashboard')
   }
 
-  const handleTokenUsagePeriodChange = (nextPeriod: TokenUsagePeriod) => {
-    setTokenUsagePeriod(nextPeriod)
-    setTokenUsageEventsPage(1)
-    tokenUsageSessionsRequestId.current += 1
-    setTokenUsageSessions(null)
-    setTokenUsageSessionsPage(1)
-    setTokenUsageSessionsLoading(false)
-    setTokenUsageSessionsError(false)
-    if (started && !restarting) void fetchTokenUsageData(nextPeriod, 1, 1)
-  }
-
-  const handleTokenUsageEventsPageChange = (nextPage: number) => {
-    setTokenUsageEventsPage(nextPage)
-    if (started && !restarting)
-      void fetchTokenUsageEvents(tokenUsagePeriod, nextPage)
-  }
-
-  const handleTokenUsageSessionsPageChange = (nextPage: number) => {
-    setTokenUsageSessionsPage(nextPage)
-    if (started && !restarting)
-      void fetchTokenUsageSessions(tokenUsagePeriod, nextPage)
+  // The listening host is configured in the settings modal, so reload the
+  // saved value once the modal closes.
+  const handleSettingsClose = () => {
+    void window.electronAPI
+      .getSettings()
+      .then((saved) => {
+        if (saved.host !== undefined) server.setHost(saved.host)
+        setShowCreate(saved.showCreate === true)
+      })
+      .catch(() => {})
   }
 
   const handleRefreshActiveTab = () => {
@@ -626,7 +249,7 @@ export default function DashboardPage({
       return
     }
     if (tab === 'tokenUsage') {
-      void fetchTokenUsageData()
+      void usage.fetchTokenUsageData()
     }
   }
 
@@ -646,11 +269,9 @@ export default function DashboardPage({
       .catch(() => {})
   }
 
-  const shouldShowFailureLogs = !started && Boolean(startError || serverError)
   const isActiveTabRefreshing =
     tab === 'dashboard' ? loading
-    : tab === 'tokenUsage' ?
-      tokenUsageLoading || tokenUsageEventsLoading || tokenUsageSessionsLoading
+    : tab === 'tokenUsage' ? usage.isRefreshing
     : false
 
   const dashboardTabs: Array<{
@@ -692,26 +313,29 @@ export default function DashboardPage({
     (tabItem) => showCreate || tabItem.key !== 'studio',
   )
   const showRefreshButton =
-    started
+    server.started
     && (tab === 'dashboard' || tab === 'tokenUsage' || tab === 'subscriptions')
-  const showStartForm = !started && !TABS_WITHOUT_START_FORM.includes(tab)
+  const showStartForm =
+    !server.started && !TABS_WITHOUT_START_FORM.includes(tab)
+  const isServerRunning = server.started && !server.stopping
+  const isServerReady = isServerRunning && !server.restarting
 
   return (
     <div className="flex flex-col h-screen bg-canvas">
       <Header
         onChangeAuth={handleChangeAuth}
-        onRestart={handleRestart}
-        onStop={handleStop}
+        onRestart={server.handleRestart}
+        onStop={server.handleStop}
         onSettingsClose={handleSettingsClose}
-        isRunning={started && !stopping}
-        isRestarting={restarting}
+        isRunning={isServerRunning}
+        isRestarting={server.restarting}
       />
 
       {/* Unexpected server stop banner */}
-      {serverError && (
+      {server.serverError && (
         <div className="mx-4 mt-2 px-3 py-2 bg-red-50 dark:bg-red-500/15 border border-red-200 dark:border-red-500/30 rounded-lg text-[13px] text-red-600 dark:text-red-400 flex items-center gap-1.5 shrink-0">
           <span>⚠️</span>
-          <span>{serverError}</span>
+          <span>{server.serverError}</span>
         </div>
       )}
 
@@ -727,7 +351,8 @@ export default function DashboardPage({
               role="tab"
               aria-selected={tab === tabItem.key}
               disabled={
-                !started && !TABS_REACHABLE_WHILE_STOPPED.includes(tabItem.key)
+                !server.started
+                && !TABS_REACHABLE_WHILE_STOPPED.includes(tabItem.key)
               }
               onClick={() => setTab(tabItem.key)}
               className={`inline-flex items-center gap-1.5 px-2 sm:px-3 text-[13px] whitespace-nowrap border-b-2 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
@@ -744,7 +369,7 @@ export default function DashboardPage({
         {showRefreshButton && (
           <button
             onClick={handleRefreshActiveTab}
-            disabled={isActiveTabRefreshing || restarting}
+            disabled={isActiveTabRefreshing || server.restarting}
             className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[13px] text-ink-soft transition-colors hover:bg-sunken hover:text-ink disabled:opacity-40"
           >
             <IconRefresh spinning={isActiveTabRefreshing} />
@@ -769,22 +394,22 @@ export default function DashboardPage({
         {showStartForm && (
           <ServerStartForm
             onPortChange={(value) => {
-              setPort(value)
-              setStartError('')
+              server.setPort(value)
+              server.setStartError('')
             }}
-            onStart={() => void handleStart()}
-            port={port}
-            shouldShowFailureLogs={shouldShowFailureLogs}
-            startError={startError}
-            starting={starting}
+            onStart={() => void server.handleStart()}
+            port={server.port}
+            shouldShowFailureLogs={server.shouldShowFailureLogs}
+            startError={server.startError}
+            starting={server.starting}
             t={t}
           />
         )}
 
         {/* Dashboard tab */}
-        {started && tab === 'dashboard' && (
+        {server.started && tab === 'dashboard' && (
           <DashboardOverviewTab
-            anthropicUrl={anthropicUrl}
+            anthropicUrl={server.anthropicUrl}
             copied={copied}
             lastDashboardRefreshAt={lastDashboardRefreshAt}
             loading={loading}
@@ -792,31 +417,35 @@ export default function DashboardPage({
             onCopy={handleCopy}
             onOpenProvidersTab={() => setTab('providers')}
             onOpenTokenUsageTab={() => setTab('tokenUsage')}
-            openaiUrl={openaiUrl}
-            portNum={portNum}
+            openaiUrl={server.openaiUrl}
+            portNum={server.portNum}
             providerConfig={providerConfig}
             providerConfigSettled={providerConfigSettled}
-            restarting={restarting}
-            serverAuthInfo={serverAuthInfo}
+            restarting={server.restarting}
+            serverAuthInfo={server.serverAuthInfo}
             t={t}
-            tokenUsage={tokenUsage}
-            tokenUsageLoading={tokenUsageLoading}
-            tokenUsagePeriod={tokenUsagePeriod}
-            tokenUsageSettled={tokenUsageSettled}
+            tokenUsage={usage.tokenUsage}
+            tokenUsageLoading={usage.tokenUsageLoading}
+            tokenUsagePeriod={usage.tokenUsagePeriod}
+            tokenUsageSettled={usage.tokenUsageSettled}
           />
         )}
 
         <Suspense
           fallback={
-            <div className="p-6 text-[13px] text-ink-faint">
+            <div
+              data-tab-loading="true"
+              className="p-6 text-[13px] text-ink-faint"
+            >
               {t('dashboard.loading')}
             </div>
           }
         >
-          {(subscriptionsOpened || (started && tab === 'subscriptions')) && (
+          {(subscriptionsOpened
+            || (server.started && tab === 'subscriptions')) && (
             <div
               className={
-                started && tab === 'subscriptions' ? 'h-full' : 'hidden'
+                server.started && tab === 'subscriptions' ? 'h-full' : 'hidden'
               }
             >
               <SubscriptionsPage
@@ -827,7 +456,7 @@ export default function DashboardPage({
           )}
 
           {/* Token usage tab */}
-          {started && tab === 'tokenUsage' && (
+          {server.started && tab === 'tokenUsage' && (
             <div className="p-4">
               <TokenUsagePanel
                 keyFilterControl={
@@ -836,16 +465,16 @@ export default function DashboardPage({
                     <select
                       aria-label={t('apiKeys.keyFilter')}
                       className="rounded-md border border-line bg-surface px-2 py-1 text-ink"
-                      value={apiKeyFilter}
+                      value={usage.apiKeyFilter}
                       onChange={(event) =>
-                        handleApiKeyFilterChange(event.target.value)
+                        usage.handleApiKeyFilterChange(event.target.value)
                       }
                     >
                       <option value="">{t('apiKeys.allKeys')}</option>
                       <option value="__unattributed__">
                         {t('apiKeys.unattributed')}
                       </option>
-                      {managedApiKeys.map((key, index) => (
+                      {usage.managedApiKeys.map((key, index) => (
                         <option key={key.id} value={key.id}>
                           {key.name ?? t('clients.keyNumber', { n: index + 1 })}
                         </option>
@@ -853,18 +482,18 @@ export default function DashboardPage({
                     </select>
                   </label>
                 }
-                dailyUsage={tokenUsageDaily}
-                eventsPage={tokenUsageEvents}
-                eventsLoading={tokenUsageEventsLoading}
-                loading={tokenUsageLoading}
-                onEventsPageChange={handleTokenUsageEventsPageChange}
-                onSessionsPageChange={handleTokenUsageSessionsPageChange}
-                period={tokenUsagePeriod}
-                sessionsError={tokenUsageSessionsError}
-                sessionsLoading={tokenUsageSessionsLoading}
-                sessionsPage={tokenUsageSessions}
-                tokenUsage={tokenUsage}
-                onPeriodChange={handleTokenUsagePeriodChange}
+                dailyUsage={usage.tokenUsageDaily}
+                eventsPage={usage.tokenUsageEvents}
+                eventsLoading={usage.tokenUsageEventsLoading}
+                loading={usage.tokenUsageLoading}
+                onEventsPageChange={usage.handleTokenUsageEventsPageChange}
+                onSessionsPageChange={usage.handleTokenUsageSessionsPageChange}
+                period={usage.tokenUsagePeriod}
+                sessionsError={usage.tokenUsageSessionsError}
+                sessionsLoading={usage.tokenUsageSessionsLoading}
+                sessionsPage={usage.tokenUsageSessions}
+                tokenUsage={usage.tokenUsage}
+                onPeriodChange={usage.handleTokenUsagePeriodChange}
                 t={t}
               />
             </div>
@@ -872,15 +501,15 @@ export default function DashboardPage({
 
           {tab === 'providers' && (
             <ProviderManagementPanel
-              serverRunning={started && !stopping}
+              serverRunning={isServerRunning}
               onOpenAuthConfig={handleChangeAuth}
             />
           )}
 
           {tab === 'clients' && (
             <ClientIntegrationsPage
-              initialBaseUrl={anthropicUrl}
-              serverRunning={started && !stopping && !restarting}
+              initialBaseUrl={server.anthropicUrl}
+              serverRunning={isServerReady}
             />
           )}
 
@@ -888,9 +517,7 @@ export default function DashboardPage({
 
           {showCreate && (tab === 'studio' || studioOpened) && (
             <div className={tab === 'studio' ? 'h-full' : 'hidden'}>
-              <MediaStudioPage
-                serverRunning={started && !stopping && !restarting}
-              />
+              <MediaStudioPage serverRunning={isServerReady} />
             </div>
           )}
 
@@ -899,15 +526,15 @@ export default function DashboardPage({
             <div className={tab === 'advancedConfig' ? 'h-full' : 'hidden'}>
               <AdvancedConfigPage
                 active={tab === 'advancedConfig'}
-                serverRunning={started && !stopping && !restarting}
+                serverRunning={isServerReady}
               />
             </div>
           )}
         </Suspense>
 
         {/* Keep the panel mounted so startup lines stream in during a restart. */}
-        {started && tab === 'logs' && (
-          <ServerLogPanel key={logPanelSession} variant="page" />
+        {server.started && tab === 'logs' && (
+          <ServerLogPanel key={server.logPanelSession} variant="page" />
         )}
       </div>
     </div>
