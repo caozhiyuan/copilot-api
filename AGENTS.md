@@ -24,6 +24,10 @@ Run from the repository root unless noted:
 - Format gateway files with `bun run lint --fix <files>`; use the desktop package's lint configuration for desktop files.
 - ESLint embeds Prettier options, including `semi: false`; do not run standalone `prettier` or `bunx prettier`.
 
+## Minimal Change Principle
+
+When adding new features or modifying existing ones, make only the changes necessary to meet the current requirements.
+
 ## Verification
 
 - Use Bun tests named `*.test.ts` in `tests/` or `desktop/tests/`, matching the affected package.
