@@ -120,6 +120,7 @@ beforeEach(async () => {
   messagesApiFlowDependencies.createChatCompletions = createChatCompletions
   messagesApiFlowDependencies.createMessages = createMessages
   messagesApiFlowDependencies.createResponses = createResponses
+  messagesApiFlowDependencies.getRawProviderConfig = () => null
   responsesUtilsDependencies.getModelResponsesApiCompactThreshold = () =>
     undefined
   responsesUtilsDependencies.isContextManagementEnabledForMessages = () => true
@@ -204,8 +205,11 @@ test("messages Chat Completions flow shares the trace root cache key with dispat
   expect(capturedPayload?.prompt_cache_key).toBe("root")
 })
 
+const UNSUPPORTED_PDF_NOTICE =
+  "PDF/document content is not supported by this Chat Completions upstream. Use the available text extracted from the document."
+
 test.each(["catalog", "live"])(
-  "messages Chat Completions flow preserves PDFs supported by %s metadata",
+  "messages Chat Completions flow falls back to text notice for PDFs even when %s metadata advertises PDF",
   async (source) => {
     const selectedModel = createModel([])
     if (source === "live") {
@@ -256,19 +260,154 @@ test.each(["catalog", "live"])(
       expect(response.status).toBe(200)
       expect(capturedPayload?.messages[0]).toMatchObject({
         role: "user",
-        content: [
-          {
-            type: "file",
-            file: {
-              file_data: "data:application/pdf;base64,pdf-data",
-              filename: "report.pdf",
-            },
-          },
-        ],
+        content: [{ type: "text", text: UNSUPPORTED_PDF_NOTICE }],
       })
     } finally {
       installModelsDevCatalog(modelsDevCatalogFixture)
     }
+  },
+)
+
+test("messages Chat Completions flow downgrades PDFs inside tool_result by default", async () => {
+  const selectedModel = createModel([])
+  selectedModel.capabilities.limits.vision = {
+    supported_media_types: ["application/pdf"],
+  }
+
+  const response = await handleWithChatCompletions(
+    createContext(),
+    {
+      model: "gpt-test",
+      max_tokens: 128,
+      messages: [
+        { role: "user", content: "Read report.pdf" },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "call_1",
+              name: "read_file",
+              input: { path: "report.pdf" },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "call_1",
+              content: [
+                {
+                  type: "document",
+                  source: {
+                    type: "base64",
+                    media_type: "application/pdf",
+                    data: "pdf-data",
+                  },
+                  title: "report.pdf",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    { logger, requestId: "request-tool-pdf", selectedModel },
+  )
+
+  expect(response.status).toBe(200)
+  expect(capturedPayload?.messages).toHaveLength(3)
+  expect(capturedPayload?.messages[2]).toMatchObject({
+    role: "tool",
+    tool_call_id: "call_1",
+    content: UNSUPPORTED_PDF_NOTICE,
+  })
+})
+
+test.each([
+  {
+    name: "explicit true on selected raw model ID",
+    model: "client-alias",
+    withSelectedModel: true,
+    configKey: "gpt-test",
+    supportPdf: true,
+    expectedFile: true,
+  },
+  {
+    name: "explicit true on requested model ID fallback",
+    model: "client-alias",
+    withSelectedModel: true,
+    configKey: "client-alias",
+    supportPdf: true,
+    expectedFile: true,
+  },
+  {
+    name: "explicit true without selectedModel",
+    model: "gpt-test",
+    withSelectedModel: false,
+    configKey: "gpt-test",
+    supportPdf: true,
+    expectedFile: true,
+  },
+  {
+    name: "explicit false on selected raw model ID",
+    model: "gpt-test",
+    withSelectedModel: true,
+    configKey: "gpt-test",
+    supportPdf: false,
+    expectedFile: false,
+  },
+])(
+  "messages Chat Completions flow respects per-model supportPdf config ($name)",
+  async ({ model, withSelectedModel, configKey, supportPdf, expectedFile }) => {
+    messagesApiFlowDependencies.getRawProviderConfig = () => ({
+      models: { [configKey]: { supportPdf } },
+    })
+    const selectedModel = withSelectedModel ? createModel([]) : undefined
+
+    const response = await handleWithChatCompletions(
+      createContext(),
+      {
+        model,
+        max_tokens: 128,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: {
+                  type: "base64",
+                  media_type: "application/pdf",
+                  data: "pdf-data",
+                },
+                title: "report.pdf",
+              },
+            ],
+          },
+        ],
+      },
+      { logger, requestId: "request-pdf-config", selectedModel },
+    )
+
+    expect(response.status).toBe(200)
+    expect(capturedPayload?.messages[0]).toMatchObject({
+      role: "user",
+      content:
+        expectedFile ?
+          [
+            {
+              type: "file",
+              file: {
+                file_data: "data:application/pdf;base64,pdf-data",
+                filename: "report.pdf",
+              },
+            },
+          ]
+        : [{ type: "text", text: UNSUPPORTED_PDF_NOTICE }],
+    })
   },
 )
 

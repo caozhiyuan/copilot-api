@@ -16,7 +16,6 @@ import {
 } from "~/lib/http/first-token"
 import { GITHUB_COPILOT_PROVIDER } from "~/lib/providers/github-copilot-provider"
 import { debugJson, debugJsonTail, debugLazy } from "~/lib/logger"
-import { getProviderModelPdfSupport } from "~/lib/catalog/model-pdf-support"
 import { writeSSEIfConnected } from "~/lib/http/sse"
 import { resolveResponsesToolSearchName } from "~/lib/cli/tool-search"
 import {
@@ -86,6 +85,7 @@ export const messagesApiFlowDependencies = {
   createChatCompletions: createCopilotChatCompletions,
   createMessages: createCopilotMessages,
   createResponses: createCopilotResponses,
+  getRawProviderConfig,
 }
 
 export interface FlowBaseOptions {
@@ -137,6 +137,22 @@ const assertStructuredOutputSupport = (
   }
 }
 
+// Copilot's /chat/completions endpoint rejects `file` content parts even when
+// model metadata advertises `application/pdf`, so only enable PDF files when
+// explicitly opted in via per-model config.
+const getCopilotChatCompletionsPdfSupport = (
+  modelId: string,
+  selectedModel?: Model,
+): boolean => {
+  const copilotConfig = messagesApiFlowDependencies.getRawProviderConfig(
+    GITHUB_COPILOT_PROVIDER,
+  )
+  const rawId = selectedModel?.id ?? modelId
+  const modelConfig =
+    copilotConfig?.models?.[rawId] ?? copilotConfig?.models?.[modelId]
+  return modelConfig?.supportPdf === true
+}
+
 export const handleWithChatCompletions = async (
   c: Context,
   anthropicPayload: AnthropicMessagesPayload,
@@ -158,12 +174,8 @@ export const handleWithChatCompletions = async (
   )
   const openAIPayload = translateToOpenAI(anthropicPayload, {
     forwardStructuredOutput,
-    supportPdf: getProviderModelPdfSupport(
+    supportPdf: getCopilotChatCompletionsPdfSupport(
       anthropicPayload.model,
-      {
-        ...getRawProviderConfig(GITHUB_COPILOT_PROVIDER),
-        name: GITHUB_COPILOT_PROVIDER,
-      },
       selectedModel,
     ),
     validateReasoningEffort: true,
