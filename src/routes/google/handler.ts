@@ -20,7 +20,11 @@ import { recordGoogleFirstToken } from "~/lib/http/first-token"
 import { stripInternalRequestHeaders } from "~/lib/http/internal-headers"
 import { requestContext } from "~/lib/http/request-context"
 import { setPluginRequestModel } from "~/lib/http/request-events"
-import { writeSSEIfConnected } from "~/lib/http/sse"
+import {
+  forEachWithIdleKeepalive,
+  writeRawSSEIfConnected,
+  writeSSEIfConnected,
+} from "~/lib/http/sse"
 import { resolveSubagentMarker } from "~/lib/http/subagent"
 import { createHandlerLogger, debugJson } from "~/lib/logger"
 import {
@@ -71,6 +75,10 @@ const logger = createHandlerLogger("google-handler")
 
 const GOOGLE_MODEL_ACTION_PATH_PATTERN = /^\/v1beta\/models\/(.+)$/u
 const SESSION_UUID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu
+// Empty SSE frames keep reverse proxies alive without emitting SSE comments
+// (rejected by google.golang.org/genai) or synthetic JSON data chunks.
+const GOOGLE_SSE_KEEPALIVE_FRAME = "\n\n"
+const DEFAULT_GOOGLE_SSE_KEEPALIVE_INTERVAL_MS = 15_000
 
 export const googleHandlerDependencies = {
   forwardGoogleGenerateContent,
@@ -81,6 +89,7 @@ export const googleHandlerDependencies = {
   isResponsesApiWebSearchEnabled,
   resolveConfiguredProviderModelAlias,
   resolveProviderConfig,
+  sseKeepaliveIntervalMs: DEFAULT_GOOGLE_SSE_KEEPALIVE_INTERVAL_MS,
 }
 
 export interface ParsedGoogleModelAction {
@@ -679,14 +688,20 @@ async function handleNativeGoogleProviderPassthrough(
   return streamSSE(c, async (sseStream) => {
     sseStream.onAbort(() => controller.abort())
     try {
-      for await (const chunk of readNativeGoogleStream(upstream, signal)) {
-        recordStreamChunk(chunk)
-        await writeSSEIfConnected(
-          sseStream,
-          { data: JSON.stringify(chunk) },
-          chunk.error ? "error" : undefined,
-        )
-      }
+      await forEachWithIdleKeepalive(readNativeGoogleStream(upstream, signal), {
+        intervalMs: googleHandlerDependencies.sseKeepaliveIntervalMs,
+        signal,
+        onChunk: async (chunk) => {
+          recordStreamChunk(chunk)
+          return await writeSSEIfConnected(
+            sseStream,
+            { data: JSON.stringify(chunk) },
+            chunk.error ? "error" : undefined,
+          )
+        },
+        onKeepalive: () =>
+          writeRawSSEIfConnected(sseStream, GOOGLE_SSE_KEEPALIVE_FRAME),
+      })
     } catch (error) {
       if (!signal.aborted) {
         logger.warn("google.passthrough.stream_interrupted", error)
@@ -718,23 +733,29 @@ function streamTranslatedGoogleSSE(
     sseStream.onAbort(() => controller.abort())
     try {
       const response = createAbortableResponse(messagesResponse, signal)
-      for await (const chunk of translateMessagesStreamToGoogle(
-        events(response, signal),
-        {
+      await forEachWithIdleKeepalive(
+        translateMessagesStreamToGoogle(events(response, signal), {
           fallbackModel,
           signal,
           preserveAntigravityReasoning: isAntigravityUserAgent(
             c.req.header("user-agent"),
           ),
+        }),
+        {
+          intervalMs: googleHandlerDependencies.sseKeepaliveIntervalMs,
+          signal,
+          onChunk: async (chunk) => {
+            debugJson(logger, "Translated Google stream chunk:", chunk)
+            return await writeSSEIfConnected(
+              sseStream,
+              { data: JSON.stringify(chunk) },
+              chunk.error ? "error" : undefined,
+            )
+          },
+          onKeepalive: () =>
+            writeRawSSEIfConnected(sseStream, GOOGLE_SSE_KEEPALIVE_FRAME),
         },
-      )) {
-        debugJson(logger, "Translated Google stream chunk:", chunk)
-        await writeSSEIfConnected(
-          sseStream,
-          { data: JSON.stringify(chunk) },
-          chunk.error ? "error" : undefined,
-        )
-      }
+      )
     } finally {
       controller.abort()
     }
