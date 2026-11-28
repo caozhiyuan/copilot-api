@@ -9,6 +9,7 @@ import type {
   DesktopSettings,
   ModelMappingsConfig,
   ServerAuthInfo,
+  ThemePreference,
 } from '../../src/types/ipc'
 
 interface ConfigApiErrorResponse {
@@ -33,6 +34,7 @@ export interface IpcHandlersOptions {
     settings: DesktopSettings,
     prevSettings: DesktopSettings,
   ) => void | Promise<void>
+  onPreviewTheme?: (theme: ThemePreference) => boolean | Promise<boolean>
   onQuit?: () => void | Promise<void>
   onWindowClosed?: (listener: () => void) => void
 }

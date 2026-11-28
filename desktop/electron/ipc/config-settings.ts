@@ -13,13 +13,17 @@ import { shouldRestartServerForSettings } from '../settings-runtime'
 import { readSettings, writeSettings } from '../settings-store'
 import { runSettingsTransaction } from '../settings-transaction'
 import { isValidServerHost } from '../../src/lib/server-url'
-import type { DesktopSettings } from '../../src/types/ipc'
+import type { DesktopSettings, ThemePreference } from '../../src/types/ipc'
 
 import {
   fetchModelMappingsConfig,
   saveModelMappingsViaApi,
   type IpcHandlerContext,
 } from './shared'
+
+function isThemePreference(value: unknown): value is ThemePreference {
+  return value === 'light' || value === 'dark' || value === 'auto'
+}
 
 export function registerConfigAndSettingsIpcHandlers({
   appConfigEditor,
@@ -30,6 +34,10 @@ export function registerConfigAndSettingsIpcHandlers({
   // Settings
   ipcMain.handle('settings:get', async () => readSettings())
   ipcMain.handle('settings:get-bun-runtime', () => detectBunRuntime())
+  ipcMain.handle('settings:preview-theme', (_event, theme: unknown) => {
+    if (!isThemePreference(theme)) return undefined
+    return options.onPreviewTheme?.(theme)
+  })
   ipcMain.handle('settings:save', async (_event, settings: DesktopSettings) => {
     if (!isValidServerHost(settings?.host ?? '')) {
       throw new Error(await tMain('server.invalidHost'))

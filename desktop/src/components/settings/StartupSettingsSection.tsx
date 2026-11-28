@@ -156,6 +156,7 @@ export function StartupSettingsSection({
         description={t('settings.verboseDesc')}
       >
         <Toggle
+          ariaLabel={t('settings.verbose')}
           checked={settings.verbose}
           onChange={(v) => setSettings((s) => ({ ...s, verbose: v }))}
         />
@@ -165,6 +166,7 @@ export function StartupSettingsSection({
         description={t('settings.showTokenDesc')}
       >
         <Toggle
+          ariaLabel={t('settings.showToken')}
           checked={settings.showToken}
           onChange={(v) => setSettings((s) => ({ ...s, showToken: v }))}
         />

@@ -319,6 +319,77 @@ describe('LanguageContext and ThemeContext stability', () => {
     expect(dom.container.textContent).toBe('light:light')
   })
 
+  test('ThemeProvider previewThemePref skips localStorage, handles IPC fallbacks, and ignores stale auto responses', async () => {
+    let mediaDark = true
+    Object.defineProperty(dom.win, 'matchMedia', {
+      configurable: true,
+      value: () => ({
+        get matches() {
+          return mediaDark
+        },
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    })
+    const pendingAuto = Promise.withResolvers<boolean | undefined>()
+    const previewTheme = mock((pref: 'light' | 'dark' | 'auto') => {
+      if (pref === 'auto') return pendingAuto.promise
+      return Promise.resolve(pref === 'dark')
+    })
+    Object.defineProperty(dom.win, 'electronAPI', {
+      configurable: true,
+      value: {
+        getSettings: () => Promise.resolve({ theme: 'light' }),
+        previewTheme,
+      },
+    })
+    dom.win.localStorage.setItem('copilot-api-theme-pref', 'light')
+
+    const snapshots: Array<ReturnType<typeof useTheme>> = []
+    function Probe() {
+      const ctx = useTheme()
+      snapshots.push(ctx)
+      return createElement(
+        'span',
+        null,
+        `${ctx.themePref}:${ctx.resolvedTheme}`,
+      )
+    }
+
+    await act(async () => {
+      dom.root.render(
+        createElement(ThemeProvider, { children: createElement(Probe) }),
+      )
+    })
+
+    // Start an async auto preview, then supersede it with light before it resolves.
+    await act(async () => {
+      snapshots.at(-1)!.previewThemePref('auto')
+      snapshots.at(-1)!.previewThemePref('light')
+    })
+    await act(async () => {
+      pendingAuto.resolve(true)
+    })
+    expect(dom.container.textContent).toBe('light:light')
+    expect(dom.win.localStorage.getItem('copilot-api-theme-pref')).toBe('light')
+
+    // When previewTheme rejects for auto, fall back to matchMedia.
+    previewTheme.mockRejectedValueOnce(new Error('ipc error'))
+    await act(async () => {
+      snapshots.at(-1)!.previewThemePref('auto')
+    })
+    expect(dom.container.textContent).toBe('auto:dark')
+    expect(dom.win.localStorage.getItem('copilot-api-theme-pref')).toBe('light')
+
+    // When previewTheme returns undefined, fall back to matchMedia as well.
+    mediaDark = false
+    previewTheme.mockResolvedValueOnce(undefined)
+    await act(async () => {
+      snapshots.at(-1)!.previewThemePref('auto')
+    })
+    expect(dom.container.textContent).toBe('auto:light')
+  })
+
   test('useLanguage and useTheme throw outside their providers', async () => {
     function OutsideLanguage() {
       useLanguage()

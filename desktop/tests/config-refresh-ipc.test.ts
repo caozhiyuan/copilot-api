@@ -1730,4 +1730,32 @@ describe('IPC submodules: shared, server-usage and window-shell', () => {
       running: false,
     })
   })
+
+  test('validates settings:preview-theme IPC payloads and wires preload previewTheme', async () => {
+    const onPreviewTheme = mock(
+      (theme: 'light' | 'dark' | 'auto') => theme === 'dark',
+    )
+    handlers.clear()
+    ipcListeners.clear()
+    registerIpcHandlers({ once: () => {} } as unknown as BrowserWindow, {
+      onPreviewTheme,
+    })
+
+    expect(await invoke('settings:preview-theme', 'dark')).toBe(true)
+    expect(await invoke('settings:preview-theme', 'auto')).toBe(false)
+    expect(await invoke('settings:preview-theme', 'light')).toBe(false)
+    expect(await invoke('settings:preview-theme', 'invalid')).toBeUndefined()
+    expect(await invoke('settings:preview-theme', 123)).toBeUndefined()
+    expect(onPreviewTheme).toHaveBeenCalledTimes(3)
+
+    if (!preloadApi) await import('../electron/preload')
+    if (!preloadApi?.previewTheme) {
+      throw new Error('Preload previewTheme bridge was not exposed')
+    }
+    await preloadApi.previewTheme('auto')
+    expect(rendererInvoke).toHaveBeenCalledWith(
+      'settings:preview-theme',
+      'auto',
+    )
+  })
 })

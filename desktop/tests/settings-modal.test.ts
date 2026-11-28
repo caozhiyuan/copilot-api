@@ -550,4 +550,107 @@ describe('settings modal partial saves', () => {
     expect(alert.mock.calls[0]?.[0]).toContain('Restart the app')
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  test('reverts previewed theme without polluting localStorage on Cancel or close', async () => {
+    const previewTheme = mock((theme: DesktopSettings['theme']) =>
+      Promise.resolve(theme === 'dark'),
+    )
+    Object.assign(window.electronAPI, { previewTheme })
+    win.localStorage.setItem('copilot-api-theme-pref', 'light')
+
+    await render()
+    await click('Dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    expect(previewTheme).toHaveBeenCalledWith('dark')
+    expect(win.localStorage.getItem('copilot-api-theme-pref')).toBe('light')
+
+    await click('Cancel')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(previewTheme).toHaveBeenLastCalledWith('light')
+    expect(win.localStorage.getItem('copilot-api-theme-pref')).toBe('light')
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    await render()
+    await click('Dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    const closeButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Cancel"]',
+    )
+    expect(closeButton).not.toBeNull()
+    await act(async () => closeButton!.click())
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(previewTheme).toHaveBeenLastCalledWith('light')
+    expect(win.localStorage.getItem('copilot-api-theme-pref')).toBe('light')
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  test('reverts previewed theme on unmount when modal closes without saving', async () => {
+    const previewTheme = mock((theme: DesktopSettings['theme']) =>
+      Promise.resolve(theme === 'dark'),
+    )
+    Object.assign(window.electronAPI, { previewTheme })
+
+    await render()
+    await click('Dark')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+    await act(async () => {
+      root.render(
+        createElement(LanguageProvider, {
+          children: createElement(ThemeProvider, {
+            children: createElement('div', null, 'closed'),
+          }),
+        }),
+      )
+    })
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    expect(previewTheme).toHaveBeenLastCalledWith('light')
+  })
+
+  test('resolves Follow System theme preview from main process even after saving Light', async () => {
+    Object.defineProperty(win, 'matchMedia', {
+      configurable: true,
+      value: () => ({
+        matches: false,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    })
+    const previewTheme = mock((theme: DesktopSettings['theme']) =>
+      Promise.resolve(theme === 'auto' || theme === 'dark'),
+    )
+    Object.assign(window.electronAPI, { previewTheme })
+
+    await render()
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+    await click('Follow system')
+    expect(previewTheme).toHaveBeenCalledWith('auto')
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+    await click('Cancel')
+    expect(previewTheme).toHaveBeenLastCalledWith('light')
+    expect(document.documentElement.classList.contains('dark')).toBe(false)
+  })
+
+  test('gives accessible names to all toggle switches in General and Startup sections', async () => {
+    await render()
+    const generalSwitches = [
+      ...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]'),
+    ]
+    expect(generalSwitches.map((el) => el.getAttribute('aria-label'))).toEqual([
+      'Launch at login',
+      'Start server on launch',
+      'Minimize to tray',
+      'Show create',
+    ])
+
+    await click('Startup')
+    const startupSwitches = [
+      ...container.querySelectorAll<HTMLButtonElement>('button[role="switch"]'),
+    ]
+    expect(startupSwitches.map((el) => el.getAttribute('aria-label'))).toEqual([
+      'Verbose logging',
+      'Show token',
+    ])
+  })
 })

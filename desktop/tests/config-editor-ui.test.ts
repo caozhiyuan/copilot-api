@@ -1203,4 +1203,89 @@ describe('Desktop config editor', () => {
     )
     expect(container.textContent).not.toContain('test-internal-detail')
   })
+
+  test('keeps corrupt JSON files in JSON repair mode when re-entering unchanged', async () => {
+    documentFixture.content = '{"anthropicApiKey":"test-broken-key",'
+    await render()
+    expect(button('JSON').getAttribute('aria-selected')).toBe('true')
+    expect(button('Visual').disabled).toBe(true)
+    expect(
+      container.querySelector('#config-panel-json')?.hasAttribute('hidden'),
+    ).toBe(false)
+    expect(
+      container.querySelector('#config-panel-form')?.hasAttribute('hidden'),
+    ).toBe(true)
+
+    await render(false, false)
+    await render(false, true)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(button('JSON').getAttribute('aria-selected')).toBe('true')
+    expect(button('Visual').disabled).toBe(true)
+    expect(
+      container.querySelector('#config-panel-json')?.hasAttribute('hidden'),
+    ).toBe(false)
+    expect(
+      container.querySelector('#config-panel-form')?.hasAttribute('hidden'),
+    ).toBe(true)
+  })
+
+  test('does not let an in-flight silent refresh overwrite edits made after re-entering', async () => {
+    await render()
+    await click('Request settings')
+    expect(field('useMessagesApi').checked).toBe(true)
+
+    await render(false, false)
+    const pending = Promise.withResolvers<AppConfigDocument>()
+    read.mockImplementationOnce(() => pending.promise)
+    await render(false, true)
+
+    await click('Request settings')
+    await act(async () => field('useMessagesApi').click())
+    expect(field('useMessagesApi').checked).toBe(false)
+
+    await act(async () =>
+      pending.resolve({
+        ...documentFixture,
+        revision: 'external-revision',
+        content: JSON.stringify({
+          useMessagesApi: true,
+          future: { external: true },
+        }),
+      }),
+    )
+
+    expect(field('useMessagesApi').checked).toBe(false)
+    expect(button('Save configuration').disabled).toBe(false)
+  })
+
+  test('skips unnecessary state updates on unchanged silent re-entry and supersedes stale refreshes on reload', async () => {
+    await render()
+    await render(false, false)
+    await render(false, true)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(button('Visual').getAttribute('aria-selected')).toBe('true')
+
+    await render(false, false)
+    const staleSilent = Promise.withResolvers<AppConfigDocument>()
+    read.mockImplementationOnce(() => staleSilent.promise)
+    await render(false, true)
+
+    read.mockResolvedValueOnce({
+      ...documentFixture,
+      revision: 'manual-reload-revision',
+      content: JSON.stringify({ useMessagesApi: false }),
+    })
+    await click('Reload')
+    await click('Request settings')
+    expect(field('useMessagesApi').checked).toBe(false)
+
+    await act(async () =>
+      staleSilent.resolve({
+        ...documentFixture,
+        revision: 'stale-revision',
+        content: JSON.stringify({ useMessagesApi: true }),
+      }),
+    )
+    expect(field('useMessagesApi').checked).toBe(false)
+  })
 })

@@ -394,6 +394,7 @@ declare global {
         callback: (status: AppUpdateStatus) => void,
       ) => () => void
       saveSettings: (settings: DesktopSettings) => Promise<void>
+      previewTheme?: (theme: ThemePreference) => Promise<boolean | undefined>
       getModelMappingsConfig: () => Promise<ModelMappingsConfig>
       getAppConfig: () => Promise<ConfigEditorReply<AppConfigDocument>>
       saveAppConfig: (

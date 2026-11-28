@@ -110,13 +110,18 @@ function resolveNativeThemeSource(
   return theme === 'auto' ? 'system' : theme
 }
 
-function resolveNativeBackgroundColor(theme: ThemePreference): string {
-  if (theme === 'dark') return '#0a0a0c'
-  if (theme === 'light') return '#fafafa'
+function resolveNativeBackgroundColor(): string {
   return nativeTheme.shouldUseDarkColors ? '#0a0a0c' : '#fafafa'
 }
 
-nativeTheme.themeSource = resolveNativeThemeSource(initialSettings.theme)
+function applyNativeTheme(theme: ThemePreference): boolean {
+  const nextSource = resolveNativeThemeSource(theme)
+  if (nativeTheme.themeSource !== nextSource) {
+    nativeTheme.themeSource = nextSource
+  }
+  getLiveMainWindow()?.setBackgroundColor(resolveNativeBackgroundColor())
+  return nativeTheme.shouldUseDarkColors
+}
 
 function resolveTitleBarOptions(): Electron.BaseWindowConstructorOptions {
   if (process.platform === 'darwin') {
@@ -311,7 +316,7 @@ function createWindow(startHidden = false): BrowserWindow {
     },
     ...resolveTitleBarOptions(),
     icon: process.platform === 'darwin' ? undefined : getWindowIconPath(),
-    backgroundColor: resolveNativeBackgroundColor(initialSettings.theme),
+    backgroundColor: resolveNativeBackgroundColor(),
     show: false,
   })
 
@@ -390,6 +395,10 @@ async function initializeApplication(): Promise<void> {
   const { registerIpcHandlers, readSettings, onStatusChange, onLog } =
     await getRuntimeDependencies()
   const settings = await readSettings()
+  nativeTheme.themeSource = resolveNativeThemeSource(settings.theme)
+  nativeTheme.on('updated', () => {
+    getLiveMainWindow()?.setBackgroundColor(resolveNativeBackgroundColor())
+  })
   await applyElectronProxy(getEffectiveProxySettings(settings))
 
   const macUpdater =
@@ -494,14 +503,10 @@ async function initializeApplication(): Promise<void> {
       }
       await applyElectronProxy(getEffectiveProxySettings(settings))
     },
+    onPreviewTheme: applyNativeTheme,
     onSettingsChange: async (settings, prevSettings) => {
       const liveWindow = getLiveMainWindow()
-      if (settings.theme !== prevSettings.theme) {
-        nativeTheme.themeSource = resolveNativeThemeSource(settings.theme)
-        liveWindow?.setBackgroundColor(
-          resolveNativeBackgroundColor(settings.theme),
-        )
-      }
+      applyNativeTheme(settings.theme)
 
       if (settings.minimizeToTray) {
         await createTray()

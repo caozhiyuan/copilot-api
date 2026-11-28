@@ -30,7 +30,7 @@ type Mode = 'generate' | 'edit' | 'video'
 type StudioResult =
   | { kind: 'images'; images: CreatedImage[]; prompt: string }
   | { kind: 'video'; video: VideoCreationResult; prompt: string }
-const fieldClass = `${formFieldBaseClass} px-3 py-1.5`
+const fieldClass = `${formFieldBaseClass} px-3 py-1.5 text-[13px]`
 const selectClass = `${formSelectBaseClass} px-3 py-1.5`
 const buttonClass = `${secondaryButtonClass} px-3 py-1.5 text-[13px]`
 

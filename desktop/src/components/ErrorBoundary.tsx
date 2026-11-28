@@ -101,7 +101,7 @@ export class ErrorBoundary extends Component<
             <button
               type="button"
               onClick={this.handleReload}
-              className={`px-3 py-1.5 text-[13px] font-medium ${primaryButtonClass}`}
+              className={`px-3 py-1.5 ${primaryButtonClass}`}
             >
               {labels.reload}
             </button>

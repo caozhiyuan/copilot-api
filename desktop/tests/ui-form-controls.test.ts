@@ -45,7 +45,16 @@ describe('shared UI form controls', () => {
             label: 'Auto start',
             description: 'Start when opening the app',
             children: createElement(Toggle, {
+              ariaLabel: 'Auto start',
               checked: false,
+              onChange: onToggle,
+            }),
+          }),
+          createElement(SettingRow, {
+            label: 'Enabled switch',
+            children: createElement(Toggle, {
+              ariaLabel: 'Enabled switch',
+              checked: true,
               onChange: onToggle,
             }),
           }),
@@ -65,10 +74,19 @@ describe('shared UI form controls', () => {
     expect(dom.container.textContent).toContain('Model name')
     expect(dom.container.textContent).toContain('Start when opening the app')
 
-    const toggleButton = dom.container.querySelector<HTMLButtonElement>(
-      'button[role="switch"]',
-    )!
+    const toggleButtons = [
+      ...dom.container.querySelectorAll<HTMLButtonElement>(
+        'button[role="switch"]',
+      ),
+    ]
+    const toggleButton = toggleButtons[0]
+    expect(toggleButton.getAttribute('aria-label')).toBe('Auto start')
     expect(toggleButton.getAttribute('aria-checked')).toBe('false')
+    expect(toggleButton.classList.contains('ring-line')).toBe(true)
+    expect(toggleButton.classList.contains('ring-brand')).toBe(false)
+    expect(toggleButtons[1].classList.contains('ring-brand')).toBe(true)
+    expect(toggleButtons[1].classList.contains('ring-line')).toBe(false)
+    expect(dom.container.innerHTML).not.toContain('dark:border-white/10')
     await act(async () => toggleButton.click())
     expect(onToggle).toHaveBeenCalledWith(true)
 

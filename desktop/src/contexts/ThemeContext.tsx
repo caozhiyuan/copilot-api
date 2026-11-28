@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -15,6 +16,7 @@ interface ThemeContextValue {
   themePref: ThemePreference
   resolvedTheme: ResolvedTheme
   setThemePref: (pref: ThemePreference) => void
+  previewThemePref: (pref: ThemePreference) => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
@@ -70,12 +72,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return initial
   })
 
+  const mountedRef = useRef(true)
+  const requestSeqRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
   useEffect(() => {
     let active = true
     window.electronAPI
       .getSettings()
       .then((settings) => {
-        if (!active) return
+        if (!active || requestSeqRef.current > 0) return
         setThemePrefState(settings.theme)
         writeCachedThemePref(settings.theme)
         const resolved = resolveTheme(settings.theme)
@@ -100,17 +112,61 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => media.removeEventListener('change', handler)
   }, [themePref])
 
-  const setThemePref = useCallback((pref: ThemePreference) => {
-    setThemePrefState(pref)
-    writeCachedThemePref(pref)
-    const resolved = resolveTheme(pref)
-    setResolvedTheme(resolved)
-    applyThemeClass(resolved)
-  }, [])
+  const applyThemePref = useCallback(
+    (pref: ThemePreference, persist: boolean) => {
+      const requestId = ++requestSeqRef.current
+      setThemePrefState(pref)
+      if (persist) writeCachedThemePref(pref)
+
+      if (pref !== 'auto') {
+        setResolvedTheme(pref)
+        applyThemeClass(pref)
+        void window.electronAPI?.previewTheme?.(pref)?.catch(() => {})
+        return
+      }
+
+      const preview = window.electronAPI?.previewTheme
+      if (!preview) {
+        const resolved = getSystemTheme()
+        setResolvedTheme(resolved)
+        applyThemeClass(resolved)
+        return
+      }
+
+      void preview(pref)
+        .then((isDark) => {
+          if (!mountedRef.current || requestId !== requestSeqRef.current) return
+          const resolved: ResolvedTheme =
+            typeof isDark === 'boolean' ?
+              isDark ? 'dark'
+              : 'light'
+            : getSystemTheme()
+          setResolvedTheme(resolved)
+          applyThemeClass(resolved)
+        })
+        .catch(() => {
+          if (!mountedRef.current || requestId !== requestSeqRef.current) return
+          const resolved = getSystemTheme()
+          setResolvedTheme(resolved)
+          applyThemeClass(resolved)
+        })
+    },
+    [],
+  )
+
+  const setThemePref = useCallback(
+    (pref: ThemePreference) => applyThemePref(pref, true),
+    [applyThemePref],
+  )
+
+  const previewThemePref = useCallback(
+    (pref: ThemePreference) => applyThemePref(pref, false),
+    [applyThemePref],
+  )
 
   const value = useMemo(
-    () => ({ themePref, resolvedTheme, setThemePref }),
-    [themePref, resolvedTheme, setThemePref],
+    () => ({ themePref, resolvedTheme, setThemePref, previewThemePref }),
+    [themePref, resolvedTheme, setThemePref, previewThemePref],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

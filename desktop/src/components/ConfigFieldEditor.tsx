@@ -4,7 +4,9 @@ import { equalConfigValue } from '../lib/config-editor'
 import type { ConfigField } from '../lib/config-fields'
 import { CheckboxSwitch, formFieldBaseClass } from './ui/FormControls'
 
-const inputClass = `${formFieldBaseClass} px-2.5 py-1.5`
+const fieldBaseClass = `${formFieldBaseClass} px-2.5 py-1.5`
+const inputClass = `${fieldBaseClass} text-[13px]`
+const jsonInputClass = `${fieldBaseClass} font-mono text-[12px]`
 
 export default function ConfigFieldEditor({
   field,
@@ -91,7 +93,7 @@ export default function ConfigFieldEditor({
               }
             }}
             onBlur={() => setEditing(null)}
-            className={`${inputClass} font-mono text-[12px]`}
+            className={jsonInputClass}
           />
         : field.type === 'model' ?
           <div className="space-y-2">

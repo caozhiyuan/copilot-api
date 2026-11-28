@@ -100,6 +100,7 @@ export function GeneralSettingsSection({
           description={t('settings.launchAtLoginDesc')}
         >
           <Toggle
+            ariaLabel={t('settings.launchAtLogin')}
             checked={settings.launchAtLogin}
             onChange={(v) => setSettings((s) => ({ ...s, launchAtLogin: v }))}
           />
@@ -111,6 +112,7 @@ export function GeneralSettingsSection({
         description={t('settings.autoStartServerDesc')}
       >
         <Toggle
+          ariaLabel={t('settings.autoStartServer')}
           checked={settings.autoStartServer}
           onChange={(v) => setSettings((s) => ({ ...s, autoStartServer: v }))}
         />
@@ -121,6 +123,7 @@ export function GeneralSettingsSection({
         description={t('settings.minimizeToTrayDesc')}
       >
         <Toggle
+          ariaLabel={t('settings.minimizeToTray')}
           checked={settings.minimizeToTray}
           onChange={(v) => setSettings((s) => ({ ...s, minimizeToTray: v }))}
         />
@@ -131,6 +134,7 @@ export function GeneralSettingsSection({
         description={t('settings.showCreateDesc')}
       >
         <Toggle
+          ariaLabel={t('settings.showCreate')}
           checked={settings.showCreate}
           onChange={(v) => setSettings((s) => ({ ...s, showCreate: v }))}
         />

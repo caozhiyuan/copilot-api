@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppUpdateStatus,
   ServerLogRecord,
+  ThemePreference,
   XaiAuthInfo,
 } from '../src/types/ipc'
 import type {
@@ -81,6 +82,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   saveSettings: (settings: unknown) =>
     ipcRenderer.invoke('settings:save', settings),
+  previewTheme: (theme: ThemePreference) =>
+    ipcRenderer.invoke('settings:preview-theme', theme),
   getModelMappingsConfig: () => ipcRenderer.invoke('config:get-model-mappings'),
   getAppConfig: () => ipcRenderer.invoke('config:get-document'),
   saveAppConfig: (input: unknown) =>

@@ -4,16 +4,18 @@ import { primaryButtonClass } from '../../lib/button-styles'
 export { primaryButtonClass }
 
 export const formFieldBaseClass =
-  'w-full min-w-0 rounded-lg border border-line bg-surface text-[13px] text-ink placeholder-ink-faint transition-colors focus:border-brand/50 focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:cursor-not-allowed disabled:bg-sunken disabled:opacity-55'
+  'w-full min-w-0 rounded-lg border border-line bg-surface text-ink placeholder-ink-faint transition-colors focus:border-brand/50 focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:cursor-not-allowed disabled:bg-sunken disabled:opacity-55'
 
-export const formFieldClass = `${formFieldBaseClass} px-3 py-2`
+export const formFieldClass = `${formFieldBaseClass} px-3 py-2 text-[13px]`
 
-export const formSelectBaseClass = `${formFieldBaseClass} cursor-pointer text-left [text-align-last:left]`
+export const formSelectBaseClass = `${formFieldBaseClass} cursor-pointer text-left text-[13px] [text-align-last:left]`
 
 export const formSelectClass = `${formSelectBaseClass} px-3 py-2`
 
-export const secondaryButtonClass =
-  'rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25 disabled:cursor-not-allowed disabled:opacity-40'
+export const secondaryButtonBaseClass =
+  'rounded-lg border border-line bg-surface transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25 disabled:cursor-not-allowed disabled:opacity-40'
+
+export const secondaryButtonClass = `${secondaryButtonBaseClass} text-ink-soft`
 
 export const segmentedGroupClass =
   'grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-1'
@@ -42,9 +44,13 @@ export function Field({
 }
 
 export function Toggle({
+  ariaLabel,
+  ariaLabelledBy,
   checked,
   onChange,
 }: {
+  ariaLabel?: string
+  ariaLabelledBy?: string
   checked: boolean
   onChange: (value: boolean) => void
 }) {
@@ -52,9 +58,11 @@ export function Toggle({
     <button
       type="button"
       role="switch"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full ring-1 ring-inset ring-line transition-colors focus:outline-none focus:ring-2 focus:ring-brand/35 ${checked ? 'bg-brand ring-brand' : 'bg-sunken'}`}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full ring-1 ring-inset transition-colors focus:outline-none focus:ring-2 focus:ring-brand/35 ${checked ? 'bg-brand ring-brand' : 'bg-sunken ring-line'}`}
     >
       <span
         className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)] ${checked ? 'translate-x-4.5' : 'translate-x-0.5'}`}
@@ -106,7 +114,7 @@ export function SettingRow({
   children: ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line-soft py-3.5 last:border-0 dark:border-white/10">
+    <div className="flex items-center justify-between gap-4 border-b border-line-soft py-3.5 last:border-0">
       <div className="min-w-0">
         <div className="text-[13px] font-medium text-ink">{label}</div>
         {description && (

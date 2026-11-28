@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createDefaultSettings } from '../../shared/default-settings'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -50,18 +50,31 @@ export default function SettingsModal({
   checkForUpdatesOnOpen = false,
 }: SettingsModalProps) {
   const { t, setLangPref } = useLanguage()
-  const { setThemePref } = useTheme()
+  const { themePref, setThemePref, previewThemePref } = useTheme()
   const [section, setSection] = useState<Section>(initialSection)
   const [settings, setSettings] = useState<DesktopSettings>(
     createDefaultSettings,
   )
   const [initialSettings, setInitialSettings] =
     useState<DesktopSettings | null>(null)
+  const savedThemeRef = useRef<ThemePreference>(themePref)
+  const themePreviewedRef = useRef(false)
+  const previewThemePrefRef = useRef(previewThemePref)
+  previewThemePrefRef.current = previewThemePref
   const [saving, setSaving] = useState(false)
   const [bunRuntime, setBunRuntime] = useState<BunRuntimeStatus | null>(null)
   const [adminApiKey, setAdminApiKey] = useState('')
   const [loadedServerKeys, setLoadedServerKeys] =
     useState<ServerKeysConfig | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (themePreviewedRef.current) {
+        themePreviewedRef.current = false
+        previewThemePrefRef.current(savedThemeRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -81,6 +94,7 @@ export default function SettingsModal({
         if (!active) return
         setSettings(loadedSettings)
         setInitialSettings(loadedSettings)
+        savedThemeRef.current = loadedSettings.theme
         setAdminApiKey(serverKeys.adminApiKey)
         setLoadedServerKeys(serverKeys)
       })
@@ -137,6 +151,8 @@ export default function SettingsModal({
       if (saveErrors.length > 0) {
         throw new Error(saveErrors.join('\n'))
       }
+      savedThemeRef.current = settings.theme
+      themePreviewedRef.current = false
       setLangPref(settings.language)
       setThemePref(settings.theme)
 
@@ -159,6 +175,8 @@ export default function SettingsModal({
       ])
       if (savedSettings) {
         setSettings(savedSettings)
+        savedThemeRef.current = savedSettings.theme
+        themePreviewedRef.current = false
         setLangPref(savedSettings.language)
         setThemePref(savedSettings.theme)
       }
@@ -201,8 +219,17 @@ export default function SettingsModal({
   ]
 
   const handleThemeChange = (value: ThemePreference) => {
+    themePreviewedRef.current = true
     setSettings((s) => ({ ...s, theme: value }))
-    setThemePref(value)
+    previewThemePref(value)
+  }
+
+  const handleCancel = () => {
+    if (themePreviewedRef.current) {
+      themePreviewedRef.current = false
+      previewThemePref(savedThemeRef.current)
+    }
+    onClose()
   }
 
   return (
@@ -219,7 +246,9 @@ export default function SettingsModal({
             </span>
           </div>
           <button
-            onClick={onClose}
+            type="button"
+            aria-label={t('settings.cancel')}
+            onClick={handleCancel}
             className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
           >
             <svg
@@ -304,7 +333,8 @@ export default function SettingsModal({
         {/* Footer actions */}
         <div className="flex shrink-0 justify-end gap-2 border-t border-line-soft bg-sunken/70 px-5 py-3.5">
           <button
-            onClick={onClose}
+            type="button"
+            onClick={handleCancel}
             className="rounded-lg border border-line bg-surface px-4 py-2 text-[13px] text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
           >
             {t('settings.cancel')}

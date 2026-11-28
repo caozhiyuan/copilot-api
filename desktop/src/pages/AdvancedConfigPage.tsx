@@ -162,18 +162,23 @@ export default function AdvancedConfigPage({
     setMerged(false)
     if (!config) setMode('json')
   }
+  const requestSeqRef = useRef(0)
   const load = async () => {
+    const requestId = ++requestSeqRef.current
     setBusy(true)
     setError('')
     setSaveResult(null)
     try {
-      acceptDocument(
-        unwrapConfigEditorReply(await window.electronAPI.getAppConfig()),
+      const next = unwrapConfigEditorReply(
+        await window.electronAPI.getAppConfig(),
       )
+      if (requestId !== requestSeqRef.current) return
+      acceptDocument(next)
     } catch (err) {
-      setError(errorMessage(err, 'readFailed'))
+      if (requestId === requestSeqRef.current)
+        setError(errorMessage(err, 'readFailed'))
     } finally {
-      setBusy(false)
+      if (requestId === requestSeqRef.current) setBusy(false)
     }
   }
   const documentRef = useRef(document)
@@ -186,8 +191,13 @@ export default function AdvancedConfigPage({
   useEffect(() => {
     if (!active || dirtyRef.current) return
     setSection('mappings')
-    setMode('form')
+    setMode(
+      documentRef.current && !inspect(documentRef.current.content).config ?
+        'json'
+      : 'form',
+    )
     let current = true
+    const requestId = ++requestSeqRef.current
     const isInitialLoad = documentRef.current === null
     if (isInitialLoad) setBusy(true)
     setError('')
@@ -195,7 +205,8 @@ export default function AdvancedConfigPage({
     void window.electronAPI
       .getAppConfig()
       .then((next) => {
-        if (!current) return
+        if (!current || requestId !== requestSeqRef.current || dirtyRef.current)
+          return
         const resolved = unwrapConfigEditorReply(next)
         if (
           documentRef.current
@@ -207,10 +218,12 @@ export default function AdvancedConfigPage({
         acceptDocument(resolved)
       })
       .catch((err: unknown) => {
-        if (current) setError(errorMessageRef.current(err, 'readFailed'))
+        if (current && requestId === requestSeqRef.current)
+          setError(errorMessageRef.current(err, 'readFailed'))
       })
       .finally(() => {
-        if (current && isInitialLoad) setBusy(false)
+        if (current && requestId === requestSeqRef.current && isInitialLoad)
+          setBusy(false)
       })
     return () => {
       current = false
@@ -219,6 +232,7 @@ export default function AdvancedConfigPage({
   }, [active])
 
   const updateContent = (next: string) => {
+    requestSeqRef.current += 1
     setContent(next)
     setError('')
     setSaveResult(null)
@@ -276,6 +290,7 @@ export default function AdvancedConfigPage({
     if (draft.config) updateFormConfig(setFormField(draft.config, path, value))
   }
   const changeMappings = (nextRows: ModelMappingRow[]) => {
+    requestSeqRef.current += 1
     setRows(nextRows)
     const result = buildModelMappingsFromRows(nextRows)
     if (!result.ok) {
@@ -314,11 +329,13 @@ export default function AdvancedConfigPage({
   }
   const recoverDraft = async () => {
     if (!document || !baseline.config || !draft.config || mappingError) return
+    const requestId = ++requestSeqRef.current
     setBusy(true)
     try {
       const latest = unwrapConfigEditorReply(
         await window.electronAPI.getAppConfig(),
       )
+      if (requestId !== requestSeqRef.current) return
       const disk = parseConfigContent(latest.content)
       const result = mergeConfigDraft(baseline.config, draft.config, disk)
       if (result.conflicts.length) {
@@ -331,13 +348,15 @@ export default function AdvancedConfigPage({
         })
       } else acceptMerge(latest, result.config)
     } catch (err) {
-      setError(errorMessage(err, 'readFailed'))
+      if (requestId === requestSeqRef.current)
+        setError(errorMessage(err, 'readFailed'))
     } finally {
-      setBusy(false)
+      if (requestId === requestSeqRef.current) setBusy(false)
     }
   }
   const save = async (applyOnly = false) => {
     if (!document || validationError || pendingMerge) return
+    const requestId = ++requestSeqRef.current
     setBusy(true)
     setError('')
     setShowChanges(false)
@@ -350,13 +369,16 @@ export default function AdvancedConfigPage({
             revision: document.revision,
           }),
       )
+      if (requestId !== requestSeqRef.current) return
       acceptDocument(result)
       setSaveResult(result)
     } catch (err) {
-      setConflict(err instanceof ConfigEditorError && err.code === 'conflict')
-      setError(errorMessage(err, applyOnly ? 'applyFailed' : 'saveFailed'))
+      if (requestId === requestSeqRef.current) {
+        setConflict(err instanceof ConfigEditorError && err.code === 'conflict')
+        setError(errorMessage(err, applyOnly ? 'applyFailed' : 'saveFailed'))
+      }
     } finally {
-      setBusy(false)
+      if (requestId === requestSeqRef.current) setBusy(false)
     }
   }
   const jsonPreview =
@@ -430,6 +452,7 @@ export default function AdvancedConfigPage({
             disabled={busy || !dirty || !document}
             onClick={() => {
               if (document) {
+                requestSeqRef.current += 1
                 acceptDocument(document)
                 setError('')
                 setSaveResult(null)
