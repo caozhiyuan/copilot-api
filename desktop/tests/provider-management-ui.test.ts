@@ -852,6 +852,17 @@ describe('provider management UI', () => {
       })
       await act(async () => button(tabLabel).click())
       if (tabLabel === 'Advanced config') {
+        const deadline = Date.now() + 2000
+        while (
+          ![...container.querySelectorAll('button')].some(
+            (node) => node.textContent === 'Model mappings',
+          )
+          && Date.now() < deadline
+        ) {
+          await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 10))
+          })
+        }
         await act(async () => button('Model mappings').click())
         await act(async () => button('Add mapping').click())
         await changeText(
@@ -1118,9 +1129,18 @@ describe('provider management UI', () => {
       container.querySelector<HTMLButtonElement>(
         '[role="tab"][aria-selected="true"]',
       )?.textContent
+    const waitForDom = async (predicate: () => boolean) => {
+      const deadline = Date.now() + 2000
+      while (!predicate() && Date.now() < deadline) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 10))
+        })
+      }
+    }
     await act(async () => {
       studioTab.click()
     })
+    await waitForDom(() => Boolean(container.querySelector('textarea')))
     // The stopped-service reset must not bounce the studio back to the
     // dashboard: a hidden-but-mounted studio subtree would still satisfy
     // text queries, so assert the selected tab and the visible panel.
@@ -1139,6 +1159,9 @@ describe('provider management UI', () => {
       prompt.dispatchEvent(new Event('input', { bubbles: true }))
       providersTab.click()
     })
+    await waitForDom(
+      () => container.querySelectorAll('nav button').length === 2,
+    )
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     expect(container.querySelectorAll('nav button')).toHaveLength(2)
     expect(container.querySelector('h3')?.textContent).toBe('dashscope')
@@ -1149,6 +1172,9 @@ describe('provider management UI', () => {
       ),
     ).toHaveLength(1)
     await act(async () => keysTab.click())
+    await waitForDom(() =>
+      Boolean(container.querySelector('[aria-label="API Keys"]')),
+    )
     expect(selectedTabLabel()).toBe('API Keys')
     expect(
       container.querySelector('[aria-label="API Keys"]')?.textContent,

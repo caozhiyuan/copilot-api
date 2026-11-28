@@ -206,6 +206,59 @@ describe('desktop menu shortcuts', () => {
     expect(container.querySelector('textarea')).toBeNull()
     expect(container.textContent).toContain('Enter Copilot token manually')
   })
+
+  test('lazy-loads settings and provider modals from header actions', async () => {
+    const onSettingsClose = mock(() => {})
+    const onProvidersClose = mock(() => {})
+    const initial: AppUpdateStatus = {
+      phase: 'idle',
+      currentVersion: '2.6.31',
+      manualInstall: false,
+      releaseUrl: 'https://github.com/caozhiyuan/copilot-api/releases',
+    }
+    Object.assign(window.electronAPI, {
+      windowIsMaximized: () => Promise.resolve(false),
+      onWindowMaximizeChange: () => () => {},
+      getAppUpdateStatus: () => Promise.resolve(initial),
+      onAppUpdateStatus: () => () => {},
+      getProviderManagementConfig: () =>
+        Promise.resolve({ configPath: 'config.json', providers: [] }),
+      getProviderModelOptions: () =>
+        Promise.resolve({ providers: {}, fetchedAt: Date.now() }),
+    })
+    await act(async () => {
+      root.render(
+        createElement(LanguageProvider, {
+          children: createElement(ThemeProvider, {
+            children: createElement(Header, {
+              onChangeAuth: () => {},
+              onSettingsClose,
+              onProvidersClose,
+            }),
+          }),
+        }),
+      )
+    })
+
+    const settingsButton = container.querySelector<HTMLButtonElement>(
+      'button[title="Settings"]',
+    )
+    expect(settingsButton).not.toBeNull()
+    await act(async () => settingsButton!.click())
+    await click('App settings')
+    expect(container.querySelector('select')).not.toBeNull()
+    await click('Cancel')
+    expect(onSettingsClose).toHaveBeenCalledTimes(1)
+
+    await click('Providers')
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+    const closeProviders = container.querySelector<HTMLButtonElement>(
+      '[role="dialog"] button[aria-label]',
+    )
+    expect(closeProviders).not.toBeNull()
+    await act(async () => closeProviders!.click())
+    expect(onProvidersClose).toHaveBeenCalledTimes(1)
+  })
 })
 
 async function click(label: string) {
@@ -214,6 +267,9 @@ async function click(label: string) {
   )
   if (!button) throw new Error(`Missing button: ${label}`)
   await act(async () => button.click())
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
 }
 
 async function changeText(

@@ -255,12 +255,24 @@ function metricLabels(): string[] {
   )
 }
 
+async function waitFor(predicate: () => boolean, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate() && Date.now() < deadline) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    })
+  }
+}
+
 async function clickButton(label: string) {
   const button = [...container.querySelectorAll('button')].find(
     (node) => node.textContent === label,
   )
   if (!button) throw new Error(`Missing button: ${label}`)
   await act(async () => button.click())
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
 }
 
 describe('dashboard overview', () => {
@@ -337,6 +349,9 @@ describe('dashboard overview', () => {
     expect(fetchCopilotUsage).not.toHaveBeenCalled()
     expect(container.querySelector('.quota-provider-card')).toBeNull()
     await clickButton('Subscriptions')
+    await waitFor(
+      () => container.querySelectorAll('.quota-provider-card').length === 4,
+    )
     expect(container.querySelectorAll('.quota-provider-card')).toHaveLength(4)
     expect(container.querySelectorAll('.quota-provider-logo img')).toHaveLength(
       4,

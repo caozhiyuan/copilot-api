@@ -15,7 +15,7 @@
     "skipLibCheck": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noImplicitAny": false,
+    "noUncheckedSideEffectImports": true,
     "noImplicitReturns": true
   }
 }

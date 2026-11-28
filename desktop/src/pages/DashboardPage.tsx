@@ -1,6 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 
-import ApiKeyManager from '../components/ApiKeyManager'
 import type { DashboardModel } from '../components/dashboard/dashboard-format'
 import {
   IconAdvancedConfig,
@@ -18,9 +24,7 @@ import {
   DashboardOverviewTab,
   ServerStartForm,
 } from '../components/dashboard/DashboardOverviewTab'
-import { TokenUsagePanel } from '../components/dashboard/TokenUsagePanel'
 import Header from '../components/Header'
-import ProviderManagementPanel from '../components/ProviderManagementPanel'
 import ServerLogPanel from '../components/ServerLogPanel'
 import { useLanguage } from '../contexts/LanguageContext'
 import { buildServerBaseUrl } from '../lib/server-url'
@@ -36,10 +40,20 @@ import type {
   TokenUsageSessionsPage,
   TokenUsageSummary,
 } from '../types/ipc'
-import AdvancedConfigPage from './AdvancedConfigPage'
-import ClientIntegrationsPage from './ClientIntegrationsPage'
-import MediaStudioPage from './MediaStudioPage'
-import SubscriptionsPage from './SubscriptionsPage'
+
+const ApiKeyManager = lazy(() => import('../components/ApiKeyManager'))
+const TokenUsagePanel = lazy(() =>
+  import('../components/dashboard/TokenUsagePanel').then((mod) => ({
+    default: mod.TokenUsagePanel,
+  })),
+)
+const ProviderManagementPanel = lazy(
+  () => import('../components/ProviderManagementPanel'),
+)
+const AdvancedConfigPage = lazy(() => import('./AdvancedConfigPage'))
+const ClientIntegrationsPage = lazy(() => import('./ClientIntegrationsPage'))
+const MediaStudioPage = lazy(() => import('./MediaStudioPage'))
+const SubscriptionsPage = lazy(() => import('./SubscriptionsPage'))
 
 interface DashboardPageProps {
   authMode: DesktopAuthMode
@@ -792,94 +806,104 @@ export default function DashboardPage({
           />
         )}
 
-        {(subscriptionsOpened || (started && tab === 'subscriptions')) && (
-          <div
-            className={started && tab === 'subscriptions' ? 'h-full' : 'hidden'}
-          >
-            <SubscriptionsPage
-              refreshKey={quotaRefreshKey}
-              onManageProviders={() => setTab('providers')}
-            />
-          </div>
-        )}
-
-        {/* Token usage tab */}
-        {started && tab === 'tokenUsage' && (
-          <div className="p-4">
-            <TokenUsagePanel
-              keyFilterControl={
-                <label className="flex items-center gap-2 text-[13px] text-ink-soft">
-                  {t('apiKeys.keyFilter')}
-                  <select
-                    aria-label={t('apiKeys.keyFilter')}
-                    className="rounded-md border border-line bg-surface px-2 py-1 text-ink"
-                    value={apiKeyFilter}
-                    onChange={(event) =>
-                      handleApiKeyFilterChange(event.target.value)
-                    }
-                  >
-                    <option value="">{t('apiKeys.allKeys')}</option>
-                    <option value="__unattributed__">
-                      {t('apiKeys.unattributed')}
-                    </option>
-                    {managedApiKeys.map((key, index) => (
-                      <option key={key.id} value={key.id}>
-                        {key.name ?? t('clients.keyNumber', { n: index + 1 })}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+        <Suspense
+          fallback={
+            <div className="p-6 text-[13px] text-ink-faint">
+              {t('dashboard.loading')}
+            </div>
+          }
+        >
+          {(subscriptionsOpened || (started && tab === 'subscriptions')) && (
+            <div
+              className={
+                started && tab === 'subscriptions' ? 'h-full' : 'hidden'
               }
-              dailyUsage={tokenUsageDaily}
-              eventsPage={tokenUsageEvents}
-              eventsLoading={tokenUsageEventsLoading}
-              loading={tokenUsageLoading}
-              onEventsPageChange={handleTokenUsageEventsPageChange}
-              onSessionsPageChange={handleTokenUsageSessionsPageChange}
-              period={tokenUsagePeriod}
-              sessionsError={tokenUsageSessionsError}
-              sessionsLoading={tokenUsageSessionsLoading}
-              sessionsPage={tokenUsageSessions}
-              tokenUsage={tokenUsage}
-              onPeriodChange={handleTokenUsagePeriodChange}
-              t={t}
+            >
+              <SubscriptionsPage
+                refreshKey={quotaRefreshKey}
+                onManageProviders={() => setTab('providers')}
+              />
+            </div>
+          )}
+
+          {/* Token usage tab */}
+          {started && tab === 'tokenUsage' && (
+            <div className="p-4">
+              <TokenUsagePanel
+                keyFilterControl={
+                  <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+                    {t('apiKeys.keyFilter')}
+                    <select
+                      aria-label={t('apiKeys.keyFilter')}
+                      className="rounded-md border border-line bg-surface px-2 py-1 text-ink"
+                      value={apiKeyFilter}
+                      onChange={(event) =>
+                        handleApiKeyFilterChange(event.target.value)
+                      }
+                    >
+                      <option value="">{t('apiKeys.allKeys')}</option>
+                      <option value="__unattributed__">
+                        {t('apiKeys.unattributed')}
+                      </option>
+                      {managedApiKeys.map((key, index) => (
+                        <option key={key.id} value={key.id}>
+                          {key.name ?? t('clients.keyNumber', { n: index + 1 })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                }
+                dailyUsage={tokenUsageDaily}
+                eventsPage={tokenUsageEvents}
+                eventsLoading={tokenUsageEventsLoading}
+                loading={tokenUsageLoading}
+                onEventsPageChange={handleTokenUsageEventsPageChange}
+                onSessionsPageChange={handleTokenUsageSessionsPageChange}
+                period={tokenUsagePeriod}
+                sessionsError={tokenUsageSessionsError}
+                sessionsLoading={tokenUsageSessionsLoading}
+                sessionsPage={tokenUsageSessions}
+                tokenUsage={tokenUsage}
+                onPeriodChange={handleTokenUsagePeriodChange}
+                t={t}
+              />
+            </div>
+          )}
+
+          {tab === 'providers' && (
+            <ProviderManagementPanel
+              serverRunning={started && !stopping}
+              onOpenAuthConfig={handleChangeAuth}
             />
-          </div>
-        )}
+          )}
 
-        {tab === 'providers' && (
-          <ProviderManagementPanel
-            serverRunning={started && !stopping}
-            onOpenAuthConfig={handleChangeAuth}
-          />
-        )}
-
-        {tab === 'clients' && (
-          <ClientIntegrationsPage
-            initialBaseUrl={anthropicUrl}
-            serverRunning={started && !stopping && !restarting}
-          />
-        )}
-
-        {tab === 'apiKeys' && <ApiKeyManager />}
-
-        {showCreate && (tab === 'studio' || studioOpened) && (
-          <div className={tab === 'studio' ? 'h-full' : 'hidden'}>
-            <MediaStudioPage
+          {tab === 'clients' && (
+            <ClientIntegrationsPage
+              initialBaseUrl={anthropicUrl}
               serverRunning={started && !stopping && !restarting}
             />
-          </div>
-        )}
+          )}
 
-        {/* Keep the editor mounted after opening it to preserve unsaved drafts. */}
-        {(tab === 'advancedConfig' || advancedConfigOpened) && (
-          <div className={tab === 'advancedConfig' ? 'h-full' : 'hidden'}>
-            <AdvancedConfigPage
-              active={tab === 'advancedConfig'}
-              serverRunning={started && !stopping && !restarting}
-            />
-          </div>
-        )}
+          {tab === 'apiKeys' && <ApiKeyManager />}
+
+          {showCreate && (tab === 'studio' || studioOpened) && (
+            <div className={tab === 'studio' ? 'h-full' : 'hidden'}>
+              <MediaStudioPage
+                serverRunning={started && !stopping && !restarting}
+              />
+            </div>
+          )}
+
+          {/* Keep the editor mounted after opening it to preserve unsaved drafts. */}
+          {(tab === 'advancedConfig' || advancedConfigOpened) && (
+            <div className={tab === 'advancedConfig' ? 'h-full' : 'hidden'}>
+              <AdvancedConfigPage
+                active={tab === 'advancedConfig'}
+                serverRunning={started && !stopping && !restarting}
+              />
+            </div>
+          )}
+        </Suspense>
 
         {/* Keep the panel mounted so startup lines stream in during a restart. */}
         {started && tab === 'logs' && (

@@ -1,10 +1,18 @@
-import { useState, useRef, useEffect, type CSSProperties } from 'react'
-import SettingsModal from './SettingsModal'
+import {
+  lazy,
+  Suspense,
+  useState,
+  useRef,
+  useEffect,
+  type CSSProperties,
+} from 'react'
 import AppUpdatePanel from './AppUpdatePanel'
-import ProviderManagementModal from './ProviderManagementModal'
 import TitleBarMenu from './TitleBarMenu'
 import WindowControls from './WindowControls'
 import { useLanguage } from '../contexts/LanguageContext'
+
+const SettingsModal = lazy(() => import('./SettingsModal'))
+const ProviderManagementModal = lazy(() => import('./ProviderManagementModal'))
 
 type ElectronAppRegionStyle = CSSProperties & {
   WebkitAppRegion?: 'drag' | 'no-drag'
@@ -236,25 +244,27 @@ export default function Header({
 
       <AppUpdatePanel compact />
 
-      {showSettings && (
-        <SettingsModal
-          initialSection={settingsSection}
-          checkForUpdatesOnOpen={settingsSection === 'updates'}
-          onClose={() => {
-            setShowSettings(false)
-            onSettingsClose?.()
-          }}
-        />
-      )}
-      {showProviders && (
-        <ProviderManagementModal
-          onClose={() => {
-            setShowProviders(false)
-            onProvidersClose?.()
-          }}
-          serverRunning={isRunning}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showSettings && (
+          <SettingsModal
+            initialSection={settingsSection}
+            checkForUpdatesOnOpen={settingsSection === 'updates'}
+            onClose={() => {
+              setShowSettings(false)
+              onSettingsClose?.()
+            }}
+          />
+        )}
+        {showProviders && (
+          <ProviderManagementModal
+            onClose={() => {
+              setShowProviders(false)
+              onProvidersClose?.()
+            }}
+            serverRunning={isRunning}
+          />
+        )}
+      </Suspense>
     </>
   )
 }

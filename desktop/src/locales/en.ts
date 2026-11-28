@@ -1,6 +1,6 @@
-import type { Locale } from './index'
+import type { LocaleTree } from './index'
 
-const en: Locale = {
+const en = {
   apiKeys: {
     title: 'API Keys',
     add: 'Add key',
@@ -803,6 +803,6 @@ const en: Locale = {
     retry: 'Try again',
     reload: 'Reload window',
   },
-}
+} satisfies LocaleTree
 
 export default en
