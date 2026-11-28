@@ -34,7 +34,7 @@ Before judging a change, gather the minimum relevant context:
 
 - Current change set: `git status`, `git --no-pager diff`, `git --no-pager diff --cached`, and recent commits when needed.
 - Local code context: changed files plus nearby callers, callees, tests, config, schema, and related modules.
-- Project docs: `AGENTS.md`, `README.md`, `CLAUDE.md`, `docs/`, and `package.json` scripts.
+- Project docs: `AGENTS.md`, `README.md`, `docs/`, and `package.json` scripts.
 - Protocol contract types under `src/lib/types/` (OpenAI Chat Completions, OpenAI Responses, Anthropic Messages) whenever a change touches request/response translation; verify every claimed field against these types instead of assuming it exists.
 
 If a context file does not exist, continue. Missing optional docs should not block the review.
