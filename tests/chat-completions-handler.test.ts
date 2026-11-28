@@ -208,7 +208,89 @@ test("native chat completions drains final usage after the client disconnects", 
   expect(events.items[0]).toMatchObject({ input_tokens: 12, output_tokens: 7 })
 })
 
-const requestCompletion = async (): Promise<Response> => {
+test("native chat completions adds properties to object tool schemas without them", async () => {
+  createChatCompletions.mockImplementationOnce(() =>
+    Promise.resolve(
+      streamChunks([
+        chunk({
+          content: "ok",
+          usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+        }),
+        { data: "[DONE]" },
+      ]),
+    ),
+  )
+  const withProperties = {
+    type: "object",
+    properties: { query: { type: "string" } },
+    required: ["query"],
+  }
+  const response = await requestCompletion({
+    tools: [
+      {
+        type: "function",
+        function: { name: "list_accounts", parameters: { type: "object" } },
+      },
+      {
+        type: "function",
+        function: { name: "search", parameters: withProperties },
+      },
+      { type: "function", function: { name: "ping" } },
+    ],
+  })
+  expect(response.status).toBe(200)
+  await response.text()
+
+  // The last tool omits `parameters`, which the Tool type marks as required.
+  const tools: unknown = createChatCompletions.mock.calls[0][0].tools
+  expect(tools).toEqual([
+    {
+      type: "function",
+      function: {
+        name: "list_accounts",
+        parameters: { type: "object", properties: {} },
+      },
+    },
+    {
+      type: "function",
+      function: { name: "search", parameters: withProperties },
+    },
+    { type: "function", function: { name: "ping" } },
+  ])
+})
+
+test("native chat completions forwards malformed tools unchanged", async () => {
+  const malformed: Array<unknown> = [
+    "not-an-array",
+    [null, { type: "function" }, { type: "function", function: null }],
+    [{ type: "function", function: { name: "x", parameters: "bad" } }],
+  ]
+  for (const tools of malformed) {
+    createChatCompletions.mockImplementationOnce(() =>
+      Promise.resolve(
+        streamChunks([
+          chunk({
+            content: "ok",
+            usage: { completion_tokens: 1, prompt_tokens: 1, total_tokens: 2 },
+          }),
+          { data: "[DONE]" },
+        ]),
+      ),
+    )
+    const response = await requestCompletion({ tools })
+    expect(response.status).toBe(200)
+    await response.text()
+  }
+
+  const forwarded: Array<unknown> = createChatCompletions.mock.calls.map(
+    ([payload]) => payload.tools,
+  )
+  expect(forwarded).toEqual(malformed)
+})
+
+const requestCompletion = async (
+  body: Record<string, unknown> = {},
+): Promise<Response> => {
   const app = new Hono()
   app.use(traceIdMiddleware)
   app.use(requestEventsMiddleware(undefined, 4141))
@@ -224,6 +306,7 @@ const requestCompletion = async (): Promise<Response> => {
       messages: [{ role: "user", content: "hello" }],
       model: "gpt-test",
       stream: true,
+      ...body,
     }),
   })
 }
