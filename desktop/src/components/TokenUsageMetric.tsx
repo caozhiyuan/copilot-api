@@ -37,28 +37,28 @@ export function TokenUsageMetric({
 }) {
   const toneClasses = {
     amber:
-      'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-500/15 dark:border-amber-500/30 dark:text-amber-400',
-    blue: 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-500/15 dark:border-blue-500/30 dark:text-blue-400',
-    cyan: 'bg-cyan-50 border-cyan-200 text-cyan-700 dark:bg-cyan-500/15 dark:border-cyan-500/30 dark:text-cyan-400',
+      'bg-amber-50/75 border-amber-200/80 text-amber-700 dark:bg-amber-500/10 dark:border-amber-500/25 dark:text-amber-300',
+    blue: 'bg-blue-50/75 border-blue-200/80 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/25 dark:text-blue-300',
+    cyan: 'bg-cyan-50/75 border-cyan-200/80 text-cyan-700 dark:bg-cyan-500/10 dark:border-cyan-500/25 dark:text-cyan-300',
     green:
-      'bg-green-50 border-green-200 text-green-700 dark:bg-green-500/15 dark:border-green-500/30 dark:text-green-400',
+      'bg-green-50/75 border-green-200/80 text-green-700 dark:bg-green-500/10 dark:border-green-500/25 dark:text-green-300',
     slate: 'bg-sunken border-line text-ink',
     violet:
-      'bg-violet-50 border-violet-200 text-violet-700 dark:bg-violet-500/15 dark:border-violet-500/30 dark:text-violet-400',
+      'bg-violet-50/75 border-violet-200/80 text-violet-700 dark:bg-violet-500/10 dark:border-violet-500/25 dark:text-violet-300',
   }[tone]
   const title = getTokenUsageValueLines(value).join('\n')
 
   return (
     <div className={`min-w-0 rounded-lg border px-2.5 py-2 ${toneClasses}`}>
       <div
-        className={`text-[13px] font-bold leading-4 ${
+        className={`text-[15px] font-bold leading-4 tracking-tight tabular-nums ${
           loading ? 'animate-pulse opacity-40' : ''
         }`}
         title={title}
       >
         {loading ? '…' : <TokenUsageValueLines value={value} />}
       </div>
-      <div className="mt-1 whitespace-nowrap text-[13px] leading-4 opacity-70">
+      <div className="mt-1 whitespace-nowrap text-[11px] font-medium leading-4 opacity-75">
         {label}
       </div>
     </div>

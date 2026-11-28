@@ -28,25 +28,40 @@ export default function ModelMappingsPage({
   useEffect(() => {
     if (!active || disabled) return
     let current = true
-    setEnabledProviders([])
-    setCodexModels([])
     setModelsError(false)
     const load = async () => {
-      // Reuse Providers' availability check, including Copilot's saved token.
-      const config = await window.electronAPI.getProviderManagementConfig()
-      if (!current) return
-      const enabled = config.providers
-        .filter((provider) => provider.enabled)
-        .map((provider) => provider.name)
-      setEnabledProviders(enabled)
-      if (enabled.includes('codex')) {
+      let enabled: string[]
+      try {
+        // Reuse Providers' availability check, including Copilot's saved token.
+        const config = await window.electronAPI.getProviderManagementConfig()
+        if (!current) return
+        enabled = config.providers
+          .filter((provider) => provider.enabled)
+          .map((provider) => provider.name)
+        setEnabledProviders(enabled)
+      } catch {
+        if (current) {
+          setEnabledProviders([])
+          setCodexModels([])
+          setModelsError(true)
+        }
+        return
+      }
+      if (!enabled.includes('codex')) {
+        setCodexModels([])
+        return
+      }
+      try {
         const options = await window.electronAPI.getProviderModelOptions()
         if (current) setCodexModels(options.codex ?? [])
+      } catch {
+        if (current) {
+          setCodexModels([])
+          setModelsError(true)
+        }
       }
     }
-    void load().catch(() => {
-      if (current) setModelsError(true)
-    })
+    void load()
     return () => {
       current = false
     }

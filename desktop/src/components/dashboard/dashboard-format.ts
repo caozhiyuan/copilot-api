@@ -46,6 +46,20 @@ export function formatTokenCount(value: number): string {
   return numberFormatter.format(Math.max(0, Math.floor(value)))
 }
 
+export function formatCompactTokenCount(value: number): string {
+  const safe = Math.max(0, Math.floor(value))
+  if (safe >= 1_000_000_000) {
+    return `${(safe / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`
+  }
+  if (safe >= 1_000_000) {
+    return `${(safe / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  }
+  if (safe >= 1_000) {
+    return `${(safe / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  }
+  return String(safe)
+}
+
 function padDatePart(value: number): string {
   return String(value).padStart(2, '0')
 }

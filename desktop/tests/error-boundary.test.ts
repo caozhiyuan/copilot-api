@@ -206,6 +206,44 @@ describe('LanguageContext and ThemeContext stability', () => {
 
     expect(snapshots.at(-1)).not.toBe(snapshots[0])
     expect(dom.container.textContent).toBe('重试')
+    expect(dom.win.localStorage.getItem('copilot-api-lang-pref')).toBe('zh')
+    expect(dom.win.document.documentElement.lang).toBe('zh')
+  })
+
+  test('hydrates cached language and theme from localStorage synchronously', async () => {
+    dom.win.localStorage.setItem('copilot-api-lang-pref', 'en')
+    dom.win.localStorage.setItem('copilot-api-theme-pref', 'dark')
+    Object.defineProperty(dom.win, 'electronAPI', {
+      configurable: true,
+      value: {
+        getSettings: () => new Promise(() => {}),
+      },
+    })
+
+    function Probe() {
+      const { langPref, t } = useLanguage()
+      const { themePref, resolvedTheme } = useTheme()
+      return createElement(
+        'span',
+        null,
+        `${langPref}:${t('auth.loading')}:${themePref}:${resolvedTheme}`,
+      )
+    }
+
+    await act(async () => {
+      dom.root.render(
+        createElement(ThemeProvider, {
+          children: createElement(LanguageProvider, {
+            children: createElement(Probe),
+          }),
+        }),
+      )
+    })
+
+    expect(dom.container.textContent).toBe('en:Please wait…:dark:dark')
+    expect(dom.win.document.documentElement.classList.contains('dark')).toBe(
+      true,
+    )
   })
 
   test('ThemeProvider keeps context value stable and reacts to preference and system changes', async () => {

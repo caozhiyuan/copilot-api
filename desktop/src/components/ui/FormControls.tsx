@@ -3,22 +3,26 @@ import { primaryButtonClass } from '../../lib/button-styles'
 
 export { primaryButtonClass }
 
-export const formFieldClass =
-  'w-full min-w-0 rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-ink placeholder-ink-faint transition-colors focus:outline-none focus:ring-2 focus:ring-accent/35 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-[#101014] dark:focus:border-blue-400/40 dark:focus:bg-[#17171d] dark:focus:ring-blue-500/30 dark:disabled:bg-[#0d0d11]'
+export const formFieldBaseClass =
+  'w-full min-w-0 rounded-lg border border-line bg-surface text-[13px] text-ink placeholder-ink-faint transition-colors focus:border-brand/50 focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:cursor-not-allowed disabled:bg-sunken disabled:opacity-55'
 
-export const formSelectClass = `${formFieldClass} cursor-pointer text-left [text-align-last:left]`
+export const formFieldClass = `${formFieldBaseClass} px-3 py-2`
+
+export const formSelectBaseClass = `${formFieldBaseClass} cursor-pointer text-left [text-align-last:left]`
+
+export const formSelectClass = `${formSelectBaseClass} px-3 py-2`
 
 export const secondaryButtonClass =
-  'rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40'
+  'rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/25 disabled:cursor-not-allowed disabled:opacity-40'
 
 export const segmentedGroupClass =
-  'grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-1 dark:border-white/10 dark:bg-[#0f0f13]'
+  'grid grid-cols-3 gap-1 rounded-lg border border-line bg-sunken p-1'
 
 export function segmentedButtonClass(isActive: boolean, extra = '') {
   return `${extra} min-h-8 rounded-md px-2 text-[12px] font-medium transition-colors ${
     isActive ?
-      'bg-surface text-ink shadow-sm dark:bg-[#262630] dark:text-white dark:shadow-[0_1px_0_rgba(255,255,255,0.06),0_8px_18px_rgba(0,0,0,0.24)]'
-    : 'text-ink-soft hover:bg-surface/70 hover:text-ink dark:hover:bg-white/10 dark:hover:text-white'
+      'bg-surface text-ink shadow-sm ring-1 ring-line-soft'
+    : 'text-ink-soft hover:bg-surface/70 hover:text-ink'
   }`
 }
 
@@ -50,7 +54,7 @@ export function Toggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full ring-1 ring-inset ring-line-soft transition-colors focus:outline-none focus:ring-2 focus:ring-accent/40 dark:ring-white/10 dark:focus:ring-blue-500/35 ${checked ? 'bg-accent-strong dark:bg-blue-500' : 'bg-sunken dark:bg-[#34343b]'}`}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full ring-1 ring-inset ring-line transition-colors focus:outline-none focus:ring-2 focus:ring-brand/35 ${checked ? 'bg-brand ring-brand' : 'bg-sunken'}`}
     >
       <span
         className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform dark:shadow-[0_1px_3px_rgba(0,0,0,0.35)] ${checked ? 'translate-x-4.5' : 'translate-x-0.5'}`}

@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { equalConfigValue } from '../lib/config-editor'
 import type { ConfigField } from '../lib/config-fields'
-import { CheckboxSwitch, formFieldClass } from './ui/FormControls'
+import { CheckboxSwitch, formFieldBaseClass } from './ui/FormControls'
 
-const inputClass = `${formFieldClass} px-2.5 py-1.5`
+const inputClass = `${formFieldBaseClass} px-2.5 py-1.5`
 
 export default function ConfigFieldEditor({
   field,

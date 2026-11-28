@@ -104,11 +104,19 @@ applyElectronProxyCommandLine(getEffectiveProxySettings(initialSettings))
 app.commandLine.appendSwitch('disable-quic')
 bindElectronFetch()
 
+function resolveNativeThemeSource(
+  theme: ThemePreference,
+): 'system' | 'light' | 'dark' {
+  return theme === 'auto' ? 'system' : theme
+}
+
 function resolveNativeBackgroundColor(theme: ThemePreference): string {
   if (theme === 'dark') return '#0a0a0c'
   if (theme === 'light') return '#fafafa'
   return nativeTheme.shouldUseDarkColors ? '#0a0a0c' : '#fafafa'
 }
+
+nativeTheme.themeSource = resolveNativeThemeSource(initialSettings.theme)
 
 function resolveTitleBarOptions(): Electron.BaseWindowConstructorOptions {
   if (process.platform === 'darwin') {
@@ -488,8 +496,9 @@ async function initializeApplication(): Promise<void> {
     },
     onSettingsChange: async (settings, prevSettings) => {
       const liveWindow = getLiveMainWindow()
-      if (settings.theme !== prevSettings.theme && liveWindow) {
-        liveWindow.setBackgroundColor(
+      if (settings.theme !== prevSettings.theme) {
+        nativeTheme.themeSource = resolveNativeThemeSource(settings.theme)
+        liveWindow?.setBackgroundColor(
           resolveNativeBackgroundColor(settings.theme),
         )
       }

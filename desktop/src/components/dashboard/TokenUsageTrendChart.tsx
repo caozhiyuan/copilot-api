@@ -11,6 +11,7 @@ import {
   ALL_MODELS_VALUE,
   EMPTY_TOKEN_USAGE_TOTALS,
   formatChartDate,
+  formatCompactTokenCount,
   formatTokenCount,
   getTrendTotals,
   sampleTrendDays,
@@ -56,22 +57,22 @@ export function TokenUsageTrendChart({
       label: t('dashboard.tokenUsageTotal'),
     },
     {
-      color: '#2563eb',
+      color: 'var(--color-chart-input)',
       key: 'input_tokens',
       label: t('dashboard.tokenUsageInput'),
     },
     {
-      color: '#16a34a',
+      color: 'var(--color-chart-output)',
       key: 'output_tokens',
       label: t('dashboard.tokenUsageOutput'),
     },
     {
-      color: '#0891b2',
+      color: 'var(--color-chart-cache-read)',
       key: 'cache_read_input_tokens',
       label: t('dashboard.tokenUsageCacheRead'),
     },
     {
-      color: '#d97706',
+      color: 'var(--color-chart-cache-write)',
       key: 'cache_creation_input_tokens',
       label: t('dashboard.tokenUsageCacheWrite'),
     },
@@ -103,7 +104,7 @@ export function TokenUsageTrendChart({
     : EMPTY_TOKEN_USAGE_TOTALS
   const width = 720
   const height = 220
-  const padding = { bottom: 34, left: 54, right: 16, top: 16 }
+  const padding = { bottom: 34, left: 48, right: 16, top: 16 }
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
   const maxValue = Math.max(
@@ -177,8 +178,9 @@ export function TokenUsageTrendChart({
                       textAnchor="end"
                       fontSize="11"
                       fill="var(--color-ink-faint)"
+                      style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {formatTokenCount(tick)}
+                      {formatCompactTokenCount(tick)}
                     </text>
                   </g>
                 )

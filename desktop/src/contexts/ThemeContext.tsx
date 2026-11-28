@@ -18,6 +18,28 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
+const THEME_STORAGE_KEY = 'copilot-api-theme-pref'
+
+function isThemePreference(value: string | null): value is ThemePreference {
+  return value === 'light' || value === 'dark' || value === 'auto'
+}
+
+function readCachedThemePref(): ThemePreference {
+  try {
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
+    return isThemePreference(saved) ? saved : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
+function writeCachedThemePref(pref: ThemePreference): void {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, pref)
+  } catch {
+    // Ignore storage failures in restricted environments.
+  }
+}
 
 function getSystemTheme(): ResolvedTheme {
   if (typeof window === 'undefined') return 'light'
@@ -40,10 +62,13 @@ function applyThemeClass(theme: ResolvedTheme): void {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [themePref, setThemePrefState] = useState<ThemePreference>('auto')
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
-    resolveTheme('auto'),
-  )
+  const [themePref, setThemePrefState] =
+    useState<ThemePreference>(readCachedThemePref)
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
+    const initial = resolveTheme(readCachedThemePref())
+    if (typeof document !== 'undefined') applyThemeClass(initial)
+    return initial
+  })
 
   useEffect(() => {
     let active = true
@@ -52,6 +77,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       .then((settings) => {
         if (!active) return
         setThemePrefState(settings.theme)
+        writeCachedThemePref(settings.theme)
         const resolved = resolveTheme(settings.theme)
         setResolvedTheme(resolved)
         applyThemeClass(resolved)
@@ -76,6 +102,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setThemePref = useCallback((pref: ThemePreference) => {
     setThemePrefState(pref)
+    writeCachedThemePref(pref)
     const resolved = resolveTheme(pref)
     setResolvedTheme(resolved)
     applyThemeClass(resolved)

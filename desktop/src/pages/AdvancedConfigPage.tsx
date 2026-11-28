@@ -176,6 +176,8 @@ export default function AdvancedConfigPage({
       setBusy(false)
     }
   }
+  const documentRef = useRef(document)
+  documentRef.current = document
   const dirtyRef = useRef(dirty)
   dirtyRef.current = dirty
   const errorMessageRef = useRef(errorMessage)
@@ -186,19 +188,29 @@ export default function AdvancedConfigPage({
     setSection('mappings')
     setMode('form')
     let current = true
-    setBusy(true)
+    const isInitialLoad = documentRef.current === null
+    if (isInitialLoad) setBusy(true)
     setError('')
     setSaveResult(null)
     void window.electronAPI
       .getAppConfig()
       .then((next) => {
-        if (current) acceptDocument(unwrapConfigEditorReply(next))
+        if (!current) return
+        const resolved = unwrapConfigEditorReply(next)
+        if (
+          documentRef.current
+          && documentRef.current.revision === resolved.revision
+          && documentRef.current.content === resolved.content
+        ) {
+          return
+        }
+        acceptDocument(resolved)
       })
       .catch((err: unknown) => {
         if (current) setError(errorMessageRef.current(err, 'readFailed'))
       })
       .finally(() => {
-        if (current) setBusy(false)
+        if (current && isInitialLoad) setBusy(false)
       })
     return () => {
       current = false

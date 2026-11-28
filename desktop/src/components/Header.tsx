@@ -123,7 +123,7 @@ export default function Header({
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-accent-strong rounded-md flex items-center justify-center dark:bg-[#4f94f8]">
+            <div className="w-6 h-6 bg-brand rounded-md flex items-center justify-center">
               <span className="text-white text-[9px] font-bold">CA</span>
             </div>
             <span className="text-sm font-bold text-ink">Copilot API</span>

@@ -267,6 +267,20 @@ describe('desktop menu shortcuts', () => {
     expect(closeProviders).not.toBeNull()
     await act(async () => closeProviders!.click())
     expect(onProvidersClose).toHaveBeenCalledTimes(1)
+
+    await click('Help')
+    await click('About')
+    expect(
+      container.querySelector('[aria-labelledby="about-title"]'),
+    ).not.toBeNull()
+    const closeAbout = container.querySelector<HTMLButtonElement>(
+      '[aria-labelledby="about-title"] button[aria-label="About"]',
+    )
+    expect(closeAbout).not.toBeNull()
+    await act(async () => closeAbout!.click())
+    expect(
+      container.querySelector('[aria-labelledby="about-title"]'),
+    ).toBeNull()
   })
 })
 

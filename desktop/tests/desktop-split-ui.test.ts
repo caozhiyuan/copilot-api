@@ -8,6 +8,7 @@ import {
   EMPTY_TOKEN_USAGE_TOTALS,
   formatCellText,
   formatChartDate,
+  formatCompactTokenCount,
   formatEventTime,
   formatRefreshTime,
   formatTokenCount,
@@ -99,6 +100,11 @@ describe('dashboard formatting and trend sampling helpers', () => {
     expect(maskSecret('sk-1234567890abcd')).toBe('sk-1********abcd')
 
     expect(formatTokenCount(-5)).toBe('0')
+    expect(formatCompactTokenCount(-5)).toBe('0')
+    expect(formatCompactTokenCount(950)).toBe('950')
+    expect(formatCompactTokenCount(12_500)).toBe('12.5K')
+    expect(formatCompactTokenCount(152_653_299)).toBe('152.7M')
+    expect(formatCompactTokenCount(2_000_000_000)).toBe('2B')
     expect(calcTokenTotal(makeTotals())).toBe(180)
     expect(formatEventTime(0)).toBe('—')
     expect(formatEventTime(Date.UTC(2026, 5, 15, 12, 5, 9))).toContain('2026/')

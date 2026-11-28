@@ -206,11 +206,11 @@ export default function TitleBarMenu({
             aria-modal="true"
             aria-labelledby="about-title"
             onClick={(e) => e.stopPropagation()}
-            className="w-[340px] max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-line bg-surface shadow-xl dark:border-white/10 dark:bg-[#121216] dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
+            className="w-[340px] max-w-[calc(100vw-32px)] overflow-hidden rounded-xl border border-line bg-elevated shadow-xl dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
           >
-            <div className="flex items-center justify-between border-b border-line-soft px-4 py-3 dark:border-white/10 dark:bg-[#15151a]">
+            <div className="flex items-center justify-between border-b border-line-soft bg-surface px-4 py-3">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-strong text-[10px] font-bold text-white dark:bg-[#4f94f8]">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-[10px] font-bold text-white">
                   CA
                 </div>
                 <div>
@@ -228,7 +228,7 @@ export default function TitleBarMenu({
               <button
                 onClick={() => setShowAbout(false)}
                 aria-label={t('menu.helpAbout')}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-sunken hover:text-ink dark:hover:bg-white/10 dark:hover:text-white"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -248,7 +248,7 @@ export default function TitleBarMenu({
             </div>
 
             <div className="px-4 py-4">
-              <div className="flex items-center justify-between rounded-lg border border-line bg-sunken px-3 py-2.5 dark:border-white/10 dark:bg-[#0f0f13]">
+              <div className="flex items-center justify-between rounded-lg border border-line bg-sunken px-3 py-2.5">
                 <span className="text-[13px] text-ink-soft">
                   {t('menu.aboutVersion')}
                 </span>

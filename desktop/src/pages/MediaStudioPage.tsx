@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import {
   Field,
-  formFieldClass,
-  formSelectClass,
+  formFieldBaseClass,
+  formSelectBaseClass,
   primaryButtonClass,
   secondaryButtonClass,
 } from '../components/ui/FormControls'
@@ -30,9 +30,9 @@ type Mode = 'generate' | 'edit' | 'video'
 type StudioResult =
   | { kind: 'images'; images: CreatedImage[]; prompt: string }
   | { kind: 'video'; video: VideoCreationResult; prompt: string }
-const fieldClass = `${formFieldClass} py-1.5`
-const selectClass = `${formSelectClass} py-1.5`
-const buttonClass = `${secondaryButtonClass} px-3 py-2 text-[13px]`
+const fieldClass = `${formFieldBaseClass} px-3 py-1.5`
+const selectClass = `${formSelectBaseClass} px-3 py-1.5`
+const buttonClass = `${secondaryButtonClass} px-3 py-1.5 text-[13px]`
 
 function UploadPreview({
   file,
@@ -345,7 +345,7 @@ export default function MediaStudioPage({
           </div>
           <fieldset
             disabled={busy}
-            className={`min-h-0 min-w-0 flex-1 overflow-y-auto disabled:opacity-70 ${mode === 'video' ? 'space-y-2.5' : 'space-y-3'}`}
+            className={`min-h-0 min-w-0 flex-1 overflow-y-auto disabled:opacity-70 ${mode === 'video' ? 'space-y-2' : 'space-y-3'}`}
           >
             {mode !== 'video' ?
               <Field label={t('studio.model')}>
@@ -356,12 +356,12 @@ export default function MediaStudioPage({
                   onChange={(e) => setModel(e.target.value)}
                 />
               </Field>
-            : <p className="break-all rounded-lg bg-sunken px-3 py-2 font-mono text-xs text-ink-soft">
+            : <p className="break-all rounded-lg bg-sunken px-3 py-1.5 font-mono text-xs text-ink-soft">
                 {VIDEO_MODEL}
               </p>
             }
             {mode !== 'generate' && (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <p className="text-xs font-medium text-ink-soft">
                   {t(mode === 'video' ? 'studio.firstFrame' : 'studio.upload')}
                 </p>
@@ -383,32 +383,34 @@ export default function MediaStudioPage({
                     e.preventDefault()
                     if (!busy) addFiles(Array.from(e.dataTransfer.files))
                   }}
-                  className="rounded-lg border border-dashed border-line p-3"
+                  className="rounded-lg border border-dashed border-line p-2.5"
                 >
-                  <div className="flex flex-wrap gap-2">
-                    {files.map((file, index) => (
-                      <UploadPreview
-                        key={`${file.name}-${index}`}
-                        file={file}
-                        removeLabel={t('studio.remove')}
-                        onRemove={() =>
-                          mode === 'video' ?
-                            setFirstFrame([])
-                          : setEditFiles(
-                              editFiles.filter((_, i) => i !== index),
-                            )
-                        }
-                      />
-                    ))}
-                  </div>
+                  {files.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {files.map((file, index) => (
+                        <UploadPreview
+                          key={`${file.name}-${index}`}
+                          file={file}
+                          removeLabel={t('studio.remove')}
+                          onRemove={() =>
+                            mode === 'video' ?
+                              setFirstFrame([])
+                            : setEditFiles(
+                                editFiles.filter((_, i) => i !== index),
+                              )
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
                   <button
                     type="button"
-                    className={`${buttonClass} mt-2 w-full`}
+                    className={`${buttonClass} w-full`}
                     onClick={() => uploadInput.current?.click()}
                   >
                     + {t('studio.upload')}
                   </button>
-                  <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-ink-faint">
                     {t(
                       mode === 'video' ?
                         'studio.firstFrameHint'

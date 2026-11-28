@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import AuthPage from './pages/AuthPage'
 import DashboardPage from './pages/DashboardPage'
-import { useLanguage } from './contexts/LanguageContext'
+import { hasCachedLangPref, useLanguage } from './contexts/LanguageContext'
 import { autoStartServer } from './lib/auto-start-server'
 import type { AuthResult, DesktopAuthMode, ServerStatus } from './types/ipc'
 
@@ -11,12 +11,14 @@ function BootScreen({ loadingText }: { loadingText: string }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas px-6">
       <div className="flex w-full max-w-sm flex-col items-center gap-4 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-strong text-base font-extrabold text-white shadow-[0_10px_30px_rgba(30,41,59,0.20)] dark:bg-[#4f94f8]">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-base font-extrabold text-white shadow-[0_10px_30px_rgba(30,41,59,0.20)]">
           CA
         </div>
         <div className="space-y-1">
           <h1 className="text-lg font-bold text-ink">Copilot API</h1>
-          <p className="text-[13px] text-ink-faint">{loadingText}</p>
+          <p className="min-h-[20px] text-[13px] text-ink-faint">
+            {loadingText}
+          </p>
         </div>
         <div className="h-1.5 w-28 overflow-hidden rounded-full bg-sunken">
           <div className="loading-indeterminate-bar h-full w-2/5 rounded-full bg-accent" />
@@ -36,6 +38,7 @@ export default function App() {
   const [port, setPort] = useState<number>(4141)
   const [host, setHost] = useState<string>('')
   const [initialServerStatus, setInitialServerStatus] = useState<ServerStatus>()
+  const [languageReady, setLanguageReady] = useState(hasCachedLangPref)
   const { setLangPref, t } = useLanguage()
 
   useEffect(() => {
@@ -53,6 +56,7 @@ export default function App() {
         setPort(settings.lastPort)
         setHost(settings.host ?? '')
         setLangPref(settings.language ?? 'auto')
+        setLanguageReady(true)
 
         if (authResult.success && authResult.mode !== 'none') {
           const serverStatus = await autoStartServer(
@@ -73,6 +77,7 @@ export default function App() {
         setPage('auth')
       } catch {
         if (active) {
+          setLanguageReady(true)
           setCanReturnFromAuth(false)
           setPage('auth')
         }
@@ -111,7 +116,7 @@ export default function App() {
   }
 
   if (page === null) {
-    return <BootScreen loadingText={t('auth.loading')} />
+    return <BootScreen loadingText={languageReady ? t('auth.loading') : ''} />
   }
 
   if (page === 'auth') {

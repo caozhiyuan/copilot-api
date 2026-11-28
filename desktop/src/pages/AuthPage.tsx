@@ -527,7 +527,7 @@ export default function AuthPage({
           {/* Logo and title */}
           {!isExpandedInput && (
             <div className="text-center">
-              <div className="w-14 h-14 bg-accent-strong rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-[0_10px_26px_rgba(30,41,59,0.20)] dark:bg-[#4f94f8]">
+              <div className="w-14 h-14 bg-brand rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-[0_10px_26px_rgba(30,41,59,0.20)]">
                 <span className="text-white text-base font-extrabold">CA</span>
               </div>
               <h1 className="text-lg font-bold text-ink">Copilot API</h1>

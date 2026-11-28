@@ -44,7 +44,7 @@ export function ServerStartForm({
 }) {
   return (
     <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
-      <div className="w-11 h-11 bg-sunken rounded-xl flex items-center justify-center text-ink-soft dark:bg-[#4f94f8] dark:text-white">
+      <div className="w-11 h-11 bg-sunken rounded-xl flex items-center justify-center text-ink-soft dark:bg-brand dark:text-white">
         <IconLaunch />
       </div>
       <div className="text-center">
@@ -198,11 +198,11 @@ export function DashboardOverviewTab({
             key={item.label}
             className="rounded-lg border border-line bg-sunken px-3 py-2"
           >
-            <div className="text-[13px] font-medium text-ink-faint">
+            <div className="text-[11px] font-medium leading-4 text-ink-faint">
               {item.label}
             </div>
             <div
-              className={`mt-1 flex min-w-0 items-center gap-1.5 text-[13px] font-semibold ${
+              className={`mt-1 flex min-w-0 items-center gap-1.5 text-[14px] font-semibold leading-4 tabular-nums ${
                 item.tone === 'green' ? 'text-green-600 dark:text-green-400'
                 : item.tone === 'blue' ? 'text-accent'
                 : 'text-ink'

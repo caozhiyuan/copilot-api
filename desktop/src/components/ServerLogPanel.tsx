@@ -100,7 +100,7 @@ export default function ServerLogPanel({
   const isPage = variant === 'page'
   const panel = (
     <div
-      className={`${isPage ? 'flex-1' : 'w-full max-w-2xl'} bg-black rounded-xl p-4 flex flex-col overflow-hidden min-h-0`}
+      className={`${isPage ? 'flex-1' : 'w-full max-w-2xl'} bg-black border border-line rounded-xl p-4 flex flex-col overflow-hidden min-h-0`}
     >
       <div className="flex items-center justify-between mb-3 shrink-0">
         <span className="text-[13px] font-semibold text-ink-faint uppercase tracking-wide">

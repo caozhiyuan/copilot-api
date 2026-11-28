@@ -26,7 +26,7 @@ import {
 } from '../components/dashboard/DashboardOverviewTab'
 import Header from '../components/Header'
 import ServerLogPanel from '../components/ServerLogPanel'
-import { PageLoadingSkeleton } from '../components/ui/LoadingState'
+import { InlineLoading } from '../components/ui/LoadingState'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useServerLifecycle } from '../hooks/useServerLifecycle'
 import { useTokenUsage } from '../hooks/useTokenUsage'
@@ -434,11 +434,12 @@ export default function DashboardPage({
 
         <Suspense
           fallback={
-            <PageLoadingSkeleton
-              delayed
+            <div
               data-tab-loading="true"
-              label={t('dashboard.loading')}
-            />
+              className="loading-delayed-fade flex h-full min-h-[200px] items-center justify-center p-6"
+            >
+              <InlineLoading label={t('dashboard.loading')} />
+            </div>
           }
         >
           {(subscriptionsOpened

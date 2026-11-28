@@ -162,9 +162,7 @@ export function TokenUsagePanel({
               <span>
                 {t('dashboard.modelsCount', { n: tokenUsage.byModel.length })}
               </span>
-              {loading && (
-                <span className="text-ink-faint">{t('dashboard.loading')}</span>
-              )}
+              {loading && <InlineLoading label={t('dashboard.loading')} />}
             </div>
           )}
           {breakdownTab === 'sessions' && sessionsPage && (
@@ -181,7 +179,7 @@ export function TokenUsagePanel({
                 })}
               </span>
               {sessionsLoading && (
-                <span className="text-ink-faint">{t('dashboard.loading')}</span>
+                <InlineLoading label={t('dashboard.loading')} />
               )}
               <button
                 onClick={() =>

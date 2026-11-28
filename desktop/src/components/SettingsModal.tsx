@@ -207,9 +207,9 @@ export default function SettingsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/70">
-      <div className="flex h-[500px] max-h-[calc(100vh-40px)] w-[592px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl bg-surface shadow-xl ring-1 ring-line-soft dark:bg-[#121216] dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)] dark:ring-white/10">
+      <div className="flex h-[500px] max-h-[calc(100vh-40px)] w-[592px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border border-line bg-elevated shadow-xl dark:shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
         {/* Title bar */}
-        <div className="flex shrink-0 items-center justify-between border-b border-line-soft px-5 py-3.5 dark:border-white/10 dark:bg-[#15151a]">
+        <div className="flex shrink-0 items-center justify-between border-b border-line-soft bg-surface px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sunken text-ink-soft dark:bg-blue-500/15 dark:text-blue-300 dark:ring-1 dark:ring-blue-400/20">
               <IconGeneral />
@@ -220,7 +220,7 @@ export default function SettingsModal({
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-sunken hover:text-ink dark:hover:bg-white/10 dark:hover:text-white"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-ink-faint transition-colors hover:bg-sunken hover:text-ink"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -242,15 +242,15 @@ export default function SettingsModal({
         {/* Main content */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Left navigation */}
-          <div className="flex w-[158px] shrink-0 flex-col gap-0.5 border-r border-line-soft bg-sunken px-2 py-3 dark:border-white/10 dark:bg-[#0f0f13]">
+          <div className="flex w-[158px] shrink-0 flex-col gap-0.5 border-r border-line-soft bg-sunken px-2 py-3">
             {navItems.map((item) => (
               <button
                 key={item.key}
                 onClick={() => setSection(item.key)}
                 className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] transition-colors ${
                   section === item.key ?
-                    'bg-surface font-semibold text-ink shadow-sm dark:bg-[#202029] dark:text-white dark:ring-1 dark:ring-white/10 dark:shadow-[0_10px_24px_rgba(0,0,0,0.22)]'
-                  : 'font-medium text-ink-soft hover:bg-surface/70 hover:text-ink dark:hover:bg-white/10 dark:hover:text-white'
+                    'bg-surface font-semibold text-ink shadow-sm ring-1 ring-line-soft'
+                  : 'font-medium text-ink-soft hover:bg-surface/70 hover:text-ink'
                 }`}
               >
                 <span
@@ -268,7 +268,7 @@ export default function SettingsModal({
           </div>
 
           {/* Right panel */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 dark:bg-[#141419]">
+          <div className="flex-1 overflow-y-auto bg-elevated px-6 py-5">
             {section === 'updates' && (
               <AppUpdatePanel checkOnMount={checkForUpdatesOnOpen} />
             )}
@@ -302,17 +302,17 @@ export default function SettingsModal({
         </div>
 
         {/* Footer actions */}
-        <div className="flex shrink-0 justify-end gap-2 border-t border-line-soft bg-sunken/60 px-5 py-3.5 dark:border-white/10 dark:bg-[#101014]">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-line-soft bg-sunken/70 px-5 py-3.5">
           <button
             onClick={onClose}
-            className="rounded-lg border border-line px-4 py-2 text-[13px] text-ink-soft transition-colors hover:bg-sunken hover:text-ink dark:border-white/10 dark:hover:bg-white/10 dark:hover:text-white"
+            className="rounded-lg border border-line bg-surface px-4 py-2 text-[13px] text-ink-soft transition-colors hover:bg-sunken hover:text-ink"
           >
             {t('settings.cancel')}
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !isValidServerHost(settings.host)}
-            className="px-4 py-2 text-[13px] font-semibold bg-accent-strong text-white rounded-lg hover:bg-accent-strong/90 dark:bg-blue-500 dark:hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-50 transition-colors shadow-sm dark:shadow-blue-950/20"
+            className="rounded-lg bg-brand px-4 py-2 text-[13px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? t('settings.saving') : t('settings.save')}
           </button>
